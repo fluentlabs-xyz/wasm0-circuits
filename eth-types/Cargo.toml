@@ -24,6 +24,7 @@ num = "0.4"
 num-bigint = { version = "0.4" }
 strum_macros = "0.24"
 strum = "0.24"
+wasm-encoder = "0.22.1"
 
 [features]
 warn-unimplemented = []

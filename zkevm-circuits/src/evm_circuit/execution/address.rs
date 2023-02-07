@@ -14,14 +14,16 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToAddress, ToLittleEndian};
+use eth_types::{Field};
 use halo2_proofs::plonk::Error;
 use std::convert::TryInto;
+use crate::evm_circuit::util::host_return_gadget::HostReturnGadget;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AddressGadget<F> {
     same_context: SameContextGadget<F>,
     address: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
+    host_return: HostReturnGadget<F, N_BYTES_ACCOUNT_ADDRESS>,
 }
 
 impl<F: Field> ExecutionGadget<F> for AddressGadget<F> {
@@ -40,10 +42,10 @@ impl<F: Field> ExecutionGadget<F> for AddressGadget<F> {
             from_bytes::expr(&address.cells),
         );
 
-        cb.stack_push(address.expr());
+        let host_return = HostReturnGadget::construct(cb, address.clone());
 
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(2.expr()),
+            rw_counter: Delta(22.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta((-1).expr()),
             gas_left: Delta(-OpcodeId::ADDRESS.constant_gas_cost().expr()),
@@ -56,6 +58,7 @@ impl<F: Field> ExecutionGadget<F> for AddressGadget<F> {
         Self {
             same_context,
             address,
+            host_return,
         }
     }
 
@@ -70,18 +73,16 @@ impl<F: Field> ExecutionGadget<F> for AddressGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let address = block.rws[step.rw_indices[1]].stack_value();
-        debug_assert_eq!(call.callee_address, address.to_address());
+        let dest_offset = block.rws[step.rw_indices[1]].stack_value();
+        let address_bytes = call.callee_address.to_fixed_bytes();
 
         self.address.assign(
             region,
             offset,
-            Some(
-                address.to_le_bytes()[..N_BYTES_ACCOUNT_ADDRESS]
-                    .try_into()
-                    .unwrap(),
-            ),
+            Some(address_bytes.try_into().unwrap()),
         )?;
+
+        self.host_return.assign(region, offset, dest_offset, address_bytes)?;
 
         Ok(())
     }
@@ -89,16 +90,16 @@ impl<F: Field> ExecutionGadget<F> for AddressGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::{evm_circuit::test::rand_bytes, test_util::CircuitTestBuilder};
+    use crate::{evm_circuit::test::rand_bytes};
     use eth_types::{bytecode, ToWord, Word};
     use mock::test_ctx::TestContext;
+    use crate::test_util::CircuitTestBuilder;
 
     fn test_root_ok() {
         let bytecode = bytecode! {
             ADDRESS
             STOP
         };
-
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
         )

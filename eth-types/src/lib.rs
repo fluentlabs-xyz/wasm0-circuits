@@ -7,10 +7,37 @@
 #![allow(non_snake_case)]
 // Catch documentation errors caused by code changes.
 #![deny(rustdoc::broken_intra_doc_links)]
-#![deny(missing_docs)]
+// #![deny(missing_docs)]
 //#![deny(unsafe_code)] Allowed now until we find a
 // better way to handle downcasting from Operation into it's variants.
 #![allow(clippy::upper_case_acronyms)] // Too pedantic
+
+use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
+
+pub use ethers_core::abi::ethereum_types::{BigEndianHash, U512};
+use ethers_core::types;
+pub use ethers_core::types::{
+    Address,
+    Block, Bytes, H160, H256, H64, Signature, transaction::{eip2930::AccessList, response::Transaction}, U256, U64,
+};
+use halo2_proofs::{
+    arithmetic::{Field as Halo2Field, FieldExt},
+    halo2curves::{
+        bn256::{Fq, Fr},
+        group::ff::PrimeField,
+    },
+};
+use serde::{de, Deserialize, Serialize};
+
+pub use bytecode::Bytecode;
+pub use error::Error;
+pub use uint_types::DebugU256;
+
+use crate::evm_types::{memory::Memory, stack::Stack, storage::Storage};
+use crate::evm_types::{Gas, GasCost, OpcodeId, ProgramCounter};
+use crate::GethExecStepFamily::{Evm, Unknown, WebAssembly};
 
 #[macro_use]
 pub mod macros;
@@ -22,33 +49,9 @@ pub mod evm_types;
 pub mod geth_types;
 pub mod sign_types;
 
-pub use bytecode::Bytecode;
-pub use error::Error;
-use halo2_proofs::{
-    arithmetic::{Field as Halo2Field, FieldExt},
-    halo2curves::{
-        bn256::{Fq, Fr},
-        group::ff::PrimeField,
-    },
-};
-
-use crate::evm_types::{memory::Memory, stack::Stack, storage::Storage};
-use crate::evm_types::{Gas, GasCost, OpcodeId, ProgramCounter};
-pub use ethers_core::abi::ethereum_types::{BigEndianHash, U512};
-use ethers_core::types;
-pub use ethers_core::types::{
-    transaction::{eip2930::AccessList, response::Transaction},
-    Address, Block, Bytes, Signature, H160, H256, H64, U256, U64,
-};
-
-use serde::{de, Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fmt;
-use std::str::FromStr;
-
 /// Trait used to reduce verbosity with the declaration of the [`FieldExt`]
 /// trait and its repr.
-pub trait Field: FieldExt + Halo2Field + PrimeField<Repr = [u8; 32]> {}
+pub trait Field: FieldExt + Halo2Field + PrimeField<Repr=[u8; 32]> {}
 
 // Impl custom `Field` trait for BN256 Fr to be used and consistent with the
 // rest of the workspace.
@@ -70,6 +73,12 @@ pub trait ToWord {
     fn to_word(&self) -> Word;
 }
 
+/// Trait used to convert a type to a [`Word`].
+pub trait ToU256 {
+    /// Convert the type to a [`Word`].
+    fn to_u256(&self) -> U256;
+}
+
 /// Trait used to convert a type to a [`Address`].
 pub trait ToAddress {
     /// Convert the type to a [`Address`].
@@ -88,6 +97,14 @@ pub trait ToLittleEndian {
     fn to_le_bytes(&self) -> [u8; 32];
 }
 
+pub const N_BYTES_WORD: usize = 8;
+
+/// Trait used to convert a scalar value to a 32 byte array in little endian.
+pub trait ToWordBytes {
+    /// Convert the value to a 32 byte array in little endian.
+    fn to_word_bytes(&self) -> [u8; N_BYTES_WORD];
+}
+
 // We use our own declaration of another U256 in order to implement a custom
 // deserializer that can parse U256 when returned by structLogs fields in geth
 // debug_trace* methods, which don't contain the `0x` prefix.
@@ -98,12 +115,11 @@ mod uint_types {
         pub struct DebugU256(4);
     }
 }
-pub use uint_types::DebugU256;
 
 impl<'de> Deserialize<'de> for DebugU256 {
     fn deserialize<D>(deserializer: D) -> Result<DebugU256, D::Error>
-    where
-        D: serde::Deserializer<'de>,
+        where
+            D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
         DebugU256::from_str(&s).map_err(de::Error::custom)
@@ -129,14 +145,47 @@ impl ToBigEndian for DebugU256 {
 
 impl ToWord for DebugU256 {
     fn to_word(&self) -> Word {
-        U256(self.0)
+        Word::from(self.to_be_bytes())
+    }
+}
+
+impl ToU256 for DebugU256 {
+    fn to_u256(&self) -> U256 {
+        U256::from(self.to_be_bytes())
+    }
+}
+
+impl ToWord for U256 {
+    fn to_word(&self) -> Word {
+        U256::from(self)
     }
 }
 
 /// Ethereum Word (256 bits).
 pub type Word = U256;
 
+impl ToU256 for U256 {
+    fn to_u256(&self) -> U256 {
+        self.clone()
+    }
+}
+
+impl ToU256 for U64 {
+    fn to_u256(&self) -> U256 {
+        U256::from(self.as_u64())
+    }
+}
+
 impl ToBigEndian for U256 {
+    /// Encode the value as byte array in big endian.
+    fn to_be_bytes(&self) -> [u8; 32] {
+        let mut bytes = [0u8; 32];
+        self.to_big_endian(&mut bytes);
+        bytes
+    }
+}
+
+impl ToBigEndian for U64 {
     /// Encode the value as byte array in big endian.
     fn to_be_bytes(&self) -> [u8; 32] {
         let mut bytes = [0u8; 32];
@@ -154,7 +203,33 @@ impl ToLittleEndian for U256 {
     }
 }
 
+impl ToWordBytes for U256 {
+    /// Encode the value as byte array in little endian.
+    fn to_word_bytes(&self) -> [u8; N_BYTES_WORD] {
+        let mut bytes = [0u8; N_BYTES_WORD];
+        self.to_little_endian(&mut bytes);
+        bytes
+    }
+}
+
+impl ToLittleEndian for U64 {
+    /// Encode the value as byte array in little endian.
+    fn to_le_bytes(&self) -> [u8; 32] {
+        let mut bytes = [0u8; 32];
+        self.to_little_endian(&mut bytes);
+        bytes
+    }
+}
+
 impl<F: Field> ToScalar<F> for U256 {
+    fn to_scalar(&self) -> Option<F> {
+        let mut bytes = [0u8; 32];
+        self.to_little_endian(&mut bytes);
+        F::from_repr(bytes).into()
+    }
+}
+
+impl<F: Field> ToScalar<F> for U64 {
     fn to_scalar(&self) -> Option<F> {
         let mut bytes = [0u8; 32];
         self.to_little_endian(&mut bytes);
@@ -168,12 +243,42 @@ impl ToAddress for U256 {
     }
 }
 
+impl ToAddress for U64 {
+    fn to_address(&self) -> Address {
+        Address::from_slice(&self.to_be_bytes()[12..])
+    }
+}
+
 /// Ethereum Hash (256 bits).
 pub type Hash = types::H256;
 
 impl ToWord for Hash {
     fn to_word(&self) -> Word {
         Word::from(self.as_bytes())
+    }
+}
+
+impl ToU256 for Address {
+    fn to_u256(&self) -> U256 {
+        U256::from(self.as_bytes())
+    }
+}
+
+impl ToU256 for Hash {
+    fn to_u256(&self) -> U256 {
+        U256::from(self.as_bytes())
+    }
+}
+
+impl ToU256 for usize {
+    fn to_u256(&self) -> U256 {
+        U256::from(*self)
+    }
+}
+
+impl ToU256 for bool {
+    fn to_u256(&self) -> U256 {
+        U256::from(*self as u64)
     }
 }
 
@@ -271,7 +376,12 @@ pub struct EIP1186ProofResponse {
 #[doc(hidden)]
 struct GethExecStepInternal {
     pc: ProgramCounter,
-    op: OpcodeId,
+    op: String,
+    #[serde(default)]
+    #[serde(rename = "opcodeFamily")]
+    op_family: Option<String>,
+    #[serde(default)]
+    params: Option<Box<[u64]>>,
     gas: Gas,
     #[serde(default)]
     refund: Gas,
@@ -283,18 +393,44 @@ struct GethExecStepInternal {
     stack: Vec<DebugU256>,
     // memory is in chunks of 32 bytes, in hex
     #[serde(default)]
-    memory: Vec<DebugU256>,
+    memory: String,
+    #[serde(rename = "memoryOffset")]
+    #[serde(default)]
+    memory_offset: u32,
     // storage is hex -> hex
     #[serde(default)]
     storage: HashMap<DebugU256, DebugU256>,
 }
 
+#[derive(Clone, Eq, PartialEq, Serialize, Debug)]
+#[doc(hidden)]
+pub enum GethExecStepFamily {
+    Unknown,
+    WebAssembly,
+    Evm,
+}
+
+impl GethExecStepFamily {
+    fn from_string(value: &String) -> Self {
+        if value.eq(&String::from("WASM")) {
+            WebAssembly
+        } else if value.eq(&String::from("EVM")) {
+            Evm
+        } else {
+            Unknown
+        }
+    }
+}
+
 /// The execution step type returned by geth RPC debug_trace* methods.
 /// Corresponds to `StructLogRes` in `go-ethereum/internal/ethapi/api.go`.
-#[derive(Clone, Eq, PartialEq, Serialize)]
+#[derive(Serialize, Clone, Eq, PartialEq)]
 #[doc(hidden)]
-pub struct GethExecStep {
+pub struct GethExecStep
+{
     pub pc: ProgramCounter,
+    pub op_family: Option<GethExecStepFamily>,
+    pub params: Option<Box<[u64]>>,
     pub op: OpcodeId,
     pub gas: Gas,
     pub gas_cost: GasCost,
@@ -302,7 +438,7 @@ pub struct GethExecStep {
     pub depth: u16,
     pub error: Option<String>,
     // stack is in hex 0x prefixed
-    pub stack: Stack,
+    pub stack: Stack<U256>,
     // memory is in chunks of 32 bytes, in hex
     pub memory: Memory,
     // storage is hex -> hex
@@ -337,7 +473,7 @@ impl fmt::Debug for GethExecStep {
             .field("gas_cost", &format_args!("{}", self.gas_cost.0))
             .field("depth", &self.depth)
             .field("error", &self.error)
-            .field("stack", &self.stack)
+            // .field("stack", &self.stack)
             // .field("memory", &self.memory)
             .field("storage", &self.storage)
             .finish()
@@ -346,25 +482,28 @@ impl fmt::Debug for GethExecStep {
 
 impl<'de> Deserialize<'de> for GethExecStep {
     fn deserialize<D>(deserializer: D) -> Result<GethExecStep, D::Error>
-    where
-        D: serde::Deserializer<'de>,
+        where
+            D: serde::Deserializer<'de>,
     {
         let s = GethExecStepInternal::deserialize(deserializer)?;
+        let memory = if s.memory.starts_with("0x") {
+            s.memory[2..].to_string()
+        } else {
+            s.memory
+        };
+        let memory = hex::decode(memory).map_err(de::Error::custom)?;
         Ok(Self {
             pc: s.pc,
-            op: s.op,
+            op_family: s.op_family.map(|f| GethExecStepFamily::from_string(&f)),
+            params: s.params,
+            op: OpcodeId::from_str(s.op.as_str()).unwrap(),
             gas: s.gas,
             refund: s.refund,
             gas_cost: s.gas_cost,
             depth: s.depth,
             error: s.error,
-            stack: Stack(s.stack.iter().map(|dw| dw.to_word()).collect::<Vec<Word>>()),
-            memory: Memory::from(
-                s.memory
-                    .iter()
-                    .map(|dw| dw.to_word())
-                    .collect::<Vec<Word>>(),
-            ),
+            stack: Stack(s.stack.iter().map(|dw| dw.to_word().to_u256()).collect::<Vec<_>>()),
+            memory: Memory::from_bytes_with_offset(memory, s.memory_offset),
             storage: Storage(
                 s.storage
                     .iter()
@@ -445,9 +584,10 @@ macro_rules! word_map {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::evm_types::opcode_ids::OpcodeId;
     use crate::evm_types::{memory::Memory, stack::Stack};
+    use crate::evm_types::opcode_ids::OpcodeId;
+
+    use super::*;
 
     #[test]
     fn deserialize_geth_exec_trace2() {
@@ -522,6 +662,8 @@ mod tests {
                 struct_logs: vec![
                     GethExecStep {
                         pc: ProgramCounter(0),
+                        op_family: None,
+                        params: None,
                         op: OpcodeId::PUSH1,
                         gas: Gas(22705),
                         refund: Gas(0),
@@ -534,6 +676,8 @@ mod tests {
                     },
                     GethExecStep {
                         pc: ProgramCounter(163),
+                        op_family: None,
+                        params: None,
                         op: OpcodeId::SLOAD,
                         gas: Gas(5217),
                         refund: Gas(0),
@@ -546,6 +690,8 @@ mod tests {
                     },
                     GethExecStep {
                         pc: ProgramCounter(189),
+                        op_family: None,
+                        params: None,
                         op: OpcodeId::SHA3,
                         gas: Gas(178805),
                         refund: Gas(0),
@@ -555,7 +701,7 @@ mod tests {
                         stack: Stack(vec![
                             word!("0x3635c9adc5dea00000"),
                             word!("0x40"),
-                            word!("0x0")
+                            word!("0x0"),
                         ]),
                         storage: Storage(word_map!()),
                         memory: Memory::from(vec![
@@ -578,19 +724,92 @@ mod tests {
                                 "00000000000000000000000000000000000000000000003635c9adc5dea00000"
                             ),
                         ]),
-                    }
+                    },
                 ],
             }
         );
+    }
+
+    #[test]
+    fn deserialize_geth_exec_wasm_trace() {
+        let trace_json = r#"
+{
+    "gas": 92024,
+    "failed": false,
+    "returnValue": "0061736d01000000010b0260027f7f0060017f017f02130103656e760b5f65766d5f72657475726e0000030201010405017001010105030100110619037f01418080c0000b7f00418c80c0000b7f00419080c0000b072c04066d656d6f72790200046d61696e00010a5f5f646174615f656e6403010b5f5f686561705f6261736503020a0f010d00418080c000410c100041000b0b150100418080c0000b0c48656c6c6f2c20576f726c64",
+    "structLogs":
+    [
+        {
+            "pc": 0,
+            "opcodeFamily": "WASM",
+            "params":
+            [
+                1048576
+            ],
+            "op": "i32_const",
+            "gas": 9942176,
+            "gasCost": 1,
+            "depth": 1,
+            "stack":
+            [
+                "0x0"
+            ]
+        },
+        {
+            "pc": 1,
+            "opcodeFamily": "WASM",
+            "params":
+            [
+                171
+            ],
+            "op": "i32_const",
+            "gas": 9942175,
+            "gasCost": 1,
+            "depth": 1,
+            "stack":
+            [
+                "0x0",
+                "0x100000"
+            ]
+        },
+        {
+            "pc": 18446744073709551615,
+            "opcodeFamily": "EVM",
+            "params":
+            [],
+            "op": "evm_return",
+            "gas": 9942176,
+            "gasCost": 0,
+            "depth": 1,
+            "stack":
+            [
+                "0xab",
+                "0x100000"
+            ]
+        }
+    ]
+}
+        "#;
+        let trace: GethExecTrace =
+            serde_json::from_str(trace_json).expect("json-deserialize GethExecTrace");
+        assert_eq!(trace.struct_logs[0].op_family, Some(WebAssembly));
+        let params = &trace.struct_logs[0].params;
+        assert_eq!((*params.clone().unwrap())[0], 1048576);
+        assert_eq!(trace.struct_logs[1].op_family, Some(WebAssembly));
+        let params = &trace.struct_logs[1].params;
+        assert_eq!((*params.clone().unwrap())[0], 171);
+        assert_eq!(trace.struct_logs[2].op_family, Some(Evm));
     }
 }
 
 #[cfg(test)]
 mod eth_types_test {
-    use super::*;
+    use std::str::FromStr;
+
     use crate::Error;
     use crate::Word;
-    use std::str::FromStr;
+
+    use super::*;
 
     #[test]
     fn address() {

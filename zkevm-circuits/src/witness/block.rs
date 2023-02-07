@@ -72,12 +72,11 @@ impl<F: Field> Block<F> {
     }
 }
 
-#[cfg(feature = "test")]
+// #[cfg(test)]
 use crate::exp_circuit::OFFSET_INCREMENT;
-#[cfg(feature = "test")]
+// #[cfg(test)]
 use crate::util::log2_ceil;
 
-#[cfg(feature = "test")]
 impl<F: Field> Block<F> {
     /// Obtains the expected Circuit degree needed in order to be able to test
     /// the EvmCircuit with this block without needing to configure the

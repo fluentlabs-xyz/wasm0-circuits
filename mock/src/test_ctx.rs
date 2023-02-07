@@ -267,11 +267,12 @@ pub mod helpers {
     /// - 0x000000000000000000000000000000000cafe222
     /// And injects the provided bytecode into the first one.
     pub fn account_0_code_account_1_no_code(code: Bytecode) -> impl FnOnce([&mut MockAccount; 2]) {
+        let wasm_binary = code.wasm_binary();
         |accs| {
             accs[0]
                 .address(MOCK_ACCOUNTS[0])
                 .balance(eth(10))
-                .code(code);
+                .code(wasm_binary);
             accs[1].address(MOCK_ACCOUNTS[1]).balance(eth(10));
         }
     }

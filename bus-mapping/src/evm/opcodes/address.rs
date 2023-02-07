@@ -1,8 +1,11 @@
-use super::Opcode;
+use eth_types::{GethExecStep, U256};
+use eth_types::evm_types::MemoryAddress;
+
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
-use crate::operation::CallContextField;
 use crate::Error;
-use eth_types::GethExecStep;
+use crate::operation::CallContextField;
+
+use super::Opcode;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Address;
@@ -12,26 +15,34 @@ impl Opcode for Address {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let geth_step = &geth_steps[0];
-        let mut exec_step = state.new_step(geth_step)?;
+        let step = &geth_steps[0];
+        let mut exec_step = state.new_step(step)?;
 
         // Get address result from next step.
-        let address = geth_steps[1].stack.last()?;
+        let address = &geth_steps[1].memory.0;
+        if address.len() != 20 {
+            return Err(Error::InvalidGethExecTrace("there is no address bytes in memory for address opcode"));
+        }
 
         // Read the callee address in call context.
         state.call_context_read(
             &mut exec_step,
             state.call()?.call_id,
             CallContextField::CalleeAddress,
-            address,
+            U256::from_big_endian(address),
         );
 
-        // Write the address to stack.
-        state.stack_write(
-            &mut exec_step,
-            geth_step.stack.last_filled().map(|a| a - 1),
-            address,
-        )?;
+        // Read dest offset as the last stack element
+        let dest_offset = step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let offset_addr = MemoryAddress::try_from(dest_offset)?;
+
+        // Copy result to memory
+        for i in 0..20 {
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), address[i])?;
+        }
+        let call_ctx = state.call_ctx_mut()?;
+        call_ctx.memory = geth_steps[1].memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -39,25 +50,24 @@ impl Opcode for Address {
 
 #[cfg(test)]
 mod address_tests {
-    use super::*;
+    use pretty_assertions::assert_eq;
+
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToWord, Word};
+    use mock::test_ctx::{helpers::*, TestContext};
+
     use crate::{
         circuit_input_builder::ExecState, mock::BlockData, operation::CallContextOp,
-        operation::StackOp, operation::RW,
+        operation::RW, operation::StackOp,
     };
-    use eth_types::{
-        bytecode,
-        evm_types::{OpcodeId, StackAddress},
-        geth_types::GethData,
-        ToWord,
-    };
-    use mock::test_ctx::{helpers::*, TestContext};
-    use pretty_assertions::assert_eq;
+    use crate::operation::MemoryOp;
+
+    use super::*;
 
     #[test]
     fn address_opcode_impl() {
         let code = bytecode! {
+            I32Const[0x7f]
             ADDRESS
-            STOP
         };
 
         // Get the execution steps from the external tracer.
@@ -67,8 +77,8 @@ mod address_tests {
             tx_from_1_to_0,
             |block, _tx| block.number(0xcafe_u64),
         )
-        .unwrap()
-        .into();
+            .unwrap()
+            .into();
 
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
         builder
@@ -82,7 +92,9 @@ mod address_tests {
             .unwrap();
 
         let call_id = builder.block.txs()[0].calls()[0].call_id;
-        let address = block.eth_block.transactions[0].to.unwrap().to_word();
+        let address = block.eth_block.transactions[0].to.unwrap();
+        let address_bytes = address.to_fixed_bytes();
+        assert_eq!(step.bus_mapping_instance.len(), 22);
         assert_eq!(
             {
                 let operation =
@@ -94,7 +106,7 @@ mod address_tests {
                 &CallContextOp {
                     call_id,
                     field: CallContextField::CalleeAddress,
-                    value: address,
+                    value: address.to_word(),
                 }
             )
         );
@@ -105,9 +117,22 @@ mod address_tests {
                 (operation.rw(), operation.op())
             },
             (
-                RW::WRITE,
-                &StackOp::new(1, StackAddress::from(1023), address)
+                RW::READ,
+                &StackOp::new(1, StackAddress::from(1022), Word::from(0x7f))
             )
         );
+        for idx in 0..20 {
+            assert_eq!(
+                {
+                    let operation =
+                        &builder.block.container.memory[step.bus_mapping_instance[2 + idx].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::WRITE,
+                    &MemoryOp::new(1, MemoryAddress::from(0x7f + idx), address_bytes[idx])
+                )
+            );
+        }
     }
 }

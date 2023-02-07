@@ -1051,7 +1051,7 @@ impl<'a> CircuitInputStateRef<'a> {
         if matches!(next_step, None)
             && matches!(
                 step.op,
-                OpcodeId::STOP | OpcodeId::RETURN | OpcodeId::REVERT | OpcodeId::SELFDESTRUCT
+                OpcodeId::End | OpcodeId::STOP | OpcodeId::RETURN | OpcodeId::REVERT | OpcodeId::SELFDESTRUCT
             )
         {
             return Ok(None);

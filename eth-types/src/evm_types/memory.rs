@@ -164,7 +164,7 @@ define_mul_assign_variants!(LHS = MemoryAddress, RHS = MemoryAddress);
 /// Represents a snapshot of the EVM memory state at a certain
 /// execution step height.
 #[derive(Clone, Eq, PartialEq)]
-pub struct Memory(pub Vec<u8>);
+pub struct Memory(pub Vec<u8>, pub u32);
 
 impl fmt::Debug for Memory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -200,6 +200,12 @@ impl fmt::Debug for Memory {
     }
 }
 
+impl Memory {
+    pub fn from_bytes_with_offset(bytes: Vec<u8>, offset: u32) -> Self {
+        Self(bytes, offset)
+    }
+}
+
 impl Default for Memory {
     fn default() -> Self {
         Self::new()
@@ -208,13 +214,13 @@ impl Default for Memory {
 
 impl From<Vec<u8>> for Memory {
     fn from(vec: Vec<u8>) -> Self {
-        Memory(vec)
+        Memory(vec, 0)
     }
 }
 
 impl From<Vec<Word>> for Memory {
     fn from(vec: Vec<Word>) -> Self {
-        Memory(vec.iter().flat_map(|word| word.to_be_bytes()).collect())
+        Memory(vec.iter().flat_map(|word| word.to_be_bytes()).collect(), 0)
     }
 }
 
@@ -250,8 +256,8 @@ impl<A: Into<MemoryAddress>> IndexMut<A> for Memory {
 
 impl Serialize for Memory {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
+        where
+            S: Serializer,
     {
         let encoded = hex::encode(&self.0);
         serializer.serialize_str(encoded.as_str())
@@ -268,7 +274,7 @@ define_range_index_variants!(
 impl Memory {
     /// Generate an new empty instance of EVM memory.
     pub const fn new() -> Memory {
-        Memory(Vec::new())
+        Memory(Vec::new(), 0)
     }
 
     /// Returns true if memory contains no elements.

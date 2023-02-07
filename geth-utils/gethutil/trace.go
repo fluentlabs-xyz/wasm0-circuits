@@ -2,8 +2,6 @@ package gethutil
 
 import (
 	"fmt"
-	"math/big"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -13,73 +11,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/params"
+	"math/big"
 )
-
-// Copied from github.com/ethereum/go-ethereum/internal/ethapi.ExecutionResult
-// ExecutionResult groups all structured logs emitted by the EVM
-// while replaying a transaction in debug mode as well as transaction
-// execution status, the amount of gas used and the return value
-type ExecutionResult struct {
-	Gas         uint64         `json:"gas"`
-	Failed      bool           `json:"failed"`
-	ReturnValue string         `json:"returnValue"`
-	StructLogs  []StructLogRes `json:"structLogs"`
-}
-
-// StructLogRes stores a structured log emitted by the EVM while replaying a
-// transaction in debug mode
-// Copied from github.com/ethereum/go-ethereum/internal/ethapi.StructLogRes
-type StructLogRes struct {
-	Pc            uint64             `json:"pc"`
-	Op            string             `json:"op"`
-	Gas           uint64             `json:"gas"`
-	GasCost       uint64             `json:"gasCost"`
-	Depth         int                `json:"depth"`
-	Error         string             `json:"error,omitempty"`
-	Stack         *[]string          `json:"stack,omitempty"`
-	Memory        *[]string          `json:"memory,omitempty"`
-	Storage       *map[string]string `json:"storage,omitempty"`
-	RefundCounter uint64             `json:"refund,omitempty"`
-}
-
-// Copied from github.com/ethereum/go-ethereum/internal/ethapi.FormatLogs
-// FormatLogs formats EVM returned structured logs for json output
-func FormatLogs(logs []logger.StructLog) []StructLogRes {
-	formatted := make([]StructLogRes, len(logs))
-	for index, trace := range logs {
-		formatted[index] = StructLogRes{
-			Pc:            trace.Pc,
-			Op:            trace.Op.String(),
-			Gas:           trace.Gas,
-			GasCost:       trace.GasCost,
-			Depth:         trace.Depth,
-			Error:         trace.ErrorString(),
-			RefundCounter: trace.RefundCounter,
-		}
-		if trace.Stack != nil {
-			stack := make([]string, len(trace.Stack))
-			for i, stackValue := range trace.Stack {
-				stack[i] = stackValue.Hex()
-			}
-			formatted[index].Stack = &stack
-		}
-		if trace.Memory != nil {
-			memory := make([]string, 0, (len(trace.Memory)+31)/32)
-			for i := 0; i+32 <= len(trace.Memory); i += 32 {
-				memory = append(memory, fmt.Sprintf("%x", trace.Memory[i:i+32]))
-			}
-			formatted[index].Memory = &memory
-		}
-		if trace.Storage != nil {
-			storage := make(map[string]string)
-			for i, storageValue := range trace.Storage {
-				storage[fmt.Sprintf("%x", i)] = fmt.Sprintf("%x", storageValue)
-			}
-			formatted[index].Storage = &storage
-		}
-	}
-	return formatted
-}
 
 type Block struct {
 	Coinbase   common.Address `json:"coinbase"`
@@ -124,7 +57,7 @@ type TraceConfig struct {
 	LoggerConfig  *logger.Config             `json:"logger_config"`
 }
 
-func Trace(config TraceConfig) ([]*ExecutionResult, error) {
+func Trace(config TraceConfig) ([]*logger.WasmExecutionResult, error) {
 	chainConfig := params.ChainConfig{
 		ChainID:             toBigInt(config.ChainID),
 		HomesteadBlock:      big.NewInt(0),
@@ -141,6 +74,7 @@ func Trace(config TraceConfig) ([]*ExecutionResult, error) {
 		MuirGlacierBlock:    big.NewInt(0),
 		BerlinBlock:         big.NewInt(0),
 		LondonBlock:         big.NewInt(0),
+		WebAssemblyBlock:    big.NewInt(0),
 	}
 
 	var txsGasLimit uint64
@@ -208,13 +142,16 @@ func Trace(config TraceConfig) ([]*ExecutionResult, error) {
 		for key, value := range account.Storage {
 			stateDB.SetState(address, key, value)
 		}
+// 		if len(account.Code) > 0 {
+// 			_ = os.WriteFile(fmt.Sprintf("%s.wasm", address.Hex()), account.Code, os.ModePerm)
+// 		}
 	}
 	stateDB.Finalise(true)
 
 	// Run the transactions with tracing enabled.
-	executionResults := make([]*ExecutionResult, len(config.Transactions))
+	executionResults := make([]*logger.WasmExecutionResult, len(config.Transactions))
 	for i, message := range messages {
-		tracer := logger.NewStructLogger(config.LoggerConfig)
+		tracer := logger.NewWebAssemblyLogger(config.LoggerConfig)
 		evm := vm.NewEVM(blockCtx, core.NewEVMTxContext(message), stateDB, &chainConfig, vm.Config{Debug: true, Tracer: tracer, NoBaseFee: true})
 
 		result, err := core.ApplyMessage(evm, message, new(core.GasPool).AddGas(message.Gas()))
@@ -223,11 +160,18 @@ func Trace(config TraceConfig) ([]*ExecutionResult, error) {
 		}
 		stateDB.Finalise(true)
 
-		executionResults[i] = &ExecutionResult{
+		var errString string
+		if len(result.ReturnData) == 0 && result.Err != nil {
+			errString = result.Err.Error()
+		} else {
+			errString = fmt.Sprintf("%x", result.ReturnData)
+		}
+
+		executionResults[i] = &logger.WasmExecutionResult{
 			Gas:         result.UsedGas,
 			Failed:      result.Failed(),
-			ReturnValue: fmt.Sprintf("%x", result.ReturnData),
-			StructLogs:  FormatLogs(tracer.StructLogs()),
+			ReturnValue: errString,
+			StructLogs:  logger.FormatWasmLogs(tracer.WasmLogs()),
 		}
 	}
 

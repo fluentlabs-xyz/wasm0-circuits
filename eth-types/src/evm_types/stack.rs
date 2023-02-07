@@ -1,5 +1,5 @@
 //! Doc this
-use crate::{DebugWord, Word};
+use crate::{DebugWord, U256, U64, Word};
 use crate::{Error, ToBigEndian};
 use core::str::FromStr;
 use serde::ser::SerializeSeq;
@@ -55,7 +55,7 @@ impl FromStr for StackAddress {
 /// Represents a snapshot of the EVM stack state at a certain
 /// execution step height.
 #[derive(Clone, Eq, PartialEq, Deserialize)]
-pub struct Stack(pub Vec<Word>);
+pub struct Stack<W: Clone + Sized + Serialize + ToBigEndian = Word>(pub Vec<W>);
 
 impl fmt::Debug for Stack {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -65,10 +65,10 @@ impl fmt::Debug for Stack {
     }
 }
 
-impl Serialize for Stack {
+impl Serialize for Stack<U64> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
+        where
+            S: Serializer,
     {
         let mut ser = serializer.serialize_seq(Some(self.0.len()))?;
         for e in self.0.iter() {
@@ -84,25 +84,44 @@ impl Serialize for Stack {
     }
 }
 
-impl<T: Into<Vec<Word>>> From<T> for Stack {
-    fn from(words: T) -> Self {
-        Stack(words.into())
+impl Serialize for Stack<U256> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+    {
+        let mut ser = serializer.serialize_seq(Some(self.0.len()))?;
+        for e in self.0.iter() {
+            let encoded = hex::encode(e.to_be_bytes());
+            let trimmed = encoded.trim_start_matches('0');
+            if trimmed.is_empty() {
+                ser.serialize_element("0")?;
+            } else {
+                ser.serialize_element(trimmed)?;
+            }
+        }
+        ser.end()
     }
 }
 
-impl Stack {
+// impl<W, T: Into<Vec<Word>>> From<T> for Stack<W> {
+//     fn from(words: T) -> Self {
+//         Stack::<W>(words.into())
+//     }
+// }
+
+impl<W : Clone + Sized + Serialize + ToBigEndian> Stack<W> {
     /// Generate a new instance of EVM stack.
     pub const fn new() -> Stack {
         Stack(vec![])
     }
 
     /// Generates a `Stack` instance from the given slice.
-    pub fn from_slice(words: &[Word]) -> Self {
-        Stack(words.into())
+    pub fn from_slice(words: &[W]) -> Self {
+        Stack(Vec::from(words))
     }
 
     /// Generates a `Stack` instance from the given vec.
-    pub const fn from_vec(words: Vec<Word>) -> Self {
+    pub const fn from_vec(words: Vec<W>) -> Self {
         Stack(words)
     }
 
@@ -124,12 +143,12 @@ impl Stack {
     }
 
     /// Returns the last [`Word`] allocated in the `Stack`.
-    pub fn last(&self) -> Result<Word, Error> {
+    pub fn last(&self) -> Result<W, Error> {
         self.0.last().cloned().ok_or(Error::InvalidStackPointer)
     }
 
     /// Returns the second last [`Word`] allocated in the `Stack`.
-    pub fn nth_last(&self, nth: usize) -> Result<Word, Error> {
+    pub fn nth_last(&self, nth: usize) -> Result<W, Error> {
         self.0
             .get(self.0.len() - (nth + 1))
             .cloned()

@@ -1,7 +1,10 @@
 //! EVM byte code generator
 
-use crate::{evm_types::OpcodeId, Bytes, Word};
 use std::{collections::HashMap, str::FromStr};
+
+use wasm_encoder::{Encode, Instruction};
+
+use crate::{Bytes, evm_types::OpcodeId, Word};
 
 /// Error type for Bytecode related failures
 #[derive(Debug)]
@@ -54,6 +57,58 @@ impl Bytecode {
         }
     }
 
+    pub fn wasm_binary(&self) -> Vec<u8> {
+        use wasm_encoder::{
+            CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
+            ImportSection, MemorySection, MemoryType, Module, TypeSection, ValType,
+        };
+        let mut module = Module::new();
+        let evm_functions: HashMap<&str, u32> = HashMap::from([
+            ("_evm_stop", 1),
+            ("_evm_address", 0),
+            ("_evm_caller", 0),
+        ]);
+        // Encode the type & imports section.
+        let mut types = TypeSection::new();
+        types.function(vec![ValType::I32], vec![]);
+        types.function(vec![], vec![]);
+        let mut imports = ImportSection::new();
+        for (key, params) in &evm_functions {
+            imports.import("env", key, EntityType::Function(*params));
+        }
+        // Encode the function section
+        let mut functions = FunctionSection::new();
+        functions.function(0);
+        // Create memory section
+        let mut memories = MemorySection::new();
+        memories.memory(MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+        });
+        // Encode the export section.
+        let mut exports = ExportSection::new();
+        exports.export("main", ExportKind::Func, evm_functions.len() as u32);
+        exports.export("memory", ExportKind::Memory, 0);
+        // Encode the code section.
+        let mut codes = CodeSection::new();
+        let locals = vec![];
+        let mut f = Function::new(locals);
+        f.raw(self.code());
+        f.instruction(&Instruction::End);
+        codes.function(&f);
+        // build sections (Custom,Type,Import,Function,Table,Memory,Global,Event,Export,Start,Elem,DataCount,Code,Data)
+        module.section(&types);
+        module.section(&imports);
+        module.section(&functions);
+        module.section(&memories);
+        module.section(&exports);
+        module.section(&codes);
+        let wasm_bytes = module.finish();
+        return wasm_bytes;
+    }
+
     /// Get the code
     pub fn code(&self) -> Vec<u8> {
         self.code.iter().map(|b| b.value).collect()
@@ -80,7 +135,32 @@ impl Bytecode {
 
     /// Write op
     pub fn write_op(&mut self, op: OpcodeId) -> &mut Self {
-        self.write_op_internal(op.as_u8())
+        let op = match op {
+            // WASM opcode mapping
+            OpcodeId::I32Const(val) => Instruction::I32Const(val),
+            OpcodeId::I64Const(val) => Instruction::I64Const(val),
+            OpcodeId::I32Add => Instruction::I32Add,
+            OpcodeId::I64Add => Instruction::I64Add,
+            OpcodeId::End => Instruction::End,
+            OpcodeId::Unreachable => Instruction::Unreachable,
+            // EVM opcode mapping
+            OpcodeId::STOP => Instruction::Call(0),
+            OpcodeId::ADDRESS => Instruction::Call(1),
+            OpcodeId::CALLER => Instruction::Call(2),
+            _ => {
+                unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
+            }
+        };
+        let mut buf: Vec<u8> = vec![];
+        op.encode(&mut buf);
+        for (i, b) in buf.iter().enumerate() {
+            if i == 0 {
+                self.write_op_internal(*b);
+            } else {
+                self.write(*b, false);
+            }
+        }
+        self
     }
 
     fn write_op_internal(&mut self, op: u8) -> &mut Self {
@@ -140,38 +220,38 @@ impl Bytecode {
 
     /// Setup state
     pub fn setup_state(&mut self) -> &mut Self {
-        self.append(&crate::bytecode! {
-            PUSH1(0x80u64)
-            PUSH1(0x40u64)
-            MSTORE
-        });
+        // self.append(&crate::bytecode! {
+        //     PUSH1(0x80u64)
+        //     PUSH1(0x40u64)
+        //     MSTORE
+        // });
         self
     }
 
-    /// Call a contract
-    #[allow(clippy::too_many_arguments)]
-    pub fn call(
-        &mut self,
-        gas: Word,
-        address: Word,
-        value: Word,
-        mem_in: Word,
-        mem_in_size: Word,
-        mem_out: Word,
-        mem_out_size: Word,
-    ) -> &mut Self {
-        self.append(&crate::bytecode! {
-            PUSH32(mem_out_size)
-            PUSH32(mem_out)
-            PUSH32(mem_in_size)
-            PUSH32(mem_in)
-            PUSH32(value)
-            PUSH32(address)
-            PUSH32(gas)
-            CALL
-        });
-        self
-    }
+    // /// Call a contract
+    // #[allow(clippy::too_many_arguments)]
+    // pub fn call(
+    //     &mut self,
+    //     gas: Word,
+    //     address: Word,
+    //     value: Word,
+    //     mem_in: Word,
+    //     mem_in_size: Word,
+    //     mem_out: Word,
+    //     mem_out_size: Word,
+    // ) -> &mut Self {
+    //     self.append(&crate::bytecode! {
+    //         PUSH32(mem_out_size)
+    //         PUSH32(mem_out)
+    //         PUSH32(mem_in_size)
+    //         PUSH32(mem_in)
+    //         PUSH32(value)
+    //         PUSH32(address)
+    //         PUSH32(gas)
+    //         CALL
+    //     });
+    //     self
+    // }
 
     /// Generate the diassembly
     pub fn disasm(&self) -> String {
@@ -247,7 +327,7 @@ impl FromStr for OpcodeWithData {
             } else {
                 Word::from_str_radix(n_value[1], 10)
             }
-            .map_err(|_| err())?;
+                .map_err(|_| err())?;
             Ok(OpcodeWithData::Push(n, value))
         } else {
             let opcode = OpcodeId::from_str(op).map_err(|_| err())?;
@@ -267,6 +347,7 @@ impl ToString for OpcodeWithData {
 
 /// Iterator over the bytecode to retrieve individual opcodes
 pub struct BytecodeIterator<'a>(std::slice::Iter<'a, BytecodeElement>);
+
 impl<'a> Iterator for BytecodeIterator<'a> {
     type Item = OpcodeWithData;
 
@@ -331,7 +412,13 @@ macro_rules! bytecode {
 macro_rules! bytecode_internal {
     // Nothing left to do
     ($code:ident, ) => {};
-    // PUSHX op codes
+    // WASM opcodes
+    ($code:ident, $x:ident [$v:expr] $($rest:tt)*) => {{
+        let n = $crate::evm_types::OpcodeId::$x($v).postfix().expect("opcode with postfix");
+        $code.write_op($crate::evm_types::OpcodeId::$x($v));
+        $crate::bytecode_internal!($code, $($rest)*);
+    }};
+    // PUSHX opcodes
     ($code:ident, $x:ident ($v:expr) $($rest:tt)*) => {{
         debug_assert!($crate::evm_types::OpcodeId::$x.is_push(), "invalid push");
         let n = $crate::evm_types::OpcodeId::$x.postfix().expect("opcode with postfix");
@@ -340,7 +427,6 @@ macro_rules! bytecode_internal {
     }};
     // Default opcode without any inputs
     ($code:ident, $x:ident $($rest:tt)*) => {{
-        debug_assert!(!$crate::evm_types::OpcodeId::$x.is_push(), "invalid push");
         $code.write_op($crate::evm_types::OpcodeId::$x);
         $crate::bytecode_internal!($code, $($rest)*);
     }};
@@ -358,9 +444,11 @@ macro_rules! bytecode_internal {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::Bytecode;
     use std::str::FromStr;
+
+    use crate::Bytecode;
+
+    use super::*;
 
     #[test]
     fn test_bytecode_roundtrip() {
