@@ -49,6 +49,7 @@ mod sha3;
 mod sload;
 mod sstore;
 mod stackonlyop;
+mod stacktomemoryop;
 mod stop;
 mod swap;
 
@@ -91,6 +92,7 @@ use sstore::Sstore;
 use stackonlyop::StackOnlyOpcode;
 use stop::Stop;
 use swap::Swap;
+use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
 
 /// Generic opcode trait which defines the logic of the
 /// [`Operation`](crate::operation::Operation) that should be generated for one
@@ -125,9 +127,9 @@ type FnGenAssociatedOps = fn(
 ) -> Result<Vec<ExecStep>, Error>;
 
 fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
-    if opcode_id.is_push() {
-        return StackOnlyOpcode::<0, 1>::gen_associated_ops;
-    }
+    // if opcode_id.is_push() {
+    //     return StackOnlyOpcode::<0, 1>::gen_associated_ops;
+    // }
 
     match opcode_id {
         OpcodeId::STOP => Stop::gen_associated_ops,
@@ -177,11 +179,11 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::COINBASE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::TIMESTAMP => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::NUMBER => StackOnlyOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::DIFFICULTY => StackOnlyOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::GASLIMIT => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::DIFFICULTY => StackToMemoryOpcode::gen_associated_ops,
+        OpcodeId::GASLIMIT => StackToMemoryOpcode::gen_associated_ops,
         OpcodeId::CHAINID => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::SELFBALANCE => Selfbalance::gen_associated_ops,
-        OpcodeId::BASEFEE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::BASEFEE => StackToMemoryOpcode::gen_associated_ops,
         OpcodeId::POP => StackOnlyOpcode::<1, 0>::gen_associated_ops,
         OpcodeId::MLOAD => Mload::gen_associated_ops,
         OpcodeId::MSTORE => Mstore::<false>::gen_associated_ops,
@@ -194,7 +196,6 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::MSIZE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::GAS => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::JUMPDEST => Dummy::gen_associated_ops,
-        OpcodeId::End => Dummy::gen_associated_ops,
         OpcodeId::DUP1 => Dup::<1>::gen_associated_ops,
         OpcodeId::DUP2 => Dup::<2>::gen_associated_ops,
         OpcodeId::DUP3 => Dup::<3>::gen_associated_ops,
@@ -247,6 +248,8 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
             evm_unimplemented!("Using dummy gen_create_ops for opcode {:?}", opcode_id);
             DummyCreate::<true>::gen_associated_ops
         }
+        OpcodeId::I32Const(_) => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::End | OpcodeId::Return => Dummy::gen_associated_ops,
         _ => {
             evm_unimplemented!("Using dummy gen_associated_ops for opcode {:?}", opcode_id);
             Dummy::gen_associated_ops

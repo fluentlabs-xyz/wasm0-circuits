@@ -63,16 +63,19 @@ impl Bytecode {
             ImportSection, MemorySection, MemoryType, Module, TypeSection, ValType,
         };
         let mut module = Module::new();
-        let evm_functions: HashMap<&str, u32> = HashMap::from([
-            ("_evm_stop", 1),
-            ("_evm_address", 0),
-            ("_evm_caller", 0),
-        ]);
         // Encode the type & imports section.
         let mut types = TypeSection::new();
-        types.function(vec![ValType::I32], vec![]);
-        types.function(vec![], vec![]);
+        types.function(vec![ValType::I32], vec![]); // 0
+        types.function(vec![], vec![]); // 1
         let mut imports = ImportSection::new();
+        let evm_functions: Vec<(&str, u32)> = vec![
+            ("_evm_stop", 1), // 0
+            ("_evm_address", 0), // 1
+            ("_evm_caller", 0), // 2
+            ("_evm_gaslimit", 0), // 3
+            ("_evm_basefee", 0), // 4
+            ("_evm_difficulty", 0), // 5
+        ];
         for (key, params) in &evm_functions {
             imports.import("env", key, EntityType::Function(*params));
         }
@@ -96,6 +99,7 @@ impl Bytecode {
         let locals = vec![];
         let mut f = Function::new(locals);
         f.raw(self.code());
+        // f.instruction(&Instruction::Return);
         f.instruction(&Instruction::End);
         codes.function(&f);
         // build sections (Custom,Type,Import,Function,Table,Memory,Global,Event,Export,Start,Elem,DataCount,Code,Data)
@@ -147,6 +151,9 @@ impl Bytecode {
             OpcodeId::STOP => Instruction::Call(0),
             OpcodeId::ADDRESS => Instruction::Call(1),
             OpcodeId::CALLER => Instruction::Call(2),
+            OpcodeId::GASLIMIT => Instruction::Call(3),
+            OpcodeId::BASEFEE => Instruction::Call(4),
+            OpcodeId::DIFFICULTY => Instruction::Call(5),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }

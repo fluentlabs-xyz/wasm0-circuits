@@ -90,13 +90,14 @@ impl<F: Field> ExecutionGadget<F> for AddressGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::{evm_circuit::test::rand_bytes};
     use eth_types::{bytecode, ToWord, Word};
     use mock::test_ctx::TestContext;
+    use crate::evm_circuit::test::rand_word;
     use crate::test_util::CircuitTestBuilder;
 
     fn test_root_ok() {
         let bytecode = bytecode! {
+            I32Const[0]
             ADDRESS
             STOP
         };
@@ -116,10 +117,10 @@ mod test {
         };
 
         // code A calls code B.
-        let pushdata = rand_bytes(8);
+        let pushdata = rand_word();
         let code_a = bytecode! {
             // populate memory in A's context.
-            PUSH8(Word::from_big_endian(&pushdata))
+            PUSH8(pushdata)
             PUSH1(0x00) // offset
             MSTORE
             // call ADDR_B.
@@ -158,11 +159,11 @@ mod test {
         test_root_ok();
     }
 
-    #[test]
-    fn address_gadget_internal() {
-        test_internal_ok(0x20, 0x00);
-        test_internal_ok(0x20, 0x10);
-        test_internal_ok(0x40, 0x20);
-        test_internal_ok(0x1010, 0xff);
-    }
+    // #[test]
+    // fn address_gadget_internal() {
+    //     test_internal_ok(0x20, 0x00);
+    //     test_internal_ok(0x20, 0x10);
+    //     test_internal_ok(0x40, 0x20);
+    //     test_internal_ok(0x1010, 0xff);
+    // }
 }

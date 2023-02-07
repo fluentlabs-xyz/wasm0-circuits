@@ -115,7 +115,6 @@ use codecopy::CodeCopyGadget;
 use codesize::CodesizeGadget;
 use comparator::ComparatorGadget;
 use dummy::DummyGadget;
-use dup::DupGadget;
 use end_block::EndBlockGadget;
 use end_tx::EndTxGadget;
 use error_invalid_jump::ErrorInvalidJumpGadget;
@@ -141,7 +140,6 @@ use opcode_not::NotGadget;
 use origin::OriginGadget;
 use pc::PcGadget;
 use pop::PopGadget;
-use push::PushGadget;
 use return_revert::ReturnRevertGadget;
 use returndatacopy::ReturnDataCopyGadget;
 use returndatasize::ReturnDataSizeGadget;
@@ -154,7 +152,6 @@ use signextend::SignextendGadget;
 use sload::SloadGadget;
 use sstore::SstoreGadget;
 use stop::StopGadget;
-use swap::SwapGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -216,7 +213,7 @@ pub(crate) struct ExecutionConfig<F> {
     codecopy_gadget: CodeCopyGadget<F>,
     codesize_gadget: CodesizeGadget<F>,
     comparator_gadget: ComparatorGadget<F>,
-    dup_gadget: DupGadget<F>,
+    // dup_gadget: DupGadget<F>,
     exp_gadget: ExponentiationGadget<F>,
     extcodehash_gadget: ExtcodehashGadget<F>,
     extcodesize_gadget: ExtcodesizeGadget<F>,
@@ -236,7 +233,7 @@ pub(crate) struct ExecutionConfig<F> {
     origin_gadget: OriginGadget<F>,
     pc_gadget: PcGadget<F>,
     pop_gadget: PopGadget<F>,
-    push_gadget: PushGadget<F>,
+    // push_gadget: PushGadget<F>,
     return_revert_gadget: ReturnRevertGadget<F>,
     sar_gadget: SarGadget<F>,
     sdiv_smod_gadget: SignedDivModGadget<F>,
@@ -253,7 +250,7 @@ pub(crate) struct ExecutionConfig<F> {
     sload_gadget: SloadGadget<F>,
     sstore_gadget: SstoreGadget<F>,
     stop_gadget: StopGadget<F>,
-    swap_gadget: SwapGadget<F>,
+    // swap_gadget: SwapGadget<F>,
     blockhash_gadget: BlockHashGadget<F>,
     block_ctx_u64_gadget: BlockCtxU64Gadget<F>,
     block_ctx_u160_gadget: BlockCtxU160Gadget<F>,
@@ -470,7 +467,7 @@ impl<F: Field> ExecutionConfig<F> {
             codecopy_gadget: configure_gadget!(),
             codesize_gadget: configure_gadget!(),
             comparator_gadget: configure_gadget!(),
-            dup_gadget: configure_gadget!(),
+            // dup_gadget: configure_gadget!(),
             extcodehash_gadget: configure_gadget!(),
             extcodesize_gadget: configure_gadget!(),
             gas_gadget: configure_gadget!(),
@@ -488,7 +485,7 @@ impl<F: Field> ExecutionConfig<F> {
             origin_gadget: configure_gadget!(),
             pc_gadget: configure_gadget!(),
             pop_gadget: configure_gadget!(),
-            push_gadget: configure_gadget!(),
+            // push_gadget: configure_gadget!(),
             return_revert_gadget: configure_gadget!(),
             sdiv_smod_gadget: configure_gadget!(),
             selfbalance_gadget: configure_gadget!(),
@@ -510,7 +507,7 @@ impl<F: Field> ExecutionConfig<F> {
             sload_gadget: configure_gadget!(),
             sstore_gadget: configure_gadget!(),
             stop_gadget: configure_gadget!(),
-            swap_gadget: configure_gadget!(),
+            // swap_gadget: configure_gadget!(),
             block_ctx_u64_gadget: configure_gadget!(),
             block_ctx_u160_gadget: configure_gadget!(),
             block_ctx_u256_gadget: configure_gadget!(),
@@ -1076,7 +1073,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::CODECOPY => assign_exec_step!(self.codecopy_gadget),
             ExecutionState::CODESIZE => assign_exec_step!(self.codesize_gadget),
             ExecutionState::CMP => assign_exec_step!(self.comparator_gadget),
-            ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
+            // ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
             ExecutionState::EXP => assign_exec_step!(self.exp_gadget),
             ExecutionState::EXTCODEHASH => assign_exec_step!(self.extcodehash_gadget),
             ExecutionState::EXTCODESIZE => assign_exec_step!(self.extcodesize_gadget),
@@ -1095,7 +1092,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::ORIGIN => assign_exec_step!(self.origin_gadget),
             ExecutionState::PC => assign_exec_step!(self.pc_gadget),
             ExecutionState::POP => assign_exec_step!(self.pop_gadget),
-            ExecutionState::PUSH => assign_exec_step!(self.push_gadget),
+            // ExecutionState::PUSH => assign_exec_step!(self.push_gadget),
             ExecutionState::RETURN_REVERT => assign_exec_step!(self.return_revert_gadget),
             ExecutionState::RETURNDATASIZE => assign_exec_step!(self.returndatasize_gadget),
             ExecutionState::RETURNDATACOPY => assign_exec_step!(self.returndatacopy_gadget),
@@ -1119,7 +1116,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::SLOAD => assign_exec_step!(self.sload_gadget),
             ExecutionState::SSTORE => assign_exec_step!(self.sstore_gadget),
             ExecutionState::STOP => assign_exec_step!(self.stop_gadget),
-            ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
+            // ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
             // dummy errors
             ExecutionState::ErrorOutOfGasStaticMemoryExpansion => {
                 assign_exec_step!(self.error_oog_static_memory_gadget)
