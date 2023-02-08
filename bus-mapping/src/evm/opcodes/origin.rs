@@ -63,7 +63,7 @@ mod origin_tests {
     #[test]
     fn origin_opcode_impl() -> Result<(), Error> {
         let code = bytecode! {
-            I32Const(0x78)
+            I32Const[0x78]
             ORIGIN
         };
 

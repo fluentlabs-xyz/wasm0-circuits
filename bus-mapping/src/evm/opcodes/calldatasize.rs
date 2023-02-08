@@ -4,7 +4,7 @@ use crate::{
     Error,
 };
 
-use eth_types::{GethExecStep, ToU256};
+use eth_types::{GethExecStep, ToU256, U256};
 use eth_types::evm_types::MemoryAddress;
 
 use super::Opcode;
@@ -19,12 +19,12 @@ impl Opcode for Calldatasize {
         let step = &geth_steps[0];
         let mut exec_step = state.new_step(step)?;
         let second_step = &geth_steps[1];
-        let value = second_step.stack.last()?;
+        let value = &second_step.memory.0;
         state.call_context_read(
             &mut exec_step,
             state.call()?.call_id,
             CallContextField::CallDataLength,
-            value.to_u256(),
+            U256::from_big_endian(value),
         );
 
         // Read dest offset as the last stack element
