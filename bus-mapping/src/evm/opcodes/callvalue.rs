@@ -46,17 +46,14 @@ impl Opcode for Callvalue {
 
 #[cfg(test)]
 mod callvalue_tests {
-    use std::fs;
     use crate::{
         circuit_input_builder::ExecState,
         mock::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, ToLittleEndian, ToWord, Word};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToWord, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
-    use eth_types::evm_types::MemoryAddress;
-    use crate::operation::MemoryOp;
 
     #[test]
     fn callvalue_opcode_impl() {
