@@ -71,7 +71,6 @@ use callvalue::Callvalue;
 use codecopy::Codecopy;
 use codesize::Codesize;
 use create::DummyCreate;
-use dup::Dup;
 use error_invalid_jump::ErrorInvalidJump;
 use error_oog_call::OOGCall;
 use exp::Exponentiation;
@@ -91,7 +90,6 @@ use sload::Sload;
 use sstore::Sstore;
 use stackonlyop::StackOnlyOpcode;
 use stop::Stop;
-use swap::Swap;
 use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
 
 /// Generic opcode trait which defines the logic of the
@@ -132,6 +130,11 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
     // }
 
     match opcode_id {
+        OpcodeId::I32Const(_) => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::I64Const(_) => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
+        OpcodeId::End | OpcodeId::Return => Dummy::gen_associated_ops,
+
         OpcodeId::STOP => Stop::gen_associated_ops,
         OpcodeId::ADD => StackOnlyOpcode::<2, 1>::gen_associated_ops,
         OpcodeId::MUL => StackOnlyOpcode::<2, 1>::gen_associated_ops,
@@ -196,38 +199,38 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::MSIZE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::GAS => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::JUMPDEST => Dummy::gen_associated_ops,
-        OpcodeId::DUP1 => Dup::<1>::gen_associated_ops,
-        OpcodeId::DUP2 => Dup::<2>::gen_associated_ops,
-        OpcodeId::DUP3 => Dup::<3>::gen_associated_ops,
-        OpcodeId::DUP4 => Dup::<4>::gen_associated_ops,
-        OpcodeId::DUP5 => Dup::<5>::gen_associated_ops,
-        OpcodeId::DUP6 => Dup::<6>::gen_associated_ops,
-        OpcodeId::DUP7 => Dup::<7>::gen_associated_ops,
-        OpcodeId::DUP8 => Dup::<8>::gen_associated_ops,
-        OpcodeId::DUP9 => Dup::<9>::gen_associated_ops,
-        OpcodeId::DUP10 => Dup::<10>::gen_associated_ops,
-        OpcodeId::DUP11 => Dup::<11>::gen_associated_ops,
-        OpcodeId::DUP12 => Dup::<12>::gen_associated_ops,
-        OpcodeId::DUP13 => Dup::<13>::gen_associated_ops,
-        OpcodeId::DUP14 => Dup::<14>::gen_associated_ops,
-        OpcodeId::DUP15 => Dup::<15>::gen_associated_ops,
-        OpcodeId::DUP16 => Dup::<16>::gen_associated_ops,
-        OpcodeId::SWAP1 => Swap::<1>::gen_associated_ops,
-        OpcodeId::SWAP2 => Swap::<2>::gen_associated_ops,
-        OpcodeId::SWAP3 => Swap::<3>::gen_associated_ops,
-        OpcodeId::SWAP4 => Swap::<4>::gen_associated_ops,
-        OpcodeId::SWAP5 => Swap::<5>::gen_associated_ops,
-        OpcodeId::SWAP6 => Swap::<6>::gen_associated_ops,
-        OpcodeId::SWAP7 => Swap::<7>::gen_associated_ops,
-        OpcodeId::SWAP8 => Swap::<8>::gen_associated_ops,
-        OpcodeId::SWAP9 => Swap::<9>::gen_associated_ops,
-        OpcodeId::SWAP10 => Swap::<10>::gen_associated_ops,
-        OpcodeId::SWAP11 => Swap::<11>::gen_associated_ops,
-        OpcodeId::SWAP12 => Swap::<12>::gen_associated_ops,
-        OpcodeId::SWAP13 => Swap::<13>::gen_associated_ops,
-        OpcodeId::SWAP14 => Swap::<14>::gen_associated_ops,
-        OpcodeId::SWAP15 => Swap::<15>::gen_associated_ops,
-        OpcodeId::SWAP16 => Swap::<16>::gen_associated_ops,
+        // OpcodeId::DUP1 => Dup::<1>::gen_associated_ops,
+        // OpcodeId::DUP2 => Dup::<2>::gen_associated_ops,
+        // OpcodeId::DUP3 => Dup::<3>::gen_associated_ops,
+        // OpcodeId::DUP4 => Dup::<4>::gen_associated_ops,
+        // OpcodeId::DUP5 => Dup::<5>::gen_associated_ops,
+        // OpcodeId::DUP6 => Dup::<6>::gen_associated_ops,
+        // OpcodeId::DUP7 => Dup::<7>::gen_associated_ops,
+        // OpcodeId::DUP8 => Dup::<8>::gen_associated_ops,
+        // OpcodeId::DUP9 => Dup::<9>::gen_associated_ops,
+        // OpcodeId::DUP10 => Dup::<10>::gen_associated_ops,
+        // OpcodeId::DUP11 => Dup::<11>::gen_associated_ops,
+        // OpcodeId::DUP12 => Dup::<12>::gen_associated_ops,
+        // OpcodeId::DUP13 => Dup::<13>::gen_associated_ops,
+        // OpcodeId::DUP14 => Dup::<14>::gen_associated_ops,
+        // OpcodeId::DUP15 => Dup::<15>::gen_associated_ops,
+        // OpcodeId::DUP16 => Dup::<16>::gen_associated_ops,
+        // OpcodeId::SWAP1 => Swap::<1>::gen_associated_ops,
+        // OpcodeId::SWAP2 => Swap::<2>::gen_associated_ops,
+        // OpcodeId::SWAP3 => Swap::<3>::gen_associated_ops,
+        // OpcodeId::SWAP4 => Swap::<4>::gen_associated_ops,
+        // OpcodeId::SWAP5 => Swap::<5>::gen_associated_ops,
+        // OpcodeId::SWAP6 => Swap::<6>::gen_associated_ops,
+        // OpcodeId::SWAP7 => Swap::<7>::gen_associated_ops,
+        // OpcodeId::SWAP8 => Swap::<8>::gen_associated_ops,
+        // OpcodeId::SWAP9 => Swap::<9>::gen_associated_ops,
+        // OpcodeId::SWAP10 => Swap::<10>::gen_associated_ops,
+        // OpcodeId::SWAP11 => Swap::<11>::gen_associated_ops,
+        // OpcodeId::SWAP12 => Swap::<12>::gen_associated_ops,
+        // OpcodeId::SWAP13 => Swap::<13>::gen_associated_ops,
+        // OpcodeId::SWAP14 => Swap::<14>::gen_associated_ops,
+        // OpcodeId::SWAP15 => Swap::<15>::gen_associated_ops,
+        // OpcodeId::SWAP16 => Swap::<16>::gen_associated_ops,
         OpcodeId::LOG0 => Log::gen_associated_ops,
         OpcodeId::LOG1 => Log::gen_associated_ops,
         OpcodeId::LOG2 => Log::gen_associated_ops,
@@ -248,8 +251,6 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
             evm_unimplemented!("Using dummy gen_create_ops for opcode {:?}", opcode_id);
             DummyCreate::<true>::gen_associated_ops
         }
-        OpcodeId::I32Const(_) => StackOnlyOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::End | OpcodeId::Return => Dummy::gen_associated_ops,
         _ => {
             evm_unimplemented!("Using dummy gen_associated_ops for opcode {:?}", opcode_id);
             Dummy::gen_associated_ops

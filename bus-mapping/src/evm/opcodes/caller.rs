@@ -2,7 +2,7 @@ use super::Opcode;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::operation::CallContextField;
 use crate::Error;
-use eth_types::{GethExecStep, ToU256, U256};
+use eth_types::{GethExecStep, U256};
 use eth_types::evm_types::MemoryAddress;
 
 /// Placeholder structure used to implement [`Opcode`] trait over it

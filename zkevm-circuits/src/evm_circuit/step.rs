@@ -26,7 +26,9 @@ pub enum ExecutionState {
     EndTx,
     EndBlock,
     // Opcode successful cases
+    WASM,
     STOP,
+    END,
     ADD_SUB,     // ADD, SUB
     MUL_DIV_MOD, // MUL, DIV, MOD
     SDIV_SMOD,   // SDIV, SMOD
@@ -76,6 +78,7 @@ pub enum ExecutionState {
     GAS,
     JUMPDEST,
     PUSH, // PUSH1, PUSH2, ..., PUSH32
+    DROP,
     DUP,  // DUP1, DUP2, ..., DUP16
     SWAP, // SWAP1, SWAP2, ..., SWAP16
     LOG,  // LOG0, LOG1, ..., LOG4

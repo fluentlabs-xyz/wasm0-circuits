@@ -75,9 +75,9 @@ impl Bytecode {
             ("_evm_gaslimit", 0), // 3
             ("_evm_basefee", 0), // 4
             ("_evm_difficulty", 0), // 5
-            ("_evm_origin", 0), // 6
-            ("_evm_calldatasize", 0), // 7
-            ("_evm_callvalue", 0), // 8
+            // ("_evm_origin", 0), // 6
+            // ("_evm_calldatasize", 0), // 7
+            // ("_evm_callvalue", 0), // 8
 
             // TODO
             // ("_evm_balance", 0),
@@ -177,6 +177,7 @@ impl Bytecode {
             OpcodeId::I64Add => Instruction::I64Add,
             OpcodeId::End => Instruction::End,
             OpcodeId::Unreachable => Instruction::Unreachable,
+            OpcodeId::Drop => Instruction::Drop,
             // EVM opcode mapping
             OpcodeId::STOP => Instruction::Call(0),
             OpcodeId::ADDRESS => Instruction::Call(1),

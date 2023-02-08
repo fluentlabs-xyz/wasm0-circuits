@@ -78,6 +78,7 @@ mod opcode_not;
 mod origin;
 mod pc;
 mod pop;
+mod drop;
 mod push;
 mod return_revert;
 mod returndatacopy;
@@ -93,6 +94,8 @@ mod sload;
 mod sstore;
 mod stop;
 mod swap;
+mod end;
+mod wasm;
 
 use self::sha3::Sha3Gadget;
 use add_sub::AddSubGadget;
@@ -140,6 +143,7 @@ use opcode_not::NotGadget;
 use origin::OriginGadget;
 use pc::PcGadget;
 use pop::PopGadget;
+use drop::DropGadget;
 use return_revert::ReturnRevertGadget;
 use returndatacopy::ReturnDataCopyGadget;
 use returndatasize::ReturnDataSizeGadget;
@@ -152,7 +156,9 @@ use signextend::SignextendGadget;
 use sload::SloadGadget;
 use sstore::SstoreGadget;
 use stop::StopGadget;
-use crate::evm_circuit::execution::push::PushGadget;
+use push::PushGadget;
+use crate::evm_circuit::execution::end::EndGadget;
+use crate::evm_circuit::execution::wasm::WasmGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -160,6 +166,10 @@ pub(crate) trait ExecutionGadget<F: FieldExt> {
     const EXECUTION_STATE: ExecutionState;
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self;
+
+    fn configure_with_meta<R: ExecutionGadget<F>>(cb: &mut ConstraintBuilder<F>, _meta: &mut ConstraintSystem<F>) -> R {
+        return R::configure(cb);
+    }
 
     fn assign_exec_step(
         &self,
@@ -234,6 +244,7 @@ pub(crate) struct ExecutionConfig<F> {
     origin_gadget: OriginGadget<F>,
     pc_gadget: PcGadget<F>,
     pop_gadget: PopGadget<F>,
+    drop_gadget: DropGadget<F>,
     push_gadget: PushGadget<F>,
     return_revert_gadget: ReturnRevertGadget<F>,
     sar_gadget: SarGadget<F>,
@@ -251,6 +262,8 @@ pub(crate) struct ExecutionConfig<F> {
     sload_gadget: SloadGadget<F>,
     sstore_gadget: SstoreGadget<F>,
     stop_gadget: StopGadget<F>,
+    end_gadget: EndGadget<F>,
+    wasm_gadget: WasmGadget<F>,
     // swap_gadget: SwapGadget<F>,
     blockhash_gadget: BlockHashGadget<F>,
     block_ctx_u64_gadget: BlockCtxU64Gadget<F>,
@@ -486,6 +499,7 @@ impl<F: Field> ExecutionConfig<F> {
             origin_gadget: configure_gadget!(),
             pc_gadget: configure_gadget!(),
             pop_gadget: configure_gadget!(),
+            drop_gadget: configure_gadget!(),
             push_gadget: configure_gadget!(),
             return_revert_gadget: configure_gadget!(),
             sdiv_smod_gadget: configure_gadget!(),
@@ -508,6 +522,8 @@ impl<F: Field> ExecutionConfig<F> {
             sload_gadget: configure_gadget!(),
             sstore_gadget: configure_gadget!(),
             stop_gadget: configure_gadget!(),
+            end_gadget: configure_gadget!(),
+            wasm_gadget: configure_gadget!(),
             // swap_gadget: configure_gadget!(),
             block_ctx_u64_gadget: configure_gadget!(),
             block_ctx_u160_gadget: configure_gadget!(),
@@ -587,7 +603,7 @@ impl<F: Field> ExecutionConfig<F> {
                 challenges,
                 G::EXECUTION_STATE,
             );
-            G::configure(&mut cb);
+            G::configure_with_meta::<G>(&mut cb, meta);
             let (_, _, height) = cb.build();
             height
         };
@@ -601,7 +617,7 @@ impl<F: Field> ExecutionConfig<F> {
             G::EXECUTION_STATE,
         );
 
-        let gadget = G::configure(&mut cb);
+        let gadget = G::configure_with_meta::<G>(&mut cb, meta);
 
         // Enforce the step height for this opcode
         let num_rows_until_next_step_next = query_expression(meta, |meta| {
@@ -1093,6 +1109,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::ORIGIN => assign_exec_step!(self.origin_gadget),
             ExecutionState::PC => assign_exec_step!(self.pc_gadget),
             ExecutionState::POP => assign_exec_step!(self.pop_gadget),
+            ExecutionState::DROP => assign_exec_step!(self.drop_gadget),
             ExecutionState::PUSH => assign_exec_step!(self.push_gadget),
             ExecutionState::RETURN_REVERT => assign_exec_step!(self.return_revert_gadget),
             ExecutionState::RETURNDATASIZE => assign_exec_step!(self.returndatasize_gadget),
@@ -1117,6 +1134,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::SLOAD => assign_exec_step!(self.sload_gadget),
             ExecutionState::SSTORE => assign_exec_step!(self.sstore_gadget),
             ExecutionState::STOP => assign_exec_step!(self.stop_gadget),
+            ExecutionState::END => assign_exec_step!(self.end_gadget),
             // ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
             // dummy errors
             ExecutionState::ErrorOutOfGasStaticMemoryExpansion => {

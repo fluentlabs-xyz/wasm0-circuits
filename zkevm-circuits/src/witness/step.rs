@@ -124,6 +124,9 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                 }
 
                 match op {
+                    OpcodeId::Drop => ExecutionState::DROP,
+                    OpcodeId::End => ExecutionState::END,
+
                     OpcodeId::ADD | OpcodeId::SUB => ExecutionState::ADD_SUB,
                     OpcodeId::ADDMOD => ExecutionState::ADDMOD,
                     OpcodeId::ADDRESS => ExecutionState::ADDRESS,

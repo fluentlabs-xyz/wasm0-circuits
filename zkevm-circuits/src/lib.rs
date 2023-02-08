@@ -14,8 +14,9 @@
 // Catch documentation errors caused by code changes.
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(missing_docs)]
-#![deny(unsafe_code)]
+// #![deny(unsafe_code)]
 #![deny(clippy::debug_assert_with_mut_call)]
+#![feature(thread_local)]
 
 pub mod bytecode_circuit;
 pub mod copy_circuit;
@@ -26,6 +27,7 @@ pub mod pi_circuit;
 pub mod state_circuit;
 pub mod super_circuit;
 pub mod table;
+pub mod wasm_circuit;
 
 #[cfg(any(feature = "test", test))]
 pub mod test_util;
