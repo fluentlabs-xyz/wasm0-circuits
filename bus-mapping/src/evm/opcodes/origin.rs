@@ -1,3 +1,4 @@
+use eth_types::evm_types::MemoryAddress;
 use super::Opcode;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::operation::CallContextField;
@@ -12,10 +13,11 @@ impl Opcode for Origin {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let geth_step = &geth_steps[0];
-        let mut exec_step = state.new_step(geth_step)?;
+        let step = &geth_steps[0];
+        let second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(step)?;
         // Get origin result from next step
-        let value = geth_steps[1].stack.last()?;
+        let value = &second_step.memory.0;
         let tx_id = state.tx_ctx.id();
 
         // CallContext read of the TxId
@@ -26,12 +28,17 @@ impl Opcode for Origin {
             tx_id.into(),
         );
 
-        // Stack write of the origin address value
-        state.stack_write(
-            &mut exec_step,
-            geth_step.stack.last_filled().map(|a| a - 1),
-            value,
-        )?;
+        // Read dest offset as the last stack element
+        let dest_offset = step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let offset_addr = MemoryAddress::try_from(dest_offset)?;
+
+        // Copy result to memory
+        for i in 0..20 {
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
+        }
+        let call_ctx = state.call_ctx_mut()?;
+        call_ctx.memory = second_step.memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -56,9 +63,8 @@ mod origin_tests {
     #[test]
     fn origin_opcode_impl() -> Result<(), Error> {
         let code = bytecode! {
-            #[start]
+            I32Const[0x78]
             ORIGIN
-            STOP
         };
 
         // Get the execution steps from the external tracer
@@ -83,6 +89,7 @@ mod origin_tests {
             .unwrap();
 
         let op_origin = &builder.block.container.stack[step.bus_mapping_instance[1].as_usize()];
+        assert_eq!(step.bus_mapping_instance.len(), 22);
         assert_eq!(
             (op_origin.rw(), op_origin.op()),
             (
@@ -90,9 +97,7 @@ mod origin_tests {
                 &StackOp::new(1, StackAddress(1023usize), MOCK_ACCOUNTS[1].to_word())
             )
         );
-
         let call_id = builder.block.txs()[0].calls()[0].call_id;
-
         assert_eq!(
             {
                 let operation =
@@ -108,7 +113,6 @@ mod origin_tests {
                 }
             )
         );
-
         Ok(())
     }
 }
