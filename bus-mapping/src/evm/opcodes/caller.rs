@@ -16,8 +16,8 @@ impl Opcode for Caller {
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
         let step = &geth_steps[0];
-        let mut exec_step = state.new_step(step)?;
         let second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(step)?;
         let address = &second_step.memory.0;
 
         state.call_context_read(
@@ -45,7 +45,6 @@ impl Opcode for Caller {
 
 #[cfg(test)]
 mod caller_tests {
-    use std::fs;
     use super::*;
     use crate::{
         circuit_input_builder::ExecState, mock::BlockData, operation::CallContextOp,
@@ -63,7 +62,6 @@ mod caller_tests {
             I32Const[0x77]
             CALLER
         };
-        // fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", code.wasm_binary());
 
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(

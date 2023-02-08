@@ -17,8 +17,8 @@ impl Opcode for Calldatasize {
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
         let step = &geth_steps[0];
-        let mut exec_step = state.new_step(step)?;
         let second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(step)?;
         let value = &second_step.memory.0;
         state.call_context_read(
             &mut exec_step,
@@ -33,7 +33,7 @@ impl Opcode for Calldatasize {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..20 {
+        for i in 0..4 {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
@@ -59,8 +59,8 @@ mod calldatasize_tests {
     #[test]
     fn calldatasize_opcode_impl() {
         let code = bytecode! {
+            I32Const[0x79]
             CALLDATASIZE
-            STOP
         };
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(
