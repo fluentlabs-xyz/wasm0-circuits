@@ -152,6 +152,7 @@ use signextend::SignextendGadget;
 use sload::SloadGadget;
 use sstore::SstoreGadget;
 use stop::StopGadget;
+use crate::evm_circuit::execution::push::PushGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -233,7 +234,7 @@ pub(crate) struct ExecutionConfig<F> {
     origin_gadget: OriginGadget<F>,
     pc_gadget: PcGadget<F>,
     pop_gadget: PopGadget<F>,
-    // push_gadget: PushGadget<F>,
+    push_gadget: PushGadget<F>,
     return_revert_gadget: ReturnRevertGadget<F>,
     sar_gadget: SarGadget<F>,
     sdiv_smod_gadget: SignedDivModGadget<F>,
@@ -485,7 +486,7 @@ impl<F: Field> ExecutionConfig<F> {
             origin_gadget: configure_gadget!(),
             pc_gadget: configure_gadget!(),
             pop_gadget: configure_gadget!(),
-            // push_gadget: configure_gadget!(),
+            push_gadget: configure_gadget!(),
             return_revert_gadget: configure_gadget!(),
             sdiv_smod_gadget: configure_gadget!(),
             selfbalance_gadget: configure_gadget!(),
@@ -1092,7 +1093,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::ORIGIN => assign_exec_step!(self.origin_gadget),
             ExecutionState::PC => assign_exec_step!(self.pc_gadget),
             ExecutionState::POP => assign_exec_step!(self.pop_gadget),
-            // ExecutionState::PUSH => assign_exec_step!(self.push_gadget),
+            ExecutionState::PUSH => assign_exec_step!(self.push_gadget),
             ExecutionState::RETURN_REVERT => assign_exec_step!(self.return_revert_gadget),
             ExecutionState::RETURNDATASIZE => assign_exec_step!(self.returndatasize_gadget),
             ExecutionState::RETURNDATACOPY => assign_exec_step!(self.returndatacopy_gadget),
