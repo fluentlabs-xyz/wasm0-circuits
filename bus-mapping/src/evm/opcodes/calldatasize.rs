@@ -4,7 +4,7 @@ use crate::{
     Error,
 };
 
-use eth_types::{GethExecStep, ToU256, U256};
+use eth_types::{GethExecStep, U256};
 use eth_types::evm_types::MemoryAddress;
 
 use super::Opcode;

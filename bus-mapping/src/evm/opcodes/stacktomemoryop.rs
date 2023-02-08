@@ -42,12 +42,10 @@ impl Opcode for StackToMemoryOpcode {
 
 #[cfg(test)]
 mod stacktomemoryop_tests {
-    use std::ops::{BitOr, BitXor};
-
     use itertools::Itertools;
     use pretty_assertions::assert_eq;
 
-    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, U64, word, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, Word};
     use mock::{MOCK_BASEFEE, MOCK_DIFFICULTY, MOCK_GASLIMIT};
     use mock::test_ctx::{helpers::*, TestContext};
 
