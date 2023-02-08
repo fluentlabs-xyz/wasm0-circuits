@@ -1,8 +1,9 @@
+use eth_types::evm_types::MemoryAddress;
 use super::Opcode;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::operation::CallContextField;
 use crate::Error;
-use eth_types::GethExecStep;
+use eth_types::{GethExecStep, U256};
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the [`OpcodeId::PC`](crate::evm::OpcodeId::PC) `OpcodeId`.
@@ -14,24 +15,30 @@ impl Opcode for Callvalue {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let geth_step = &geth_steps[0];
-        let mut exec_step = state.new_step(geth_step)?;
+        let step = &geth_steps[0];
+        let second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(step)?;
         // Get call_value result from next step
-        let value = geth_steps[1].stack.last()?;
+        let value = &second_step.memory.0;
         // CallContext read of the call_value
         state.call_context_read(
             &mut exec_step,
             state.call()?.call_id,
             CallContextField::Value,
-            value,
+            U256::from_big_endian(value),
         );
 
-        // Stack write of the call_value
-        state.stack_write(
-            &mut exec_step,
-            geth_step.stack.last_filled().map(|a| a - 1),
-            value,
-        )?;
+        // Read dest offset as the last stack element
+        let dest_offset = step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let offset_addr = MemoryAddress::try_from(dest_offset)?;
+
+        // Copy result to memory
+        for i in 0..20 {
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
+        }
+        let call_ctx = state.call_ctx_mut()?;
+        call_ctx.memory = second_step.memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -39,24 +46,23 @@ impl Opcode for Callvalue {
 
 #[cfg(test)]
 mod callvalue_tests {
+    use std::fs;
     use crate::{
         circuit_input_builder::ExecState,
         mock::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{
-        bytecode,
-        evm_types::{OpcodeId, StackAddress},
-        geth_types::GethData,
-    };
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, ToLittleEndian, ToWord, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
+    use eth_types::evm_types::MemoryAddress;
+    use crate::operation::MemoryOp;
 
     #[test]
     fn callvalue_opcode_impl() {
         let code = bytecode! {
+            I32Const[0x7a]
             CALLVALUE
-            STOP
         };
 
         // Get the execution steps from the external tracer
@@ -82,6 +88,7 @@ mod callvalue_tests {
 
         let call_id = builder.block.txs()[0].calls()[0].call_id;
         let call_value = block.eth_block.transactions[0].value;
+        assert_eq!(step.bus_mapping_instance.len(), 22);
         assert_eq!(
             {
                 let operation =
@@ -93,7 +100,7 @@ mod callvalue_tests {
                 &CallContextOp {
                     call_id,
                     field: CallContextField::Value,
-                    value: call_value,
+                    value: call_value.to_word(),
                 }
             )
         );
@@ -104,8 +111,8 @@ mod callvalue_tests {
                 (operation.rw(), operation.op())
             },
             (
-                RW::WRITE,
-                &StackOp::new(1, StackAddress::from(1023), call_value)
+                RW::READ,
+                &StackOp::new(1, StackAddress::from(1022), Word::from(0x7a))
             )
         );
     }

@@ -82,6 +82,7 @@ mod calldatasize_tests {
             .unwrap();
         let call_id = builder.block.txs()[0].calls()[0].call_id;
         let call_data_size = block.eth_block.transactions[0].input.as_ref().len().into();
+        assert_eq!(step.bus_mapping_instance.len(), 6);
         assert_eq!(
             {
                 let operation =
