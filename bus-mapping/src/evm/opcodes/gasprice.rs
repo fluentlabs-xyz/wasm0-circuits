@@ -48,6 +48,7 @@ impl Opcode for GasPrice {
 
 #[cfg(test)]
 mod gasprice_tests {
+    use std::fs;
     use crate::{
         circuit_input_builder::ExecState,
         evm::OpcodeId,
@@ -55,14 +56,17 @@ mod gasprice_tests {
         operation::{CallContextField, CallContextOp, StackOp, RW},
         Error,
     };
-    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, Word};
+    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, ToBigEndian, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
+    use eth_types::evm_types::MemoryAddress;
+    use crate::operation::MemoryOp;
 
     #[test]
     fn gasprice_opcode_impl() -> Result<(), Error> {
+        let mem_address = 0x7f;
         let code = bytecode! {
-            I32Const[0x7f]
+            I32Const[mem_address]
             GASPRICE
         };
 
@@ -95,12 +99,14 @@ mod gasprice_tests {
             .unwrap();
 
         let op_gasprice = &builder.block.container.stack[step.bus_mapping_instance[1].as_usize()];
+        let gas_price = block.eth_block.transactions[0].gas_price.unwrap();
+        let gas_price_bytes = gas_price.to_be_bytes();
         assert_eq!(step.bus_mapping_instance.len(), 22);
         assert_eq!(
             (op_gasprice.rw(), op_gasprice.op()),
             (
-                RW::WRITE,
-                &StackOp::new(1, StackAddress(1022usize), two_gwei)
+                RW::READ,
+                &StackOp::new(1, StackAddress(1022usize), Word::from(mem_address))
             )
         );
 
@@ -120,6 +126,19 @@ mod gasprice_tests {
                 }
             )
         );
+        for idx in 0..20 {
+            assert_eq!(
+                {
+                    let operation =
+                        &builder.block.container.memory[step.bus_mapping_instance[2 + idx].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::WRITE,
+                    &MemoryOp::new(1, MemoryAddress::from(mem_address + idx as i32), gas_price_bytes[idx])
+                )
+            );
+        }
 
         Ok(())
     }
