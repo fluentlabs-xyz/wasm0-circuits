@@ -72,12 +72,14 @@ impl Bytecode {
             ("_evm_stop", 1), // 0
             ("_evm_address", 0), // 1
             ("_evm_caller", 0), // 2
-            ("_evm_gas_limit", 0), // 3
-            ("_evm_base_fee", 0), // 4
+            ("_evm_gaslimit", 0), // 3
+            ("_evm_basefee", 0), // 4
             ("_evm_difficulty", 0), // 5
             ("_evm_origin", 0), // 6
-            ("_evm_call_data_size", 0), // 7
-            ("_evm_call_value", 0), // 8
+            ("_evm_calldatasize", 0), // 7
+            ("_evm_callvalue", 0), // 8
+            ("_evm_gasprice", 0), // 9
+            ("_evm_returndatasize", 0), // 10
 
             // TODO
             // ("_evm_balance", 0),
@@ -187,6 +189,8 @@ impl Bytecode {
             OpcodeId::ORIGIN => Instruction::Call(6),
             OpcodeId::CALLDATASIZE => Instruction::Call(7),
             OpcodeId::CALLVALUE => Instruction::Call(8),
+            OpcodeId::GASPRICE => Instruction::Call(9),
+            OpcodeId::RETURNDATASIZE => Instruction::Call(10),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }

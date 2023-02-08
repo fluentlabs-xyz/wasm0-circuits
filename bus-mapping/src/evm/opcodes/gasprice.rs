@@ -1,3 +1,4 @@
+use eth_types::evm_types::MemoryAddress;
 use super::Opcode;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::operation::CallContextField;
@@ -14,10 +15,11 @@ impl Opcode for GasPrice {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let geth_step = &geth_steps[0];
-        let mut exec_step = state.new_step(geth_step)?;
+        let step = &geth_steps[0];
+        let second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(step)?;
         // Get gasprice result from next step
-        let value = geth_steps[1].stack.last()?;
+        let value = &second_step.memory.0;
         let tx_id = state.tx_ctx.id();
 
         // CallContext read of the TxId
@@ -28,12 +30,17 @@ impl Opcode for GasPrice {
             tx_id.into(),
         );
 
-        // Stack write of the gasprice value
-        state.stack_write(
-            &mut exec_step,
-            geth_step.stack.last_filled().map(|a| a - 1),
-            value,
-        )?;
+        // Read dest offset as the last stack element
+        let dest_offset = step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let offset_addr = MemoryAddress::try_from(dest_offset)?;
+
+        // Copy result to memory
+        for i in 0..20 {
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
+        }
+        let call_ctx = state.call_ctx_mut()?;
+        call_ctx.memory = second_step.memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -55,9 +62,8 @@ mod gasprice_tests {
     #[test]
     fn gasprice_opcode_impl() -> Result<(), Error> {
         let code = bytecode! {
-            #[start]
+            I32Const[0x7b]
             GASPRICE
-            STOP
         };
 
         let two_gwei = Word::from(2_000_000_000u64);
@@ -98,7 +104,6 @@ mod gasprice_tests {
         );
 
         let call_id = builder.block.txs()[0].calls()[0].call_id;
-
         assert_eq!(
             {
                 let operation =
