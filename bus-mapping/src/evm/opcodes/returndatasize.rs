@@ -55,8 +55,7 @@ mod returndatasize_tests {
     use eth_types::{
         bytecode,
         evm_types::{OpcodeId, StackAddress},
-        geth_types::GethData,
-        word, Word,
+        geth_types::GethData, Word,
     };
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;

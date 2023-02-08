@@ -95,6 +95,7 @@ mod gasprice_tests {
             .unwrap();
 
         let op_gasprice = &builder.block.container.stack[step.bus_mapping_instance[1].as_usize()];
+        assert_eq!(step.bus_mapping_instance.len(), 22);
         assert_eq!(
             (op_gasprice.rw(), op_gasprice.op()),
             (
