@@ -108,8 +108,8 @@ mod caller_tests {
                 (operation.rw(), operation.op())
             },
             (
-                RW::WRITE,
-                &StackOp::new(1, StackAddress::from(1023), Word::from(0x77))
+                RW::READ,
+                &StackOp::new(1, StackAddress::from(1022), Word::from(0x77))
             )
         );
         for idx in 0..20 {
