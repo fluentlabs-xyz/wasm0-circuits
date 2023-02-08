@@ -1,10 +1,11 @@
+use eth_types::evm_types::MemoryAddress;
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, ExecStep},
     operation::CallContextField,
     Error,
 };
 
-use eth_types::GethExecStep;
+use eth_types::{GethExecStep, U256};
 
 use super::Opcode;
 
@@ -16,21 +17,28 @@ impl Opcode for Returndatasize {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let geth_step = &geth_steps[0];
-        let mut exec_step = state.new_step(geth_step)?;
-        let value = geth_steps[1].stack.last()?;
+        let step = &geth_steps[0];
+        let second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(step)?;
+        let value = &second_step.memory.0;
         state.call_context_read(
             &mut exec_step,
             state.call()?.call_id,
             CallContextField::LastCalleeReturnDataLength,
-            value,
+            U256::from_big_endian(value),
         );
 
-        state.stack_write(
-            &mut exec_step,
-            geth_step.stack.last_filled().map(|a| a - 1),
-            value,
-        )?;
+        // Read dest offset as the last stack element
+        let dest_offset = step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let offset_addr = MemoryAddress::try_from(dest_offset)?;
+
+        // Copy result to memory
+        for i in 0..20 {
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
+        }
+        let call_ctx = state.call_ctx_mut()?;
+        call_ctx.memory = second_step.memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -47,8 +55,7 @@ mod returndatasize_tests {
     use eth_types::{
         bytecode,
         evm_types::{OpcodeId, StackAddress},
-        geth_types::GethData,
-        word, Word,
+        geth_types::GethData, Word,
     };
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
@@ -57,48 +64,11 @@ mod returndatasize_tests {
     fn test_ok() {
         let return_data_size = 0x20;
 
-        // // deployed contract
-        // PUSH1 0x20
-        // PUSH1 0
-        // PUSH1 0
-        // CALLDATACOPY
-        // PUSH1 0x20
-        // PUSH1 0
-        // RETURN
-        //
-        // bytecode: 0x6020600060003760206000F3
-        //
-        // // constructor
-        // PUSH12 0x6020600060003760206000F3
-        // PUSH1 0
-        // MSTORE
-        // PUSH1 0xC
-        // PUSH1 0x14
-        // RETURN
-        //
-        // bytecode: 0x6B6020600060003760206000F3600052600C6014F3
         let code = bytecode! {
-            PUSH21(word!("6B6020600060003760206000F3600052600C6014F3"))
-            PUSH1(0)
-            MSTORE
-
-            PUSH1 (0x15)
-            PUSH1 (0xB)
-            PUSH1 (0)
-            CREATE
-
-            PUSH1 (0x20)
-            PUSH1 (0x20)
-            PUSH1 (0x20)
-            PUSH1 (0)
-            PUSH1 (0)
-            DUP6
-            PUSH2 (0xFFFF)
-            CALL
+            I32Const[0x7f]
+            ADDRESS
 
             RETURNDATASIZE
-
-            STOP
         };
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(

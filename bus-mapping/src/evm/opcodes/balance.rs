@@ -1,8 +1,10 @@
+use ethers_core::abi::Address;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::evm::Opcode;
 use crate::operation::{AccountField, CallContextField, TxAccessListAccountOp, RW};
 use crate::Error;
-use eth_types::{GethExecStep, ToAddress, ToWord, H256, U256};
+use eth_types::{GethExecStep, ToAddress, ToWord, H256, U256, ToWordBytes};
+use eth_types::evm_types::MemoryAddress;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Balance;
@@ -12,13 +14,14 @@ impl Opcode for Balance {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let geth_step = &geth_steps[0];
-        let mut exec_step = state.new_step(geth_step)?;
+        let step = &geth_steps[0];
+        let second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(step)?;
 
         // Read account address from stack.
-        let address_word = geth_step.stack.last()?;
+        let address_word = step.stack.last()?;
         let address = address_word.to_address();
-        state.stack_read(&mut exec_step, geth_step.stack.last_filled(), address_word)?;
+        state.stack_read(&mut exec_step, step.stack.last_filled(), address_word)?;
 
         // Read transaction ID, rw_counter_end_of_reversion, and is_persistent
         // from call context.
@@ -87,12 +90,26 @@ impl Opcode for Balance {
             geth_steps[1].stack.nth_last(0)?,
         )?;
 
+        // Read dest offset as the last stack element
+        let dest_offset = step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let offset_addr = MemoryAddress::try_from(dest_offset)?;
+
+        // Copy result to memory
+        let balance_bytes = balance.to_word_bytes();
+        for i in 0..20 {
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), balance_bytes[i])?;
+        }
+        let call_ctx = state.call_ctx_mut()?;
+        call_ctx.memory = second_step.memory.clone();
+
         Ok(vec![exec_step])
     }
 }
 
 #[cfg(test)]
 mod balance_tests {
+    use std::fs;
     use super::*;
     use crate::circuit_input_builder::ExecState;
     use crate::mock::BlockData;
@@ -120,22 +137,26 @@ mod balance_tests {
     }
 
     fn test_ok(exists: bool, is_warm: bool) {
+        let mem_address = 0x7f;
         let address = address!("0xaabbccddee000000000000000000000000000000");
 
         // Pop balance first for warm account.
         let mut code = Bytecode::default();
         if is_warm {
             code.append(&bytecode! {
-                PUSH20(address.to_word())
+                I32Const[mem_address]
                 BALANCE
-                POP
+                // PUSH20(address.to_word())
+                // BALANCE
+                // POP
             });
         }
         code.append(&bytecode! {
-            PUSH20(address.to_word())
+            // PUSH20(address.to_word())
+            I32Const[mem_address]
             BALANCE
-            STOP
         });
+        // fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", code.wasm_binary());
 
         let balance = if exists {
             Word::from(800u64)
@@ -150,7 +171,7 @@ mod balance_tests {
                 accs[0]
                     .address(address!("0x0000000000000000000000000000000000000010"))
                     .balance(Word::from(1u64 << 20))
-                    .code(code.clone());
+                    .code(code.wasm_binary().clone());
                 if exists {
                     accs[1].address(address).balance(balance);
                 } else {

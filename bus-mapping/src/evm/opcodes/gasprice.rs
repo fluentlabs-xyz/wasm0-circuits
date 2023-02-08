@@ -1,3 +1,4 @@
+use eth_types::evm_types::MemoryAddress;
 use super::Opcode;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::operation::CallContextField;
@@ -14,10 +15,11 @@ impl Opcode for GasPrice {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let geth_step = &geth_steps[0];
-        let mut exec_step = state.new_step(geth_step)?;
+        let step = &geth_steps[0];
+        let second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(step)?;
         // Get gasprice result from next step
-        let value = geth_steps[1].stack.last()?;
+        let value = &second_step.memory.0;
         let tx_id = state.tx_ctx.id();
 
         // CallContext read of the TxId
@@ -28,12 +30,17 @@ impl Opcode for GasPrice {
             tx_id.into(),
         );
 
-        // Stack write of the gasprice value
-        state.stack_write(
-            &mut exec_step,
-            geth_step.stack.last_filled().map(|a| a - 1),
-            value,
-        )?;
+        // Read dest offset as the last stack element
+        let dest_offset = step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let offset_addr = MemoryAddress::try_from(dest_offset)?;
+
+        // Copy result to memory
+        for i in 0..20 {
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
+        }
+        let call_ctx = state.call_ctx_mut()?;
+        call_ctx.memory = second_step.memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -41,6 +48,7 @@ impl Opcode for GasPrice {
 
 #[cfg(test)]
 mod gasprice_tests {
+    use std::fs;
     use crate::{
         circuit_input_builder::ExecState,
         evm::OpcodeId,
@@ -48,16 +56,18 @@ mod gasprice_tests {
         operation::{CallContextField, CallContextOp, StackOp, RW},
         Error,
     };
-    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, Word};
+    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, ToBigEndian, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
+    use eth_types::evm_types::MemoryAddress;
+    use crate::operation::MemoryOp;
 
     #[test]
     fn gasprice_opcode_impl() -> Result<(), Error> {
+        let mem_address = 0x7f;
         let code = bytecode! {
-            #[start]
+            I32Const[mem_address]
             GASPRICE
-            STOP
         };
 
         let two_gwei = Word::from(2_000_000_000u64);
@@ -89,16 +99,18 @@ mod gasprice_tests {
             .unwrap();
 
         let op_gasprice = &builder.block.container.stack[step.bus_mapping_instance[1].as_usize()];
+        let gas_price = block.eth_block.transactions[0].gas_price.unwrap();
+        let gas_price_bytes = gas_price.to_be_bytes();
+        assert_eq!(step.bus_mapping_instance.len(), 22);
         assert_eq!(
             (op_gasprice.rw(), op_gasprice.op()),
             (
-                RW::WRITE,
-                &StackOp::new(1, StackAddress(1023usize), two_gwei)
+                RW::READ,
+                &StackOp::new(1, StackAddress(1022usize), Word::from(mem_address))
             )
         );
 
         let call_id = builder.block.txs()[0].calls()[0].call_id;
-
         assert_eq!(
             {
                 let operation =
@@ -114,6 +126,19 @@ mod gasprice_tests {
                 }
             )
         );
+        for idx in 0..20 {
+            assert_eq!(
+                {
+                    let operation =
+                        &builder.block.container.memory[step.bus_mapping_instance[2 + idx].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::WRITE,
+                    &MemoryOp::new(1, MemoryAddress::from(mem_address + idx as i32), gas_price_bytes[idx])
+                )
+            );
+        }
 
         Ok(())
     }
