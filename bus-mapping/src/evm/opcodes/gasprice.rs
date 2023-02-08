@@ -62,7 +62,7 @@ mod gasprice_tests {
     #[test]
     fn gasprice_opcode_impl() -> Result<(), Error> {
         let code = bytecode! {
-            I32Const[0x7b]
+            I32Const[0x7f]
             GASPRICE
         };
 
@@ -100,7 +100,7 @@ mod gasprice_tests {
             (op_gasprice.rw(), op_gasprice.op()),
             (
                 RW::WRITE,
-                &StackOp::new(1, StackAddress(1023usize), two_gwei)
+                &StackOp::new(1, StackAddress(1022usize), two_gwei)
             )
         );
 

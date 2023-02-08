@@ -55,7 +55,7 @@ mod calldatasize_tests {
     #[test]
     fn calldatasize_opcode_impl() {
         let code = bytecode! {
-            I32Const[0x79]
+            I32Const[0x7f]
             CALLDATASIZE
         };
         // Get the execution steps from the external tracer
@@ -102,7 +102,7 @@ mod calldatasize_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), U256::from(0x79))
+                &StackOp::new(1, StackAddress::from(1022), U256::from(0x7f))
             )
         );
     }

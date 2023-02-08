@@ -58,7 +58,7 @@ mod callvalue_tests {
     #[test]
     fn callvalue_opcode_impl() {
         let code = bytecode! {
-            I32Const[0x7a]
+            I32Const[0x7f]
             CALLVALUE
         };
 
@@ -109,7 +109,7 @@ mod callvalue_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), Word::from(0x7a))
+                &StackOp::new(1, StackAddress::from(1022), Word::from(0x7f))
             )
         );
     }

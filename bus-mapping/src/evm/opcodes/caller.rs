@@ -59,7 +59,7 @@ mod caller_tests {
     #[test]
     fn caller_opcode_impl() {
         let code = bytecode! {
-            I32Const[0x77]
+            I32Const[0x7f]
             CALLER
         };
 
@@ -109,7 +109,7 @@ mod caller_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), Word::from(0x77))
+                &StackOp::new(1, StackAddress::from(1022), Word::from(0x7f))
             )
         );
         for idx in 0..20 {
@@ -121,7 +121,7 @@ mod caller_tests {
                 },
                 (
                     RW::WRITE,
-                    &MemoryOp::new(1, MemoryAddress::from(0x77 + idx), caller_address_bytes[idx])
+                    &MemoryOp::new(1, MemoryAddress::from(0x7f + idx), caller_address_bytes[idx])
                 )
             );
         }
