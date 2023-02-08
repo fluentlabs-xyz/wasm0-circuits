@@ -4,38 +4,44 @@ use crate::{
     Error,
 };
 
-use eth_types::GethExecStep;
+use eth_types::{GethExecStep, ToU256};
+use eth_types::evm_types::MemoryAddress;
 
 use super::Opcode;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Calldatasize;
-
 impl Opcode for Calldatasize {
     fn gen_associated_ops(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let geth_step = &geth_steps[0];
-        let mut exec_step = state.new_step(geth_step)?;
-        let value = geth_steps[1].stack.last()?;
+        let step = &geth_steps[0];
+        let mut exec_step = state.new_step(step)?;
+        let second_step = &geth_steps[1];
+        let value = second_step.stack.last()?;
         state.call_context_read(
             &mut exec_step,
             state.call()?.call_id,
             CallContextField::CallDataLength,
-            value,
+            value.to_u256(),
         );
 
-        state.stack_write(
-            &mut exec_step,
-            geth_step.stack.last_filled().map(|a| a - 1),
-            value,
-        )?;
+        // Read dest offset as the last stack element
+        let dest_offset = step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let offset_addr = MemoryAddress::try_from(dest_offset)?;
+
+        // Copy result to memory
+        for i in 0..20 {
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
+        }
+        let call_ctx = state.call_ctx_mut()?;
+        call_ctx.memory = second_step.memory.clone();
 
         Ok(vec![exec_step])
     }
 }
-
 #[cfg(test)]
 mod calldatasize_tests {
     use crate::{
@@ -48,17 +54,14 @@ mod calldatasize_tests {
         evm_types::{OpcodeId, StackAddress},
         geth_types::GethData,
     };
-
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
-
     #[test]
     fn calldatasize_opcode_impl() {
         let code = bytecode! {
             CALLDATASIZE
             STOP
         };
-
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(
             None,
@@ -68,18 +71,15 @@ mod calldatasize_tests {
         )
         .unwrap()
         .into();
-
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
         builder
             .handle_block(&block.eth_block, &block.geth_traces)
             .unwrap();
-
         let step = builder.block.txs()[0]
             .steps()
             .iter()
             .find(|step| step.exec_state == ExecState::Op(OpcodeId::CALLDATASIZE))
             .unwrap();
-
         let call_id = builder.block.txs()[0].calls()[0].call_id;
         let call_data_size = block.eth_block.transactions[0].input.as_ref().len().into();
         assert_eq!(

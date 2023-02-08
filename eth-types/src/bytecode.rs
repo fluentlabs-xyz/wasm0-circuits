@@ -75,6 +75,35 @@ impl Bytecode {
             ("_evm_gaslimit", 0), // 3
             ("_evm_basefee", 0), // 4
             ("_evm_difficulty", 0), // 5
+            ("_evm_origin", 0),
+            ("_evm_call_data_size", 0),
+
+            // TODO
+            // ("_evm_balance", 0),
+            // ("_evm_call_data_copy", 0),
+            // ("_evm_call_data_load", 0),
+            // ("_evm_call_code", 0),
+            // ("_evm_call_value", 0),
+            // ("_evm_chain_id", 0),
+            // ("_evm_code_copy", 0),
+            // ("_evm_code_size", 0),
+            // ("_evm_create", 0),
+            // ("_evm_ext_code_copy", 0),
+            // ("_evm_ext_code_hash", 0),
+            // ("_evm_ext_code_size", 0),
+            // ("_evm_gas_price", 0),
+            // ("_evm_log0", 0),
+            // ("_evm_log1", 0),
+            // ("_evm_log2", 0),
+            // ("_evm_log3", 0),
+            // ("_evm_log4", 0),
+            // ("_evm_revert", 0),
+            // ("_evm_return_data_copy", 0),
+            // ("_evm_return_data_size", 0),
+            // ("_evm_self_balance", 0),
+            // ("_evm_storage_load", 0),
+            // ("_evm_storage_store", 0),
+            // ("_evm_stop", 0),
         ];
         for (key, params) in &evm_functions {
             imports.import("env", key, EntityType::Function(*params));
@@ -154,6 +183,8 @@ impl Bytecode {
             OpcodeId::GASLIMIT => Instruction::Call(3),
             OpcodeId::BASEFEE => Instruction::Call(4),
             OpcodeId::DIFFICULTY => Instruction::Call(5),
+            OpcodeId::ORIGIN => Instruction::Call(6),
+            OpcodeId::CALLDATASIZE => Instruction::Call(7),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }
