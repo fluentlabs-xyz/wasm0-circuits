@@ -72,12 +72,12 @@ impl Bytecode {
             ("_evm_stop", 1), // 0
             ("_evm_address", 0), // 1
             ("_evm_caller", 0), // 2
-            ("_evm_gas_limit", 0), // 3
-            ("_evm_base_fee", 0), // 4
+            ("_evm_gaslimit", 0), // 3
+            ("_evm_basefee", 0), // 4
             ("_evm_difficulty", 0), // 5
             ("_evm_origin", 0), // 6
-            ("_evm_call_data_size", 0), // 7
-            ("_evm_call_value", 0), // 8
+            ("_evm_calldatasize", 0), // 7
+            ("_evm_callvalue", 0), // 8
 
             // TODO
             // ("_evm_balance", 0),
