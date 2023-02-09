@@ -40,23 +40,26 @@ impl Opcode for Returndatasize {
         let call_ctx = state.call_ctx_mut()?;
         call_ctx.memory = second_step.memory.clone();
 
+        // state.stack_write(
+        //     &mut exec_step,
+        //     geth_step.stack.last_filled().map(|a| a - 1),
+        //     value,
+        // )?;
+
         Ok(vec![exec_step])
     }
 }
 
 #[cfg(test)]
 mod returndatasize_tests {
+    use std::fs;
     use crate::circuit_input_builder::CircuitsParams;
     use crate::{
         circuit_input_builder::ExecState,
         mock::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{
-        bytecode,
-        evm_types::{OpcodeId, StackAddress},
-        geth_types::GethData, Word,
-    };
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
 
@@ -64,12 +67,58 @@ mod returndatasize_tests {
     fn test_ok() {
         let return_data_size = 0x20;
 
+        // // // deployed contract
+        // // PUSH1 0x20
+        // // PUSH1 0
+        // // PUSH1 0
+        // // CALLDATACOPY
+        // // PUSH1 0x20
+        // // PUSH1 0
+        // // RETURN
+        // //
+        // // bytecode: 0x6020600060003760206000F3
+        // //
+        // // // constructor
+        // // PUSH12 0x6020600060003760206000F3
+        // // PUSH1 0
+        // // MSTORE
+        // // PUSH1 0xC
+        // // PUSH1 0x14
+        // // RETURN
+        // //
+        // // bytecode: 0x6B6020600060003760206000F3600052600C6014F3
+        // let code = bytecode! {
+        //     PUSH21(word!("6B6020600060003760206000F3600052600C6014F3"))
+        //     PUSH1(0)
+        //     MSTORE
+        //
+        //     PUSH1 (0x15)
+        //     PUSH1 (0xB)
+        //     PUSH1 (0)
+        //     CREATE
+        //
+        //     PUSH1 (0x20)
+        //     PUSH1 (0x20)
+        //     PUSH1 (0x20)
+        //     PUSH1 (0)
+        //     PUSH1 (0)
+        //     DUP6
+        //     PUSH2 (0xFFFF)
+        //     CALL
+        //
+        //     RETURNDATASIZE
+        //
+        //     STOP
+        // };
+
         let code = bytecode! {
             I32Const[0x7f]
             ADDRESS
 
+            I32Const[0x7f]
             RETURNDATASIZE
         };
+        fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", code.wasm_binary());
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(
             None,
