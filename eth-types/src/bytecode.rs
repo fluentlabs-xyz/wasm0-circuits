@@ -67,6 +67,9 @@ impl Bytecode {
         let mut types = TypeSection::new();
         types.function(vec![ValType::I32], vec![]); // 0
         types.function(vec![], vec![]); // 1
+        types.function(vec![ValType::I32, ValType::I32], vec![]); // 2
+        types.function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]); // 3
+        types.function(vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32], vec![]); // 4
         let mut imports = ImportSection::new();
         let evm_functions: Vec<(&str, u32)> = vec![
             ("_evm_stop", 1), // 0
@@ -80,7 +83,15 @@ impl Bytecode {
             ("_evm_callvalue", 0), // 8
             ("_evm_gasprice", 0), // 9
             ("_evm_returndatasize", 0), // 10 TODO
-            ("_evm_balance", 1), // 11
+            ("_evm_balance", 2), // 11
+            ("_evm_number", 0), // 12 TODO
+            ("_evm_chainid", 0), // 13 TODO
+            ("_evm_sload", 0), // 14 TODO
+            ("_evm_sstore", 2), // 15 TODO
+            ("_evm_create", 3), // 16 TODO
+            ("_evm_create2", 4), // 17 TODO
+            ("_evm_return", 2), // 18 TODO
+            ("_evm_revert", 2), // 19 TODO
 
             // TODO
             // ("_evm_call_data_copy", 0),
@@ -90,7 +101,6 @@ impl Bytecode {
             // ("_evm_chain_id", 0),
             // ("_evm_code_copy", 0),
             // ("_evm_code_size", 0),
-            // ("_evm_create", 0),
             // ("_evm_ext_code_copy", 0),
             // ("_evm_ext_code_hash", 0),
             // ("_evm_ext_code_size", 0),
@@ -108,8 +118,8 @@ impl Bytecode {
             // ("_evm_storage_store", 0),
             // ("_evm_stop", 0),
         ];
-        for (key, params) in &evm_functions {
-            imports.import("env", key, EntityType::Function(*params));
+        for (func_name, params) in &evm_functions {
+            imports.import("env", func_name, EntityType::Function(*params));
         }
         // Encode the function section
         let mut functions = FunctionSection::new();
@@ -193,6 +203,14 @@ impl Bytecode {
             OpcodeId::GASPRICE => Instruction::Call(9),
             OpcodeId::RETURNDATASIZE => Instruction::Call(10),
             OpcodeId::BALANCE => Instruction::Call(11),
+            OpcodeId::NUMBER => Instruction::Call(12),
+            OpcodeId::CHAINID => Instruction::Call(13),
+            OpcodeId::SSTORE => Instruction::Call(14),
+            OpcodeId::SLOAD => Instruction::Call(15),
+            OpcodeId::CREATE => Instruction::Call(16),
+            OpcodeId::CREATE2 => Instruction::Call(17),
+            OpcodeId::RETURN => Instruction::Call(18),
+            OpcodeId::REVERT => Instruction::Call(19),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }

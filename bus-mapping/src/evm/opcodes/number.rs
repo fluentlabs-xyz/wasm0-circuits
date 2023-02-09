@@ -13,10 +13,10 @@ mod number_tests {
 
     #[test]
     fn number_opcode_impl() -> Result<(), Error> {
+        let mem_address = 0x7f;
         let code = bytecode! {
-            #[start]
+            I32Const[mem_address]
             NUMBER
-            STOP
         };
         let block_number = 0xcafeu64;
         // Get the execution steps from the external tracer

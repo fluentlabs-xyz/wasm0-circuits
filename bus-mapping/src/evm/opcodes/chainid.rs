@@ -15,9 +15,10 @@ mod chainid_tests {
 
     #[test]
     fn chainid_opcode_impl() {
+        let mem_address = 0x7f;
         let code = bytecode! {
+            I32Const[mem_address]
             CHAINID
-            STOP
         };
 
         // Get the execution steps from the external tracer
