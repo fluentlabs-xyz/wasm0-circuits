@@ -17,10 +17,10 @@ impl Opcode for Returndatasize {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let step = &geth_steps[0];
-        let second_step = &geth_steps[1];
-        let mut exec_step = state.new_step(step)?;
-        let value = &second_step.memory.0;
+        let geth_step = &geth_steps[0];
+        let geth_second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(geth_step)?;
+        let value = &geth_second_step.memory.0;
         state.call_context_read(
             &mut exec_step,
             state.call()?.call_id,
@@ -29,8 +29,8 @@ impl Opcode for Returndatasize {
         );
 
         // Read dest offset as the last stack element
-        let dest_offset = step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let dest_offset = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
@@ -38,7 +38,7 @@ impl Opcode for Returndatasize {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = second_step.memory.clone();
+        call_ctx.memory = geth_second_step.memory.clone();
 
         // state.stack_write(
         //     &mut exec_step,
@@ -65,6 +65,7 @@ mod returndatasize_tests {
 
     #[test]
     fn test_ok() {
+        let res_mem_address = 0x7f;
         let return_data_size = 0x20;
 
         // // // deployed contract
@@ -112,13 +113,12 @@ mod returndatasize_tests {
         // };
 
         let code = bytecode! {
-            I32Const[0x7f]
+            I32Const[res_mem_address+20]
             ADDRESS
 
-            I32Const[0x7f]
+            I32Const[res_mem_address]
             RETURNDATASIZE
         };
-        fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", code.wasm_binary());
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(
             None,

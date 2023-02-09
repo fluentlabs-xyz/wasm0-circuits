@@ -83,7 +83,7 @@ impl Bytecode {
             ("_evm_callvalue", 0), // 8
             ("_evm_gasprice", 0), // 9
             ("_evm_returndatasize", 0), // 10 TODO
-            ("_evm_balance", 2), // 11
+            ("_evm_balance", 2), // 11 TODO
             ("_evm_number", 0), // 12 TODO
             ("_evm_chainid", 0), // 13 TODO
             ("_evm_sload", 0), // 14 TODO
@@ -92,30 +92,28 @@ impl Bytecode {
             ("_evm_create2", 4), // 17 TODO
             ("_evm_return", 2), // 18 TODO
             ("_evm_revert", 2), // 19 TODO
+            ("_evm_codesize", 0), // 20
 
             // TODO
-            // ("_evm_call_data_copy", 0),
-            // ("_evm_call_data_load", 0),
-            // ("_evm_call_code", 0),
-            // ("_evm_call_value", 0),
-            // ("_evm_chain_id", 0),
-            // ("_evm_code_copy", 0),
-            // ("_evm_code_size", 0),
-            // ("_evm_ext_code_copy", 0),
-            // ("_evm_ext_code_hash", 0),
-            // ("_evm_ext_code_size", 0),
-            // ("_evm_gas_price", 0),
+            // ("_evm_calldatacopy", 3),
+            // ("_evm_calldataload", 0),
+            // ("_evm_callcode", 0),
+            // ("_evm_codecopy", 0),
+            // ("_evm_extcodecopy", 0),
+            // ("_evm_extcodehash", 0),
+            // ("_evm_extcodesize", 0),
+            // ("_evm_gasprice", 0),
             // ("_evm_log0", 0),
             // ("_evm_log1", 0),
             // ("_evm_log2", 0),
             // ("_evm_log3", 0),
             // ("_evm_log4", 0),
             // ("_evm_revert", 0),
-            // ("_evm_return_data_copy", 0),
-            // ("_evm_return_data_size", 0),
+            // ("_evm_returndatacopy", 0),
+            // ("_evm_returndatasize", 0),
             // ("_evm_self_balance", 0),
-            // ("_evm_storage_load", 0),
-            // ("_evm_storage_store", 0),
+            // ("_evm_sload", 0),
+            // ("_evm_sstore", 0),
             // ("_evm_stop", 0),
         ];
         for (func_name, params) in &evm_functions {
@@ -211,6 +209,7 @@ impl Bytecode {
             OpcodeId::CREATE2 => Instruction::Call(17),
             OpcodeId::RETURN => Instruction::Call(18),
             OpcodeId::REVERT => Instruction::Call(19),
+            OpcodeId::CODESIZE => Instruction::Call(20),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }

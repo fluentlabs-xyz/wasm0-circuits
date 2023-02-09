@@ -15,12 +15,12 @@ impl Opcode for Address {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let step = &geth_steps[0];
-        let second_step = &geth_steps[1];
-        let mut exec_step = state.new_step(step)?;
+        let geth_step = &geth_steps[0];
+        let geth_second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(geth_step)?;
 
         // Get address result from next step.
-        let address = &second_step.memory.0;
+        let address = &geth_second_step.memory.0;
         if address.len() != 20 {
             return Err(Error::InvalidGethExecTrace("there is no address bytes in memory for address opcode"));
         }
@@ -34,8 +34,8 @@ impl Opcode for Address {
         );
 
         // Read dest offset as the last stack element
-        let dest_offset = step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let dest_offset = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
@@ -43,7 +43,7 @@ impl Opcode for Address {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), address[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = second_step.memory.clone();
+        call_ctx.memory = geth_second_step.memory.clone();
 
         Ok(vec![exec_step])
     }

@@ -15,11 +15,11 @@ impl Opcode for Callvalue {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let step = &geth_steps[0];
-        let second_step = &geth_steps[1];
-        let mut exec_step = state.new_step(step)?;
+        let geth_step = &geth_steps[0];
+        let geth_second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(geth_step)?;
         // Get call_value result from next step
-        let value = &second_step.memory.0;
+        let value = &geth_second_step.memory.0;
         // CallContext read of the call_value
         state.call_context_read(
             &mut exec_step,
@@ -29,8 +29,8 @@ impl Opcode for Callvalue {
         );
 
         // Read dest offset as the last stack element
-        let dest_offset = step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let dest_offset = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
@@ -38,7 +38,7 @@ impl Opcode for Callvalue {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = second_step.memory.clone();
+        call_ctx.memory = geth_second_step.memory.clone();
 
         Ok(vec![exec_step])
     }

@@ -90,6 +90,7 @@ use sload::Sload;
 use sstore::Sstore;
 use stackonlyop::StackOnlyOpcode;
 use stop::Stop;
+use crate::evm::opcodes::number::Number;
 use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
 
 /// Generic opcode trait which defines the logic of the
@@ -182,6 +183,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::COINBASE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::TIMESTAMP => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::NUMBER => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        // OpcodeId::NUMBER => Number::gen_associated_ops,
         OpcodeId::DIFFICULTY => StackToMemoryOpcode::gen_associated_ops,
         OpcodeId::GASLIMIT => StackToMemoryOpcode::gen_associated_ops,
         OpcodeId::CHAINID => StackOnlyOpcode::<0, 1>::gen_associated_ops,
@@ -282,10 +284,12 @@ pub fn gen_associated_ops(
     let fn_gen_associated_ops = fn_gen_associated_ops(opcode_id);
 
     let memory_enabled = !geth_steps.iter().all(|s| s.memory.is_empty());
+    let state_memory = &state.call_ctx()?.memory;
+    let steps_memory = &geth_steps[0].memory;
     if memory_enabled {
         assert_eq!(
-            &state.call_ctx()?.memory,
-            &geth_steps[0].memory,
+            state_memory,
+            steps_memory,
             "last step of {:?} goes wrong",
             opcode_id
         );
