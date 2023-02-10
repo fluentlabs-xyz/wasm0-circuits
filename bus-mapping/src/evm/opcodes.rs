@@ -90,6 +90,7 @@ use sload::Sload;
 use sstore::Sstore;
 use stackonlyop::StackOnlyOpcode;
 use stop::Stop;
+use crate::evm::opcodes::chainid::ChainId;
 use crate::evm::opcodes::number::Number;
 use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
 
@@ -186,7 +187,8 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         // OpcodeId::NUMBER => Number::gen_associated_ops,
         OpcodeId::DIFFICULTY => StackToMemoryOpcode::gen_associated_ops,
         OpcodeId::GASLIMIT => StackToMemoryOpcode::gen_associated_ops,
-        OpcodeId::CHAINID => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        // OpcodeId::CHAINID => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::CHAINID => ChainId::gen_associated_ops,
         OpcodeId::SELFBALANCE => Selfbalance::gen_associated_ops,
         OpcodeId::BASEFEE => StackToMemoryOpcode::gen_associated_ops,
         OpcodeId::POP => StackOnlyOpcode::<1, 0>::gen_associated_ops,
