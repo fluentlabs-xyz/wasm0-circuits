@@ -5,6 +5,8 @@ use crate::operation::CallContextField;
 use crate::Error;
 use eth_types::GethExecStep;
 
+const GAS_PRICE_BYTE_LENGTH: usize = 32;
+
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the [`OpcodeId::PC`](crate::evm::OpcodeId::PC) `OpcodeId`.
 #[derive(Debug, Copy, Clone)]
@@ -36,7 +38,7 @@ impl Opcode for GasPrice {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..32 {
+        for i in 0..GAS_PRICE_BYTE_LENGTH {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
@@ -60,6 +62,7 @@ mod gasprice_tests {
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
     use eth_types::evm_types::MemoryAddress;
+    use crate::evm::opcodes::gasprice::GAS_PRICE_BYTE_LENGTH;
     use crate::operation::MemoryOp;
 
     #[test]
@@ -101,7 +104,7 @@ mod gasprice_tests {
         let op_gasprice = &builder.block.container.stack[step.bus_mapping_instance[1].as_usize()];
         let gas_price = block.eth_block.transactions[0].gas_price.unwrap();
         let gas_price_bytes = gas_price.to_be_bytes();
-        assert_eq!(step.bus_mapping_instance.len(), 34);
+        assert_eq!(step.bus_mapping_instance.len(), GAS_PRICE_BYTE_LENGTH + 2);
         assert_eq!(
             (op_gasprice.rw(), op_gasprice.op()),
             (
@@ -109,7 +112,6 @@ mod gasprice_tests {
                 &StackOp::new(1, StackAddress(1022usize), Word::from(res_mem_address))
             )
         );
-
         let call_id = builder.block.txs()[0].calls()[0].call_id;
         assert_eq!(
             {
@@ -126,7 +128,7 @@ mod gasprice_tests {
                 }
             )
         );
-        for idx in 0..32 {
+        for idx in 0..GAS_PRICE_BYTE_LENGTH {
             assert_eq!(
                 {
                     let operation =

@@ -5,6 +5,8 @@ use crate::operation::CallContextField;
 use crate::Error;
 use eth_types::{GethExecStep, U256};
 
+const CALL_VALUE_BYTE_LENGTH: usize = 32;
+
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the [`OpcodeId::PC`](crate::evm::OpcodeId::PC) `OpcodeId`.
 #[derive(Debug, Copy, Clone)]
@@ -34,7 +36,7 @@ impl Opcode for Callvalue {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..32 {
+        for i in 0..CALL_VALUE_BYTE_LENGTH {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
@@ -51,15 +53,18 @@ mod callvalue_tests {
         mock::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToWord, Word};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToLittleEndian, ToWord, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
+    use eth_types::evm_types::MemoryAddress;
+    use crate::evm::opcodes::callvalue::CALL_VALUE_BYTE_LENGTH;
+    use crate::operation::MemoryOp;
 
     #[test]
     fn callvalue_opcode_impl() {
-        let mem_address = 0x7f;
+        let res_mem_address = 0x7f;
         let code = bytecode! {
-            I32Const[mem_address]
+            I32Const[res_mem_address]
             CALLVALUE
         };
 
@@ -86,7 +91,8 @@ mod callvalue_tests {
 
         let call_id = builder.block.txs()[0].calls()[0].call_id;
         let call_value = block.eth_block.transactions[0].value;
-        assert_eq!(step.bus_mapping_instance.len(), 34);
+        let call_value_bytes = call_value.to_le_bytes();
+        assert_eq!(step.bus_mapping_instance.len(), CALL_VALUE_BYTE_LENGTH + 2);
         assert_eq!(
             {
                 let operation =
@@ -110,8 +116,21 @@ mod callvalue_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), Word::from(mem_address))
+                &StackOp::new(1, StackAddress::from(1022), Word::from(res_mem_address))
             )
         );
+        for idx in 0..CALL_VALUE_BYTE_LENGTH {
+            assert_eq!(
+                {
+                    let operation =
+                        &builder.block.container.memory[step.bus_mapping_instance[2 + idx].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::WRITE,
+                    &MemoryOp::new(1, MemoryAddress::from(res_mem_address + idx as i32), call_value_bytes[idx])
+                )
+            );
+        }
     }
 }

@@ -5,6 +5,8 @@ use crate::Error;
 use eth_types::{GethExecStep, U256};
 use eth_types::evm_types::MemoryAddress;
 
+const CALLER_BYTE_LENGTH: usize = 20;
+
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the [`OpcodeId::PC`](crate::evm::OpcodeId::PC) `OpcodeId`.
 #[derive(Debug, Copy, Clone)]
@@ -33,7 +35,7 @@ impl Opcode for Caller {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..20 {
+        for i in 0..CALLER_BYTE_LENGTH {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), address[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
@@ -58,8 +60,9 @@ mod caller_tests {
 
     #[test]
     fn caller_opcode_impl() {
+        let res_mem_address = 0x7f;
         let code = bytecode! {
-            I32Const[0x7f]
+            I32Const[res_mem_address]
             CALLER
         };
 
@@ -109,10 +112,10 @@ mod caller_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), Word::from(0x7f))
+                &StackOp::new(1, StackAddress::from(1022), Word::from(res_mem_address))
             )
         );
-        for idx in 0..20 {
+        for idx in 0..CALLER_BYTE_LENGTH {
             assert_eq!(
                 {
                     let operation =
@@ -121,7 +124,7 @@ mod caller_tests {
                 },
                 (
                     RW::WRITE,
-                    &MemoryOp::new(1, MemoryAddress::from(0x7f + idx), caller_address_bytes[idx])
+                    &MemoryOp::new(1, MemoryAddress::from(res_mem_address + idx as i32), caller_address_bytes[idx])
                 )
             );
         }

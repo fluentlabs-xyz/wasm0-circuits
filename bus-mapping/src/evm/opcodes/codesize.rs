@@ -1,3 +1,4 @@
+use ethers_core::k256::pkcs8::der::Encode;
 use eth_types::evm_types::MemoryAddress;
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, ExecStep},
@@ -7,6 +8,8 @@ use crate::{
 use eth_types::GethExecStep;
 
 use super::Opcode;
+
+const CODE_SIZE_BYTE_LENGTH: usize = 4;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Codesize;
@@ -22,8 +25,8 @@ impl Opcode for Codesize {
 
         let code_hash = state.call()?.code_hash;
         let code = state.code(code_hash)?;
-        let codesize = code.len();
-        let codesize_bytes = codesize.to_le_bytes();
+        let codesize = code.len() as i32;
+        let codesize_bytes = codesize.to_vec().unwrap();
 
         // debug_assert_eq!(codesize, geth_steps[1].stack.last()?.as_usize());
 
@@ -33,7 +36,7 @@ impl Opcode for Codesize {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..8 {
+        for i in 0..CODE_SIZE_BYTE_LENGTH {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), codesize_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
@@ -47,6 +50,7 @@ impl Opcode for Codesize {
 mod codesize_tests {
     use std::fs;
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
+    use eth_types::evm_types::MemoryAddress;
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
         TestContext,
@@ -57,6 +61,8 @@ mod codesize_tests {
         mock::BlockData,
         operation::{StackOp, RW},
     };
+    use crate::evm::opcodes::codesize::CODE_SIZE_BYTE_LENGTH;
+    use crate::operation::MemoryOp;
 
     fn test_ok(large: bool) {
         let res_mem_address = 0x7f;
@@ -114,7 +120,7 @@ mod codesize_tests {
             .find(|step| step.exec_state == ExecState::Op(OpcodeId::CODESIZE))
             .unwrap();
 
-        assert_eq!(step.bus_mapping_instance.len(), 9);
+        assert_eq!(step.bus_mapping_instance.len(), CODE_SIZE_BYTE_LENGTH + 1);
         let op = &builder.block.container.stack[step.bus_mapping_instance[0].as_usize()];
         assert_eq!(op.rw(), RW::READ);
         assert_eq!(

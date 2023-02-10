@@ -4,6 +4,8 @@ use crate::{
     Error,
 };
 
+const CALL_DATA_SIZE_BYTE_LENGTH: usize = 4;
+
 use eth_types::{GethExecStep, U256};
 use eth_types::evm_types::MemoryAddress;
 
@@ -16,10 +18,10 @@ impl Opcode for Calldatasize {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let step = &geth_steps[0];
-        let second_step = &geth_steps[1];
-        let mut exec_step = state.new_step(step)?;
-        let value = &second_step.memory.0;
+        let geth_step = &geth_steps[0];
+        let geth_second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(geth_step)?;
+        let value = &geth_second_step.memory.0;
         state.call_context_read(
             &mut exec_step,
             state.call()?.call_id,
@@ -28,8 +30,8 @@ impl Opcode for Calldatasize {
         );
 
         // Read dest offset as the last stack element
-        let dest_offset = step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let dest_offset = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
@@ -37,7 +39,7 @@ impl Opcode for Calldatasize {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = second_step.memory.clone();
+        call_ctx.memory = geth_second_step.memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -52,10 +54,15 @@ mod calldatasize_tests {
     use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, U256};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
+    use eth_types::evm_types::MemoryAddress;
+    use crate::evm::opcodes::calldatasize::CALL_DATA_SIZE_BYTE_LENGTH;
+    use crate::operation::MemoryOp;
+
     #[test]
     fn calldatasize_opcode_impl() {
+        let res_mem_address = 0x7f;
         let code = bytecode! {
-            I32Const[0x7f]
+            I32Const[res_mem_address]
             CALLDATASIZE
         };
         // Get the execution steps from the external tracer
@@ -102,8 +109,21 @@ mod calldatasize_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), U256::from(0x7f))
+                &StackOp::new(1, StackAddress::from(1022), U256::from(res_mem_address))
             )
         );
+        // for idx in 0..CALL_DATA_SIZE_BYTE_LENGTH {
+        //     assert_eq!(
+        //         {
+        //             let operation =
+        //                 &builder.block.container.memory[step.bus_mapping_instance[2 + idx].as_usize()];
+        //             (operation.rw(), operation.op())
+        //         },
+        //         (
+        //             RW::WRITE,
+        //             &MemoryOp::new(1, MemoryAddress::from(res_mem_address + idx as i32), call_data_size[idx])
+        //         )
+        //     );
+        // }
     }
 }
