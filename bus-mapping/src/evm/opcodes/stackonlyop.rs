@@ -110,14 +110,19 @@ mod stackonlyop_tests {
 
     #[test]
     fn sdiv_opcode_impl() {
+        let divident = 0x1c;
+        let divisor = 0x2;
+        let code = bytecode! {
+            // PUSH1(0x80u64)
+            // PUSH1(0x60u64)
+            I32Const[divident]
+            I32Const[divisor]
+            I32DivS // TODO not supported error
+            // STOP
+        };
         stack_only_opcode_impl::<2, 1>(
-            OpcodeId::SDIV,
-            bytecode! {
-                PUSH1(0x80u64)
-                PUSH1(0x60u64)
-                SDIV
-                STOP
-            },
+            OpcodeId::I32DivS,
+            code,
             vec![
                 StackOp::new(1, StackAddress(1022), Word::from(0x60)),
                 StackOp::new(1, StackAddress(1023), Word::from(0x80)),

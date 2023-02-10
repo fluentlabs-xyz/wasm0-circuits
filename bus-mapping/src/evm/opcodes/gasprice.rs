@@ -64,9 +64,9 @@ mod gasprice_tests {
 
     #[test]
     fn gasprice_opcode_impl() -> Result<(), Error> {
-        let mem_address = 0x7f;
+        let res_mem_address = 0x7f;
         let code = bytecode! {
-            I32Const[mem_address]
+            I32Const[res_mem_address]
             GASPRICE
         };
 
@@ -106,7 +106,7 @@ mod gasprice_tests {
             (op_gasprice.rw(), op_gasprice.op()),
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress(1022usize), Word::from(mem_address))
+                &StackOp::new(1, StackAddress(1022usize), Word::from(res_mem_address))
             )
         );
 
@@ -135,7 +135,7 @@ mod gasprice_tests {
                 },
                 (
                     RW::WRITE,
-                    &MemoryOp::new(1, MemoryAddress::from(mem_address + idx as i32), gas_price_bytes[idx])
+                    &MemoryOp::new(1, MemoryAddress::from(res_mem_address + idx as i32), gas_price_bytes[idx])
                 )
             );
         }

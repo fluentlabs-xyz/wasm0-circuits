@@ -34,7 +34,7 @@ impl Opcode for Callvalue {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..20 {
+        for i in 0..32 {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
@@ -86,7 +86,7 @@ mod callvalue_tests {
 
         let call_id = builder.block.txs()[0].calls()[0].call_id;
         let call_value = block.eth_block.transactions[0].value;
-        assert_eq!(step.bus_mapping_instance.len(), 22);
+        assert_eq!(step.bus_mapping_instance.len(), 34);
         assert_eq!(
             {
                 let operation =
