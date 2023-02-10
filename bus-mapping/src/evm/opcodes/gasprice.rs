@@ -36,7 +36,7 @@ impl Opcode for GasPrice {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..20 {
+        for i in 0..32 {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
@@ -101,7 +101,7 @@ mod gasprice_tests {
         let op_gasprice = &builder.block.container.stack[step.bus_mapping_instance[1].as_usize()];
         let gas_price = block.eth_block.transactions[0].gas_price.unwrap();
         let gas_price_bytes = gas_price.to_be_bytes();
-        assert_eq!(step.bus_mapping_instance.len(), 22);
+        assert_eq!(step.bus_mapping_instance.len(), 34);
         assert_eq!(
             (op_gasprice.rw(), op_gasprice.op()),
             (
@@ -126,7 +126,7 @@ mod gasprice_tests {
                 }
             )
         );
-        for idx in 0..20 {
+        for idx in 0..32 {
             assert_eq!(
                 {
                     let operation =

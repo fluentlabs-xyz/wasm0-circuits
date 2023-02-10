@@ -1,8 +1,10 @@
+use std::io::Read;
 use super::Opcode;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::operation::{AccountField, CallContextField};
 use crate::Error;
-use eth_types::{GethExecStep, ToWord};
+use eth_types::{GethExecStep, ToBigEndian, ToWord, U256};
+use eth_types::evm_types::MemoryAddress;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Selfbalance;
@@ -13,8 +15,10 @@ impl Opcode for Selfbalance {
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
         let geth_step = &geth_steps[0];
+        let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
-        let self_balance = geth_steps[1].stack.last()?;
+        // let self_balance = geth_second_step.stack.last()?;
+        let self_balance = &geth_second_step.memory.0;;
         let callee_address = state.call()?.address;
 
         // CallContext read of the callee_address
@@ -30,16 +34,22 @@ impl Opcode for Selfbalance {
             &mut exec_step,
             callee_address,
             AccountField::Balance,
-            self_balance,
-            self_balance,
+            U256::from_big_endian(self_balance),
+            U256::from_big_endian(self_balance),
         )?;
 
-        // Stack write of self_balance
-        state.stack_write(
-            &mut exec_step,
-            geth_step.stack.last_filled().map(|a| a - 1),
-            self_balance,
-        )?;
+        // Copy result to memory
+        // Read dest offset as the last stack element
+        let dest_offset = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
+        let offset_addr = MemoryAddress::try_from(dest_offset)?;
+
+        // Copy result to memory
+        for i in 0..32 {
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), self_balance[i])?;
+        }
+        let call_ctx = state.call_ctx_mut()?;
+        call_ctx.memory = geth_second_step.memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -47,6 +57,7 @@ impl Opcode for Selfbalance {
 
 #[cfg(test)]
 mod selfbalance_tests {
+    use std::fs;
     use super::*;
     use crate::{
         circuit_input_builder::ExecState,
@@ -63,11 +74,15 @@ mod selfbalance_tests {
 
     #[test]
     fn selfbalance_opcode_impl() {
+        let res_mem_address = 0x7f;
         let code = bytecode! {
+            I32Const[res_mem_address]
             SELFBALANCE
-            STOP
         };
 
+        // TODO dies inside [external-tracer/src/lib.rs:74] on low level string transformation (detect some unconvertable chars/bytes?
+        // TODO compared [trace_string] with [gasprice]'s trace_string - visually the same (expect some data that must be different) + checked with hex reader - the same
+        // TODO tried to clean data from spaces and new lines '\n' - didnt help. when cleaned whitespaces from [gasprice] trace - it started to fatal too
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(
             None,
