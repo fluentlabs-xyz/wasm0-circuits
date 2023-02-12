@@ -19,10 +19,10 @@ impl Opcode for Balance {
         let mut exec_step = state.new_step(step)?;
 
         // Get address result from next step.
-        // let address = &second_step.memory.0;
-        // if address.len() != 20 {
-        //     return Err(Error::InvalidGethExecTrace("there is no address bytes in memory for address opcode"));
-        // }
+        let address = &second_step.memory.0;
+        if address.len() != 20 {
+            return Err(Error::InvalidGethExecTrace("there is no address bytes in memory for address opcode"));
+        }
 
         // Read account address from stack.
         let address_word = step.stack.last()?;
@@ -172,10 +172,15 @@ mod balance_tests {
             // MSTORE(address.to_word())
             // PUSH20(address.to_word())
             I32Const[res_mem_address]
+            I32Const[res_mem_address]
+            MSTORE
+
+            I32Const[res_mem_address]
             I32Const[acc_mem_address]
             BALANCE
             // STOP
         });
+        // let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", code.wasm_binary());
 
         let balance = if exists {
             Word::from(800u64)

@@ -6,6 +6,8 @@ use crate::Error;
 use eth_types::{GethExecStep, ToBigEndian, ToWord, U256};
 use eth_types::evm_types::MemoryAddress;
 
+const BALANCE_BYTES_LENGTH: usize = 32;
+
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Selfbalance;
 
@@ -45,7 +47,7 @@ impl Opcode for Selfbalance {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..32 {
+        for i in 0..BALANCE_BYTES_LENGTH {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), self_balance[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
@@ -64,13 +66,10 @@ mod selfbalance_tests {
         mock::BlockData,
         operation::{AccountOp, CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{
-        bytecode,
-        evm_types::{OpcodeId, StackAddress},
-        geth_types::GethData,
-    };
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
+    use crate::operation::MemoryOp;
 
     #[test]
     fn selfbalance_opcode_impl() {
@@ -107,6 +106,7 @@ mod selfbalance_tests {
         let call_id = builder.block.txs()[0].calls()[0].call_id;
         let callee_address = builder.block.txs()[0].to;
         let self_balance = builder.sdb.get_account(&callee_address).1.balance;
+        let self_balance_bytes = self_balance.to_be_bytes();
 
         assert_eq!(
             {
@@ -146,9 +146,26 @@ mod selfbalance_tests {
                 (operation.rw(), operation.op())
             },
             (
-                RW::WRITE,
-                &StackOp::new(1, StackAddress::from(1023), self_balance)
+                RW::READ,
+                &StackOp::new(1, StackAddress::from(1022), Word::from(res_mem_address))
             )
         );
+        for idx in 0..BALANCE_BYTES_LENGTH {
+            assert_eq!(
+                {
+                    let operation =
+                        &builder.block.container.memory[step.bus_mapping_instance[3 + idx].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::WRITE,
+                    &MemoryOp::new(
+                        1,
+                        MemoryAddress::from(res_mem_address + idx as i32),
+                        self_balance_bytes[idx]
+                    )
+                )
+            );
+        }
     }
 }

@@ -94,6 +94,7 @@ impl Bytecode {
             ("_evm_revert", 2), // 19 TODO
             ("_evm_codesize", 0), // 20
             ("_evm_self_balance", 0), // 21 TODO
+            ("_evm_mstore", 2), // 22
 
             // TODO
             // ("_evm_calldatacopy", 3),
@@ -211,6 +212,7 @@ impl Bytecode {
             OpcodeId::REVERT => Instruction::Call(19),
             OpcodeId::CODESIZE => Instruction::Call(20),
             OpcodeId::SELFBALANCE => Instruction::Call(21),
+            OpcodeId::MSTORE => Instruction::Call(22),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }
