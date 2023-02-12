@@ -9,7 +9,7 @@ use eth_types::GethExecStep;
 
 use super::Opcode;
 
-const CODE_SIZE_BYTE_LENGTH: usize = 4;
+pub const CODE_SIZE_BYTE_LENGTH: usize = 4;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Codesize;

@@ -1242,7 +1242,6 @@ impl FromStr for OpcodeId {
             "evm_basefee" => OpcodeId::BASEFEE,
             "evm_sload" => OpcodeId::SLOAD,
             "evm_sstore" => OpcodeId::SSTORE,
-            "evm_mstore" => OpcodeId::MSTORE,
             "evm_log0" => OpcodeId::LOG0,
             "evm_log1" => OpcodeId::LOG1,
             "evm_log2" => OpcodeId::LOG2,

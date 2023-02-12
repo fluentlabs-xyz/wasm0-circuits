@@ -5,7 +5,7 @@ use crate::operation::CallContextField;
 use crate::Error;
 use eth_types::GethExecStep;
 
-const ORIGIN_BYTE_LENGTH: usize = 20;
+pub const ORIGIN_BYTE_LENGTH: usize = 20;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Origin;

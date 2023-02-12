@@ -5,7 +5,7 @@ use crate::operation::CallContextField;
 use crate::Error;
 use eth_types::{GethExecStep, U256};
 
-const CALL_VALUE_BYTE_LENGTH: usize = 32;
+pub const CALL_VALUE_BYTE_LENGTH: usize = 32;
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the [`OpcodeId::PC`](crate::evm::OpcodeId::PC) `OpcodeId`.

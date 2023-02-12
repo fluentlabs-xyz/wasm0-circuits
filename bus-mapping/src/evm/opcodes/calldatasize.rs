@@ -4,7 +4,7 @@ use crate::{
     Error,
 };
 
-const CALL_DATA_SIZE_BYTE_LENGTH: usize = 4;
+pub const CALL_DATA_SIZE_BYTE_LENGTH: usize = 4;
 
 use eth_types::{GethExecStep, U256};
 use eth_types::evm_types::MemoryAddress;

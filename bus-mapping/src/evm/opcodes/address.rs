@@ -7,6 +7,8 @@ use crate::operation::CallContextField;
 
 use super::Opcode;
 
+pub const ADDRESS_BYTE_LENGTH: usize = 20;
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Address;
 
@@ -21,7 +23,7 @@ impl Opcode for Address {
 
         // Get address result from next step.
         let address = &geth_second_step.memory.0;
-        if address.len() != 20 {
+        if address.len() != ADDRESS_BYTE_LENGTH {
             return Err(Error::InvalidGethExecTrace("there is no address bytes in memory for address opcode"));
         }
 
@@ -39,7 +41,7 @@ impl Opcode for Address {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..20 {
+        for i in 0..ADDRESS_BYTE_LENGTH {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), address[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
@@ -66,8 +68,9 @@ mod address_tests {
 
     #[test]
     fn address_opcode_impl() {
+        let res_mem_address = 0x7f;
         let code = bytecode! {
-            I32Const[0x7f]
+            I32Const[res_mem_address]
             ADDRESS
         };
 
@@ -95,7 +98,7 @@ mod address_tests {
         let call_id = builder.block.txs()[0].calls()[0].call_id;
         let address = block.eth_block.transactions[0].to.unwrap();
         let address_bytes = address.to_fixed_bytes();
-        assert_eq!(step.bus_mapping_instance.len(), 22);
+        assert_eq!(step.bus_mapping_instance.len(), ADDRESS_BYTE_LENGTH + 2);
         assert_eq!(
             {
                 let operation =
@@ -119,10 +122,10 @@ mod address_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), Word::from(0x7f))
+                &StackOp::new(1, StackAddress::from(1022), Word::from(res_mem_address))
             )
         );
-        for idx in 0..20 {
+        for idx in 0..ADDRESS_BYTE_LENGTH {
             assert_eq!(
                 {
                     let operation =
@@ -131,7 +134,7 @@ mod address_tests {
                 },
                 (
                     RW::WRITE,
-                    &MemoryOp::new(1, MemoryAddress::from(0x7f + idx), address_bytes[idx])
+                    &MemoryOp::new(1, MemoryAddress::from(res_mem_address + idx as i32), address_bytes[idx])
                 )
             );
         }

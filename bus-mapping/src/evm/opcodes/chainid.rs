@@ -5,7 +5,7 @@ use crate::Error;
 use crate::operation::CallContextField;
 use super::Opcode;
 
-const CHAIN_ID_BYTE_LENGTH: usize = 32;
+pub const CHAIN_ID_BYTE_LENGTH: usize = 32;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct ChainId;

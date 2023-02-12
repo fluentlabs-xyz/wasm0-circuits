@@ -6,6 +6,8 @@ use crate::Error;
 use eth_types::{GethExecStep, ToAddress, ToWord, H256, U256, ToWordBytes, ToU256, ToLittleEndian};
 use eth_types::evm_types::MemoryAddress;
 
+pub const BALANCE_BYTE_LENGTH: usize = 32;
+
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Balance;
 
@@ -14,24 +16,24 @@ impl Opcode for Balance {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let step = &geth_steps[0];
-        let second_step = &geth_steps[1];
-        let mut exec_step = state.new_step(step)?;
+        let geth_step = &geth_steps[0];
+        let geth_second_step = &geth_steps[1];
+        let mut exec_step = state.new_step(geth_step)?;
 
         // Get address result from next step.
-        let address = &second_step.memory.0;
+        let address = &geth_second_step.memory.0;
         if address.len() != 20 {
             return Err(Error::InvalidGethExecTrace("there is no address bytes in memory for address opcode"));
         }
 
         // Read account address from stack.
-        let address_word = step.stack.last()?;
+        let address_word = geth_step.stack.last()?;
         let address = address_word.to_address();
-        state.stack_read(&mut exec_step, step.stack.last_filled(), address_word)?;
+        state.stack_read(&mut exec_step, geth_step.stack.last_filled(), address_word)?;
 
         // Read account address offset as the last stack element
-        let account_address_offset = step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), account_address_offset)?;
+        let account_address_offset = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), account_address_offset)?;
         let account_address_offset_addr = MemoryAddress::try_from(account_address_offset)?;
         // for i in 0..20 {
         //     state.memory_read(&mut exec_step, account_address_offset_addr.map(|a| a + i), );
@@ -105,17 +107,17 @@ impl Opcode for Balance {
         )?;
 
         // Read dest offset as the (last-1) stack element
-        let dest_offset = step.stack.nth_last(1)?;
-        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
+        let dest_offset = geth_step.stack.nth_last(1)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
         let balance_bytes = balance.to_u256().to_le_bytes();
-        for i in 0..20 {
+        for i in 0..BALANCE_BYTE_LENGTH {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), balance_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = second_step.memory.clone();
+        call_ctx.memory = geth_second_step.memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -128,10 +130,10 @@ mod balance_tests {
     use super::*;
     use crate::circuit_input_builder::ExecState;
     use crate::mock::BlockData;
-    use crate::operation::{AccountOp, CallContextOp, StackOp};
+    use crate::operation::{AccountOp, CallContextOp, MemoryOp, StackOp};
     use eth_types::evm_types::{OpcodeId, StackAddress};
     use eth_types::geth_types::GethData;
-    use eth_types::{address, bytecode, Bytecode, ToWord, Word, U256};
+    use eth_types::{address, bytecode, Bytecode, ToWord, Word, U256, ToBigEndian};
     use keccak256::EMPTY_HASH_LE;
     use mock::TestContext;
     use pretty_assertions::assert_eq;
@@ -152,8 +154,8 @@ mod balance_tests {
     // }
 
     fn test_ok(exists: bool, is_warm: bool) {
-        let res_mem_address = 0x7f;
-        let acc_mem_address = 0x80;
+        let account_mem_address: i32 = 0x7f;
+        let res_mem_address: i32 = account_mem_address + BALANCE_BYTE_LENGTH as i32;
         let address = address!("0xaabbccddee000000000000000000000000000000");
 
         // Pop balance first for warm account.
@@ -161,7 +163,7 @@ mod balance_tests {
         if is_warm {
             code.append(&bytecode! {
                 I32Const[res_mem_address]
-                I32Const[acc_mem_address]
+                I32Const[account_mem_address]
                 BALANCE
                 // PUSH20(address.to_word())
                 // BALANCE
@@ -171,16 +173,16 @@ mod balance_tests {
         code.append(&bytecode! {
             // MSTORE(address.to_word())
             // PUSH20(address.to_word())
-            I32Const[res_mem_address]
-            I32Const[res_mem_address]
-            MSTORE
+            // I32Const[res_mem_address]
+            // I32Const[res_mem_address]
+            // MSTORE
 
             I32Const[res_mem_address]
-            I32Const[acc_mem_address]
+            I32Const[account_mem_address]
             BALANCE
             // STOP
         });
-        // let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", code.wasm_binary());
+        let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", code.wasm_binary());
 
         let balance = if exists {
             Word::from(800u64)
@@ -229,6 +231,8 @@ mod balance_tests {
         let tx_id = 1;
         let transaction = &builder.block.txs()[tx_id - 1];
         let call_id = transaction.calls()[0].call_id;
+        let address_balance = builder.sdb.get_account(&address).1.balance;
+        let address_balance_bytes = address_balance.to_be_bytes();
 
         let indices = transaction
             .steps()
@@ -239,7 +243,7 @@ mod balance_tests {
             .bus_mapping_instance
             .clone();
 
-        let container = builder.block.container;
+        let container = &builder.block.container;
 
         let operation = &container.stack[indices[0].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
@@ -333,5 +337,22 @@ mod balance_tests {
                 value: balance,
             }
         );
+        for idx in 0..BALANCE_BYTE_LENGTH {
+            assert_eq!(
+                {
+                    let operation =
+                        &container.memory[indices[6 + idx].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::WRITE,
+                    &MemoryOp::new(
+                        1,
+                        MemoryAddress::from(res_mem_address + idx as i32),
+                        address_balance_bytes[idx]
+                    )
+                )
+            );
+        }
     }
 }

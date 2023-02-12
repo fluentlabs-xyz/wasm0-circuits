@@ -6,7 +6,7 @@ use crate::Error;
 use eth_types::{GethExecStep, ToBigEndian, ToWord, U256};
 use eth_types::evm_types::MemoryAddress;
 
-const BALANCE_BYTES_LENGTH: usize = 32;
+const SELF_BALANCE_BYTE_LENGTH: usize = 32;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Selfbalance;
@@ -19,7 +19,6 @@ impl Opcode for Selfbalance {
         let geth_step = &geth_steps[0];
         let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
-        // let self_balance = geth_second_step.stack.last()?;
         let self_balance = &geth_second_step.memory.0;;
         let callee_address = state.call()?.address;
 
@@ -41,13 +40,12 @@ impl Opcode for Selfbalance {
         )?;
 
         // Copy result to memory
-        // Read dest offset as the last stack element
         let dest_offset = geth_step.stack.nth_last(0)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..BALANCE_BYTES_LENGTH {
+        for i in 0..SELF_BALANCE_BYTE_LENGTH {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), self_balance[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
@@ -150,7 +148,8 @@ mod selfbalance_tests {
                 &StackOp::new(1, StackAddress::from(1022), Word::from(res_mem_address))
             )
         );
-        for idx in 0..BALANCE_BYTES_LENGTH {
+        for idx in 0..SELF_BALANCE_BYTE_LENGTH {
+            let mem_address = MemoryAddress::from(res_mem_address + idx as i32);
             assert_eq!(
                 {
                     let operation =
@@ -161,7 +160,7 @@ mod selfbalance_tests {
                     RW::WRITE,
                     &MemoryOp::new(
                         1,
-                        MemoryAddress::from(res_mem_address + idx as i32),
+                        mem_address,
                         self_balance_bytes[idx]
                     )
                 )

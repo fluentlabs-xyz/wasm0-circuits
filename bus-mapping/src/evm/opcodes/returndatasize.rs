@@ -5,6 +5,8 @@ use crate::{
     Error,
 };
 
+const RETURN_DATA_SIZE_BYTE_LENGTH: usize = 4;
+
 use eth_types::{GethExecStep, U256};
 
 use super::Opcode;
@@ -34,7 +36,7 @@ impl Opcode for Returndatasize {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..20 {
+        for i in 0..RETURN_DATA_SIZE_BYTE_LENGTH {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
@@ -62,6 +64,7 @@ mod returndatasize_tests {
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
+    use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
 
     #[test]
     fn test_ok() {
@@ -113,7 +116,7 @@ mod returndatasize_tests {
         // };
 
         let code = bytecode! {
-            I32Const[res_mem_address+20]
+            I32Const[res_mem_address+ADDRESS_BYTE_LENGTH as i32]
             ADDRESS
 
             I32Const[res_mem_address]

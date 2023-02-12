@@ -5,7 +5,7 @@ use crate::Error;
 use eth_types::{GethExecStep, U256};
 use eth_types::evm_types::MemoryAddress;
 
-const CALLER_BYTE_LENGTH: usize = 20;
+pub const CALLER_BYTE_LENGTH: usize = 20;
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the [`OpcodeId::PC`](crate::evm::OpcodeId::PC) `OpcodeId`.
