@@ -5,6 +5,7 @@ use crate::operation::{AccountField, CallContextField, TxAccessListAccountOp, RW
 use crate::Error;
 use eth_types::{GethExecStep, ToAddress, ToWord, H256, U256, ToWordBytes, ToU256, ToLittleEndian};
 use eth_types::evm_types::MemoryAddress;
+use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
 
 pub const BALANCE_BYTE_LENGTH: usize = 32;
 
@@ -20,22 +21,22 @@ impl Opcode for Balance {
         let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
 
+        // Read account address from stack.
+        let address_mem_address = geth_step.stack.last()?;
+        state.stack_read(&mut exec_step, geth_step.stack.last_filled(), address_mem_address)?;
+
         // Get address result from next step.
-        let address = &geth_second_step.memory.0;
-        if address.len() != 20 {
+        let address_vec = &geth_second_step.memory.0;
+        if address_vec.len() != ADDRESS_BYTE_LENGTH {
             return Err(Error::InvalidGethExecTrace("there is no address bytes in memory for address opcode"));
         }
-
-        // Read account address from stack.
-        let address_word = geth_step.stack.last()?;
-        let address = address_word.to_address();
-        state.stack_read(&mut exec_step, geth_step.stack.last_filled(), address_word)?;
+        let address = Address::from_slice(address_vec);
 
         // Read account address offset as the last stack element
         let account_address_offset = geth_step.stack.nth_last(0)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), account_address_offset)?;
         let account_address_offset_addr = MemoryAddress::try_from(account_address_offset)?;
-        // for i in 0..20 {
+        // for i in 0..ADDRESS_BYTE_LENGTH {
         //     state.memory_read(&mut exec_step, account_address_offset_addr.map(|a| a + i), );
         // }
 
@@ -125,7 +126,8 @@ impl Opcode for Balance {
 
 #[cfg(test)]
 mod balance_tests {
-    use std::fs;
+    use std::{fs, process};
+    use std::io::Read;
     use ethers_providers::call_raw::state;
     use super::*;
     use crate::circuit_input_builder::ExecState;
@@ -137,6 +139,7 @@ mod balance_tests {
     use keccak256::EMPTY_HASH_LE;
     use mock::TestContext;
     use pretty_assertions::assert_eq;
+    use serde::de::Unexpected::Option;
 
     #[test]
     fn test_balance_of_non_existing_address() {
@@ -182,7 +185,7 @@ mod balance_tests {
             BALANCE
             // STOP
         });
-        let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", code.wasm_binary());
+        // process::exit(0);
 
         let balance = if exists {
             Word::from(800u64)
@@ -190,6 +193,8 @@ mod balance_tests {
             Word::zero()
         };
 
+        let wasm_binary_code = code.wasm_binary_with_data_section(Some(address.0.to_vec()), account_mem_address);
+        // let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", &wasm_binary_code);
         // Get the execution steps from the external tracer.
         let block: GethData = TestContext::<3, 1>::new(
             None,
@@ -198,7 +203,7 @@ mod balance_tests {
                 accs[0]
                     .address(address!("0x0000000000000000000000000000000000000010"))
                     .balance(balance_to_set.clone())
-                    .code(code.wasm_binary().clone());
+                    .code(wasm_binary_code);
                 if exists {
                     accs[1].address(address).balance(balance);
                 } else {

@@ -122,6 +122,7 @@ mod returndatasize_tests {
             I32Const[res_mem_address]
             RETURNDATASIZE
         };
+        // let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", code.wasm_binary());
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(
             None,
