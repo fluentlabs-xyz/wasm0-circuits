@@ -157,16 +157,16 @@ mod balance_tests {
     // }
 
     fn test_ok(exists: bool, is_warm: bool) {
-        let account_mem_address: i32 = 0x7f;
-        let res_mem_address: i32 = account_mem_address + BALANCE_BYTE_LENGTH as i32;
+        let account_mem_address: i32 = 0x0;
+        let res_mem_address: i32 = 0x7f;
         let address = address!("0xaabbccddee000000000000000000000000000000");
 
         // Pop balance first for warm account.
         let mut code = Bytecode::default();
         if is_warm {
             code.append(&bytecode! {
-                I32Const[res_mem_address]
                 I32Const[account_mem_address]
+                I32Const[res_mem_address]
                 BALANCE
                 // PUSH20(address.to_word())
                 // BALANCE
@@ -180,8 +180,8 @@ mod balance_tests {
             // I32Const[res_mem_address]
             // MSTORE
 
-            I32Const[res_mem_address]
             I32Const[account_mem_address]
+            I32Const[res_mem_address]
             BALANCE
             // STOP
         });

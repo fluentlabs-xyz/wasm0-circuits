@@ -116,13 +116,16 @@ mod returndatasize_tests {
         // };
 
         let code = bytecode! {
-            I32Const[res_mem_address+ADDRESS_BYTE_LENGTH as i32]
-            ADDRESS
+            // I32Const[10]
+            // I32Const[20]
+            // ADDRESS
+            I32Const[res_mem_address]
+            SELFBALANCE
 
             I32Const[res_mem_address]
             RETURNDATASIZE
         };
-        // let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", code.wasm_binary());
+        let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", code.wasm_binary());
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(
             None,

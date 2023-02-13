@@ -63,5 +63,9 @@ exp_bench: ## Run Exp Circuit benchmarks
 
 circuit_benches: evm_bench state_bench ## Run All Circuit benchmarks
 
+clear_libc_build:
+	rm -rf target/debug/build/libc-*
+	rm -rf target/release/build/libc-*
+
 
 .PHONY: clippy doc fmt test test_benches test-all evm_bench state_bench circuit_benches help
