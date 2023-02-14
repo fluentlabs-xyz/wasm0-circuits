@@ -99,6 +99,8 @@ impl Bytecode {
             ("_evm_revert", 2), // 19 TODO
             ("_evm_codesize", 0), // 20
             ("_evm_self_balance", 0), // 21
+            ("_evm_extcodehash", 2), // 22
+            ("_evm_extcodesize", 2), // 23
 
             // TODO
             // ("_evm_calldatacopy", 3),
@@ -106,8 +108,6 @@ impl Bytecode {
             // ("_evm_callcode", 0),
             // ("_evm_codecopy", 0),
             // ("_evm_extcodecopy", 0),
-            // ("_evm_extcodehash", 0),
-            // ("_evm_extcodesize", 0),
             // ("_evm_gasprice", 0),
             // ("_evm_log0", 0),
             // ("_evm_log1", 0),
@@ -223,6 +223,8 @@ impl Bytecode {
             OpcodeId::REVERT => Instruction::Call(19),
             OpcodeId::CODESIZE => Instruction::Call(20),
             OpcodeId::SELFBALANCE => Instruction::Call(21),
+            OpcodeId::EXTCODEHASH => Instruction::Call(22),
+            OpcodeId::EXTCODESIZE => Instruction::Call(23),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }
