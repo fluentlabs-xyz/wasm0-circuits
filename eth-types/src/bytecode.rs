@@ -87,18 +87,18 @@ impl Bytecode {
             ("_evm_calldatasize", 0), // 7
             ("_evm_callvalue", 0), // 8
             ("_evm_gasprice", 0), // 9
-            ("_evm_returndatasize", 0), // 10 TODO
-            ("_evm_balance", 2), // 11 TODO
+            ("_evm_returndatasize", 0), // 10 TODO some problems
+            ("_evm_balance", 2), // 11
             ("_evm_number", 0), // 12
             ("_evm_chainid", 0), // 13
-            ("_evm_sload", 0), // 14 TODO
+            ("_evm_sload", 2), // 14 TODO
             ("_evm_sstore", 2), // 15 TODO
             ("_evm_create", 3), // 16 TODO
             ("_evm_create2", 4), // 17 TODO
             ("_evm_return", 2), // 18 TODO
             ("_evm_revert", 2), // 19 TODO
             ("_evm_codesize", 0), // 20
-            ("_evm_self_balance", 0), // 21 TODO
+            ("_evm_self_balance", 0), // 21
 
             // TODO
             // ("_evm_calldatacopy", 3),
