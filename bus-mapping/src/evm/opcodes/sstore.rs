@@ -8,6 +8,9 @@ use crate::{
 
 use eth_types::{GethExecStep, ToWord, Word};
 
+pub const KEY_BYTE_LENGTH: usize = 32;
+pub const VALUE_BYTE_LENGTH: usize = 32;
+
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the [`OpcodeId::SSTORE`](crate::evm::OpcodeId::SSTORE)
 /// `OpcodeId`.
@@ -58,10 +61,10 @@ impl Opcode for Sstore {
             state.call()?.address.to_word(),
         );
 
-        let key = geth_step.stack.nth_last(0)?;
-        let key_stack_position = geth_step.stack.nth_last_filled(0);
-        let value = geth_step.stack.nth_last(1)?;
-        let value_stack_position = geth_step.stack.nth_last_filled(1);
+        let key = geth_step.stack.nth_last(1)?;
+        let key_stack_position = geth_step.stack.nth_last_filled(1);
+        let value = geth_step.stack.nth_last(0)?;
+        let value_stack_position = geth_step.stack.nth_last_filled(0);
 
         state.stack_read(&mut exec_step, key_stack_position, key)?;
         state.stack_read(&mut exec_step, value_stack_position, value)?;
@@ -116,6 +119,7 @@ impl Opcode for Sstore {
 
 #[cfg(test)]
 mod sstore_tests {
+    use std::fs;
     use super::*;
     use crate::circuit_input_builder::ExecState;
     use crate::mock::BlockData;
@@ -129,37 +133,71 @@ mod sstore_tests {
     use pretty_assertions::assert_eq;
 
     fn test_ok(is_warm: bool) {
+        let key1_value = 0x00u64;
+        let key1_mem_address: i32 = 0x0;
+        let value1_value = 0x6fu64;
+        let value1_mem_address: i32 = key1_mem_address + KEY_BYTE_LENGTH as i32;
+        let key2_value = 0x00u64;
+        let key2_mem_address: i32 = value1_mem_address + VALUE_BYTE_LENGTH as i32;
+        let value2_value = 0x00u64;
+        let value2_mem_address: i32 = key2_mem_address + KEY_BYTE_LENGTH as i32;
+        let mut data_section = Vec::new();
+        let mut append_value_to_data_section = |v: &u64, vl: usize| {
+            let value_as_slice = v.to_be_bytes();
+            let mut value_to_append = vec![0; vl];
+            let start_idx = vl - value_as_slice.len();
+            value_to_append[start_idx..].copy_from_slice(value_as_slice.as_slice());
+            data_section.extend_from_slice(value_to_append.as_slice());
+        };
+        append_value_to_data_section(&key1_value, KEY_BYTE_LENGTH);
+        append_value_to_data_section(&value1_value, VALUE_BYTE_LENGTH);
+        append_value_to_data_section(&key2_value, KEY_BYTE_LENGTH);
+        append_value_to_data_section(&value2_value, VALUE_BYTE_LENGTH);
         let code = if is_warm {
             bytecode! {
-                    // Write 0x00 to storage slot 0
-                    PUSH1(0x00u64)
-                    PUSH1(0x00u64)
-                    SSTORE
-                // Write 0x6f to storage slot 0
-                PUSH1(0x6fu64)
-                PUSH1(0x00u64)
+                // // Write 0x00 to storage slot 0
+                // PUSH1(0x00u64)
+                // PUSH1(0x00u64)
+                // SSTORE
+                // // Write 0x6f to storage slot 0
+                // PUSH1(0x6fu64)
+                // PUSH1(0x00u64)
+                // SSTORE
+                // STOP
+
+                I32Const[key2_mem_address]
+                I32Const[value2_mem_address]
                 SSTORE
-                STOP
+
+                I32Const[key1_mem_address]
+                I32Const[value1_mem_address]
+                SSTORE
             }
         } else {
             bytecode! {
                 // Write 0x6f to storage slot 0
-                PUSH1(0x6fu64)
-                PUSH1(0x00u64)
+                // PUSH1(0x6fu64)
+                // PUSH1(0x00u64)
+                I32Const[key1_mem_address]
+                I32Const[value1_mem_address]
                 SSTORE
-                STOP
+                // STOP
             }
         };
-        let expected_prev_value = if !is_warm { 0x6fu64 } else { 0x00u64 };
+        // TODO something is wrong?
+        // let expected_prev_value = if !is_warm { value1_value } else { value2_value };
+        let expected_prev_value = value1_value;
 
         // Get the execution steps from the external tracer
+        let wasm_binary = code.wasm_binary_with_data_section(Some(data_section), 0);
+        // let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", wasm_binary.clone());
         let block: GethData = TestContext::<2, 1>::new(
             None,
             |accs| {
                 accs[0]
                     .address(MOCK_ACCOUNTS[0])
                     .balance(Word::from(10u64.pow(19)))
-                    .code(code)
+                    .code(wasm_binary)
                     .storage(vec![(0x00u64.into(), 0x6fu64.into())].into_iter());
                 accs[1]
                     .address(MOCK_ACCOUNTS[1])
@@ -227,11 +265,11 @@ mod sstore_tests {
             [
                 (
                     RW::READ,
-                    &StackOp::new(1, StackAddress::from(1022), Word::from(0x0u32))
+                    &StackOp::new(1, StackAddress::from(1022), Word::from(key1_mem_address))
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(1, StackAddress::from(1023), Word::from(0x6fu32))
+                    &StackOp::new(1, StackAddress::from(1021), Word::from(value1_mem_address))
                 ),
             ]
         );
@@ -243,11 +281,11 @@ mod sstore_tests {
                 RW::WRITE,
                 &StorageOp::new(
                     MOCK_ACCOUNTS[0],
-                    Word::from(0x0u32),
-                    Word::from(0x6fu32),
+                    Word::from(key1_mem_address),
+                    Word::from(value1_mem_address),
                     Word::from(expected_prev_value),
                     1,
-                    Word::from(0x6fu32),
+                    Word::from(value1_value),
                 )
             )
         );

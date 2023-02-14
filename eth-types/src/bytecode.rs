@@ -62,7 +62,7 @@ impl Bytecode {
         self.wasm_binary_with_data_section(None, 0)
     }
 
-    pub fn wasm_binary_with_data_section(&self, data_section: Option<Vec<u8>>, data_section_mem_address: i32) -> Vec<u8> {
+    pub fn wasm_binary_with_data_section(&self, data_section: Option<Vec<u8>>, data_section_mem_offset: i32) -> Vec<u8> {
         use wasm_encoder::{
             CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
             ImportSection, MemorySection, MemoryType, Module, TypeSection, ValType,
@@ -92,7 +92,7 @@ impl Bytecode {
             ("_evm_number", 0), // 12
             ("_evm_chainid", 0), // 13
             ("_evm_sload", 2), // 14 TODO
-            ("_evm_sstore", 2), // 15 TODO
+            ("_evm_sstore", 2), // 15
             ("_evm_create", 3), // 16 TODO
             ("_evm_create2", 4), // 17 TODO
             ("_evm_return", 2), // 18 TODO
@@ -118,7 +118,6 @@ impl Bytecode {
             // ("_evm_returndatacopy", 0),
             // ("_evm_returndatasize", 0),
             // ("_evm_sload", 0),
-            // ("_evm_sstore", 0),
             // ("_evm_stop", 0),
         ];
         for (func_name, params) in &evm_functions {
@@ -157,7 +156,7 @@ impl Bytecode {
         match data_section {
             Some(v) => {
                 let mut data_section = DataSection::new();
-                data_section.active(0, &ConstExpr::i32_const(data_section_mem_address), v);
+                data_section.active(0, &ConstExpr::i32_const(data_section_mem_offset), v);
                 module.section(&data_section);
             },
             _ => ()
@@ -216,8 +215,8 @@ impl Bytecode {
             OpcodeId::BALANCE => Instruction::Call(11),
             OpcodeId::NUMBER => Instruction::Call(12),
             OpcodeId::CHAINID => Instruction::Call(13),
-            OpcodeId::SSTORE => Instruction::Call(14),
-            OpcodeId::SLOAD => Instruction::Call(15),
+            OpcodeId::SLOAD => Instruction::Call(14),
+            OpcodeId::SSTORE => Instruction::Call(15),
             OpcodeId::CREATE => Instruction::Call(16),
             OpcodeId::CREATE2 => Instruction::Call(17),
             OpcodeId::RETURN => Instruction::Call(18),
