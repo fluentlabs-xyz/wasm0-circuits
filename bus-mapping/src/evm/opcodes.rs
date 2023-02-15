@@ -659,10 +659,9 @@ fn dummy_gen_selfdestruct_ops(
     Ok(vec![exec_step])
 }
 
-pub fn append_value_to_vector_padding(data_section: &mut Vec<u8>, value: &u64, value_size: usize) {
-    let value_as_slice = value.to_be_bytes();
-    let mut value_to_append = vec![0; value_size];
-    let start_idx = value_size - value_as_slice.len();
-    value_to_append[start_idx..].copy_from_slice(value_as_slice.as_slice());
-    data_section.extend_from_slice(value_to_append.as_slice());
+pub fn append_vector_to_vector_with_padding(dest: &mut Vec<u8>, source: &Vec<u8>, source_size_with_padding: usize) {
+    let mut vec_to_append = vec![0; source_size_with_padding];
+    let start_idx = source_size_with_padding - source.len();
+    vec_to_append[start_idx..].copy_from_slice(source.as_slice());
+    dest.extend_from_slice(vec_to_append.as_slice());
 }

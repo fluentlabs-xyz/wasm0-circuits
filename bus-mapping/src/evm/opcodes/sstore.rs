@@ -131,7 +131,7 @@ mod sstore_tests {
     use mock::test_ctx::helpers::tx_from_1_to_0;
     use mock::{TestContext, MOCK_ACCOUNTS};
     use pretty_assertions::assert_eq;
-    use crate::evm::opcodes::append_value_to_vector_padding;
+    use crate::evm::opcodes::append_vector_to_vector_with_padding;
 
     fn test_ok(is_warm: bool) {
         let key1_value = 0x00u64;
@@ -143,10 +143,10 @@ mod sstore_tests {
         let value2_value = 0x00u64;
         let value2_mem_address: i32 = key2_mem_address + KEY_BYTE_LENGTH as i32;
         let mut data_section = Vec::new();
-        append_value_to_vector_padding(&mut data_section, &key1_value, KEY_BYTE_LENGTH);
-        append_value_to_vector_padding(&mut data_section, &value1_value, VALUE_BYTE_LENGTH);
-        append_value_to_vector_padding(&mut data_section, &key2_value, KEY_BYTE_LENGTH);
-        append_value_to_vector_padding(&mut data_section, &value2_value, VALUE_BYTE_LENGTH);
+        append_vector_to_vector_with_padding(&mut data_section, &key1_value.to_be_bytes().to_vec(), KEY_BYTE_LENGTH);
+        append_vector_to_vector_with_padding(&mut data_section, &value1_value.to_be_bytes().to_vec(), VALUE_BYTE_LENGTH);
+        append_vector_to_vector_with_padding(&mut data_section, &key2_value.to_be_bytes().to_vec(), KEY_BYTE_LENGTH);
+        append_vector_to_vector_with_padding(&mut data_section, &value2_value.to_be_bytes().to_vec(), VALUE_BYTE_LENGTH);
         let code = if is_warm {
             bytecode! {
                 // // Write 0x00 to storage slot 0

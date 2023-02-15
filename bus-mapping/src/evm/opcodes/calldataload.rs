@@ -127,7 +127,7 @@ mod calldataload_tests {
     use rand::random;
 
     use crate::{circuit_input_builder::ExecState, mock::BlockData, operation::StackOp};
-    use crate::evm::opcodes::append_value_to_vector_padding;
+    use crate::evm::opcodes::append_vector_to_vector_with_padding;
 
     use super::*;
 
@@ -145,8 +145,14 @@ mod calldataload_tests {
         let (addr_a, addr_b) = (mock::MOCK_ACCOUNTS[0], mock::MOCK_ACCOUNTS[1]);
 
         // code B gets called by code A, so the call is an internal call.
+        let byte_offset_mem_address: i32 = 0x0;
+        let res_mem_address: i32 = 0x7f;
         let code_b = bytecode! {
-            PUSH32(offset)
+            // PUSH32(offset)
+            // CALLDATALOAD
+            // STOP
+            I32Const[byte_offset_mem_address]
+            I32Const[res_mem_address]
             CALLDATALOAD
             STOP
         };
@@ -159,28 +165,35 @@ mod calldataload_tests {
             memory_a.resize(call_data_length, 0);
         }
         let code_a = bytecode! {
-            // populate memory in A's context.
-            PUSH32(Word::from_big_endian(&pushdata))
-            PUSH1(0x00) // offset
-            MSTORE
-            // call addr_b
-            PUSH1(0x00) // retLength
-            PUSH1(0x00) // retOffset
-            PUSH1(call_data_length) // argsLength
-            PUSH1(call_data_offset) // argsOffset
-            PUSH1(0x00) // value
-            PUSH32(addr_b.to_word()) // addr
-            PUSH32(0x1_0000) // gas
-            CALL
-            STOP
+            // // populate memory in A's context.
+            // PUSH32(Word::from_big_endian(&pushdata))
+            // PUSH1(0x00) // offset
+            // MSTORE
+            // // call addr_b
+            // PUSH1(0x00) // retLength
+            // PUSH1(0x00) // retOffset
+            // PUSH1(call_data_length) // argsLength
+            // PUSH1(call_data_offset) // argsOffset
+            // PUSH1(0x00) // value
+            // PUSH32(addr_b.to_word()) // addr
+            // PUSH32(0x1_0000) // gas
+            // CALL
+            // STOP
         };
 
         // Get the execution steps from the external tracer
+        let mut data_section = Vec::new();
+        append_vector_to_vector_with_padding(&mut data_section, &memory_a, INDEX_BYTE_LENGTH);
+        let wasm_code_a = code_a.wasm_binary_with_data_section(Some(data_section),0);
+        let wasm_code_a_bytecode = Bytecode::from_raw_unchecked(wasm_code_a);
+        let wasm_code_b = code_b.wasm_binary();
+        let wasm_code_b_bytecode = Bytecode::from_raw_unchecked(wasm_code_b);
+        // let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", wasm_code.clone());
         let block: GethData = TestContext::<3, 1>::new(
             None,
             |accs| {
-                accs[0].address(addr_b).code(code_b);
-                accs[1].address(addr_a).code(code_a);
+                accs[0].address(addr_b).code(wasm_code_b_bytecode);
+                accs[1].address(addr_a).code(wasm_code_a_bytecode);
                 accs[2]
                     .address(mock::MOCK_ACCOUNTS[2])
                     .balance(Word::from(1u64 << 30));
@@ -208,7 +221,7 @@ mod calldataload_tests {
         let caller_id = builder.block.txs()[0].calls()[step.call_index].caller_id;
 
         // 1 stack read, 3 call context reads, 32 memory reads and 1 stack write.
-        assert_eq!(step.bus_mapping_instance.len(), 37);
+        assert_eq!(step.bus_mapping_instance.len(), CALLDATA_CHUNK_BYTE_LENGTH + 37);
 
         // stack read and write.
         assert_eq!(
@@ -295,9 +308,8 @@ mod calldataload_tests {
             // STOP
         };
         let mut data_section = Vec::new();
-        append_value_to_vector_padding(&mut data_section, &offset, INDEX_BYTE_LENGTH);
+        append_vector_to_vector_with_padding(&mut data_section, &offset.to_be_bytes().to_vec(), INDEX_BYTE_LENGTH);
         let wasm_code = code.wasm_binary_with_data_section(Some(data_section),0);
-        // let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", wasm_code.clone());
         let block: GethData = TestContext::<2, 1>::new(
             None,
             account_0_code_account_1_no_code(Bytecode::from_raw_unchecked(wasm_code)),
@@ -381,7 +393,7 @@ mod calldataload_tests {
                     &MemoryOp{
                         call_id: call_id,
                         address: MemoryAddress::from(res_mem_address + idx as i32),
-                        value: 0x0, // TODO replace value
+                        value: 0x0,
                     }
                 )
             );
@@ -411,24 +423,24 @@ mod calldataload_tests {
         );
     }
 
-    // #[test]
-    // fn calldataload_opcode_internal() {
-    //     let pushdata = rand_bytes(0x08);
-    //     let expected = std::iter::repeat(0)
-    //         .take(0x20 - pushdata.len())
-    //         .chain(pushdata.clone())
-    //         .collect::<Vec<u8>>();
-    //     test_internal_ok(
-    //         0x20, // call data length
-    //         0x00, // call data offset
-    //         0x00, // offset
-    //         pushdata,
-    //         Word::from_big_endian(&expected),
-    //     );
-    //
-    //     let pushdata = rand_bytes(0x10);
-    //     let mut expected = pushdata.clone();
-    //     expected.resize(0x20, 0);
-    //     test_internal_ok(0x20, 0x10, 0x00, pushdata, Word::from_big_endian(&expected));
-    // }
+    #[test]
+    fn calldataload_opcode_internal() {
+        // let pushdata = rand_bytes(0x08);
+        // let expected = std::iter::repeat(0)
+        //     .take(0x20 - pushdata.len())
+        //     .chain(pushdata.clone())
+        //     .collect::<Vec<u8>>();
+        // test_internal_ok(
+        //     0x20, // call data length
+        //     0x00, // call data offset
+        //     0x00, // offset
+        //     pushdata,
+        //     Word::from_big_endian(&expected),
+        // );
+
+        let pushdata = rand_bytes(0x10);
+        let mut expected = pushdata.clone();
+        expected.resize(0x20, 0);
+        test_internal_ok(0x20, 0x10, 0x00, pushdata, Word::from_big_endian(&expected));
+    }
 }
