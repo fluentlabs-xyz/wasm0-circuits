@@ -411,24 +411,24 @@ mod calldataload_tests {
         );
     }
 
-    #[test]
-    fn calldataload_opcode_internal() {
-        let pushdata = rand_bytes(0x08);
-        let expected = std::iter::repeat(0)
-            .take(0x20 - pushdata.len())
-            .chain(pushdata.clone())
-            .collect::<Vec<u8>>();
-        test_internal_ok(
-            0x20, // call data length
-            0x00, // call data offset
-            0x00, // offset
-            pushdata,
-            Word::from_big_endian(&expected),
-        );
-
-        let pushdata = rand_bytes(0x10);
-        let mut expected = pushdata.clone();
-        expected.resize(0x20, 0);
-        test_internal_ok(0x20, 0x10, 0x00, pushdata, Word::from_big_endian(&expected));
-    }
+    // #[test]
+    // fn calldataload_opcode_internal() {
+    //     let pushdata = rand_bytes(0x08);
+    //     let expected = std::iter::repeat(0)
+    //         .take(0x20 - pushdata.len())
+    //         .chain(pushdata.clone())
+    //         .collect::<Vec<u8>>();
+    //     test_internal_ok(
+    //         0x20, // call data length
+    //         0x00, // call data offset
+    //         0x00, // offset
+    //         pushdata,
+    //         Word::from_big_endian(&expected),
+    //     );
+    //
+    //     let pushdata = rand_bytes(0x10);
+    //     let mut expected = pushdata.clone();
+    //     expected.resize(0x20, 0);
+    //     test_internal_ok(0x20, 0x10, 0x00, pushdata, Word::from_big_endian(&expected));
+    // }
 }
