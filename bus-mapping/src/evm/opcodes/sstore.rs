@@ -131,6 +131,7 @@ mod sstore_tests {
     use mock::test_ctx::helpers::tx_from_1_to_0;
     use mock::{TestContext, MOCK_ACCOUNTS};
     use pretty_assertions::assert_eq;
+    use crate::evm::opcodes::append_value_to_vector_padding;
 
     fn test_ok(is_warm: bool) {
         let key1_value = 0x00u64;
@@ -142,17 +143,10 @@ mod sstore_tests {
         let value2_value = 0x00u64;
         let value2_mem_address: i32 = key2_mem_address + KEY_BYTE_LENGTH as i32;
         let mut data_section = Vec::new();
-        let mut append_value_to_data_section = |v: &u64, vl: usize| {
-            let value_as_slice = v.to_be_bytes();
-            let mut value_to_append = vec![0; vl];
-            let start_idx = vl - value_as_slice.len();
-            value_to_append[start_idx..].copy_from_slice(value_as_slice.as_slice());
-            data_section.extend_from_slice(value_to_append.as_slice());
-        };
-        append_value_to_data_section(&key1_value, KEY_BYTE_LENGTH);
-        append_value_to_data_section(&value1_value, VALUE_BYTE_LENGTH);
-        append_value_to_data_section(&key2_value, KEY_BYTE_LENGTH);
-        append_value_to_data_section(&value2_value, VALUE_BYTE_LENGTH);
+        append_value_to_vector_padding(&mut data_section, &key1_value, KEY_BYTE_LENGTH);
+        append_value_to_vector_padding(&mut data_section, &value1_value, VALUE_BYTE_LENGTH);
+        append_value_to_vector_padding(&mut data_section, &key2_value, KEY_BYTE_LENGTH);
+        append_value_to_vector_padding(&mut data_section, &value2_value, VALUE_BYTE_LENGTH);
         let code = if is_warm {
             bytecode! {
                 // // Write 0x00 to storage slot 0
@@ -190,7 +184,6 @@ mod sstore_tests {
 
         // Get the execution steps from the external tracer
         let wasm_binary = code.wasm_binary_with_data_section(Some(data_section), 0);
-        // let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", wasm_binary.clone());
         let block: GethData = TestContext::<2, 1>::new(
             None,
             |accs| {

@@ -64,7 +64,7 @@ mod selfbalance_tests {
         mock::BlockData,
         operation::{AccountOp, CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
     use crate::operation::MemoryOp;
@@ -77,13 +77,11 @@ mod selfbalance_tests {
             SELFBALANCE
         };
 
-        // TODO dies inside [external-tracer/src/lib.rs:74] on low level string transformation (detect some unconvertable chars/bytes?
-        // TODO compared [trace_string] with [gasprice]'s trace_string - visually the same (expect some data that must be different) + checked with hex reader - the same
-        // TODO tried to clean data from spaces and new lines '\n' - didnt help. when cleaned whitespaces from [gasprice] trace - it started to fatal too
         // Get the execution steps from the external tracer
+        let wasm_bytecode = Bytecode::from_raw_unchecked(code.wasm_binary());
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(code),
+            account_0_code_account_1_no_code(wasm_bytecode),
             tx_from_1_to_0,
             |block, _tx| block.number(0xcafeu64),
         )

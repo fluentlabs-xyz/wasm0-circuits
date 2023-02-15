@@ -30,15 +30,15 @@ mod chainid;
 mod codecopy;
 mod codesize;
 mod create;
-mod dup;
+// mod dup;
 mod exp;
 mod extcodecopy;
 mod extcodehash;
 mod extcodesize;
 mod gasprice;
 mod logs;
-mod mload;
-mod mstore;
+// mod mload;
+// mod mstore;
 mod number;
 mod origin;
 mod return_revert;
@@ -51,7 +51,7 @@ mod sstore;
 mod stackonlyop;
 mod stacktomemoryop;
 mod stop;
-mod swap;
+// mod swap;
 
 mod error_invalid_jump;
 mod error_oog_call;
@@ -79,8 +79,8 @@ use extcodehash::Extcodehash;
 use extcodesize::Extcodesize;
 use gasprice::GasPrice;
 use logs::Log;
-use mload::Mload;
-use mstore::Mstore;
+// use mload::Mload;
+// use mstore::Mstore;
 use origin::Origin;
 use return_revert::ReturnRevert;
 use returndatacopy::Returndatacopy;
@@ -192,9 +192,9 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::SELFBALANCE => Selfbalance::gen_associated_ops,
         OpcodeId::BASEFEE => StackToMemoryOpcode::gen_associated_ops,
         OpcodeId::POP => StackOnlyOpcode::<1, 0>::gen_associated_ops,
-        OpcodeId::MLOAD => Mload::gen_associated_ops,
-        OpcodeId::MSTORE => Mstore::<false>::gen_associated_ops,
-        OpcodeId::MSTORE8 => Mstore::<true>::gen_associated_ops,
+        // OpcodeId::MLOAD => Mload::gen_associated_ops,
+        // OpcodeId::MSTORE => Mstore::<false>::gen_associated_ops,
+        // OpcodeId::MSTORE8 => Mstore::<true>::gen_associated_ops,
         OpcodeId::SLOAD => Sload::gen_associated_ops,
         OpcodeId::SSTORE => Sstore::gen_associated_ops,
         OpcodeId::JUMP => StackOnlyOpcode::<1, 0>::gen_associated_ops,
@@ -657,4 +657,12 @@ fn dummy_gen_selfdestruct_ops(
 
     state.handle_return(geth_step)?;
     Ok(vec![exec_step])
+}
+
+pub fn append_value_to_vector_padding(data_section: &mut Vec<u8>, value: &u64, value_size: usize) {
+    let value_as_slice = value.to_be_bytes();
+    let mut value_to_append = vec![0; value_size];
+    let start_idx = value_size - value_as_slice.len();
+    value_to_append[start_idx..].copy_from_slice(value_as_slice.as_slice());
+    data_section.extend_from_slice(value_to_append.as_slice());
 }

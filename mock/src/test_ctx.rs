@@ -258,6 +258,7 @@ fn gen_geth_traces<const NACC: usize, const NTX: usize>(
 /// Collection of helper functions which contribute to specific rutines on the
 /// builder pattern used to construct [`TestContext`]s.
 pub mod helpers {
+    use std::fs;
     use super::*;
     use crate::MOCK_ACCOUNTS;
 
@@ -267,12 +268,11 @@ pub mod helpers {
     /// - 0x000000000000000000000000000000000cafe222
     /// And injects the provided bytecode into the first one.
     pub fn account_0_code_account_1_no_code(code: Bytecode) -> impl FnOnce([&mut MockAccount; 2]) {
-        let wasm_binary = code.wasm_binary();
         |accs| {
             accs[0]
                 .address(MOCK_ACCOUNTS[0])
                 .balance(eth(10))
-                .code(wasm_binary);
+                .code(code);
             accs[1].address(MOCK_ACCOUNTS[1]).balance(eth(10));
         }
     }

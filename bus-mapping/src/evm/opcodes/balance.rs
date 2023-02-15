@@ -190,7 +190,7 @@ mod balance_tests {
             Word::zero()
         };
 
-        let wasm_binary_code = code.wasm_binary_with_data_section(Some(address.0.to_vec()), account_mem_address);
+        let wasm_binary_vec = code.wasm_binary_with_data_section(Some(address.0.to_vec()), account_mem_address);
         // Get the execution steps from the external tracer.
         let block: GethData = TestContext::<3, 1>::new(
             None,
@@ -199,7 +199,7 @@ mod balance_tests {
                 accs[0]
                     .address(address!("0x0000000000000000000000000000000000000010"))
                     .balance(balance_to_set.clone())
-                    .code(wasm_binary_code);
+                    .code(wasm_binary_vec);
                 if exists {
                     accs[1].address(address).balance(balance);
                 } else {

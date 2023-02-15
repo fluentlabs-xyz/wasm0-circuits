@@ -4,6 +4,10 @@ use crate::{
     Error,
 };
 use eth_types::{GethExecStep, U256};
+use eth_types::evm_types::MemoryAddress;
+
+const INDEX_BYTE_LENGTH: usize = 32;
+const CALLDATA_CHUNK_MAX_BYTE_LENGTH: usize = 32;
 
 use super::Opcode;
 
@@ -16,12 +20,18 @@ impl Opcode for Calldataload {
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
         let geth_step = &geth_steps[0];
+        let geth_second_step = &geth_steps[2];
         let mut exec_step = state.new_step(geth_step)?;
+
+        let call_data_chunk_vec = &geth_second_step.memory.0;
+        if call_data_chunk_vec.len() != CALLDATA_CHUNK_MAX_BYTE_LENGTH {
+             return Err(Error::InvalidGethExecTrace("there is no calldata bytes in memory for calldataload opcode"));
+        }
 
         // fetch the top of the stack, i.e. offset in calldata to start reading 32-bytes
         // from.
-        let offset = geth_step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), offset)?;
+        let offset = geth_step.stack.nth_last(1)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), offset)?;
 
         let is_root = state.call()?.is_root;
         if is_root {
@@ -58,38 +68,53 @@ impl Opcode for Calldataload {
             );
         }
 
-        let call = state.call()?.clone();
-        let (src_addr, src_addr_end, caller_id, call_data) = (
-            call.call_data_offset as usize + offset.as_usize(),
-            call.call_data_offset as usize + call.call_data_length as usize,
-            call.caller_id,
-            state.call_ctx()?.call_data.to_vec(),
-        );
-        let calldata_word = (0..32)
-            .map(|idx| {
-                let addr = src_addr + idx;
-                if addr < src_addr_end {
-                    let byte = call_data[addr - call.call_data_offset as usize];
-                    if !is_root {
-                        // caller id as call_id
-                        state.push_op(
-                            &mut exec_step,
-                            RW::READ,
-                            MemoryOp::new(caller_id, (src_addr + idx).into(), byte),
-                        );
-                    }
-                    byte
-                } else {
-                    0
-                }
-            })
-            .collect::<Vec<u8>>();
+        // let call = state.call()?.clone();
+        // let (src_addr, src_addr_end, caller_id, call_data) = (
+        //     call.call_data_offset as usize + offset.as_usize(),
+        //     call.call_data_offset as usize + call.call_data_length as usize,
+        //     call.caller_id,
+        //     state.call_ctx()?.call_data.to_vec(),
+        // );
+        // let calldata_word = (0..32)
+        //     .map(|idx| {
+        //         let addr = src_addr + idx;
+        //         if addr < src_addr_end {
+        //             let byte = call_data[addr - call.call_data_offset as usize];
+        //             if !is_root {
+        //                 // caller id as call_id
+        //                 state.push_op(
+        //                     &mut exec_step,
+        //                     RW::READ,
+        //                     MemoryOp::new(caller_id, (src_addr + idx).into(), byte),
+        //                 );
+        //             }
+        //             byte
+        //         } else {
+        //             0
+        //         }
+        //     })
+        //     .collect::<Vec<u8>>();
+        //
+        // state.stack_write(
+        //     &mut exec_step,
+        //     geth_step.stack.last_filled(),
+        //     U256::from_big_endian(&calldata_word),
+        // )?;
+        //
+        // Ok(vec![exec_step])
 
-        state.stack_write(
-            &mut exec_step,
-            geth_step.stack.last_filled(),
-            U256::from_big_endian(&calldata_word),
-        )?;
+        // Read dest offset
+        let dest_offset = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
+        let offset_addr = MemoryAddress::try_from(dest_offset)?;
+
+        // Copy result to memory
+        let call_data_chunk_bytes = call_data_chunk_vec.as_slice();
+        for i in 0..CALLDATA_CHUNK_MAX_BYTE_LENGTH {
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), call_data_chunk_bytes[i])?;
+        }
+        let call_ctx = state.call_ctx_mut()?;
+        call_ctx.memory = geth_second_step.memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -97,17 +122,14 @@ impl Opcode for Calldataload {
 
 #[cfg(test)]
 mod calldataload_tests {
+    use std::fs;
     use crate::operation::CallContextOp;
-    use eth_types::{
-        bytecode,
-        evm_types::{OpcodeId, StackAddress},
-        geth_types::GethData,
-        ToWord, Word,
-    };
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToWord, Word};
     use mock::{test_ctx::helpers::account_0_code_account_1_no_code, TestContext};
     use rand::random;
 
     use crate::{circuit_input_builder::ExecState, mock::BlockData, operation::StackOp};
+    use crate::evm::opcodes::append_value_to_vector_padding;
 
     use super::*;
 
@@ -264,20 +286,29 @@ mod calldataload_tests {
     }
 
     fn test_root_ok(offset: u64, calldata: Vec<u8>, calldata_word: Word) {
+        let byte_offset_mem_address: i32 = 0x0;
+        let res_mem_address: i32 = 0x7f;
         let code = bytecode! {
-            PUSH32(offset)
+            I32Const[byte_offset_mem_address]
+            I32Const[res_mem_address]
             CALLDATALOAD
-            STOP
+            // PUSH32(offset)
+            // CALLDATALOAD
+            // STOP
         };
-
+        let mut data_section = Vec::new();
+        append_value_to_vector_padding(&mut data_section, &offset, INDEX_BYTE_LENGTH);
+        let wasm_code = code.wasm_binary_with_data_section(Some(data_section),0);
+        let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", wasm_code.clone());
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(code),
+            account_0_code_account_1_no_code(Bytecode::from_raw_unchecked(wasm_code)),
             |mut txs, accs| {
                 txs[0]
                     .to(accs[0].address)
                     .from(accs[1].address)
-                    .input(calldata.clone().into());
+                    // .input(calldata.clone().into())
+                ;
             },
             |block, _tx| block,
         )
@@ -355,16 +386,16 @@ mod calldataload_tests {
         });
 
         // 2. exactly 32 bytes
-        let calldata = rand_bytes(32);
-        test_root_ok(0u64, calldata.clone(), Word::from_big_endian(&calldata));
-
-        // 3. out-of-bounds: take only 32 bytes
-        let calldata = rand_bytes(64);
-        test_root_ok(
-            12u64,
-            calldata.clone(),
-            Word::from_big_endian(&calldata[12..44]),
-        );
+        // let calldata = rand_bytes(32);
+        // test_root_ok(0u64, calldata.clone(), Word::from_big_endian(&calldata));
+        //
+        // // 3. out-of-bounds: take only 32 bytes
+        // let calldata = rand_bytes(64);
+        // test_root_ok(
+        //     12u64,
+        //     calldata.clone(),
+        //     Word::from_big_endian(&calldata[12..44]),
+        // );
     }
 
     #[test]

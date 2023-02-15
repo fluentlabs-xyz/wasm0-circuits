@@ -87,7 +87,7 @@ impl Opcode for Extcodesize {
         //
         // Ok(vec![exec_step])
 
-        // Read dest offset as the (last-1) stack element
+        // Read dest offset
         let dest_offset = geth_step.stack.nth_last(0)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
@@ -180,15 +180,14 @@ mod extcodesize_tests {
         });
 
         // Get the execution steps from the external tracer.
-        let wasm_binary = code.wasm_binary_with_data_section(Some(account.address.0.to_vec()), account_mem_address);
-        // let _ = fs::write("/home/bfday/gitANKR/wasm0/zkwasm-circuits/tmp/w.wasm", wasm_binary.clone());
+        let wasm_binary_vec= code.wasm_binary_with_data_section(Some(account.address.0.to_vec()), account_mem_address);
         let block: GethData = TestContext::<3, 1>::new(
             None,
             |accs| {
                 accs[0]
                     .address(MOCK_ACCOUNTS[0])
                     .balance(*MOCK_1_ETH)
-                    .code(wasm_binary);
+                    .code(wasm_binary_vec);
                 if exists {
                     accs[1].address(account.address).code(account.code.clone());
                 } else {

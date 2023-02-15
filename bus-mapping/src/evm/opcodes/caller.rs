@@ -47,12 +47,13 @@ impl Opcode for Caller {
 
 #[cfg(test)]
 mod caller_tests {
+    use std::fs;
     use super::*;
     use crate::{
         circuit_input_builder::ExecState, mock::BlockData, operation::CallContextOp,
         operation::StackOp, operation::RW,
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToU256, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToU256, Word};
 
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
@@ -64,12 +65,14 @@ mod caller_tests {
         let code = bytecode! {
             I32Const[res_mem_address]
             CALLER
+            STOP
         };
 
         // Get the execution steps from the external tracer
+        let wasm_bytecode = Bytecode::from_raw_unchecked(code.wasm_binary());
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(code),
+            account_0_code_account_1_no_code(wasm_bytecode),
             tx_from_1_to_0,
             |block, _tx| block.number(0xcafeu64),
         )

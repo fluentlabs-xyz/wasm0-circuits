@@ -51,7 +51,7 @@ mod calldatasize_tests {
         mock::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, U256};
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, U256};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
     use eth_types::evm_types::MemoryAddress;
@@ -66,9 +66,10 @@ mod calldatasize_tests {
             CALLDATASIZE
         };
         // Get the execution steps from the external tracer
+        let wasm_bytecode = Bytecode::from_raw_unchecked(code.wasm_binary());
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(code),
+            account_0_code_account_1_no_code(wasm_bytecode),
             tx_from_1_to_0,
             |block, _tx| block.number(0xcafeu64),
         )

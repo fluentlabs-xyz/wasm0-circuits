@@ -72,9 +72,10 @@ impl Bytecode {
         let mut types = TypeSection::new();
         types.function(vec![ValType::I32], vec![]); // 0
         types.function(vec![], vec![]); // 1
-        types.function(vec![ValType::I32, ValType::I32], vec![]); // 2
-        types.function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]); // 3
-        types.function(vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32], vec![]); // 4
+        types.function(vec![ValType::I32; 2], vec![]); // 2
+        types.function(vec![ValType::I32; 3], vec![]); // 3
+        types.function(vec![ValType::I32; 4], vec![]); // 4
+        types.function(vec![ValType::I32; 5], vec![]); // 5
         let mut imports = ImportSection::new();
         let evm_functions: Vec<(&str, u32)> = vec![
             ("_evm_stop", 1), // 0
@@ -93,14 +94,15 @@ impl Bytecode {
             ("_evm_chainid", 0), // 13
             ("_evm_sload", 2), // 14 TODO
             ("_evm_sstore", 2), // 15
-            ("_evm_create", 3), // 16 TODO
-            ("_evm_create2", 4), // 17 TODO
+            ("_evm_create", 4), // 16 TODO
+            ("_evm_create2", 5), // 17 TODO
             ("_evm_return", 2), // 18 TODO
             ("_evm_revert", 2), // 19 TODO
             ("_evm_codesize", 0), // 20
             ("_evm_self_balance", 0), // 21
             ("_evm_extcodehash", 2), // 22
             ("_evm_extcodesize", 2), // 23
+            ("_evm_calldataload", 2), // 24 TODO
 
             // TODO
             // ("_evm_calldatacopy", 3),
@@ -225,6 +227,7 @@ impl Bytecode {
             OpcodeId::SELFBALANCE => Instruction::Call(21),
             OpcodeId::EXTCODEHASH => Instruction::Call(22),
             OpcodeId::EXTCODESIZE => Instruction::Call(23),
+            OpcodeId::CALLDATALOAD => Instruction::Call(24),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }

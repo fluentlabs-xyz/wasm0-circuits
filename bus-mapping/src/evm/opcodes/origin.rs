@@ -55,7 +55,7 @@ mod origin_tests {
         operation::{CallContextField, CallContextOp, StackOp, RW},
         Error,
     };
-    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, ToBigEndian, ToWord, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::StackAddress, geth_types::GethData, ToBigEndian, ToWord, Word};
     use mock::{
         test_ctx::{helpers::*, TestContext},
         MOCK_ACCOUNTS,
@@ -74,9 +74,10 @@ mod origin_tests {
         };
 
         // Get the execution steps from the external tracer
+        let wasm_bytecode = Bytecode::from_raw_unchecked(code.wasm_binary());
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(code),
+            account_0_code_account_1_no_code(wasm_bytecode),
             tx_from_1_to_0,
             |block, _tx| block.number(0xcafeu64),
         )
