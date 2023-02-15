@@ -148,6 +148,7 @@ mod balance_tests {
     use mock::TestContext;
     use pretty_assertions::assert_eq;
     use serde::de::Unexpected::Option;
+    use eth_types::bytecode::DataSectionDescriptor;
 
     #[test]
     fn test_balance_of_non_existing_address() {
@@ -190,7 +191,11 @@ mod balance_tests {
             Word::zero()
         };
 
-        let wasm_binary_vec = code.wasm_binary_with_data_section(Some(address.0.to_vec()), account_mem_address);
+        let wasm_binary_vec = code.wasm_binary_with_data_sections(Some(vec![DataSectionDescriptor {
+            memory_index: 0,
+            mem_offset: account_mem_address,
+            data: address.0.to_vec(),
+        }]));
         // Get the execution steps from the external tracer.
         let block: GethData = TestContext::<3, 1>::new(
             None,

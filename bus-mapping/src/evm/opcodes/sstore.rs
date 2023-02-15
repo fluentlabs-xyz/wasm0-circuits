@@ -131,6 +131,7 @@ mod sstore_tests {
     use mock::test_ctx::helpers::tx_from_1_to_0;
     use mock::{TestContext, MOCK_ACCOUNTS};
     use pretty_assertions::assert_eq;
+    use eth_types::bytecode::DataSectionDescriptor;
     use crate::evm::opcodes::append_vector_to_vector_with_padding;
 
     fn test_ok(is_warm: bool) {
@@ -183,7 +184,11 @@ mod sstore_tests {
         let expected_prev_value = value1_value;
 
         // Get the execution steps from the external tracer
-        let wasm_binary = code.wasm_binary_with_data_section(Some(data_section), 0);
+        let wasm_binary = code.wasm_binary_with_data_sections(Some(vec![DataSectionDescriptor {
+            memory_index: 0,
+            mem_offset: key1_mem_address,
+            data: data_section,
+        }]));
         let block: GethData = TestContext::<2, 1>::new(
             None,
             |accs| {

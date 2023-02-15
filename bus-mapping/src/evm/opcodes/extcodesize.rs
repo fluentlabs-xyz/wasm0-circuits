@@ -117,6 +117,7 @@ mod extcodesize_tests {
     use ethers_core::utils::keccak256;
     use mock::{TestContext, MOCK_1_ETH, MOCK_ACCOUNTS, MOCK_CODES};
     use pretty_assertions::assert_eq;
+    use eth_types::bytecode::DataSectionDescriptor;
 
     #[test]
     fn test_extcodesize_opcode_empty_acc() {
@@ -180,7 +181,11 @@ mod extcodesize_tests {
         });
 
         // Get the execution steps from the external tracer.
-        let wasm_binary_vec= code.wasm_binary_with_data_section(Some(account.address.0.to_vec()), account_mem_address);
+        let wasm_binary_vec = code.wasm_binary_with_data_sections(Some(vec![DataSectionDescriptor {
+            memory_index: 0,
+            mem_offset: account_mem_address,
+            data: account.address.0.to_vec(),
+        }]));
         let block: GethData = TestContext::<3, 1>::new(
             None,
             |accs| {

@@ -14,6 +14,14 @@ pub enum Error {
     InvalidAsmError(String),
 }
 
+/// Helper struct that represents a single data section in wasm binary
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DataSectionDescriptor {
+    pub memory_index: u32,
+    pub mem_offset: i32,
+    pub data: Vec<u8>,
+}
+
 /// Helper struct that represents a single element in a bytecode.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct BytecodeElement {
@@ -59,10 +67,10 @@ impl Bytecode {
     }
 
     pub fn wasm_binary(&self) -> Vec<u8> {
-        self.wasm_binary_with_data_section(None, 0)
+        self.wasm_binary_with_data_sections(None)
     }
 
-    pub fn wasm_binary_with_data_section(&self, data_section: Option<Vec<u8>>, data_section_mem_offset: i32) -> Vec<u8> {
+    pub fn wasm_binary_with_data_sections(&self, data_section_descriptors: Option<Vec<DataSectionDescriptor>>) -> Vec<u8> {
         use wasm_encoder::{
             CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
             ImportSection, MemorySection, MemoryType, Module, TypeSection, ValType,
@@ -155,11 +163,13 @@ impl Bytecode {
         module.section(&memories);
         module.section(&exports);
         module.section(&codes);
-        match data_section {
-            Some(v) => {
-                let mut data_section = DataSection::new();
-                data_section.active(0, &ConstExpr::i32_const(data_section_mem_offset), v);
-                module.section(&data_section);
+        match data_section_descriptors {
+            Some(vec) => {
+                for dsd in vec {
+                    let mut data_section = DataSection::new();
+                    data_section.active(dsd.memory_index, &ConstExpr::i32_const(dsd.mem_offset), dsd.data.clone());
+                    module.section(&data_section);
+                }
             },
             _ => ()
         };

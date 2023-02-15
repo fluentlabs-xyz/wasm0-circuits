@@ -122,6 +122,7 @@ mod extcodehash_tests {
     use ethers_core::utils::keccak256;
     use mock::TestContext;
     use pretty_assertions::assert_eq;
+    use eth_types::bytecode::DataSectionDescriptor;
 
     #[test]
     fn cold_empty_account() -> Result<(), Error> {
@@ -180,7 +181,11 @@ mod extcodehash_tests {
         }
 
         // Get the execution steps from the external tracer
-        let wasm_binary = code.wasm_binary_with_data_section(Some(external_address.0.to_vec()), external_address_mem_address);
+        let wasm_binary = code.wasm_binary_with_data_sections(Some(vec![DataSectionDescriptor {
+            memory_index: 0,
+            mem_offset: external_address_mem_address,
+            data: external_address.0.to_vec(),
+        }]));
         let block: GethData = TestContext::<3, 1>::new(
             None,
             |accs| {
