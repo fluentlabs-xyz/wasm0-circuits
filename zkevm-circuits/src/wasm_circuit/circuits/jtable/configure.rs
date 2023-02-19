@@ -4,7 +4,6 @@ use crate::wasm_circuit::{
 };
 use crate::{constant, constant_from, fixed_curr};
 use halo2_proofs::{
-    arithmetic::FieldExt,
     plonk::{Advice, Column, ConstraintSystem, Expression, VirtualCells},
 };
 use eth_types::Field;

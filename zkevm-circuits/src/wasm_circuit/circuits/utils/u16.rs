@@ -1,7 +1,6 @@
 use super::Context;
 use crate::wasm_circuit::{circuits::rtable::RangeTableConfig};
 use halo2_proofs::{
-    arithmetic::FieldExt,
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, VirtualCells},
 };
 use std::marker::PhantomData;

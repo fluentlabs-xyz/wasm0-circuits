@@ -2,7 +2,6 @@ use super::*;
 use crate::wasm_circuit::circuits::utils::Context;
 
 use halo2_proofs::{
-    arithmetic::FieldExt,
     plonk::{Error, Expression, VirtualCells},
 };
 use eth_types::Field;

@@ -2,7 +2,7 @@ use std::{env, sync::Mutex};
 use lazy_static::lazy_static;
 
 pub const VAR_COLUMNS: usize = 19;
-pub const IMTABLE_COLOMNS: usize = 2;
+pub const IMTABLE_COLUMNS: usize = 2;
 
 pub const POW_TABLE_LIMIT: u64 = 128;
 

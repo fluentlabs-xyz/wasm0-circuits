@@ -1,13 +1,12 @@
 use self::{
     brtable::{BrTableChip, BrTableConfig},
-    config::{IMTABLE_COLOMNS, VAR_COLUMNS},
+    config::{IMTABLE_COLUMNS, VAR_COLUMNS},
     etable_compact::{EventTableChip, EventTableConfig},
     jtable::{JumpTableChip, JumpTableConfig},
     mtable_compact::{MemoryTableChip, MemoryTableConfig},
 };
 use crate::wasm_circuit::{
     circuits::{
-        config::zkwasm_k,
         imtable::{InitMemoryTableConfig, MInitTableChip},
         itable::{InstructionTableChip, InstructionTableConfig},
         rtable::{RangeTableChip, RangeTableConfig},
@@ -15,7 +14,6 @@ use crate::wasm_circuit::{
     },
 };
 use halo2_proofs::{
-    arithmetic::FieldExt,
     circuit::{Layouter, SimpleFloorPlanner},
     plonk::{
         create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ConstraintSystem, Error,
@@ -25,14 +23,10 @@ use halo2_proofs::{
     transcript::{Blake2bRead, Blake2bWrite, Challenge255},
 };
 use num_bigint::BigUint;
-use rand::rngs::OsRng;
-use crate::wasm_circuit::specs::{host_function::HostPlugin, itable::OpcodeClassPlain, ExecutionTable, Tables};
+use crate::wasm_circuit::specs::{itable::OpcodeClassPlain, ExecutionTable, Tables};
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs::File,
-    io::{Cursor, Read},
+    collections::{BTreeSet},
     marker::PhantomData,
-    path::PathBuf,
 };
 use eth_types::Field;
 
@@ -134,7 +128,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         let rtable = RangeTableConfig::configure([0; 7].map(|_| meta.lookup_table_column()));
         let itable = InstructionTableConfig::configure(meta.lookup_table_column());
         let imtable = InitMemoryTableConfig::configure(
-            [0; IMTABLE_COLOMNS].map(|_| meta.lookup_table_column()),
+            [0; IMTABLE_COLUMNS].map(|_| meta.lookup_table_column()),
         );
         let mtable =
             MemoryTableConfig::configure(meta, &mut cols, &rtable, &imtable, &circuit_configure);

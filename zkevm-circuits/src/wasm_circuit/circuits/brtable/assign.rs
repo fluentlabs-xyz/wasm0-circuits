@@ -1,4 +1,4 @@
-use halo2_proofs::{arithmetic::FieldExt, circuit::Layouter, plonk::Error};
+use halo2_proofs::{circuit::Layouter, plonk::Error};
 use halo2_proofs::circuit::Value;
 use eth_types::Field;
 use crate::wasm_circuit::specs::brtable::{BrTable, ElemTable};

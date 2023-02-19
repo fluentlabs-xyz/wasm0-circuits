@@ -5,7 +5,6 @@ use crate::wasm_circuit::{
     instance_curr,
 };
 use halo2_proofs::{
-    arithmetic::FieldExt,
     circuit::Layouter,
     plonk::{Column, ConstraintSystem, Error, Expression, Fixed, Instance, VirtualCells},
 };

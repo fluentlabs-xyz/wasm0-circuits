@@ -1,5 +1,4 @@
 use halo2_proofs::{
-    arithmetic::FieldExt,
     plonk::{ConstraintSystem, Expression, TableColumn, VirtualCells},
 };
 use std::marker::PhantomData;

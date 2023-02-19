@@ -3,7 +3,6 @@ use super::config::max_jtable_rows;
 use super::rtable::RangeTableConfig;
 use super::utils::bn_to_field;
 use super::utils::Context;
-use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Cell, Value};
 use halo2_proofs::plonk::Advice;
 use halo2_proofs::plonk::Column;

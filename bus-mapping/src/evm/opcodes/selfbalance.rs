@@ -1,9 +1,10 @@
-use std::io::Read;
 use super::Opcode;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::operation::{AccountField, CallContextField};
 use crate::Error;
-use eth_types::{GethExecStep, ToBigEndian, ToWord, U256};
+use eth_types::GethExecStep;
+use eth_types::ToWord;
+use eth_types::U256;
 use eth_types::evm_types::MemoryAddress;
 
 const SELF_BALANCE_BYTE_LENGTH: usize = 32;
@@ -19,7 +20,7 @@ impl Opcode for Selfbalance {
         let geth_step = &geth_steps[0];
         let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
-        let self_balance = &geth_second_step.memory.0;;
+        let self_balance = &geth_second_step.memory.0;
         let callee_address = state.call()?.address;
 
         // CallContext read of the callee_address
@@ -57,14 +58,13 @@ impl Opcode for Selfbalance {
 
 #[cfg(test)]
 mod selfbalance_tests {
-    use std::fs;
     use super::*;
     use crate::{
         circuit_input_builder::ExecState,
         mock::BlockData,
         operation::{AccountOp, CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
     use crate::operation::MemoryOp;

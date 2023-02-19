@@ -2,7 +2,6 @@ use super::config::zkwasm_k;
 use super::config::POW_TABLE_LIMIT;
 use super::utils::bn_to_field;
 use crate::wasm_circuit::traits::circuits::bit_range_table::BitRangeTable;
-use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Value};
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;

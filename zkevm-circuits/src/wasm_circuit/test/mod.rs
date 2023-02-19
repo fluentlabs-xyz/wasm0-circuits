@@ -2,10 +2,8 @@ use crate::wasm_circuit::{
     circuits::{config::zkwasm_k, TestCircuit},
 };
 
-use halo2_proofs::{arithmetic::FieldExt, dev::MockProver};
+use halo2_proofs::{dev::MockProver};
 use crate::wasm_circuit::specs::Tables;
-use std::collections::HashMap;
-use halo2_proofs::halo2curves::pasta::Fp;
 use halo2_proofs::plonk::Error;
 use eth_types::Field;
 
