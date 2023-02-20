@@ -21,7 +21,6 @@ use crate::wasm_circuit::circuits::{
     utils::bn_to_field,
 };
 use halo2_proofs::{
-    arithmetic::FieldExt,
     circuit::Cell,
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
 };

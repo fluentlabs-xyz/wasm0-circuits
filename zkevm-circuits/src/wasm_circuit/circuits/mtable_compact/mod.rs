@@ -1,4 +1,4 @@
-use self::configure::MemoryTableConstriants;
+use self::configure::MemoryTableConstraints;
 use super::{
     config::max_mtable_rows,
     imtable::InitMemoryTableConfig,
@@ -6,9 +6,8 @@ use super::{
     utils::{row_diff::RowDiffConfig, Context},
     CircuitConfigure,
 };
-use crate::wasm_circuit::circuits::{mtable_compact::configure::STEP_SIZE, IMTABLE_COLOMNS};
+use crate::wasm_circuit::circuits::{mtable_compact::configure::STEP_SIZE, IMTABLE_COLUMNS};
 use halo2_proofs::{
-    arithmetic::FieldExt,
     circuit::Cell,
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed},
 };
@@ -213,7 +212,7 @@ impl<F: Field> MemoryTableChip<F> {
                     assign_advice!(
                         "vtype imtable selector",
                         RotationOfBitColumn::IMTableSelectorStart as i32
-                            + entry.offset as i32 % (IMTABLE_COLOMNS as i32),
+                            + entry.offset as i32 % (IMTABLE_COLUMNS as i32),
                         bit,
                         F::one()
                     );

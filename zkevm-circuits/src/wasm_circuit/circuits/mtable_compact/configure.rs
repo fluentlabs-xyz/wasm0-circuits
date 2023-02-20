@@ -1,9 +1,8 @@
 use super::encode::MemoryTableLookupEncode;
 use super::*;
-use crate::wasm_circuit::circuits::config::IMTABLE_COLOMNS;
+use crate::wasm_circuit::circuits::config::IMTABLE_COLUMNS;
 use crate::wasm_circuit::circuits::CircuitConfigure;
 use crate::wasm_circuit::circuits::Lookup;
-use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::plonk::Advice;
 use halo2_proofs::plonk::Column;
 use halo2_proofs::plonk::ConstraintSystem;
@@ -13,7 +12,7 @@ use crate::{constant_from, curr, fixed_curr, nextn};
 
 pub const STEP_SIZE: i32 = 8;
 
-pub trait MemoryTableConstriants<F: Field> {
+pub trait MemoryTableConstraints<F: Field> {
     fn configure(
         &self,
         meta: &mut ConstraintSystem<F>,
@@ -70,7 +69,7 @@ pub trait MemoryTableConstriants<F: Field> {
     );
 }
 
-impl<F: Field> MemoryTableConstriants<F> for MemoryTableConfig<F> {
+impl<F: Field> MemoryTableConstraints<F> for MemoryTableConfig<F> {
     fn configure_encode_range(&self, meta: &mut ConstraintSystem<F>, rtable: &RangeTableConfig<F>) {
         rtable.configure_in_common_range(meta, "mtable encode in common range", |meta| {
             curr!(meta, self.aux) * self.is_enabled_line(meta)
@@ -334,7 +333,7 @@ impl<F: Field> MemoryTableConstriants<F> for MemoryTableConfig<F> {
     ) {
         meta.create_gate("mtable imtable selector sum", |meta| {
             let mut acc = constant_from!(1);
-            for i in 0..IMTABLE_COLOMNS {
+            for i in 0..IMTABLE_COLUMNS {
                 acc = acc - self.imtable_selector(meta, i as u32);
             }
             vec![
@@ -346,7 +345,7 @@ impl<F: Field> MemoryTableConstriants<F> for MemoryTableConfig<F> {
             ]
         });
 
-        for i in 0..IMTABLE_COLOMNS {
+        for i in 0..IMTABLE_COLUMNS {
             imtable.configure_in_table(
                 meta,
                 "mtable configure_heap_init_in_imtable",

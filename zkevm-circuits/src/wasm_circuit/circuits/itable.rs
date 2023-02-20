@@ -1,5 +1,4 @@
 use super::utils::bn_to_field;
-use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Value};
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;

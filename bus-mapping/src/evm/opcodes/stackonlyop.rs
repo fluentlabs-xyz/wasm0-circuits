@@ -44,7 +44,7 @@ impl<const N_POP: usize, const N_PUSH: usize> Opcode for StackOnlyOpcode<N_POP, 
 #[cfg(test)]
 mod stackonlyop_tests {
     use crate::operation::RW;
-    use crate::{circuit_input_builder::ExecState, mock::BlockData, operation::StackOp};
+    use crate::{circuit_input_builder::ExecState, mocks::BlockData, operation::StackOp};
     use eth_types::{
         bytecode,
         evm_types::{OpcodeId, StackAddress},

@@ -49,7 +49,7 @@ mod stacktomemoryop_tests {
     use mock::{MOCK_BASEFEE, MOCK_DIFFICULTY, MOCK_GASLIMIT};
     use mock::test_ctx::{helpers::*, TestContext};
 
-    use crate::{circuit_input_builder::ExecState, mock::BlockData, operation::StackOp};
+    use crate::{circuit_input_builder::ExecState, mocks::BlockData, operation::StackOp};
     use crate::operation::RW;
 
     fn stack_to_memory_op_impl<const N_POP: usize, const N_PUSH: usize>(

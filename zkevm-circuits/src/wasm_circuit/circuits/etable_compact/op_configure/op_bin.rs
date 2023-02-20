@@ -6,7 +6,6 @@ use crate::wasm_circuit::{
     },
 };
 use halo2_proofs::{
-    arithmetic::FieldExt,
     plonk::{Error, Expression, VirtualCells},
 };
 use num_traits::One;

@@ -189,7 +189,7 @@ fn gen_copy_event(
 mod calldatacopy_tests {
     use crate::{
         circuit_input_builder::{ExecState, NumberOrHash},
-        mock::BlockData,
+        mocks::BlockData,
         operation::{CallContextField, CallContextOp, MemoryOp, StackOp, RW},
     };
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToWord, Word};

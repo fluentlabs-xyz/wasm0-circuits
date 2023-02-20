@@ -1,11 +1,10 @@
 use anyhow::Error;
-use eth_types::GethExecTrace;
 use specs::Tables;
 use wasmi::ImportsBuilder;
 
 use crate::runtime::{WasmInterpreter, WasmRuntime};
 use crate::runtime::host::HostEnv;
-use crate::runtime::wasmi_interpreter::{Execution, WasmiRuntime};
+use crate::runtime::wasmi_interpreter::{Execution};
 
 mod runtime;
 

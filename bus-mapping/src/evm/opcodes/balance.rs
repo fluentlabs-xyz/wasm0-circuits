@@ -1,12 +1,12 @@
-use std::io::Read;
-use ethers_core::abi::{AbiEncode, Address};
-use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
-use crate::evm::Opcode;
-use crate::operation::{AccountField, CallContextField, TxAccessListAccountOp, RW};
-use crate::Error;
-use eth_types::{GethExecStep, ToAddress, ToWord, H256, U256, ToWordBytes, ToU256, ToLittleEndian, Word};
 use eth_types::evm_types::MemoryAddress;
-use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
+use eth_types::GethExecStep;
+use eth_types::U256;
+
+use crate::circuit_input_builder::CircuitInputStateRef;
+use crate::circuit_input_builder::ExecStep;
+use crate::Error;
+use crate::evm::Opcode;
+use crate::operation::CallContextField;
 
 pub const BALANCE_BYTE_LENGTH: usize = 32;
 
@@ -134,21 +134,19 @@ impl Opcode for Balance {
 
 #[cfg(test)]
 mod balance_tests {
-    use std::{fs, process};
-    use std::io::Read;
-    use ethers_providers::call_raw::state;
-    use super::*;
-    use crate::circuit_input_builder::ExecState;
-    use crate::mock::BlockData;
-    use crate::operation::{AccountOp, CallContextOp, MemoryOp, StackOp};
+    use pretty_assertions::assert_eq;
+
+    use eth_types::{address, bytecode, Bytecode, ToBigEndian, U256, Word};
+    use eth_types::bytecode::DataSectionDescriptor;
     use eth_types::evm_types::{OpcodeId, StackAddress};
     use eth_types::geth_types::GethData;
-    use eth_types::{address, bytecode, Bytecode, ToWord, Word, U256, ToBigEndian};
-    use keccak256::EMPTY_HASH_LE;
     use mock::TestContext;
-    use pretty_assertions::assert_eq;
-    use serde::de::Unexpected::Option;
-    use eth_types::bytecode::DataSectionDescriptor;
+
+    use crate::circuit_input_builder::ExecState;
+    use crate::mocks::BlockData;
+    use crate::operation::{CallContextOp, MemoryOp, RW, StackOp};
+
+    use super::*;
 
     #[test]
     fn test_balance_of_non_existing_address() {

@@ -15,6 +15,7 @@ impl From<parity_wasm::elements::ValueType> for ValueType {
             parity_wasm::elements::ValueType::I64 => ValueType::I64,
             parity_wasm::elements::ValueType::F32 => todo!(),
             parity_wasm::elements::ValueType::F64 => todo!(),
+            _ => todo!()
         }
     }
 }

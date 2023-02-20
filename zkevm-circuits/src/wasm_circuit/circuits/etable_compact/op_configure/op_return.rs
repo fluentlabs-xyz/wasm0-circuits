@@ -8,7 +8,6 @@ use crate::wasm_circuit::{
 };
 use crate::constant;
 use halo2_proofs::{
-    arithmetic::FieldExt,
     plonk::{Error, Expression, VirtualCells},
 };
 use num_bigint::ToBigUint;

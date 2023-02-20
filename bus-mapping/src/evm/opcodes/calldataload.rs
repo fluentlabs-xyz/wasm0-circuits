@@ -1,9 +1,9 @@
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, ExecStep},
-    operation::{CallContextField, MemoryOp, RW},
+    operation::CallContextField,
     Error,
 };
-use eth_types::{GethExecStep, U256};
+use eth_types::{GethExecStep};
 use eth_types::evm_types::MemoryAddress;
 
 const INDEX_BYTE_LENGTH: usize = 32;
@@ -121,13 +121,13 @@ impl Opcode for Calldataload {
 #[cfg(test)]
 mod calldataload_tests {
     use std::fs;
-    use crate::operation::CallContextOp;
+    use crate::operation::{CallContextOp, MemoryOp, RW};
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToWord, Word};
     use mock::{test_ctx::helpers::account_0_code_account_1_no_code, TestContext};
     use rand::random;
     use eth_types::bytecode::DataSectionDescriptor;
 
-    use crate::{circuit_input_builder::ExecState, mock::BlockData, operation::StackOp};
+    use crate::{circuit_input_builder::ExecState, mocks::BlockData, operation::StackOp};
     use crate::evm::opcodes::append_vector_to_vector_with_padding;
 
     use super::*;

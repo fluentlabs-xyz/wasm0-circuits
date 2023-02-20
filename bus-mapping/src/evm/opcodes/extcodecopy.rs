@@ -201,7 +201,7 @@ fn gen_copy_event(
 mod extcodecopy_tests {
     use crate::{
         circuit_input_builder::{CopyDataType, ExecState, NumberOrHash},
-        mock::BlockData,
+        mocks::BlockData,
         operation::{
             AccountField, AccountOp, CallContextField, CallContextOp, MemoryOp, StackOp,
             TxAccessListAccountOp, RW,

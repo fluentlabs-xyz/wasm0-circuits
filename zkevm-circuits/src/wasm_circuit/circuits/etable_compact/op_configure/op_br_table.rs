@@ -1,7 +1,6 @@
 use super::*;
 use crate::wasm_circuit::circuits::{mtable_compact::encode::MemoryTableLookupEncode, utils::Context};
 use halo2_proofs::{
-    arithmetic::FieldExt,
     plonk::{Error, Expression, VirtualCells},
 };
 use eth_types::Field;

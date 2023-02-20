@@ -6,10 +6,16 @@ use gadgets::{
     util::{and, not, Expr},
 };
 use halo2_proofs::{
-    circuit::{Layouter, Region, SimpleFloorPlanner, Value},
-    plonk::{Circuit, ConstraintSystem, Error, Selector},
+    circuit::Region,
+    circuit::Layouter,
+    circuit::Value,
+    plonk::Circuit,
+    plonk::ConstraintSystem,
+    plonk::Error,
+    plonk::Selector,
     poly::Rotation,
 };
+use halo2_proofs::circuit::SimpleFloorPlanner;
 
 use crate::{
     evm_circuit::{util::constraint_builder::BaseConstraintBuilder, witness::Block},
@@ -472,7 +478,7 @@ pub mod dev {
 
 #[cfg(test)]
 mod tests {
-    use bus_mapping::{circuit_input_builder::CircuitInputBuilder, evm::OpcodeId, mock::BlockData};
+    use bus_mapping::{circuit_input_builder::CircuitInputBuilder, evm::OpcodeId, mocks::BlockData};
     use eth_types::{bytecode, geth_types::GethData, Bytecode, Word};
     use halo2_proofs::halo2curves::bn256::Fr;
     use mock::TestContext;

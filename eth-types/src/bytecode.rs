@@ -3,7 +3,6 @@
 use std::{collections::HashMap, str::FromStr};
 
 use wasm_encoder::{ConstExpr, DataSection, Encode, Instruction};
-use wasm_encoder::SectionId::Data;
 
 use crate::{Bytes, evm_types::OpcodeId, Word};
 

@@ -54,7 +54,7 @@ mod gasprice_tests {
     use crate::{
         circuit_input_builder::ExecState,
         evm::OpcodeId,
-        mock::BlockData,
+        mocks::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
         Error,
     };

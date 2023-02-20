@@ -4,7 +4,7 @@
 mod tests {
     use ark_std::{end_timer, start_timer};
     use bus_mapping::circuit_input_builder::CircuitsParams;
-    use bus_mapping::mock::BlockData;
+    use bus_mapping::mocks::BlockData;
     use eth_types::geth_types::GethData;
     use eth_types::{bytecode, Word};
     use halo2_proofs::plonk::{create_proof, keygen_pk, keygen_vk, verify_proof};

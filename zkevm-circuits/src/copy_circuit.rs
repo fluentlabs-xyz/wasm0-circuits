@@ -13,7 +13,7 @@ use gadgets::{
 use halo2_proofs::{
     circuit::{Layouter, Region, Value},
     plonk::{
-        Advice, Challenge, Column, ConstraintSystem, Error, Expression, Fixed, SecondPhase,
+        Advice, Column, ConstraintSystem, Error, Expression, Fixed, SecondPhase,
         Selector,
     },
     poly::Rotation,
@@ -777,6 +777,7 @@ pub mod dev {
         circuit::{Layouter, SimpleFloorPlanner},
         plonk::{Circuit, ConstraintSystem},
     };
+    use halo2_proofs::plonk::Challenge;
 
     #[cfg(test)]
     use crate::witness::Block;
@@ -893,7 +894,7 @@ mod tests {
     use bus_mapping::evm::{gen_sha3_code, MemoryKind};
     use bus_mapping::{
         circuit_input_builder::{CircuitInputBuilder, CircuitsParams},
-        mock::BlockData,
+        mocks::BlockData,
     };
     use eth_types::{bytecode, geth_types::GethData, ToWord, Word};
     use halo2_proofs::dev::VerifyFailure;

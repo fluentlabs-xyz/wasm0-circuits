@@ -10,7 +10,6 @@ use eth_types::{
     Word,
 };
 use halo2_proofs::plonk::{Instance, SecondPhase};
-use mock::MOCK_CHAIN_ID;
 
 use crate::table::BlockTable;
 use crate::table::TxFieldTag;
@@ -25,6 +24,7 @@ use halo2_proofs::{
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Selector},
     poly::Rotation,
 };
+use mock::MOCK_CHAIN_ID;
 
 /// Fixed by the spec
 const BLOCK_LEN: usize = 7 + 256;

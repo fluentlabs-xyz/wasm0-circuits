@@ -2,7 +2,6 @@ use super::{JtableOffset, JumpTableConfig};
 use crate::wasm_circuit::{circuits::utils::bn_to_field};
 use crate::{constant, nextn};
 use halo2_proofs::{
-    arithmetic::FieldExt,
     plonk::{Expression, VirtualCells},
 };
 use num_bigint::BigUint;

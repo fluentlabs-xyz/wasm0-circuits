@@ -258,7 +258,7 @@ fn handle_create(
 
 #[cfg(test)]
 mod return_tests {
-    use crate::mock::BlockData;
+    use crate::mocks::BlockData;
     use eth_types::geth_types::GethData;
     use eth_types::{bytecode, word};
     use mock::test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0};

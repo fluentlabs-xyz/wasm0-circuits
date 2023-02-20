@@ -1,6 +1,6 @@
 use std::ops::{Add, Mul};
 
-use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
+use halo2_proofs::{plonk::Expression};
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use eth_types::Field;

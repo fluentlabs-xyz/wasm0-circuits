@@ -606,7 +606,7 @@ fn queries<F: Field>(meta: &mut VirtualCells<'_, F>, c: &StateCircuitConfig<F>) 
 #[cfg(test)]
 mod state_circuit_stats {
     use crate::evm_circuit::step::ExecutionState;
-    use bus_mapping::{circuit_input_builder::ExecState, mock::BlockData};
+    use bus_mapping::{circuit_input_builder::ExecState, mocks::BlockData};
     use eth_types::{bytecode, evm_types::OpcodeId, geth_types::GethData, Address};
     use mock::{eth, test_ctx::TestContext, MOCK_ACCOUNTS};
     use strum::IntoEnumIterator;

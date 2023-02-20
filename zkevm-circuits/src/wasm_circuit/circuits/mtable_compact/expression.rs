@@ -1,6 +1,5 @@
 use super::configure::STEP_SIZE;
 use super::*;
-use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::plonk::Expression;
 use halo2_proofs::plonk::VirtualCells;
 use eth_types::Field;

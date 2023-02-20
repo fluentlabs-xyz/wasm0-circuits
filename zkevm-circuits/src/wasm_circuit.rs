@@ -18,7 +18,7 @@ pub use crate::witness;
 use crate::evm_circuit::table::FixedTableTag;
 use crate::wasm_circuit::circuits::brtable::{BrTableChip, BrTableConfig};
 use crate::wasm_circuit::circuits::CircuitConfigure;
-use crate::wasm_circuit::circuits::config::{IMTABLE_COLOMNS, VAR_COLUMNS};
+use crate::wasm_circuit::circuits::config::{IMTABLE_COLUMNS, VAR_COLUMNS};
 use crate::wasm_circuit::circuits::etable_compact::{EventTableChip, EventTableConfig};
 use crate::wasm_circuit::circuits::imtable::{InitMemoryTableConfig, MInitTableChip};
 use crate::wasm_circuit::circuits::itable::{InstructionTableChip, InstructionTableConfig};
@@ -83,10 +83,10 @@ impl<F: Field> SubCircuitConfig<F> for WasmCircuitConfig<F> {
 
         let mut cols = [(); VAR_COLUMNS].map(|_| meta.advice_column()).into_iter();
 
-        let rtable = RangeTableConfig::configure([0; 7].map(|_| meta.lookup_table_column()));
+        let rtable = RangeTableConfig::configure([(); 7].map(|_| meta.lookup_table_column()));
         let itable = InstructionTableConfig::configure(meta.lookup_table_column());
         let imtable = InitMemoryTableConfig::configure(
-            [0; IMTABLE_COLOMNS].map(|_| meta.lookup_table_column()),
+            [(); IMTABLE_COLUMNS].map(|_| meta.lookup_table_column()),
         );
         let mtable =
             MemoryTableConfig::configure(meta, &mut cols, &rtable, &imtable, &circuit_configure);
@@ -207,7 +207,6 @@ impl<F: Field> SubCircuit<F> for WasmCircuit<F> {
             };
             if let Some(bytecode) = block.bytecodes.get(&transaction.callee_address.to_word()) {
                 let tables = wasm_tracer::extract_wasm_trace(&bytecode.bytes).expect("can't create wasm trace");
-
             }
 
             // let rchip = RangeTableChip::new(config.rtable.clone());

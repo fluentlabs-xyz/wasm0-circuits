@@ -91,7 +91,7 @@ pub mod sha3_tests {
 
     use crate::{
         circuit_input_builder::{CircuitsParams, ExecState},
-        mock::BlockData,
+        mocks::BlockData,
         operation::{MemoryOp, StackOp, RW},
     };
 

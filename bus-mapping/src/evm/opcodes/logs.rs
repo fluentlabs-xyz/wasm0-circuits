@@ -195,7 +195,7 @@ fn gen_copy_event(
 mod log_tests {
     use crate::{
         circuit_input_builder::{CopyDataType, ExecState, NumberOrHash},
-        mock::BlockData,
+        mocks::BlockData,
         operation::{CallContextField, CallContextOp, MemoryOp, StackOp, TxLogField, TxLogOp, RW},
     };
     use eth_types::{

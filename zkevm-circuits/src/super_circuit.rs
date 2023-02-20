@@ -69,7 +69,7 @@ use crate::tx_circuit::{TxCircuit, TxCircuitConfig, TxCircuitConfigArgs};
 use crate::util::{log2_ceil, Challenges, SubCircuit, SubCircuitConfig};
 use crate::witness::{block_convert, Block, MptUpdates};
 use bus_mapping::circuit_input_builder::{CircuitInputBuilder, CircuitsParams};
-use bus_mapping::mock::BlockData;
+use bus_mapping::mocks::BlockData;
 use eth_types::geth_types::GethData;
 use eth_types::Field;
 use halo2_proofs::{

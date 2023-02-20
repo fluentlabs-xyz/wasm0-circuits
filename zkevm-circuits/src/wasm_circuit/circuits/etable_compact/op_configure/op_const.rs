@@ -4,7 +4,6 @@ use crate::wasm_circuit::{circuits::{
     utils::{bn_to_field, Context},
 }, specs};
 use halo2_proofs::{
-    arithmetic::FieldExt,
     plonk::{Error, Expression, VirtualCells},
 };
 use eth_types::Field;

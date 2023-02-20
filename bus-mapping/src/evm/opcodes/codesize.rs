@@ -58,7 +58,7 @@ mod codesize_tests {
 
     use crate::{
         circuit_input_builder::ExecState,
-        mock::BlockData,
+        mocks::BlockData,
         operation::{StackOp, RW},
     };
     use crate::evm::opcodes::codesize::CODE_SIZE_BYTE_LENGTH;

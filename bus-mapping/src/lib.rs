@@ -48,7 +48,7 @@
 //! by the provided trace.
 //!
 //! ```rust
-//! use bus_mapping::{Error, mock::BlockData};
+//! use bus_mapping::{Error, mocks::BlockData};
 //! use bus_mapping::state_db::{self, StateDB, CodeDB};
 //! use eth_types::{
 //!     self, address, Address, Word, Hash, U64, GethExecTrace, GethExecStep, geth_types::GethData, bytecode
@@ -232,7 +232,7 @@ pub mod error;
 pub mod evm;
 pub mod exec_trace;
 pub(crate) mod geth_errors;
-pub mod mock;
+pub mod mocks;
 pub mod operation;
 pub mod rpc;
 pub mod state_db;

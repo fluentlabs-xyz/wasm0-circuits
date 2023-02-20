@@ -1,7 +1,6 @@
 use super::Context;
 use crate::{constant_from, curr, nextn};
 use halo2_proofs::{
-    arithmetic::FieldExt,
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, VirtualCells},
 };
 use std::marker::PhantomData;

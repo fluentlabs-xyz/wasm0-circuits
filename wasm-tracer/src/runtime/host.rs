@@ -66,41 +66,42 @@ impl HostEnv {
         (ctx, self.functions.get(name).unwrap())
     }
 
-    pub fn register_function(
-        &mut self,
-        name: &str,
-        op_index_in_plugin: usize,
-        context: Box<dyn ForeignContext>,
-        signature: specs::host_function::Signature,
-        handler: Box<dyn Fn(&mut dyn ForeignContext, RuntimeArgs) -> Option<RuntimeValue>>,
-        plugin: HostPlugin,
-    ) -> Result<usize, specs::host_function::Error> {
-        if self.functions.get(name).is_some() {
-            return Err(specs::host_function::Error::DuplicateRegister);
-        }
-
-        let index = self.names.len();
-
-        let f = Function {
-            index,
-            handler,
-            signature,
-        };
-
-        self.functions.insert(name.to_string(), f);
-        self.contexts.insert(name.to_string(), context);
-        self.names.push(name.to_string());
-        self.function_plugin_lookup.insert(
-            index,
-            HostFunctionDesc {
-                name: name.to_string(),
-                op_index_in_plugin,
-                plugin,
-            },
-        );
-
-        Ok(index)
-    }
+    // NOT IN USE
+    // pub fn register_function(
+    //     &mut self,
+    //     name: &str,
+    //     op_index_in_plugin: usize,
+    //     context: Box<dyn ForeignContext>,
+    //     signature: specs::host_function::Signature,
+    //     handler: Box<dyn Fn(&mut dyn ForeignContext, RuntimeArgs) -> Option<RuntimeValue>>,
+    //     plugin: HostPlugin,
+    // ) -> Result<usize, specs::host_function::Error> {
+    //     if self.functions.get(name).is_some() {
+    //         return Err(specs::host_function::Error::DuplicateRegister);
+    //     }
+    //
+    //     let index = self.names.len();
+    //
+    //     let f = Function {
+    //         index,
+    //         handler,
+    //         signature,
+    //     };
+    //
+    //     self.functions.insert(name.to_string(), f);
+    //     self.contexts.insert(name.to_string(), context);
+    //     self.names.push(name.to_string());
+    //     self.function_plugin_lookup.insert(
+    //         index,
+    //         HostFunctionDesc {
+    //             name: name.to_string(),
+    //             op_index_in_plugin,
+    //             plugin,
+    //         },
+    //     );
+    //
+    //     Ok(index)
+    // }
 
     fn check_signature(&self, index: usize, signature: &Signature) -> bool {
         let sig = self.get_function_by_index(index);

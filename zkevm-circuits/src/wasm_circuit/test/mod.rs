@@ -1,15 +1,15 @@
+use std::path::PathBuf;
 use crate::wasm_circuit::{
     circuits::{config::zkwasm_k, TestCircuit},
 };
 
-use halo2_proofs::{arithmetic::FieldExt, dev::MockProver};
+use halo2_proofs::{dev::MockProver};
 use crate::wasm_circuit::specs::Tables;
-use std::collections::HashMap;
-use halo2_proofs::halo2curves::pasta::Fp;
 use halo2_proofs::plonk::Error;
 use eth_types::Field;
 
 mod spec;
+mod selfbalance;
 
 pub fn test_circuit_noexternal(textual_repr: &str) -> Result<(), ()> {
     panic!("not implemented: {}", textual_repr)
@@ -24,8 +24,8 @@ pub fn test_circuit_noexternal(textual_repr: &str) -> Result<(), ()> {
     // run_test_circuit::<Fp>(execution_result.tables, vec![])
 }
 
-pub fn run_test_circuit<F: Field>(tables: Tables, public_inputs: Vec<F>) -> Result<(), Error> {
-    tables.write_json(None);
+pub fn run_test_circuit<F: Field>(tables: Tables, public_inputs: Vec<F>, path_buf: Option<PathBuf>) -> Result<(), Error> {
+    tables.write_json(path_buf);
 
     let circuit = TestCircuit::<F>::new(tables);
 
