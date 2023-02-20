@@ -2,12 +2,11 @@ use super::Opcode;
 use crate::{
     circuit_input_builder::CircuitInputStateRef,
     evm::opcodes::ExecStep,
-    operation::{AccountField, CallContextField, TxAccessListAccountOp, RW},
+    operation::CallContextField,
     Error,
 };
-use eth_types::{GethExecStep, ToAddress, ToWord, H256, U256};
+use eth_types::{GethExecStep, U256};
 use eth_types::evm_types::MemoryAddress;
-use eth_types::evm_types::OpcodeId::EXTCODEHASH;
 
 const CODEHASH_BYTE_LENGTH: usize = 32;
 
@@ -108,17 +107,14 @@ impl Opcode for Extcodehash {
 
 #[cfg(test)]
 mod extcodehash_tests {
-    use std::fs;
     use super::*;
     use crate::circuit_input_builder::ExecState;
     use crate::mocks::BlockData;
-    use crate::operation::{AccountOp, CallContextOp, MemoryOp, StackOp};
-    use eth_types::{
-        address, bytecode,
-        evm_types::{OpcodeId, StackAddress},
-        geth_types::GethData,
-        Bytecode, Bytes, Word, U256,
-    };
+    use crate::operation::{AccountOp, RW, TxAccessListAccountOp};
+    use crate::operation::AccountField;
+    use crate::operation::CallContextOp;
+    use crate::operation::StackOp;
+    use eth_types::{address, bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Bytecode, Bytes, Word, U256, ToWord};
     use ethers_core::utils::keccak256;
     use mock::TestContext;
     use pretty_assertions::assert_eq;

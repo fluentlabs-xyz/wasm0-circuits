@@ -1,8 +1,9 @@
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::evm::Opcode;
-use crate::operation::{AccountField, CallContextField, TxAccessListAccountOp, RW};
+use crate::operation::CallContextField;
 use crate::Error;
-use eth_types::{GethExecStep, ToAddress, ToWord, H256};
+use eth_types::GethExecStep;
+use eth_types::ToWord;
 use eth_types::evm_types::MemoryAddress;
 
 const CODESIZE_BYTE_LENGTH: usize = 4;
@@ -106,26 +107,27 @@ impl Opcode for Extcodesize {
 
 #[cfg(test)]
 mod extcodesize_tests {
-    use std::fs;
     use super::*;
     use crate::circuit_input_builder::ExecState;
     use crate::mocks::BlockData;
-    use crate::operation::{AccountOp, CallContextOp, MemoryOp, StackOp};
+    use crate::operation::CallContextOp;
+    use crate::operation::MemoryOp;
+    use crate::operation::RW;
+    use crate::operation::StackOp;
     use eth_types::evm_types::{MemoryAddress, OpcodeId, StackAddress};
     use eth_types::geth_types::{Account, GethData};
     use eth_types::{bytecode, Bytecode, Word, U256};
-    use ethers_core::utils::keccak256;
     use mock::{TestContext, MOCK_1_ETH, MOCK_ACCOUNTS, MOCK_CODES};
     use pretty_assertions::assert_eq;
     use eth_types::bytecode::DataSectionDescriptor;
 
     #[test]
     fn test_extcodesize_opcode_empty_acc() {
-        let account = Account {
-            address: MOCK_ACCOUNTS[4],
-            code: MOCK_CODES[4].clone(),
-            ..Default::default()
-        };
+        // let account = Account {
+        //     address: MOCK_ACCOUNTS[4],
+        //     code: MOCK_CODES[4].clone(),
+        //     ..Default::default()
+        // };
 
         // Test for empty account.
         test_ok(&Account::default(), false);
