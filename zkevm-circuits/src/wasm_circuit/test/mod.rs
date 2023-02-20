@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use crate::wasm_circuit::{
     circuits::{config::zkwasm_k, TestCircuit},
 };
@@ -22,8 +23,8 @@ pub fn test_circuit_noexternal(textual_repr: &str) -> Result<(), ()> {
     // run_test_circuit::<Fp>(execution_result.tables, vec![])
 }
 
-pub fn run_test_circuit<F: Field>(tables: Tables, public_inputs: Vec<F>) -> Result<(), Error> {
-    tables.write_json(None);
+pub fn run_test_circuit<F: Field>(tables: Tables, public_inputs: Vec<F>, path_buf: Option<PathBuf>) -> Result<(), Error> {
+    tables.write_json(path_buf);
 
     let circuit = TestCircuit::<F>::new(tables);
 

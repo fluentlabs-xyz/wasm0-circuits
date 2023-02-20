@@ -670,7 +670,7 @@ mod tests {
                         gas_cost: GasCost(3),
                         depth: 1,
                         error: None,
-                        stack: Stack::new(),
+                        stack: Stack::<U256>::new(),
                         storage: Storage(word_map!()),
                         memory: Memory::new(),
                     },
