@@ -9,6 +9,7 @@ use halo2_proofs::plonk::Error;
 use eth_types::Field;
 
 mod spec;
+mod selfbalance;
 
 pub fn test_circuit_noexternal(textual_repr: &str) -> Result<(), ()> {
     panic!("not implemented: {}", textual_repr)
