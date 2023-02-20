@@ -49,11 +49,9 @@ mod chainid_tests {
 
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, Word};
     use eth_types::evm_types::MemoryAddress;
-    use eth_types::evm_types::OpcodeId::CHAINID;
-    use mock::MOCK_CHAIN_ID;
     use mock::test_ctx::{helpers::*, TestContext};
 
-    use crate::{circuit_input_builder::ExecState, mock::BlockData, operation::StackOp};
+    use crate::{circuit_input_builder::ExecState, mocks::BlockData, operation::StackOp};
     use crate::evm::opcodes::chainid::CHAIN_ID_BYTE_LENGTH;
     use crate::operation::{MemoryOp, RW};
 

@@ -7,7 +7,7 @@ mod selfbalance_tests {
     use mock::test_ctx::helpers::*;
     use mock::test_ctx::TestContext;
     use bus_mapping::circuit_input_builder::ExecState;
-    use bus_mapping::mock::BlockData;
+    use bus_mapping::mocks::BlockData;
 
     #[test]
     fn selfbalance_circuit_impl() {

@@ -109,7 +109,7 @@ mod extcodesize_tests {
     use std::fs;
     use super::*;
     use crate::circuit_input_builder::ExecState;
-    use crate::mock::BlockData;
+    use crate::mocks::BlockData;
     use crate::operation::{AccountOp, CallContextOp, MemoryOp, StackOp};
     use eth_types::evm_types::{MemoryAddress, OpcodeId, StackAddress};
     use eth_types::geth_types::{Account, GethData};

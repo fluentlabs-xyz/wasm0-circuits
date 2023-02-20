@@ -48,7 +48,7 @@ mod number_tests {
     use crate::{
         circuit_input_builder::ExecState,
         evm::OpcodeId,
-        mock::BlockData,
+        mocks::BlockData,
         operation::{StackOp, RW},
         Error,
     };

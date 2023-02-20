@@ -61,7 +61,7 @@ mod selfbalance_tests {
     use super::*;
     use crate::{
         circuit_input_builder::ExecState,
-        mock::BlockData,
+        mocks::BlockData,
         operation::{AccountOp, CallContextField, CallContextOp, StackOp, RW},
     };
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, Word};

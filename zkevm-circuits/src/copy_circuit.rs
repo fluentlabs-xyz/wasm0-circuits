@@ -893,7 +893,7 @@ mod tests {
     use bus_mapping::evm::{gen_sha3_code, MemoryKind};
     use bus_mapping::{
         circuit_input_builder::{CircuitInputBuilder, CircuitsParams},
-        mock::BlockData,
+        mocks::BlockData,
     };
     use eth_types::{bytecode, geth_types::GethData, ToWord, Word};
     use halo2_proofs::dev::VerifyFailure;

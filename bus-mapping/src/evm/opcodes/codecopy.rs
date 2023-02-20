@@ -152,7 +152,7 @@ mod codecopy_tests {
 
     use crate::{
         circuit_input_builder::{CopyDataType, ExecState, NumberOrHash},
-        mock::BlockData,
+        mocks::BlockData,
         operation::{MemoryOp, StackOp, RW},
     };
 

@@ -472,7 +472,7 @@ pub mod dev {
 
 #[cfg(test)]
 mod tests {
-    use bus_mapping::{circuit_input_builder::CircuitInputBuilder, evm::OpcodeId, mock::BlockData};
+    use bus_mapping::{circuit_input_builder::CircuitInputBuilder, evm::OpcodeId, mocks::BlockData};
     use eth_types::{bytecode, geth_types::GethData, Bytecode, Word};
     use halo2_proofs::halo2curves::bn256::Fr;
     use mock::TestContext;

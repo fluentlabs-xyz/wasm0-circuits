@@ -143,7 +143,7 @@ mod balance_tests {
     use mock::TestContext;
 
     use crate::circuit_input_builder::ExecState;
-    use crate::mock::BlockData;
+    use crate::mocks::BlockData;
     use crate::operation::{CallContextOp, MemoryOp, RW, StackOp};
 
     use super::*;

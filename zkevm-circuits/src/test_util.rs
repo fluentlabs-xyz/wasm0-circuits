@@ -6,7 +6,7 @@ use crate::{
     util::SubCircuit,
     witness::{Block, Rw},
 };
-use bus_mapping::{circuit_input_builder::CircuitsParams, mock::BlockData};
+use bus_mapping::{circuit_input_builder::CircuitsParams, mocks::BlockData};
 use eth_types::geth_types::GethData;
 
 use halo2_proofs::dev::MockProver;

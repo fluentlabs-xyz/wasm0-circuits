@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod evm_circ_benches {
     use ark_std::{end_timer, start_timer};
-    use bus_mapping::{circuit_input_builder::CircuitsParams, mock::BlockData};
+    use bus_mapping::{circuit_input_builder::CircuitsParams, mocks::BlockData};
     use eth_types::geth_types::GethData;
     use halo2_proofs::plonk::{create_proof, keygen_pk, keygen_vk, verify_proof};
     use halo2_proofs::poly::kzg::commitment::{KZGCommitmentScheme, ParamsKZG, ParamsVerifierKZG};

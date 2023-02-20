@@ -1,6 +1,6 @@
 use crate::{get_client, GenDataOutput};
 use bus_mapping::circuit_input_builder::{BuilderClient, CircuitInputBuilder, CircuitsParams};
-use bus_mapping::mock::BlockData;
+use bus_mapping::mocks::BlockData;
 use eth_types::geth_types::GethData;
 use halo2_proofs::plonk::{
     create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ProvingKey, VerifyingKey,

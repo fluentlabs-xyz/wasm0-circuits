@@ -50,7 +50,7 @@ mod caller_tests {
     use std::fs;
     use super::*;
     use crate::{
-        circuit_input_builder::ExecState, mock::BlockData, operation::CallContextOp,
+        circuit_input_builder::ExecState, mocks::BlockData, operation::CallContextOp,
         operation::StackOp, operation::RW,
     };
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToU256, Word};

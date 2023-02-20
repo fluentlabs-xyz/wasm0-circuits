@@ -4,7 +4,7 @@
 mod tests {
     use ark_std::{end_timer, start_timer};
     use bus_mapping::circuit_input_builder::CircuitsParams;
-    use bus_mapping::mock::BlockData;
+    use bus_mapping::mocks::BlockData;
     use env_logger::Env;
     use eth_types::geth_types::GethData;
     use eth_types::{bytecode, Word};
