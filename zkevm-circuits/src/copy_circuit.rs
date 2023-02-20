@@ -13,7 +13,7 @@ use gadgets::{
 use halo2_proofs::{
     circuit::{Layouter, Region, Value},
     plonk::{
-        Advice, Challenge, Column, ConstraintSystem, Error, Expression, Fixed, SecondPhase,
+        Advice, Column, ConstraintSystem, Error, Expression, Fixed, SecondPhase,
         Selector,
     },
     poly::Rotation,
@@ -777,6 +777,7 @@ pub mod dev {
         circuit::{Layouter, SimpleFloorPlanner},
         plonk::{Circuit, ConstraintSystem},
     };
+    use halo2_proofs::plonk::Challenge;
 
     #[cfg(test)]
     use crate::witness::Block;

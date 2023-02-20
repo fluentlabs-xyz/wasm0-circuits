@@ -258,7 +258,6 @@ fn gen_geth_traces<const NACC: usize, const NTX: usize>(
 /// Collection of helper functions which contribute to specific rutines on the
 /// builder pattern used to construct [`TestContext`]s.
 pub mod helpers {
-    use std::fs;
     use super::*;
     use crate::MOCK_ACCOUNTS;
 

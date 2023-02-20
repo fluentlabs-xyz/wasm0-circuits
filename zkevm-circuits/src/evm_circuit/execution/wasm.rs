@@ -1,21 +1,20 @@
 use std::marker::PhantomData;
-use halo2_proofs::plonk::{Circuit, ConstraintSystem, Error};
+use halo2_proofs::plonk::ConstraintSystem;
+use halo2_proofs::plonk::Error;
 
-use bus_mapping::evm::OpcodeId;
 use eth_types::Field;
 
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
         step::ExecutionState,
-        util::{
-            CachedRegion,
-            Cell,
-            common_gadget::SameContextGadget, constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
-        },
-        witness::{Block, Call, ExecStep, Transaction},
+        util::CachedRegion,
+        util::constraint_builder::ConstraintBuilder,
+        witness::ExecStep,
+        witness::Call,
+        witness::Block,
+        witness::Transaction,
     },
-    util::Expr,
 };
 
 #[derive(Clone, Debug)]

@@ -6,10 +6,16 @@ use gadgets::{
     util::{and, not, Expr},
 };
 use halo2_proofs::{
-    circuit::{Layouter, Region, SimpleFloorPlanner, Value},
-    plonk::{Circuit, ConstraintSystem, Error, Selector},
+    circuit::Region,
+    circuit::Layouter,
+    circuit::Value,
+    plonk::Circuit,
+    plonk::ConstraintSystem,
+    plonk::Error,
+    plonk::Selector,
     poly::Rotation,
 };
+use halo2_proofs::circuit::SimpleFloorPlanner;
 
 use crate::{
     evm_circuit::{util::constraint_builder::BaseConstraintBuilder, witness::Block},
