@@ -502,7 +502,7 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         constrain!(is_create);
         constrain!(code_hash);
         constrain!(program_counter);
-        constrain!(stack_pointer);
+        // constrain!(stack_pointer);
         constrain!(gas_left);
         constrain!(memory_word_size);
         constrain!(reversible_write_counter);

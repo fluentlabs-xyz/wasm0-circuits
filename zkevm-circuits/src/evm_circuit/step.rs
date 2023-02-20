@@ -321,8 +321,8 @@ impl ExecutionState {
     }
 
     pub fn get_step_height(&self) -> usize {
-        self.get_step_height_option()
-            .unwrap_or_else(|| panic!("Execution state unknown: {:?}", self))
+        self.get_step_height_option().unwrap_or(0usize)
+            // .unwrap_or_else(|| panic!("Execution state unknown: {:?}", self))
     }
 }
 

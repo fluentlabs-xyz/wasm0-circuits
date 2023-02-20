@@ -25,7 +25,7 @@ pub(crate) struct EndGadget<F> {
     code_length: Cell<F>,
     is_out_of_range: IsZeroGadget<F>,
     opcode: Cell<F>,
-    restore_context: RestoreContextGadget<F>,
+    // restore_context: RestoreContextGadget<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for EndGadget<F> {
@@ -73,24 +73,24 @@ impl<F: Field> ExecutionGadget<F> for EndGadget<F> {
             });
         });
 
-        // When it's an internal call
-        let restore_context = cb.condition(1.expr() - cb.curr.state.is_root.expr(), |cb| {
-            RestoreContextGadget::construct(
-                cb,
-                true.expr(),
-                0.expr(),
-                0.expr(),
-                0.expr(),
-                0.expr(),
-                0.expr(),
-            )
-        });
+        // // When it's an internal call
+        // let restore_context = cb.condition(1.expr() - cb.curr.state.is_root.expr(), |cb| {
+        //     RestoreContextGadget::construct(
+        //         cb,
+        //         true.expr(),
+        //         0.expr(),
+        //         0.expr(),
+        //         0.expr(),
+        //         0.expr(),
+        //         0.expr(),
+        //     )
+        // });
 
         Self {
             code_length,
             is_out_of_range,
             opcode,
-            restore_context,
+            // restore_context,
         }
     }
 
@@ -123,10 +123,10 @@ impl<F: Field> ExecutionGadget<F> for EndGadget<F> {
         self.opcode
             .assign(region, offset, Value::known(F::from(opcode.as_u64())))?;
 
-        if !call.is_root {
-            self.restore_context
-                .assign(region, offset, block, call, step, 1)?;
-        }
+        // if !call.is_root {
+        //     self.restore_context
+        //         .assign(region, offset, block, call, step, 1)?;
+        // }
 
         Ok(())
     }
