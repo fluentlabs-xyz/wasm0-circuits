@@ -32,10 +32,6 @@ impl<F: Field> ExecutionGadget<F> for WasmGadget<F> {
         panic!("not implemented");
     }
 
-    fn configure_with_meta<R: ExecutionGadget<F>>(cb: &mut ConstraintBuilder<F>, _meta: &mut ConstraintSystem<F>) -> R {
-        R::configure(cb)
-    }
-
     fn assign_exec_step(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
