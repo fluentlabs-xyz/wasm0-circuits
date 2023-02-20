@@ -47,7 +47,6 @@ impl Opcode for Caller {
 
 #[cfg(test)]
 mod caller_tests {
-    use std::fs;
     use super::*;
     use crate::{
         circuit_input_builder::ExecState, mocks::BlockData, operation::CallContextOp,
