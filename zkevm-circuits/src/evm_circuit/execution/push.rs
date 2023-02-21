@@ -85,7 +85,7 @@ mod test {
     #[test]
     fn push_gadget_simple() {
         test_ok(bytecode! {
-            I32Const[123]
+            I32Const[12]
             Drop
         });
     }

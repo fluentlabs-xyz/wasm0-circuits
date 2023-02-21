@@ -31,7 +31,7 @@ use witness::Block;
 pub struct EvmCircuitConfig<F> {
     fixed_table: [Column<Fixed>; 4],
     byte_table: [Column<Fixed>; 1],
-    // pub(crate) execution: Box<ExecutionConfig<F>>,
+    pub(crate) execution: Box<ExecutionConfig<F>>,
     // External tables
     tx_table: TxTable,
     rw_table: RwTable,
@@ -40,7 +40,7 @@ pub struct EvmCircuitConfig<F> {
     copy_table: CopyTable,
     keccak_table: KeccakTable,
     exp_table: ExpTable,
-    phantom: PhantomData<F>,
+    // phantom: PhantomData<F>,
 }
 
 /// Circuit configuration arguments
@@ -83,24 +83,24 @@ impl<F: Field> SubCircuitConfig<F> for EvmCircuitConfig<F> {
     ) -> Self {
         let fixed_table = [(); 4].map(|_| meta.fixed_column());
         let byte_table = [(); 1].map(|_| meta.fixed_column());
-        // let execution = Box::new(ExecutionConfig::configure(
-        //     meta,
-        //     challenges,
-        //     &fixed_table,
-        //     &byte_table,
-        //     &tx_table,
-        //     &rw_table,
-        //     &bytecode_table,
-        //     &block_table,
-        //     &copy_table,
-        //     &keccak_table,
-        //     &exp_table,
-        // ));
+        let execution = Box::new(ExecutionConfig::configure(
+            meta,
+            challenges,
+            &fixed_table,
+            &byte_table,
+            &tx_table,
+            &rw_table,
+            &bytecode_table,
+            &block_table,
+            &copy_table,
+            &keccak_table,
+            &exp_table,
+        ));
 
         Self {
             fixed_table,
             byte_table,
-            // execution,
+            execution,
             tx_table,
             rw_table,
             bytecode_table,
@@ -108,7 +108,7 @@ impl<F: Field> SubCircuitConfig<F> for EvmCircuitConfig<F> {
             copy_table,
             keccak_table,
             exp_table,
-            phantom: Default::default(),
+            // phantom: Default::default(),
         }
     }
 }
@@ -243,8 +243,8 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
 
         config.load_fixed_table(layouter, self.fixed_table_tags.clone())?;
         config.load_byte_table(layouter)?;
-        // config.execution.assign_block(layouter, block, challenges)
-        Ok(())
+        config.execution.assign_block(layouter, block, challenges)
+        // Ok(())
     }
 }
 
