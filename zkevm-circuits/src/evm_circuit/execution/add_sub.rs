@@ -111,11 +111,12 @@ mod test {
 
     use mock::TestContext;
 
-    fn test_ok(opcode: OpcodeId, a: i32, b: i32) {
+    #[test]
+    fn test_ok() {
         let bytecode = bytecode! {
-            I32Const[a]
-            I32Const[b]
-            .write_op(opcode)
+            I32Const[100]
+            I32Const[20]
+            I32Add
             Drop
         };
 
@@ -123,11 +124,5 @@ mod test {
             TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
         )
         .run()
-    }
-
-    #[test]
-    fn add_gadget_simple() {
-        test_ok(OpcodeId::I32Add, 0x030201, 0x060504);
-        // test_ok(OpcodeId::I32Sub, 0x090705, 0x060504);
     }
 }
