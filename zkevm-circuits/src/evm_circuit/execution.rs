@@ -208,7 +208,7 @@ pub(crate) struct ExecutionConfig<F> {
     end_block_gadget: EndBlockGadget<F>,
     end_tx_gadget: EndTxGadget<F>,
     // opcode gadgets
-    // add_sub_gadget: AddSubGadget<F>,
+    add_sub_gadget: AddSubGadget<F>,
     // addmod_gadget: AddModGadget<F>,
     // address_gadget: AddressGadget<F>,
     // balance_gadget: BalanceGadget<F>,
@@ -467,7 +467,7 @@ impl<F: Field> ExecutionConfig<F> {
             end_block_gadget: configure_gadget!(),
             end_tx_gadget: configure_gadget!(),
             // opcode gadgets
-            // add_sub_gadget: configure_gadget!(),
+            add_sub_gadget: configure_gadget!(),
             // addmod_gadget: configure_gadget!(),
             // bitwise_gadget: configure_gadget!(),
             // byte_gadget: configure_gadget!(),
@@ -1074,7 +1074,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::EndTx => assign_exec_step!(self.end_tx_gadget),
             ExecutionState::EndBlock => assign_exec_step!(self.end_block_gadget),
             // opcode
-            // ExecutionState::ADD_SUB => assign_exec_step!(self.add_sub_gadget),
+            ExecutionState::ADD_SUB => assign_exec_step!(self.add_sub_gadget),
             // ExecutionState::ADDMOD => assign_exec_step!(self.addmod_gadget),
             // ExecutionState::ADDRESS => assign_exec_step!(self.address_gadget),
             // ExecutionState::BALANCE => assign_exec_step!(self.balance_gadget),

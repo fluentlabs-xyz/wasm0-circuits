@@ -134,6 +134,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
     match opcode_id {
         OpcodeId::I32Const(_) => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::I64Const(_) => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::I32Add => StackOnlyOpcode::<2, 1>::gen_associated_ops,
         OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
         OpcodeId::End => Stop::gen_associated_ops,
         OpcodeId::Return => Dummy::gen_associated_ops,

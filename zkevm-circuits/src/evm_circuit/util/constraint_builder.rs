@@ -1423,6 +1423,15 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
     }
 
     pub(crate) fn add_lookup(&mut self, name: &str, lookup: Lookup<F>) {
+        match &lookup {
+            Lookup::Bytecode { .. } => {
+                // println!("bytecode lookup: {:?}", lookup.clone())
+            },
+            Lookup::Conditional(_, k2) => {
+                // println!("cond lookup: {:?}", k2.clone())
+            },
+            _ => {},
+        }
         let lookup = match &self.condition {
             Some(condition) => lookup.conditional(condition.clone()),
             None => lookup,
