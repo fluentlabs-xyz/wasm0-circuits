@@ -162,15 +162,12 @@ impl Bytecode {
         module.section(&memories);
         module.section(&exports);
         module.section(&codes);
-        match data_section_descriptors {
-            Some(vec) => {
-                for dsd in vec {
-                    let mut data_section = DataSection::new();
-                    data_section.active(dsd.memory_index, &ConstExpr::i32_const(dsd.mem_offset), dsd.data.clone());
-                    module.section(&data_section);
-                }
-            },
-            _ => ()
+        if let Some(vec) = data_section_descriptors {
+            for dsd in vec {
+                let mut data_section = DataSection::new();
+                data_section.active(dsd.memory_index, &ConstExpr::i32_const(dsd.mem_offset), dsd.data.clone());
+                module.section(&data_section);
+            }
         };
         let wasm_bytes = module.finish();
         return wasm_bytes;
