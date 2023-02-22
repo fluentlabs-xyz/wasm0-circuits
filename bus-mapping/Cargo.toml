@@ -33,3 +33,6 @@ rand = "0.8"
 
 [features]
 test = ["mock", "rand"]
+
+[build-dependencies]
+golang_utils = { path = "../golang_utils" }

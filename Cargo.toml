@@ -11,7 +11,8 @@ members = [
     "external-tracer",
     "mock",
     "wasm-tracer",
-    "testool"
+    "testool",
+    "golang_utils",
 ]
 
 [patch.crates-io]

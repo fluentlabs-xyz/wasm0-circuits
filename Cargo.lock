@@ -423,6 +423,7 @@ dependencies = [
  "ethers-core",
  "ethers-providers",
  "gadgets",
+ "golang_utils",
  "halo2_proofs 0.2.0",
  "hex",
  "itertools",
@@ -2146,6 +2147,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "gobuild",
+ "golang_utils",
  "log",
 ]
 
@@ -2216,6 +2218,10 @@ checksum = "71e156a4ddbf3deb5e8116946c111413bd9a5679bdc1536c78a60618a7a9ac9e"
 dependencies = [
  "cc",
 ]
+
+[[package]]
+name = "golang_utils"
+version = "0.1.0"
 
 [[package]]
 name = "group"
