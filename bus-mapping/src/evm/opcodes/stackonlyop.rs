@@ -180,6 +180,28 @@ mod stackonlyop_tests {
         );
     }
 
+    #[test]
+    fn add_opcode_impl() {
+        stack_only_opcode_impl::<2, 1>(
+            OpcodeId::I32Add,
+            bytecode! {
+                I32Const[0x80i32]
+                I32Const[0x60i32]
+                I32Add
+                Drop
+            },
+            vec![
+                StackOp::new(1, StackAddress(1021), Word::from(0x60)),
+                StackOp::new(1, StackAddress(1022), Word::from(0x80)),
+            ],
+            vec![StackOp::new(
+                1,
+                StackAddress(1022),
+                Word::from(0x60) + Word::from(0x80),
+            )],
+        );
+    }
+
     fn lt_opcode_impl(a: usize, b: usize, result: usize) {
         stack_only_opcode_impl::<2, 1>(
             OpcodeId::LT,
@@ -336,6 +358,7 @@ mod stackonlyop_tests {
             vec![StackOp::new(1, StackAddress(1023), Word::from(result))],
         );
     }
+
     #[test]
     fn test_xor_operate() {
         xor_opcode_impl(0x01, 0x01, 0x01.bitxor(0x01) as usize);

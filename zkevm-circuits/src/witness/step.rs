@@ -124,9 +124,12 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                 }
 
                 match op {
+                    // WASM opcodes
                     OpcodeId::Drop => ExecutionState::DROP,
                     OpcodeId::End => ExecutionState::END,
+                    OpcodeId::I32Add | OpcodeId::I32Sub => ExecutionState::ADD_SUB,
 
+                    // EVM opcodes
                     OpcodeId::ADD | OpcodeId::SUB => ExecutionState::ADD_SUB,
                     OpcodeId::ADDMOD => ExecutionState::ADDMOD,
                     OpcodeId::ADDRESS => ExecutionState::ADDRESS,

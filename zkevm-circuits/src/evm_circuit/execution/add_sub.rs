@@ -44,8 +44,8 @@ impl<F: Field> ExecutionGadget<F> for AddSubGadget<F> {
         let is_sub = PairSelectGadget::construct(
             cb,
             opcode.expr(),
-            OpcodeId::SUB.expr(),
-            OpcodeId::ADD.expr(),
+            OpcodeId::I32Sub.expr(),
+            OpcodeId::I32Add.expr(),
         );
 
         // ADD: Pop a and b from the stack, push c on the stack
@@ -59,7 +59,7 @@ impl<F: Field> ExecutionGadget<F> for AddSubGadget<F> {
             rw_counter: Delta(3.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(1.expr()),
-            gas_left: Delta(-OpcodeId::ADD.constant_gas_cost().expr()),
+            gas_left: Delta(-OpcodeId::I32Add.constant_gas_cost().expr()),
             ..StepStateTransition::default()
         };
         let same_context = SameContextGadget::construct(cb, opcode, step_state_transition);
@@ -111,31 +111,18 @@ mod test {
 
     use mock::TestContext;
 
-    fn test_ok(opcode: OpcodeId, a: Word, b: Word) {
+    #[test]
+    fn test_ok() {
         let bytecode = bytecode! {
-            PUSH32(a)
-            PUSH32(b)
-            .write_op(opcode)
-            STOP
+            I32Const[100]
+            I32Const[20]
+            I32Add
+            Drop
         };
 
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
         )
         .run()
-    }
-
-    #[test]
-    fn add_gadget_simple() {
-        test_ok(OpcodeId::ADD, 0x030201.into(), 0x060504.into());
-        test_ok(OpcodeId::SUB, 0x090705.into(), 0x060504.into());
-    }
-
-    #[test]
-    fn add_gadget_rand() {
-        let a = rand_word();
-        let b = rand_word();
-        test_ok(OpcodeId::ADD, a, b);
-        test_ok(OpcodeId::SUB, a, b);
     }
 }

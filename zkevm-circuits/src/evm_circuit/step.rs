@@ -175,6 +175,7 @@ impl ExecutionState {
     pub(crate) fn responsible_opcodes(&self) -> Vec<OpcodeId> {
         match self {
             Self::STOP => vec![OpcodeId::STOP],
+            Self::END => vec![OpcodeId::End],
             Self::ADD_SUB => vec![OpcodeId::ADD, OpcodeId::SUB],
             Self::MUL_DIV_MOD => vec![OpcodeId::MUL, OpcodeId::DIV, OpcodeId::MOD],
             Self::SDIV_SMOD => vec![OpcodeId::SDIV, OpcodeId::SMOD],
