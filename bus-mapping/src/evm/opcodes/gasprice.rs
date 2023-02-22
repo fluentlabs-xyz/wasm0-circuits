@@ -50,7 +50,6 @@ impl Opcode for GasPrice {
 
 #[cfg(test)]
 mod gasprice_tests {
-    use std::fs;
     use crate::{
         circuit_input_builder::ExecState,
         evm::OpcodeId,

@@ -119,7 +119,6 @@ impl Opcode for Sstore {
 
 #[cfg(test)]
 mod sstore_tests {
-    use std::fs;
     use super::*;
     use crate::circuit_input_builder::ExecState;
     use crate::mocks::BlockData;

@@ -54,9 +54,6 @@ mod calldatasize_tests {
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, U256};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
-    use eth_types::evm_types::MemoryAddress;
-    use crate::evm::opcodes::calldatasize::CALL_DATA_SIZE_BYTE_LENGTH;
-    use crate::operation::MemoryOp;
 
     #[test]
     fn calldatasize_opcode_impl() {

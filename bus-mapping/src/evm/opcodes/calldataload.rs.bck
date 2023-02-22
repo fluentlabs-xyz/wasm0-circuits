@@ -122,7 +122,6 @@ impl Opcode for Calldataload {
 
 #[cfg(test)]
 mod calldataload_tests {
-    use std::fs;
     use crate::operation::CallContextOp;
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToWord, Word};
     use mock::{test_ctx::helpers::account_0_code_account_1_no_code, TestContext};

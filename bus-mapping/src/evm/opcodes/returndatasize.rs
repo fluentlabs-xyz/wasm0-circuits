@@ -54,7 +54,6 @@ impl Opcode for Returndatasize {
 
 #[cfg(test)]
 mod returndatasize_tests {
-    use std::fs;
     use crate::circuit_input_builder::CircuitsParams;
     use crate::{
         circuit_input_builder::ExecState,
@@ -64,7 +63,6 @@ mod returndatasize_tests {
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
-    use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
 
     #[test]
     fn test_ok() {
