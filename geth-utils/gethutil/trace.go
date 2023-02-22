@@ -12,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/params"
 	"math/big"
-// 	"os"
 )
 
 type Block struct {
