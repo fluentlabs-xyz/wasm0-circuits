@@ -55,10 +55,9 @@ mod origin_tests {
         operation::{CallContextField, CallContextOp, StackOp, RW},
         Error,
     };
-    use eth_types::{bytecode, Bytecode, evm_types::StackAddress, geth_types::GethData, ToBigEndian, ToWord, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::StackAddress, geth_types::GethData, Word};
     use mock::{
         test_ctx::{helpers::*, TestContext},
-        MOCK_ACCOUNTS,
     };
     use pretty_assertions::assert_eq;
     use eth_types::evm_types::MemoryAddress;

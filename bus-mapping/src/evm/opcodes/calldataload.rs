@@ -120,9 +120,8 @@ impl Opcode for Calldataload {
 
 #[cfg(test)]
 mod calldataload_tests {
-    use std::fs;
     use crate::operation::{CallContextOp, MemoryOp, RW};
-    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToWord, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
     use mock::{test_ctx::helpers::account_0_code_account_1_no_code, TestContext};
     use rand::random;
     use eth_types::bytecode::DataSectionDescriptor;
@@ -300,16 +299,13 @@ mod calldataload_tests {
         );
     }
 
-    fn test_root_ok(offset: u64, calldata: Vec<u8>, calldata_word: Word) {
+    fn test_root_ok(offset: u64, calldata: Vec<u8>, _calldata_word: Word) {
         let byte_offset_mem_address: i32 = 0x0;
         let res_mem_address: i32 = 0x7f;
         let code = bytecode! {
             I32Const[byte_offset_mem_address]
             I32Const[res_mem_address]
             CALLDATALOAD
-            // PUSH32(offset)
-            // CALLDATALOAD
-            // STOP
         };
         let mut data_section = Vec::new();
         append_vector_to_vector_with_padding(&mut data_section, &offset.to_be_bytes().to_vec(), INDEX_BYTE_LENGTH);
@@ -399,7 +395,7 @@ mod calldataload_tests {
                 (
                     RW::WRITE,
                     &MemoryOp{
-                        call_id: call_id,
+                        call_id,
                         address: MemoryAddress::from(res_mem_address + idx as i32),
                         value: 0x0,
                     }

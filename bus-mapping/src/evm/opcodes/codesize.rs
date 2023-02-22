@@ -48,9 +48,7 @@ impl Opcode for Codesize {
 
 #[cfg(test)]
 mod codesize_tests {
-    use std::fs;
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
-    use eth_types::evm_types::MemoryAddress;
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
         TestContext,
@@ -62,12 +60,11 @@ mod codesize_tests {
         operation::{StackOp, RW},
     };
     use crate::evm::opcodes::codesize::CODE_SIZE_BYTE_LENGTH;
-    use crate::operation::MemoryOp;
 
     fn test_ok(large: bool) {
         let res_mem_address = 0x7f;
         let mut code = bytecode! {};
-        let mut st_addr = 1022;
+        let st_addr = 1022;
         let tail: Bytecode;
         if large {
             code.append(&bytecode! {

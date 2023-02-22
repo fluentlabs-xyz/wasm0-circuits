@@ -165,4 +165,11 @@ mod selfbalance_tests {
             );
         }
     }
+
+    #[test]
+    fn selfbalance_dummy_test() {
+        let res_mem_address = 0x7f;
+
+        assert_eq!(res_mem_address, res_mem_address);
+    }
 }
