@@ -63,11 +63,14 @@ exp_bench: ## Run Exp Circuit benchmarks
 
 circuit_benches: evm_bench state_bench ## Run All Circuit benchmarks
 
-clear_libc_targets:
+clean:
+	cargo clean
+
+clean_libc_targets:
 	rm -rf target/debug/build/libc-*
 	rm -rf target/release/build/libc-*
 
-clear_halo_targets:
+clean_halo_targets:
 	rm -rf target/debug/build/halo*
 	rm -rf target/release/build/halo*
 
