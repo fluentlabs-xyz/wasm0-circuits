@@ -8,6 +8,7 @@ use eth_types::{
 use external_tracer::{trace, TraceConfig};
 use helpers::*;
 use itertools::Itertools;
+use eth_types::bytecode::DataSectionDescriptor;
 
 pub use external_tracer::LoggerConfig;
 
@@ -216,10 +217,10 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
     /// addresses are the ones used in [`TestContext::
     /// account_0_code_account_1_no_code`]. Extra accounts, txs and/or block
     /// configs are set as [`Default`].
-    pub fn simple_ctx_with_bytecode(bytecode: Bytecode) -> Result<TestContext<2, 1>, Error> {
+    pub fn simple_ctx_with_bytecode(bytecode: Bytecode, data_section_descriptors: Option<Vec<DataSectionDescriptor>>) -> Result<TestContext<2, 1>, Error> {
         TestContext::new(
             None,
-            account_0_code_account_1_no_code(bytecode),
+            account_0_code_account_1_no_code(bytecode, data_section_descriptors),
             tx_from_1_to_0,
             |block, _txs| block,
         )
@@ -258,6 +259,7 @@ fn gen_geth_traces<const NACC: usize, const NTX: usize>(
 /// Collection of helper functions which contribute to specific rutines on the
 /// builder pattern used to construct [`TestContext`]s.
 pub mod helpers {
+    use eth_types::bytecode::DataSectionDescriptor;
     use super::*;
     use crate::MOCK_ACCOUNTS;
 
@@ -266,13 +268,16 @@ pub mod helpers {
     /// - 0x000000000000000000000000000000000cafe111
     /// - 0x000000000000000000000000000000000cafe222
     /// And injects the provided bytecode into the first one.
-    pub fn account_0_code_account_1_no_code(code: Bytecode) -> impl FnOnce([&mut MockAccount; 2]) {
-        let code = code.wasm_binary();
+    pub fn account_0_code_account_1_no_code(code: Bytecode, data_section_descriptors: Option<Vec<DataSectionDescriptor>>) -> impl FnOnce([&mut MockAccount; 2]) {
+        let code_mod: Vec<u8>;
+        if data_section_descriptors != None {
+            code_mod = code.wasm_binary_with_data_sections(data_section_descriptors);
+        } else { code_mod = code.wasm_binary(); }
         |accs| {
             accs[0]
                 .address(MOCK_ACCOUNTS[0])
                 .balance(eth(10))
-                .code(code);
+                .code(code_mod);
             accs[1].address(MOCK_ACCOUNTS[1]).balance(eth(10));
         }
     }

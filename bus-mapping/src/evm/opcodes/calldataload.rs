@@ -309,14 +309,13 @@ mod calldataload_tests {
         };
         let mut data_section = Vec::new();
         append_vector_to_vector_with_padding(&mut data_section, &offset.to_be_bytes().to_vec(), INDEX_BYTE_LENGTH);
-        let wasm_code = code.wasm_binary_with_data_sections(Some(vec![DataSectionDescriptor{
-            memory_index: 0,
-            mem_offset: byte_offset_mem_address,
-            data: data_section,
-        }]));
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(Bytecode::from_raw_unchecked(wasm_code)),
+            account_0_code_account_1_no_code(code, Some(vec![DataSectionDescriptor{
+                memory_index: 0,
+                mem_offset: byte_offset_mem_address,
+                data: data_section,
+            }])),
             |mut txs, accs| {
                 txs[0]
                     .to(accs[0].address)

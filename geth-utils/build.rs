@@ -1,5 +1,5 @@
 use std::env;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, Write};
 
 fn main() {
     let lib_name = "geth-utils";

@@ -80,7 +80,7 @@ mod selfbalance_tests {
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(code),
+            account_0_code_account_1_no_code(code, None),
             tx_from_1_to_0,
             |block, _tx| block.number(0xcafeu64),
         )
@@ -163,12 +163,5 @@ mod selfbalance_tests {
                 )
             );
         }
-    }
-
-    #[test]
-    fn selfbalance_dummy_test() {
-        let res_mem_address = 0x7f;
-
-        assert_eq!(res_mem_address, res_mem_address);
     }
 }

@@ -276,7 +276,7 @@ mod log_tests {
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(code_prepare),
+            account_0_code_account_1_no_code(code_prepare, None),
             tx_from_1_to_0,
             |block, _tx| block.number(0xcafeu64),
         )
