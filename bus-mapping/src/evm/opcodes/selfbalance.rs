@@ -64,7 +64,7 @@ mod selfbalance_tests {
         mocks::BlockData,
         operation::{AccountOp, CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, Word};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
     use crate::operation::MemoryOp;
