@@ -192,7 +192,7 @@ mod test {
         // Get the execution steps from the external tracer
         let ctx = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(code),
+            account_0_code_account_1_no_code(code, None),
             |mut txs, _accs| {
                 txs[0]
                     .to(tx.to.unwrap())

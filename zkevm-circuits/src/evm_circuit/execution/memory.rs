@@ -196,7 +196,7 @@ mod test {
 
         let ctx = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(bytecode),
+            account_0_code_account_1_no_code(bytecode, None),
             |mut txs, accs| {
                 txs[0]
                     .to(accs[0].address)

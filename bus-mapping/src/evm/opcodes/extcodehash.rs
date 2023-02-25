@@ -177,7 +177,7 @@ mod extcodehash_tests {
         }
 
         // Get the execution steps from the external tracer
-        let wasm_binary = code.wasm_binary_with_data_sections(Some(vec![DataSectionDescriptor {
+        let wasm_binary = code.wasm_binary(Some(vec![DataSectionDescriptor {
             memory_index: 0,
             mem_offset: external_address_mem_address,
             data: external_address.0.to_vec(),

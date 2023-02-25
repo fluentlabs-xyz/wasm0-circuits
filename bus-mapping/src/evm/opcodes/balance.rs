@@ -189,7 +189,7 @@ mod balance_tests {
             Word::zero()
         };
 
-        let wasm_binary_vec = code.wasm_binary_with_data_sections(Some(vec![DataSectionDescriptor {
+        let wasm_binary_vec = code.wasm_binary(Some(vec![DataSectionDescriptor {
             memory_index: 0,
             mem_offset: account_mem_address,
             data: address.0.to_vec(),

@@ -139,6 +139,15 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::End => Stop::gen_associated_ops,
         OpcodeId::Return => Dummy::gen_associated_ops,
 
+        // TODO these are temporal. need a fix.
+        // OpcodeId::GetLocal => Dummy::gen_associated_ops,
+        // OpcodeId::GetGlobal => Dummy::gen_associated_ops,
+        // OpcodeId::SetLocal => Dummy::gen_associated_ops,
+        // OpcodeId::SetGlobal => Dummy::gen_associated_ops,
+        // OpcodeId::I32GtU => Dummy::gen_associated_ops,
+        // OpcodeId::If => Dummy::gen_associated_ops,
+        // OpcodeId::Call => Dummy::gen_associated_ops,
+
         OpcodeId::STOP => Stop::gen_associated_ops,
         OpcodeId::ADD => StackOnlyOpcode::<2, 1>::gen_associated_ops,
         OpcodeId::MUL => StackOnlyOpcode::<2, 1>::gen_associated_ops,

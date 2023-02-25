@@ -65,11 +65,7 @@ impl Bytecode {
         }
     }
 
-    pub fn wasm_binary(&self) -> Vec<u8> {
-        self.wasm_binary_with_data_sections(None)
-    }
-
-    pub fn wasm_binary_with_data_sections(&self, data_section_descriptors: Option<Vec<DataSectionDescriptor>>) -> Vec<u8> {
+    pub fn wasm_binary(&self, data_section_descriptors: Option<Vec<DataSectionDescriptor>>) -> Vec<u8> {
         use wasm_encoder::{
             CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
             ImportSection, MemorySection, MemoryType, Module, TypeSection, ValType,

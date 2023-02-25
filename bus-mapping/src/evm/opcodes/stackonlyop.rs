@@ -120,7 +120,7 @@ mod stackonlyop_tests {
             I32DivS // TODO not supported error
             // STOP
         };
-        let wasm_bytecode = Bytecode::from_raw_unchecked(code.wasm_binary());
+        let wasm_bytecode = Bytecode::from_raw_unchecked(code.wasm_binary(None));
         stack_only_opcode_impl::<2, 1>(
             OpcodeId::I32DivS,
             wasm_bytecode,

@@ -183,7 +183,7 @@ mod sstore_tests {
         let expected_prev_value = value1_value;
 
         // Get the execution steps from the external tracer
-        let wasm_binary = code.wasm_binary_with_data_sections(Some(vec![DataSectionDescriptor {
+        let wasm_binary = code.wasm_binary(Some(vec![DataSectionDescriptor {
             memory_index: 0,
             mem_offset: key1_mem_address,
             data: data_section,

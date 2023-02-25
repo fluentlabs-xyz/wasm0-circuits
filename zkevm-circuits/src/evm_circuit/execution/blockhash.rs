@@ -171,7 +171,7 @@ mod test {
         }
         let ctx = TestContext::<2, 1>::new(
             Some(history_hashes),
-            account_0_code_account_1_no_code(code),
+            account_0_code_account_1_no_code(code, None),
             tx_from_1_to_0,
             |block, _tx| block.number(current_block_number),
         )

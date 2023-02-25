@@ -18,10 +18,9 @@ mod selfbalance_tests {
         };
 
         // Get the execution steps from the external tracer
-        let wasm_bytecode = Bytecode::from_raw_unchecked(code.wasm_binary());
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(wasm_bytecode),
+            account_0_code_account_1_no_code(code, None),
             tx_from_1_to_0,
             |block, _tx| block.number(0xcafeu64),
         )

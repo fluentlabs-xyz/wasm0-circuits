@@ -345,7 +345,7 @@ mod test {
             // Get the execution steps from the external tracer
             TestContext::<2, 3>::new(
                 None,
-                account_0_code_account_1_no_code(bytecode! { STOP }),
+                account_0_code_account_1_no_code(bytecode! { STOP }, None),
                 |mut txs, accs| {
                     txs[0]
                         .to(accs[0].address)

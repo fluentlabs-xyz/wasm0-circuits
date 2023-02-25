@@ -1037,6 +1037,8 @@ impl FromStr for OpcodeId {
             // WASM opcode family
             "unreachable" => OpcodeId::Unreachable,
             "nop" => OpcodeId::Nop,
+            // TODO temporal? need a fix?
+            "gas" => OpcodeId::GAS,
             "block" => OpcodeId::Block,
             "loop" => OpcodeId::Loop,
             "if" => OpcodeId::If,

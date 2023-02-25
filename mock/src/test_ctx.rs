@@ -217,10 +217,10 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
     /// addresses are the ones used in [`TestContext::
     /// account_0_code_account_1_no_code`]. Extra accounts, txs and/or block
     /// configs are set as [`Default`].
-    pub fn simple_ctx_with_bytecode(bytecode: Bytecode, data_section_descriptors: Option<Vec<DataSectionDescriptor>>) -> Result<TestContext<2, 1>, Error> {
+    pub fn simple_ctx_with_bytecode(bytecode: Bytecode) -> Result<TestContext<2, 1>, Error> {
         TestContext::new(
             None,
-            account_0_code_account_1_no_code(bytecode, data_section_descriptors),
+            account_0_code_account_1_no_code(bytecode, None),
             tx_from_1_to_0,
             |block, _txs| block,
         )
@@ -269,15 +269,12 @@ pub mod helpers {
     /// - 0x000000000000000000000000000000000cafe222
     /// And injects the provided bytecode into the first one.
     pub fn account_0_code_account_1_no_code(code: Bytecode, data_section_descriptors: Option<Vec<DataSectionDescriptor>>) -> impl FnOnce([&mut MockAccount; 2]) {
-        let code_mod: Vec<u8>;
-        if data_section_descriptors != None {
-            code_mod = code.wasm_binary_with_data_sections(data_section_descriptors);
-        } else { code_mod = code.wasm_binary(); }
+        let wasm_binary = code.wasm_binary(data_section_descriptors);
         |accs| {
             accs[0]
                 .address(MOCK_ACCOUNTS[0])
                 .balance(eth(10))
-                .code(code_mod);
+                .code(wasm_binary);
             accs[1].address(MOCK_ACCOUNTS[1]).balance(eth(10));
         }
     }

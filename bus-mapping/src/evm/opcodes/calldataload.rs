@@ -184,13 +184,13 @@ mod calldataload_tests {
         // Get the execution steps from the external tracer
         let mut data_section = Vec::new();
         append_vector_to_vector_with_padding(&mut data_section, &memory_a, INDEX_BYTE_LENGTH);
-        let wasm_code_a = code_a.wasm_binary_with_data_sections(Some(vec![DataSectionDescriptor{
+        let wasm_code_a = code_a.wasm_binary(Some(vec![DataSectionDescriptor{
             memory_index: 0,
             mem_offset: byte_offset_mem_address,
             data: data_section,
         }]));
         let wasm_code_a_bytecode = Bytecode::from_raw_unchecked(wasm_code_a);
-        let wasm_code_b = code_b.wasm_binary();
+        let wasm_code_b = code_b.wasm_binary(None);
         let wasm_code_b_bytecode = Bytecode::from_raw_unchecked(wasm_code_b);
         let block: GethData = TestContext::<3, 1>::new(
             None,
