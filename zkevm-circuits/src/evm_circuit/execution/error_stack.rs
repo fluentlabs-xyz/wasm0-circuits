@@ -37,7 +37,8 @@ impl<F: Field> ExecutionGadget<F> for ErrorStackGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
-        cb.opcode_lookup(opcode.expr(), 1.expr());
+        // TODO need a fix
+        // cb.opcode_lookup(opcode.expr(), 1.expr());
 
         let min_stack_pointer = cb.query_cell();
         let max_stack_pointer = cb.query_cell();

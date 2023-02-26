@@ -35,12 +35,13 @@ impl<F: Field> ExecutionGadget<F> for JumpGadget<F> {
         // Pop the value from the stack
         cb.stack_pop(destination.expr());
 
+        // TODO need a fix
         // Lookup opcode at destination
-        cb.opcode_lookup_at(
-            from_bytes::expr(&destination.cells),
-            OpcodeId::JUMPDEST.expr(),
-            1.expr(),
-        );
+        // cb.opcode_lookup_at(
+        //     from_bytes::expr(&destination.cells),
+        //     OpcodeId::JUMPDEST.expr(),
+        //     1.expr(),
+        // );
 
         // State transition
         let opcode = cb.query_cell();

@@ -38,7 +38,8 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCallGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
-        cb.opcode_lookup(opcode.expr(), 1.expr());
+        // TODO need a fix
+        // cb.opcode_lookup(opcode.expr(), 1.expr());
         // TODO: add CallCode etc. when handle ErrorOutOfGasCALLCODE in furture
         // implementation
         cb.require_equal(

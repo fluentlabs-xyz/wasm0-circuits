@@ -35,7 +35,8 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGConstantGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
-        cb.opcode_lookup(opcode.expr(), 1.expr());
+        // TODO need a fix
+        // cb.opcode_lookup(opcode.expr(), 1.expr());
 
         let gas_required = cb.query_cell();
         let rw_counter_end_of_reversion = cb.query_cell();

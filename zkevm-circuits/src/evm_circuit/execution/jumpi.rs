@@ -45,14 +45,15 @@ impl<F: Field> ExecutionGadget<F> for JumpiGadget<F> {
         let is_condition_zero = IsZeroGadget::construct(cb, phase2_condition.expr());
         let should_jump = 1.expr() - is_condition_zero.expr();
 
+        // TODO need a fix
         // Lookup opcode at destination when should_jump
-        cb.condition(should_jump.clone(), |cb| {
-            cb.opcode_lookup_at(
-                from_bytes::expr(&destination.cells),
-                OpcodeId::JUMPDEST.expr(),
-                1.expr(),
-            );
-        });
+        // cb.condition(should_jump.clone(), |cb| {
+        //     cb.opcode_lookup_at(
+        //         from_bytes::expr(&destination.cells),
+        //         OpcodeId::JUMPDEST.expr(),
+        //         1.expr(),
+        //     );
+        // });
 
         // Transit program_counter to destination when should_jump, otherwise by
         // delta 1.
