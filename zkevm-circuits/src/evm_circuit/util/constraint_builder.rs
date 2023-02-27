@@ -694,10 +694,8 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         tag: RwTableTag,
         values: RwValues<F>,
     ) {
-        // TODO figure out what's going on with this lookups
-        if name == "CallContext lookup" || name == "Stack lookup" {
-            return;
-        }
+        // TODO figure out what's going on with this lookup types
+        // if name == "CallContext lookup" || name == "Stack lookup" { return; }
         let name = format!("rw lookup '{}'", name);
         println!("{}", name);
         self.add_lookup(
