@@ -96,7 +96,7 @@ mod test {
     #[test]
     fn caller_gadget_test() {
         let bytecode = bytecode! {
-tA            CALLER
+            CALLER
             STOP
         };
 
