@@ -496,7 +496,7 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
             };
         }
 
-        constrain!(rw_counter);
+        // constrain!(rw_counter);
         constrain!(call_id);
         constrain!(is_root);
         constrain!(is_create);
@@ -504,7 +504,7 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         constrain!(program_counter);
         // constrain!(stack_pointer);
         constrain!(gas_left);
-        constrain!(memory_word_size);
+        // constrain!(memory_word_size);
         constrain!(reversible_write_counter);
         constrain!(log_id);
     }
@@ -694,16 +694,16 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         tag: RwTableTag,
         values: RwValues<F>,
     ) {
-        let name = format!("rw lookup {}", name);
-        self.add_lookup(
-            &name,
-            Lookup::Rw {
-                counter,
-                is_write,
-                tag: tag.expr(),
-                values,
-            },
-        );
+        // let name = format!("rw lookup {}", name);
+        // self.add_lookup(
+        //     &name,
+        //     Lookup::Rw {
+        //         counter,
+        //         is_write,
+        //         tag: tag.expr(),
+        //         values,
+        //     },
+        // );
     }
 
     /// Add a Lookup::Rw and increase the rw_counter_offset, useful in normal

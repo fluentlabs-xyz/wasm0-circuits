@@ -100,7 +100,7 @@ mod test {
             I32Const[res_mem_address]
             CALLER
             // STOP
-            Drop
+            // Drop
         };
 
         CircuitTestBuilder::new_from_test_ctx(
