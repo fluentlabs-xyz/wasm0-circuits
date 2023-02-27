@@ -3,7 +3,6 @@ use crate::{
         execution::ExecutionGadget,
         step::ExecutionState,
         util::{
-            common_gadget::RestoreContextGadget,
             constraint_builder::{
                 ConstraintBuilder, StepStateTransition,
                 Transition::{Delta, Same},

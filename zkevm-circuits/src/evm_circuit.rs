@@ -2,7 +2,6 @@
 
 #![allow(missing_docs)]
 
-use std::marker::PhantomData;
 use halo2_proofs::{
     circuit::{Layouter, Value},
     plonk::*,

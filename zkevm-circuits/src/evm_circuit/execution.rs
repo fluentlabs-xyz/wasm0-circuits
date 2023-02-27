@@ -28,7 +28,6 @@ use std::{
     collections::{BTreeSet, HashMap},
     iter,
 };
-use strum::IntoEnumIterator;
 
 mod add_sub;
 mod addmod;
@@ -97,68 +96,13 @@ mod swap;
 mod end;
 mod wasm;
 
-use self::sha3::Sha3Gadget;
 use add_sub::AddSubGadget;
-use addmod::AddModGadget;
-use address::AddressGadget;
-use balance::BalanceGadget;
 use begin_tx::BeginTxGadget;
-use bitwise::BitwiseGadget;
-use block_ctx::{BlockCtxU160Gadget, BlockCtxU256Gadget, BlockCtxU64Gadget};
-use blockhash::BlockHashGadget;
-use byte::ByteGadget;
-use calldatacopy::CallDataCopyGadget;
-use calldataload::CallDataLoadGadget;
-use calldatasize::CallDataSizeGadget;
-use caller::CallerGadget;
-use callop::CallOpGadget;
-use callvalue::CallValueGadget;
-use chainid::ChainIdGadget;
-use codecopy::CodeCopyGadget;
-use codesize::CodesizeGadget;
-use comparator::ComparatorGadget;
-use dummy::DummyGadget;
 use end_block::EndBlockGadget;
 use end_tx::EndTxGadget;
-use error_invalid_jump::ErrorInvalidJumpGadget;
-use error_oog_call::ErrorOOGCallGadget;
-use error_oog_constant::ErrorOOGConstantGadget;
-use error_stack::ErrorStackGadget;
-use exp::ExponentiationGadget;
-use extcodecopy::ExtcodecopyGadget;
-use extcodehash::ExtcodehashGadget;
-use extcodesize::ExtcodesizeGadget;
-use gas::GasGadget;
-use gasprice::GasPriceGadget;
-use is_zero::IsZeroGadget;
-use jump::JumpGadget;
-use jumpdest::JumpdestGadget;
-use jumpi::JumpiGadget;
-use logs::LogGadget;
-use memory::MemoryGadget;
-use msize::MsizeGadget;
-use mul_div_mod::MulDivModGadget;
-use mulmod::MulModGadget;
-use opcode_not::NotGadget;
-use origin::OriginGadget;
-use pc::PcGadget;
-use pop::PopGadget;
 use drop::DropGadget;
-use return_revert::ReturnRevertGadget;
-use returndatacopy::ReturnDataCopyGadget;
-use returndatasize::ReturnDataSizeGadget;
-use sar::SarGadget;
-use sdiv_smod::SignedDivModGadget;
-use selfbalance::SelfbalanceGadget;
-use shl_shr::ShlShrGadget;
-use signed_comparator::SignedComparatorGadget;
-use signextend::SignextendGadget;
-use sload::SloadGadget;
-use sstore::SstoreGadget;
-use stop::StopGadget;
 use push::PushGadget;
 use crate::evm_circuit::execution::end::EndGadget;
-use crate::evm_circuit::execution::wasm::WasmGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;

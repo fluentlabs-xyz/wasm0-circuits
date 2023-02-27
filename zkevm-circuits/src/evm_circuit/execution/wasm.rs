@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;
 
 use eth_types::Field;

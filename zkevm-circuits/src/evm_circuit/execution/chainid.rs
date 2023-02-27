@@ -80,7 +80,7 @@ mod test {
     #[test]
     fn chainid_gadget_test() {
         let bytecode = bytecode! {
-            #[start]
+            // #[start]
             CHAINID
             STOP
         };

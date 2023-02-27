@@ -104,10 +104,8 @@ impl<F: Field> ExecutionGadget<F> for AddSubGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::evm_circuit::test::rand_word;
     use crate::test_util::CircuitTestBuilder;
-    use eth_types::evm_types::OpcodeId;
-    use eth_types::{bytecode, Word};
+    use eth_types::bytecode;
 
     use mock::TestContext;
 

@@ -8,7 +8,6 @@ use eth_types::{
 use external_tracer::{trace, TraceConfig};
 use helpers::*;
 use itertools::Itertools;
-use eth_types::bytecode::DataSectionDescriptor;
 
 pub use external_tracer::LoggerConfig;
 
