@@ -102,6 +102,7 @@ use end_block::EndBlockGadget;
 use end_tx::EndTxGadget;
 use drop::DropGadget;
 use push::PushGadget;
+use crate::evm_circuit::execution::caller::CallerGadget;
 use crate::evm_circuit::execution::end::EndGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
@@ -163,7 +164,7 @@ pub(crate) struct ExecutionConfig<F> {
     // calldatacopy_gadget: CallDataCopyGadget<F>,
     // calldataload_gadget: CallDataLoadGadget<F>,
     // calldatasize_gadget: CallDataSizeGadget<F>,
-    // caller_gadget: CallerGadget<F>,
+    caller_gadget: CallerGadget<F>,
     // chainid_gadget: ChainIdGadget<F>,
     // codecopy_gadget: CodeCopyGadget<F>,
     // codesize_gadget: CodesizeGadget<F>,
@@ -420,7 +421,7 @@ impl<F: Field> ExecutionConfig<F> {
             // calldatacopy_gadget: configure_gadget!(),
             // calldataload_gadget: configure_gadget!(),
             // calldatasize_gadget: configure_gadget!(),
-            // caller_gadget: configure_gadget!(),
+            caller_gadget: configure_gadget!(),
             // chainid_gadget: configure_gadget!(),
             // codecopy_gadget: configure_gadget!(),
             // codesize_gadget: configure_gadget!(),
@@ -1028,7 +1029,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::CALLDATACOPY => assign_exec_step!(self.calldatacopy_gadget),
             // ExecutionState::CALLDATALOAD => assign_exec_step!(self.calldataload_gadget),
             // ExecutionState::CALLDATASIZE => assign_exec_step!(self.calldatasize_gadget),
-            // ExecutionState::CALLER => assign_exec_step!(self.caller_gadget),
+            ExecutionState::CALLER => assign_exec_step!(self.caller_gadget),
             // ExecutionState::CALLVALUE => assign_exec_step!(self.call_value_gadget),
             // ExecutionState::CHAINID => assign_exec_step!(self.chainid_gadget),
             // ExecutionState::CODECOPY => assign_exec_step!(self.codecopy_gadget),

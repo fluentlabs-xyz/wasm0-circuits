@@ -2,30 +2,25 @@
 
 #![allow(missing_docs)]
 
-use std::marker::PhantomData;
 use halo2_proofs::{
     circuit::{Layouter, Value},
     plonk::*,
 };
-use itertools::Itertools;
 use strum::IntoEnumIterator;
-use eth_types::evm_types::OpcodeId;
 use eth_types::{Field, ToWord};
 
-use crate::table::{BlockTable, BytecodeTable, CopyTable, ExpTable, KeccakTable, RwTable, TxTable};
 use crate::util::{Challenges, SubCircuit, SubCircuitConfig};
 pub use crate::witness;
 use crate::evm_circuit::table::FixedTableTag;
-use crate::wasm_circuit::circuits::brtable::{BrTableChip, BrTableConfig};
+use crate::wasm_circuit::circuits::brtable::{BrTableConfig};
 use crate::wasm_circuit::circuits::CircuitConfigure;
 use crate::wasm_circuit::circuits::config::{IMTABLE_COLUMNS, VAR_COLUMNS};
-use crate::wasm_circuit::circuits::etable_compact::{EventTableChip, EventTableConfig};
-use crate::wasm_circuit::circuits::imtable::{InitMemoryTableConfig, MInitTableChip};
-use crate::wasm_circuit::circuits::itable::{InstructionTableChip, InstructionTableConfig};
-use crate::wasm_circuit::circuits::jtable::{JumpTableChip, JumpTableConfig};
-use crate::wasm_circuit::circuits::mtable_compact::{MemoryTableChip, MemoryTableConfig};
-use crate::wasm_circuit::circuits::rtable::{RangeTableChip, RangeTableConfig};
-use crate::wasm_circuit::circuits::utils::Context;
+use crate::wasm_circuit::circuits::etable_compact::{EventTableConfig};
+use crate::wasm_circuit::circuits::imtable::{InitMemoryTableConfig};
+use crate::wasm_circuit::circuits::itable::{InstructionTableConfig};
+use crate::wasm_circuit::circuits::jtable::{JumpTableConfig};
+use crate::wasm_circuit::circuits::mtable_compact::{MemoryTableConfig};
+use crate::wasm_circuit::circuits::rtable::{RangeTableConfig};
 use crate::wasm_circuit::specs::{CompilationTable, ExecutionTable};
 use crate::witness::{Block, Call, Transaction};
 
