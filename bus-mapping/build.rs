@@ -10,7 +10,6 @@ fn main() {
     let go_package_name = "zkwasm-gas-injector";
     let go_mod_file_name = "go.mod";
     let go_package_path = golang_utils::go_package_system_path(go_package_name, go_mod_file_name, go_mod_file_rel_path.as_str()).unwrap();
-    // TODO detect local arch and choose dirs accordingly
     let mut local_libs_subdirs = vec![];
     let arch = env::consts::ARCH;
     match env::consts::OS {
