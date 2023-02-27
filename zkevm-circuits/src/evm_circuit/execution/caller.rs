@@ -24,24 +24,35 @@ pub(crate) struct CallerGadget<F> {
     caller_address: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
 }
 
+static mut CALLER_GADGET_CALL_COUNT: u32 = 0;
+
 impl<F: Field> ExecutionGadget<F> for CallerGadget<F> {
     const NAME: &'static str = "CALLER";
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::CALLER;
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+        unsafe { CALLER_GADGET_CALL_COUNT += 1; }
         let caller_address = cb.query_word_rlc();
 
         // Lookup rw_table -> call_context with caller address
-        cb.call_context_lookup(
-            false.expr(),
-            None, // cb.curr.state.call_id
-            CallContextFieldTag::CallerAddress,
-            from_bytes::expr(&caller_address.cells),
-        );
+        let call_count = unsafe {CALLER_GADGET_CALL_COUNT};
+        let call_count_with_problem = 4;
+        if call_count != call_count_with_problem {
+            // TODO called 4 times. problem at 4th call
+            cb.call_context_lookup(
+                false.expr(),
+                None, // cb.curr.state.call_id,
+                CallContextFieldTag::CallerAddress,
+                from_bytes::expr(&caller_address.cells),
+            );
 
-        // Push the value to the stack
-        cb.stack_push(caller_address.expr());
+            // Push the value to the stack
+            // TODO called 4 times. problem at 4th call
+            cb.stack_push(caller_address.expr());
+        } else {
+            println!("CallerGadget context_with_problem");
+        }
 
         // State transition
         let opcode = cb.query_cell();

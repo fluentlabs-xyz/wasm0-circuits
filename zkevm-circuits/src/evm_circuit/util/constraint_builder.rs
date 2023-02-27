@@ -695,7 +695,6 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         values: RwValues<F>,
     ) {
         // TODO figure out what's going on with this lookup types
-        // if name == "CallContext lookup" || name == "Stack lookup" { return; }
         let name = format!("rw lookup '{}'", name);
         self.add_lookup(
             &name,
