@@ -694,16 +694,21 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         tag: RwTableTag,
         values: RwValues<F>,
     ) {
-        // let name = format!("rw lookup {}", name);
-        // self.add_lookup(
-        //     &name,
-        //     Lookup::Rw {
-        //         counter,
-        //         is_write,
-        //         tag: tag.expr(),
-        //         values,
-        //     },
-        // );
+        // TODO figure out what's going on with this lookups
+        if name == "CallContext lookup" || name == "Stack lookup" {
+            return;
+        }
+        let name = format!("rw lookup '{}'", name);
+        println!("{}", name);
+        self.add_lookup(
+            &name,
+            Lookup::Rw {
+                counter,
+                is_write,
+                tag: tag.expr(),
+                values,
+            },
+        );
     }
 
     /// Add a Lookup::Rw and increase the rw_counter_offset, useful in normal
