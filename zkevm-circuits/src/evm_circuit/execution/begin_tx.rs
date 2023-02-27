@@ -20,6 +20,7 @@ use crate::{
 use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
 use halo2_proofs::circuit::Value;
 use halo2_proofs::plonk::Error;
+use crate::evm_circuit::util::constraint_builder::Transition::Any;
 
 #[derive(Clone, Debug)]
 pub(crate) struct BeginTxGadget<F> {

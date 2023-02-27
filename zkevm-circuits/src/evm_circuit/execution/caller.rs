@@ -1,27 +1,34 @@
+use halo2_proofs::circuit::Value;
+use halo2_proofs::plonk::Error;
+use halo2_proofs::plonk::Error::Synthesis;
+use num_traits::real::Real;
+
+use bus_mapping::evm::OpcodeId;
+use eth_types::{Field, ToBigEndian, ToLittleEndian, ToScalar};
+
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
         param::N_BYTES_ACCOUNT_ADDRESS,
         step::ExecutionState,
         util::{
+            CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
-            from_bytes, CachedRegion, RandomLinearCombination,
+            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta}, from_bytes, RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::CallContextFieldTag,
     util::Expr,
 };
-use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian};
-use halo2_proofs::plonk::Error;
+use crate::evm_circuit::util::Cell;
 
 #[derive(Clone, Debug)]
 pub(crate) struct CallerGadget<F> {
     same_context: SameContextGadget<F>,
     // Using RLC to match against rw_table->stack_op value
     caller_address: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
+    dest_offset: Cell<F>,
 }
 
 static mut CALLER_GADGET_CALL_COUNT: u32 = 0;
@@ -32,34 +39,34 @@ impl<F: Field> ExecutionGadget<F> for CallerGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::CALLER;
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
-        unsafe { CALLER_GADGET_CALL_COUNT += 1; }
         let caller_address = cb.query_word_rlc();
+        let dest_offset = cb.query_cell();
 
-        // Lookup rw_table -> call_context with caller address
-        let call_count = unsafe {CALLER_GADGET_CALL_COUNT};
-        let call_count_with_problem = 4;
-        if call_count != call_count_with_problem {
-            // TODO called 4 times. problem at 4th call
-            cb.call_context_lookup(
-                false.expr(),
-                None, // cb.curr.state.call_id,
-                CallContextFieldTag::CallerAddress,
-                from_bytes::expr(&caller_address.cells),
+        cb.call_context_lookup(
+            false.expr(),
+            None, // cb.curr.state.call_id,
+            CallContextFieldTag::CallerAddress,
+            from_bytes::expr(&caller_address.cells),
+        );
+
+        // Push the value to the stack
+        cb.stack_pop(dest_offset.expr());
+
+        for idx in 0..20 {
+            cb.memory_lookup(
+                true.expr(),
+                dest_offset.expr() + idx.expr(),
+                caller_address.cells[20 - idx - 1].expr(),
+                None,
             );
-
-            // Push the value to the stack
-            // TODO called 4 times. problem at 4th call
-            cb.stack_push(caller_address.expr());
-        } else {
-            println!("CallerGadget context_with_problem");
         }
 
         // State transition
         let opcode = cb.query_cell();
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(2.expr()),
+            rw_counter: Delta(22.expr()),
             program_counter: Delta(1.expr()),
-            stack_pointer: Delta((-1).expr()),
+            stack_pointer: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::CALLER.constant_gas_cost().expr()),
             ..Default::default()
         };
@@ -68,6 +75,7 @@ impl<F: Field> ExecutionGadget<F> for CallerGadget<F> {
         Self {
             same_context,
             caller_address,
+            dest_offset,
         }
     }
 
@@ -82,16 +90,22 @@ impl<F: Field> ExecutionGadget<F> for CallerGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let caller = block.rws[step.rw_indices[1]].stack_value();
+        let caller_address = block.rws[step.rw_indices[0]].call_context_value();
+        let dest_offset = block.rws[step.rw_indices[1]].stack_value();
 
         self.caller_address.assign(
             region,
             offset,
             Some(
-                caller.to_le_bytes()[..N_BYTES_ACCOUNT_ADDRESS]
+                caller_address.to_le_bytes()[0..20]
                     .try_into()
                     .unwrap(),
             ),
+        )?;
+        self.dest_offset.assign(
+            region,
+            offset,
+            Value::<F>::known(dest_offset.to_scalar().ok_or(Synthesis)?),
         )?;
 
         Ok(())
@@ -100,9 +114,10 @@ impl<F: Field> ExecutionGadget<F> for CallerGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::test_util::CircuitTestBuilder;
     use eth_types::bytecode;
     use mock::TestContext;
+
+    use crate::test_util::CircuitTestBuilder;
 
     #[test]
     fn caller_gadget_test() {

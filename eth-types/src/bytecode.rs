@@ -130,7 +130,7 @@ impl Bytecode {
         }
         // Encode the function section
         let mut functions = FunctionSection::new();
-        functions.function(0);
+        functions.function(1);
         // Create memory section
         let mut memories = MemorySection::new();
         memories.memory(MemoryType {
@@ -148,7 +148,6 @@ impl Bytecode {
         let locals = vec![];
         let mut f = Function::new(locals);
         f.raw(self.code());
-        // f.instruction(&Instruction::Return);
         f.instruction(&Instruction::End);
         codes.function(&f);
         // build sections (Custom,Type,Import,Function,Table,Memory,Global,Event,Export,Start,Elem,DataCount,Code,Data)
