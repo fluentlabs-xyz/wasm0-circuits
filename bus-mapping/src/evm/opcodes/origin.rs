@@ -101,7 +101,7 @@ mod origin_tests {
             (op_origin.rw(), op_origin.op()),
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress(1022usize), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress(1023usize), Word::from(res_mem_address))
             )
         );
         let call_id = builder.block.txs()[0].calls()[0].call_id;

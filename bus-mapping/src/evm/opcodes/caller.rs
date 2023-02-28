@@ -2,7 +2,7 @@ use super::Opcode;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::operation::CallContextField;
 use crate::Error;
-use eth_types::{GethExecStep, ToAddress, ToLittleEndian, U256};
+use eth_types::{GethExecStep, ToAddress, U256};
 use eth_types::evm_types::MemoryAddress;
 
 pub const CALLER_BYTE_LENGTH: usize = 20;
@@ -117,7 +117,7 @@ mod caller_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress::from(1023), Word::from(res_mem_address))
             )
         );
         for idx in 0..CALLER_BYTE_LENGTH {

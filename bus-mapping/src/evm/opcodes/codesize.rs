@@ -64,7 +64,7 @@ mod codesize_tests {
     fn test_ok(large: bool) {
         let res_mem_address = 0x7f;
         let mut code = bytecode! {};
-        let st_addr = 1022;
+        let st_addr = 1023;
         let tail: Bytecode;
         if large {
             code.append(&bytecode! {

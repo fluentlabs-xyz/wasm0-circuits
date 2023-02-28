@@ -95,7 +95,7 @@ mod chainid_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress::from(1023), Word::from(res_mem_address))
             )
         );
 

@@ -94,7 +94,7 @@ mod number_tests {
             (op_number.rw(), op_number.op()),
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress(1022usize), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress(1023usize), Word::from(res_mem_address))
             )
         );
 
