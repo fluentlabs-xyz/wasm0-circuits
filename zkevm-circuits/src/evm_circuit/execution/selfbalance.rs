@@ -1,5 +1,6 @@
 use crate::{
     evm_circuit::{
+        param::N_BYTES_WORD,
         execution::ExecutionGadget,
         step::ExecutionState,
         util::{
@@ -13,14 +14,19 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToScalar, ToU256};
+use eth_types::{Field, ToLittleEndian, ToScalar, ToU256};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use halo2_proofs::plonk::Error::Synthesis;
+use crate::evm_circuit::util::{RandomLinearCombination};
 
 #[derive(Clone, Debug)]
 pub(crate) struct SelfbalanceGadget<F> {
     same_context: SameContextGadget<F>,
     callee_address: Cell<F>,
     phase2_self_balance: Cell<F>,
+    dest_offset: Cell<F>,
+    self_balance: RandomLinearCombination<F, N_BYTES_WORD>,
+    // self_balance: RandomLinearCombination<F, N_BYTES_WORD>,
 }
 
 impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
@@ -30,6 +36,7 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let callee_address = cb.call_context(None, CallContextFieldTag::CalleeAddress);
+        let self_balance = cb.query_word_rlc::<N_BYTES_WORD>();
         let dest_offset = cb.query_cell();
 
         let phase2_self_balance = cb.query_cell_phase2();
@@ -39,11 +46,20 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
             phase2_self_balance.expr(),
         );
 
-        cb.stack_pop(phase2_self_balance.expr());
+        cb.stack_pop(dest_offset.expr());
+
+        for idx in 0..32 {
+            cb.memory_lookup(
+                true.expr(),
+                dest_offset.expr() + idx.expr(),
+                self_balance.cells[32 - 1 - idx].expr(),
+                None,
+            );
+        }
 
         let opcode = cb.query_cell();
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(3.expr()),
+            rw_counter: Delta(34.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::SELFBALANCE.constant_gas_cost().expr()),
@@ -53,8 +69,10 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
 
         Self {
             same_context,
+            self_balance,
             phase2_self_balance,
             callee_address,
+            dest_offset,
         }
     }
 
@@ -79,8 +97,22 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
             ),
         )?;
 
+        let (_, self_balance) = block.rws[step.rw_indices[1]].account_value_pair();
         let dest_offset = block.rws[step.rw_indices[2]].stack_value();
-        let self_balance = block.rws[step.rw_indices[3]].stack_value();
+        self.self_balance.assign(
+            region,
+            offset,
+            Some(
+                self_balance.to_le_bytes()
+                    .try_into()
+                    .unwrap(),
+            ),
+        )?;
+        self.dest_offset.assign(
+            region,
+            offset,
+            Value::<F>::known(dest_offset.to_scalar().ok_or(Synthesis)?),
+        )?;
         self.phase2_self_balance
             .assign(region, offset, region.word_rlc(self_balance.to_u256()))?;
 

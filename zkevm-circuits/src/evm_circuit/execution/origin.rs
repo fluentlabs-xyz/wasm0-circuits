@@ -45,7 +45,6 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
             from_bytes::expr(&origin.cells),
         );
 
-        // Push the value to the stack
         cb.stack_pop(dest_offset.expr());
 
         for idx in 0..20 {
@@ -93,7 +92,6 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
         let origin = tx.caller_address.to_word();
         let dest_offset = block.rws[step.rw_indices[1]].stack_value();
 
-        // Assign Origin addr RLC.
         self.origin.assign(
             region,
             offset,

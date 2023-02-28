@@ -103,6 +103,7 @@ use push::PushGadget;
 use crate::evm_circuit::execution::caller::CallerGadget;
 use crate::evm_circuit::execution::end::EndGadget;
 use crate::evm_circuit::execution::origin::OriginGadget;
+use crate::evm_circuit::execution::selfbalance::SelfbalanceGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -193,7 +194,7 @@ pub(crate) struct ExecutionConfig<F> {
     // return_revert_gadget: ReturnRevertGadget<F>,
     // sar_gadget: SarGadget<F>,
     // sdiv_smod_gadget: SignedDivModGadget<F>,
-    // selfbalance_gadget: SelfbalanceGadget<F>,
+    selfbalance_gadget: SelfbalanceGadget<F>,
     // sha3_gadget: Sha3Gadget<F>,
     // shl_shr_gadget: ShlShrGadget<F>,
     // returndatasize_gadget: ReturnDataSizeGadget<F>,
@@ -447,7 +448,7 @@ impl<F: Field> ExecutionConfig<F> {
             push_gadget: configure_gadget!(),
             // return_revert_gadget: configure_gadget!(),
             // sdiv_smod_gadget: configure_gadget!(),
-            // selfbalance_gadget: configure_gadget!(),
+            selfbalance_gadget: configure_gadget!(),
             // sha3_gadget: configure_gadget!(),
             // address_gadget: configure_gadget!(),
             // balance_gadget: configure_gadget!(),
@@ -1065,7 +1066,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::BLOCKCTXU160 => assign_exec_step!(self.block_ctx_u160_gadget),
             // ExecutionState::BLOCKCTXU256 => assign_exec_step!(self.block_ctx_u256_gadget),
             // ExecutionState::BLOCKHASH => assign_exec_step!(self.blockhash_gadget),
-            // ExecutionState::SELFBALANCE => assign_exec_step!(self.selfbalance_gadget),
+            ExecutionState::SELFBALANCE => assign_exec_step!(self.selfbalance_gadget),
             // dummy gadgets
             // ExecutionState::EXTCODECOPY => assign_exec_step!(self.extcodecopy_gadget),
             // ExecutionState::CREATE => assign_exec_step!(self.create_gadget),
