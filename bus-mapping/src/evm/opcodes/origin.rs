@@ -3,7 +3,7 @@ use super::Opcode;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::operation::CallContextField;
 use crate::Error;
-use eth_types::GethExecStep;
+use eth_types::{GethExecStep, ToAddress, U256};
 
 pub const ORIGIN_BYTE_LENGTH: usize = 20;
 
@@ -19,7 +19,8 @@ impl Opcode for Origin {
         let second_step = &geth_steps[1];
         let mut exec_step = state.new_step(step)?;
         // Get origin result from next step
-        let value = &second_step.memory.0;
+        let origin = &second_step.memory.0;
+        let origin = U256::from_big_endian(origin);
         let tx_id = state.tx_ctx.id();
 
         // CallContext read of the TxId
@@ -30,6 +31,8 @@ impl Opcode for Origin {
             tx_id.into(),
         );
 
+        let origin = origin.to_address();
+
         // Read dest offset as the last stack element
         let dest_offset = step.stack.nth_last(0)?;
         state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
@@ -37,7 +40,7 @@ impl Opcode for Origin {
 
         // Copy result to memory
         for i in 0..ORIGIN_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), origin[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
         call_ctx.memory = second_step.memory.clone();
@@ -55,7 +58,7 @@ mod origin_tests {
         operation::{CallContextField, CallContextOp, StackOp, RW},
         Error,
     };
-    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, Word};
+    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, ToU256, Word};
     use mock::{
         test_ctx::{helpers::*, TestContext},
     };
@@ -118,6 +121,17 @@ mod origin_tests {
                     field: CallContextField::TxId,
                     value: Word::one(),
                 }
+            )
+        );
+        assert_eq!(
+            {
+                let operation =
+                    &builder.block.container.stack[step.bus_mapping_instance[1].as_usize()];
+                (operation.rw(), operation.op())
+            },
+            (
+                RW::READ,
+                &StackOp::new(1, StackAddress::from(1023), Word::from(res_mem_address))
             )
         );
         for idx in 0..ORIGIN_BYTE_LENGTH {

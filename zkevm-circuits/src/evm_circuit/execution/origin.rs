@@ -14,14 +14,16 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian};
+use eth_types::{Field, ToLittleEndian, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use halo2_proofs::plonk::Error::Synthesis;
 
 #[derive(Clone, Debug)]
 pub(crate) struct OriginGadget<F> {
     tx_id: Cell<F>,
     origin: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
     same_context: SameContextGadget<F>,
+    dest_offset: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
@@ -31,6 +33,7 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let origin = cb.query_word_rlc::<N_BYTES_ACCOUNT_ADDRESS>();
+        let dest_offset = cb.query_cell();
 
         // Lookup in call_ctx the TxId
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
@@ -43,14 +46,23 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
         );
 
         // Push the value to the stack
-        cb.stack_push(origin.expr());
+        cb.stack_pop(dest_offset.expr());
+
+        for idx in 0..20 {
+            cb.memory_lookup(
+                true.expr(),
+                dest_offset.expr() + idx.expr(),
+                origin.cells[20 - idx - 1].expr(),
+                None,
+            );
+        }
 
         // State transition
         let opcode = cb.query_cell();
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(2u64.expr()),
-            program_counter: Delta(1u64.expr()),
-            stack_pointer: Delta((-1i32).expr()),
+            rw_counter: Delta(22.expr()),
+            program_counter: Delta(1.expr()),
+            stack_pointer: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::ORIGIN.constant_gas_cost().expr()),
             ..Default::default()
         };
@@ -60,6 +72,7 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
             tx_id,
             origin,
             same_context,
+            dest_offset,
         }
     }
 
@@ -72,11 +85,13 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
         _: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        let origin = block.rws[step.rw_indices[1]].stack_value();
+        self.same_context.assign_exec_step(region, offset, step)?;
 
-        // Assing TxId.
         self.tx_id
-            .assign(region, offset, Value::known(F::from(tx.id as u64)))?;
+            .assign(region, offset.clone(), Value::known(F::from(tx.id as u64)))?;
+
+        let origin = block.rws[step.rw_indices[0]].call_context_value();
+        let dest_offset = block.rws[step.rw_indices[1]].stack_value();
 
         // Assign Origin addr RLC.
         self.origin.assign(
@@ -88,9 +103,12 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
                     .unwrap(),
             ),
         )?;
+        self.dest_offset.assign(
+            region,
+            offset,
+            Value::<F>::known(dest_offset.to_scalar().ok_or(Synthesis)?),
+        )?;
 
-        // Assign SameContextGadget witnesses.
-        self.same_context.assign_exec_step(region, offset, step)?;
         Ok(())
     }
 }
@@ -103,9 +121,10 @@ mod test {
 
     #[test]
     fn origin_gadget_test() {
+        let res_mem_address = 0x7f;
         let bytecode = bytecode! {
+            I32Const[res_mem_address]
             ORIGIN
-            STOP
         };
 
         CircuitTestBuilder::new_from_test_ctx(

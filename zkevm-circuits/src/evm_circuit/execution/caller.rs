@@ -97,7 +97,7 @@ impl<F: Field> ExecutionGadget<F> for CallerGadget<F> {
             region,
             offset,
             Some(
-                caller_address.to_le_bytes()[0..20]
+                caller_address.to_le_bytes()[0..N_BYTES_ACCOUNT_ADDRESS]
                     .try_into()
                     .unwrap(),
             ),
