@@ -23,14 +23,7 @@ impl<F: Field, const N_SIZE: usize> HostReturnGadget<F, N_SIZE> {
         let dest_offset = cb.query_cell();
         cb.stack_pop(dest_offset.expr());
         // do write lookup for each byte
-        for idx in 0..N_SIZE {
-            cb.memory_lookup(
-                true.expr(),
-                dest_offset.expr() + idx.expr(),
-                value.cells[N_SIZE - 1 - idx].expr(),
-                None,
-            );
-        }
+        cb.memory_rlc_lookup(true.expr(), &dest_offset, &value);
         Self { dest_offset, value }
     }
 

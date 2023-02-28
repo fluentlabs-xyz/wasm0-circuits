@@ -23,10 +23,8 @@ use crate::evm_circuit::util::{RandomLinearCombination};
 pub(crate) struct SelfbalanceGadget<F> {
     same_context: SameContextGadget<F>,
     callee_address: Cell<F>,
-    phase2_self_balance: Cell<F>,
-    dest_offset: Cell<F>,
     self_balance: RandomLinearCombination<F, N_BYTES_WORD>,
-    // self_balance: RandomLinearCombination<F, N_BYTES_WORD>,
+    dest_offset: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
@@ -36,26 +34,17 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let callee_address = cb.call_context(None, CallContextFieldTag::CalleeAddress);
-        let self_balance = cb.query_word_rlc::<N_BYTES_WORD>();
+        let self_balance = cb.query_word_rlc();
         let dest_offset = cb.query_cell();
 
-        let phase2_self_balance = cb.query_cell_phase2();
         cb.account_read(
             callee_address.expr(),
             AccountFieldTag::Balance,
-            phase2_self_balance.expr(),
+            self_balance.expr(),
         );
 
         cb.stack_pop(dest_offset.expr());
-
-        for idx in 0..32 {
-            cb.memory_lookup(
-                true.expr(),
-                dest_offset.expr() + idx.expr(),
-                self_balance.cells[32 - 1 - idx].expr(),
-                None,
-            );
-        }
+        cb.memory_rlc_lookup(true.expr(), &dest_offset, &self_balance);
 
         let opcode = cb.query_cell();
         let step_state_transition = StepStateTransition {
@@ -70,7 +59,6 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
         Self {
             same_context,
             self_balance,
-            phase2_self_balance,
             callee_address,
             dest_offset,
         }
@@ -113,8 +101,6 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
             offset,
             Value::<F>::known(dest_offset.to_scalar().ok_or(Synthesis)?),
         )?;
-        self.phase2_self_balance
-            .assign(region, offset, region.word_rlc(self_balance.to_u256()))?;
 
         Ok(())
     }
@@ -132,7 +118,6 @@ mod test {
         let bytecode = bytecode! {
             I32Const[res_mem_address]
             SELFBALANCE
-            // STOP
         };
 
         CircuitTestBuilder::new_from_test_ctx(

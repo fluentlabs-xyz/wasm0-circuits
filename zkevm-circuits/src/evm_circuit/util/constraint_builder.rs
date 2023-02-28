@@ -1134,6 +1134,22 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
 
     // Memory
 
+    pub(crate) fn memory_rlc_lookup<const N: usize>(
+        &mut self,
+        is_write: Expression<F>,
+        dest_offset: &Cell<F>,
+        value: &RandomLinearCombination<F, N>,
+    ) {
+        for idx in 0..N {
+            self.memory_lookup(
+                is_write.clone(),
+                dest_offset.expr() + idx.expr(),
+                value.cells[N - 1 - idx].expr(),
+                None,
+            );
+        }
+    }
+
     pub(crate) fn memory_lookup(
         &mut self,
         is_write: Expression<F>,
