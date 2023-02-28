@@ -16,7 +16,7 @@ use crate::table::{AccountFieldTag, CallContextFieldTag};
 use crate::util::Expr;
 use bus_mapping::evm::OpcodeId;
 use eth_types::evm_types::GAS_STIPEND_CALL_WITH_VALUE;
-use eth_types::{Field, ToLittleEndian, ToScalar, U256};
+use eth_types::{Field, StackWord, ToLittleEndian, ToScalar, ToU256, U256};
 use halo2_proofs::circuit::Value;
 use halo2_proofs::plonk::Error;
 
@@ -479,7 +479,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
             rw_offset += 1;
             block.rws[step.rw_indices[7 + rw_offset]].stack_value()
         } else {
-            U256::zero()
+            StackWord::zero()
         };
         let [cd_offset, cd_length, rd_offset, rd_length, is_success] = [
             step.rw_indices[stack_index + 2 + rw_offset],
@@ -509,9 +509,9 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         self.caller_balance_word
             .assign(region, offset, Some(caller_balance.to_le_bytes()))?;
         self.is_insufficient_balance
-            .assign(region, offset, caller_balance, value)?;
+            .assign(region, offset, caller_balance, value.to_u256())?;
 
-        let is_insufficient = (value > caller_balance) && (is_call || is_callcode);
+        let is_insufficient = (value > caller_balance.to_u256()) && (is_call || is_callcode);
         // only call opcode do transfer in sucessful case.
         let (caller_balance_pair, callee_balance_pair) =
             if is_call && !is_insufficient && !value.is_zero() {
@@ -579,17 +579,19 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         self.depth
             .assign(region, offset, Value::known(F::from(depth.low_u64())))?;
 
+        unreachable!("must use memory dest here instead of stack");
+
         let memory_expansion_gas_cost = self.call.assign(
             region,
             offset,
-            gas,
-            callee_address,
-            value,
-            is_success,
-            cd_offset,
-            cd_length,
-            rd_offset,
-            rd_length,
+            gas.to_u256(),
+            callee_address.to_u256(),
+            value.to_u256(),
+            is_success.to_u256(),
+            cd_offset.to_u256(),
+            cd_length.to_u256(),
+            rd_offset.to_u256(),
+            rd_length.to_u256(),
             step.memory_word_size(),
             region.word_rlc(callee_code_hash),
         )?;

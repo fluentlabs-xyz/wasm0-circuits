@@ -1,5 +1,5 @@
 //! Doc this
-use crate::Error;
+use crate::{Error, StackWord};
 use crate::{DebugByte, ToBigEndian, Word};
 use core::ops::{Add, AddAssign, Index, IndexMut, Mul, MulAssign, Range, Sub, SubAssign};
 use core::str::FromStr;
@@ -66,6 +66,17 @@ impl MemoryAddress {
     /// Apply a function to the contained value.
     pub fn map<F: FnOnce(usize) -> usize>(&self, f: F) -> Self {
         Self(f(self.0))
+    }
+}
+
+impl TryFrom<StackWord> for MemoryAddress {
+    type Error = Error;
+
+    fn try_from(word: StackWord) -> Result<Self, Self::Error> {
+        if word.bits() > core::mem::size_of::<usize>() * 8 {
+            return Err(Error::WordToMemAddr);
+        }
+        Ok(MemoryAddress(word.as_usize()))
     }
 }
 

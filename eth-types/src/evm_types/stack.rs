@@ -1,5 +1,5 @@
 //! Doc this
-use crate::{DebugWord, U256, U64, Word};
+use crate::{DebugStackWord, DebugWord, StackWord, U256, U64, Word};
 use crate::{Error, ToBigEndian};
 use core::str::FromStr;
 use serde::ser::SerializeSeq;
@@ -55,12 +55,12 @@ impl FromStr for StackAddress {
 /// Represents a snapshot of the EVM stack state at a certain
 /// execution step height.
 #[derive(Clone, Eq, PartialEq, Deserialize)]
-pub struct Stack<W: Clone + Sized + Serialize + ToBigEndian = Word>(pub Vec<W>);
+pub struct Stack<W: Clone + Sized + Serialize + ToBigEndian = StackWord>(pub Vec<W>);
 
 impl fmt::Debug for Stack {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list()
-            .entries(self.0.iter().map(DebugWord))
+            .entries(self.0.iter().map(DebugStackWord))
             .finish()
     }
 }

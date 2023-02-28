@@ -1,23 +1,27 @@
+use halo2_proofs::plonk::Error;
+use halo2_proofs::circuit::Value;
+
+use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian, ToScalar, ToU256};
+
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
         step::ExecutionState,
         util::{
+            CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
-            CachedRegion, Word,
+            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta}, Word,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
-use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian};
-use halo2_proofs::{plonk::Error};
+use crate::evm_circuit::util::{Cell, StackWord};
 
 #[derive(Clone, Debug)]
 pub(crate) struct PushGadget<F> {
     same_context: SameContextGadget<F>,
-    value: Word<F>,
+    value: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for PushGadget<F> {
@@ -27,8 +31,7 @@ impl<F: Field> ExecutionGadget<F> for PushGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
-
-        let value = cb.query_word_rlc();
+        let value = cb.query_cell();
 
         // Push the value on the stack
         cb.stack_push(value.expr());
@@ -63,7 +66,7 @@ impl<F: Field> ExecutionGadget<F> for PushGadget<F> {
 
         let value = block.rws[step.rw_indices[0]].stack_value();
         self.value
-            .assign(region, offset, Some(value.to_le_bytes()))?;
+            .assign(region, offset, Value::<F>::known(value.to_scalar().unwrap()))?;
 
         Ok(())
     }
@@ -71,15 +74,16 @@ impl<F: Field> ExecutionGadget<F> for PushGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::{test_util::CircuitTestBuilder};
     use eth_types::{bytecode, Bytecode};
     use mock::TestContext;
+
+    use crate::test_util::CircuitTestBuilder;
 
     fn test_ok(bytecode: Bytecode) {
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
         )
-        .run();
+            .run();
     }
 
     #[test]

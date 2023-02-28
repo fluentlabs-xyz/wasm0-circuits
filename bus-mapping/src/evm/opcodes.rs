@@ -29,14 +29,14 @@ mod callvalue;
 mod chainid;
 mod codecopy;
 mod codesize;
-mod create;
+// mod create;
 // mod dup;
-mod exp;
-mod extcodecopy;
-mod extcodehash;
-mod extcodesize;
+// mod exp;
+// mod extcodecopy;
+// mod extcodehash;
+// mod extcodesize;
 mod gasprice;
-mod logs;
+// mod logs;
 // mod mload;
 // mod mstore;
 mod number;
@@ -46,8 +46,8 @@ mod returndatacopy;
 mod returndatasize;
 mod selfbalance;
 mod sha3;
-mod sload;
-mod sstore;
+// mod sload;
+// mod sstore;
 mod stackonlyop;
 mod stacktomemoryop;
 mod stop;
@@ -70,15 +70,15 @@ use callop::CallOpcode;
 use callvalue::Callvalue;
 use codecopy::Codecopy;
 use codesize::Codesize;
-use create::DummyCreate;
+// use create::DummyCreate;
 use error_invalid_jump::ErrorInvalidJump;
 use error_oog_call::OOGCall;
-use exp::Exponentiation;
-use extcodecopy::Extcodecopy;
-use extcodehash::Extcodehash;
-use extcodesize::Extcodesize;
+// use exp::Exponentiation;
+// use extcodecopy::Extcodecopy;
+// use extcodehash::Extcodehash;
+// use extcodesize::Extcodesize;
 use gasprice::GasPrice;
-use logs::Log;
+// use logs::Log;
 // use mload::Mload;
 // use mstore::Mstore;
 use origin::Origin;
@@ -86,8 +86,8 @@ use return_revert::ReturnRevert;
 use returndatacopy::Returndatacopy;
 use returndatasize::Returndatasize;
 use selfbalance::Selfbalance;
-use sload::Sload;
-use sstore::Sstore;
+// use sload::Sload;
+// use sstore::Sstore;
 use stackonlyop::StackOnlyOpcode;
 use stop::Stop;
 use crate::evm::opcodes::chainid::ChainId;
@@ -173,7 +173,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::SHL => StackOnlyOpcode::<2, 1>::gen_associated_ops,
         OpcodeId::SHR => StackOnlyOpcode::<2, 1>::gen_associated_ops,
         OpcodeId::SAR => StackOnlyOpcode::<2, 1>::gen_associated_ops,
-        OpcodeId::SHA3 => Sha3::gen_associated_ops,
+        // OpcodeId::SHA3 => Sha3::gen_associated_ops,
         OpcodeId::ADDRESS => Address::gen_associated_ops,
         OpcodeId::BALANCE => Balance::gen_associated_ops,
         OpcodeId::ORIGIN => Origin::gen_associated_ops,
@@ -185,12 +185,12 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::GASPRICE => GasPrice::gen_associated_ops,
         OpcodeId::CODECOPY => Codecopy::gen_associated_ops,
         OpcodeId::CODESIZE => Codesize::gen_associated_ops,
-        OpcodeId::EXP => Exponentiation::gen_associated_ops,
-        OpcodeId::EXTCODESIZE => Extcodesize::gen_associated_ops,
-        OpcodeId::EXTCODECOPY => Extcodecopy::gen_associated_ops,
+        // OpcodeId::EXP => Exponentiation::gen_associated_ops,
+        // OpcodeId::EXTCODESIZE => Extcodesize::gen_associated_ops,
+        // OpcodeId::EXTCODECOPY => Extcodecopy::gen_associated_ops,
         OpcodeId::RETURNDATASIZE => Returndatasize::gen_associated_ops,
         OpcodeId::RETURNDATACOPY => Returndatacopy::gen_associated_ops,
-        OpcodeId::EXTCODEHASH => Extcodehash::gen_associated_ops,
+        // OpcodeId::EXTCODEHASH => Extcodehash::gen_associated_ops,
         OpcodeId::BLOCKHASH => StackOnlyOpcode::<1, 1>::gen_associated_ops,
         OpcodeId::COINBASE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::TIMESTAMP => StackOnlyOpcode::<0, 1>::gen_associated_ops,
@@ -206,8 +206,8 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         // OpcodeId::MLOAD => Mload::gen_associated_ops,
         // OpcodeId::MSTORE => Mstore::<false>::gen_associated_ops,
         // OpcodeId::MSTORE8 => Mstore::<true>::gen_associated_ops,
-        OpcodeId::SLOAD => Sload::gen_associated_ops,
-        OpcodeId::SSTORE => Sstore::gen_associated_ops,
+        // OpcodeId::SLOAD => Sload::gen_associated_ops,
+        // OpcodeId::SSTORE => Sstore::gen_associated_ops,
         OpcodeId::JUMP => StackOnlyOpcode::<1, 0>::gen_associated_ops,
         OpcodeId::JUMPI => StackOnlyOpcode::<2, 0>::gen_associated_ops,
         OpcodeId::PC => StackOnlyOpcode::<0, 1>::gen_associated_ops,
@@ -246,11 +246,11 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         // OpcodeId::SWAP14 => Swap::<14>::gen_associated_ops,
         // OpcodeId::SWAP15 => Swap::<15>::gen_associated_ops,
         // OpcodeId::SWAP16 => Swap::<16>::gen_associated_ops,
-        OpcodeId::LOG0 => Log::gen_associated_ops,
-        OpcodeId::LOG1 => Log::gen_associated_ops,
-        OpcodeId::LOG2 => Log::gen_associated_ops,
-        OpcodeId::LOG3 => Log::gen_associated_ops,
-        OpcodeId::LOG4 => Log::gen_associated_ops,
+        // OpcodeId::LOG0 => Log::gen_associated_ops,
+        // OpcodeId::LOG1 => Log::gen_associated_ops,
+        // OpcodeId::LOG2 => Log::gen_associated_ops,
+        // OpcodeId::LOG3 => Log::gen_associated_ops,
+        // OpcodeId::LOG4 => Log::gen_associated_ops,
         OpcodeId::CALL | OpcodeId::CALLCODE => CallOpcode::<7>::gen_associated_ops,
         OpcodeId::DELEGATECALL | OpcodeId::STATICCALL => CallOpcode::<6>::gen_associated_ops,
         OpcodeId::RETURN | OpcodeId::REVERT => ReturnRevert::gen_associated_ops,
@@ -258,14 +258,14 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
             evm_unimplemented!("Using dummy gen_selfdestruct_ops for opcode SELFDESTRUCT");
             DummySelfDestruct::gen_associated_ops
         }
-        OpcodeId::CREATE => {
-            evm_unimplemented!("Using dummy gen_create_ops for opcode {:?}", opcode_id);
-            DummyCreate::<false>::gen_associated_ops
-        }
-        OpcodeId::CREATE2 => {
-            evm_unimplemented!("Using dummy gen_create_ops for opcode {:?}", opcode_id);
-            DummyCreate::<true>::gen_associated_ops
-        }
+        // OpcodeId::CREATE => {
+        //     evm_unimplemented!("Using dummy gen_create_ops for opcode {:?}", opcode_id);
+        //     DummyCreate::<false>::gen_associated_ops
+        // }
+        // OpcodeId::CREATE2 => {
+        //     evm_unimplemented!("Using dummy gen_create_ops for opcode {:?}", opcode_id);
+        //     DummyCreate::<true>::gen_associated_ops
+        // }
         _ => {
             evm_unimplemented!("Using dummy gen_associated_ops for opcode {:?}", opcode_id);
             Dummy::gen_associated_ops

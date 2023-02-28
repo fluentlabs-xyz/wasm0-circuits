@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 
 use bus_mapping::operation::{self, AccountField, CallContextField, TxLogField, TxReceiptField};
-use eth_types::{Address, Field, ToAddress, ToLittleEndian, ToScalar, Word, U256};
+use eth_types::{Address, Field, ToAddress, ToLittleEndian, ToScalar, Word, U256, StackWord, ToU256};
 use halo2_proofs::circuit::Value;
 use itertools::Itertools;
 
@@ -160,7 +160,7 @@ pub enum Rw {
         is_write: bool,
         call_id: usize,
         stack_pointer: usize,
-        value: Word,
+        value: StackWord,
     },
     /// Memory
     Memory {
@@ -305,7 +305,7 @@ impl Rw {
         }
     }
 
-    pub(crate) fn stack_value(&self) -> Word {
+    pub(crate) fn stack_value(&self) -> StackWord {
         match self {
             Self::Stack { value, .. } => *value,
             _ => unreachable!(),
@@ -542,8 +542,11 @@ impl Rw {
                 }
                 AccountFieldTag::Nonce | AccountFieldTag::NonExisting => value.to_scalar().unwrap(),
             },
-            Self::AccountStorage { value, .. } | Self::Stack { value, .. } => {
+            Self::AccountStorage { value, .. } => {
                 rlc::value(&value.to_le_bytes(), randomness)
+            }
+            Self::Stack { value, .. } => {
+                value.to_scalar().unwrap()
             }
 
             Self::TxLog {

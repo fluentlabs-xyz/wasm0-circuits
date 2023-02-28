@@ -17,7 +17,7 @@ use crate::{
     },
     util::Expr,
 };
-use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian};
+use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian, ToU256};
 use halo2_proofs::plonk::Error;
 
 #[derive(Clone, Debug)]
@@ -95,7 +95,7 @@ impl<F: Field> ExecutionGadget<F> for JumpiGadget<F> {
 
         let [destination, condition] =
             [step.rw_indices[0], step.rw_indices[1]].map(|idx| block.rws[idx].stack_value());
-        let condition = region.word_rlc(condition);
+        let condition = region.word_rlc(condition.to_u256());
 
         self.destination.assign(
             region,

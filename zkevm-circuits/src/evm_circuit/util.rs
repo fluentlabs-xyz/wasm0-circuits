@@ -494,6 +494,7 @@ impl<F: FieldExt, const N: usize> Expr<F> for RandomLinearCombination<F, N> {
     }
 }
 
+pub(crate) type StackWord<F> = RandomLinearCombination<F, 8>;
 pub(crate) type Word<F> = RandomLinearCombination<F, 32>;
 pub(crate) type MemoryAddress<F> = RandomLinearCombination<F, N_BYTES_MEMORY_ADDRESS>;
 

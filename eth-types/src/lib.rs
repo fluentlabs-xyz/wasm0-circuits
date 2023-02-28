@@ -33,7 +33,7 @@ use serde::{de, Deserialize, Serialize};
 
 pub use bytecode::Bytecode;
 pub use error::Error;
-pub use uint_types::DebugU256;
+pub use uint_types::{DebugU256, DebugU64};
 
 use crate::evm_types::{memory::Memory, stack::Stack, storage::Storage};
 use crate::evm_types::{Gas, GasCost, OpcodeId, ProgramCounter};
@@ -71,6 +71,12 @@ pub trait ToScalar<F> {
 pub trait ToWord {
     /// Convert the type to a [`Word`].
     fn to_word(&self) -> Word;
+}
+
+/// Trait used to convert a type to a [`Word`].
+pub trait ToStackWord {
+    /// Convert the type to a [`Word`].
+    fn to_stack_word(&self) -> StackWord;
 }
 
 /// Trait used to convert a type to a [`Word`].
@@ -114,6 +120,10 @@ mod uint_types {
         /// 256-bit unsigned integer.
         pub struct DebugU256(4);
     }
+    uint::construct_uint! {
+        /// 64-bit unsigned integer.
+        pub struct DebugU64(4);
+    }
 }
 
 impl<'de> Deserialize<'de> for DebugU256 {
@@ -126,7 +136,25 @@ impl<'de> Deserialize<'de> for DebugU256 {
     }
 }
 
+impl<'de> Deserialize<'de> for DebugU64 {
+    fn deserialize<D>(deserializer: D) -> Result<DebugU64, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        DebugU64::from_str(&s).map_err(de::Error::custom)
+    }
+}
+
 impl<F: Field> ToScalar<F> for DebugU256 {
+    fn to_scalar(&self) -> Option<F> {
+        let mut bytes = [0u8; 32];
+        self.to_little_endian(&mut bytes);
+        F::from_repr(bytes).into()
+    }
+}
+
+impl<F: Field> ToScalar<F> for DebugU64 {
     fn to_scalar(&self) -> Option<F> {
         let mut bytes = [0u8; 32];
         self.to_little_endian(&mut bytes);
@@ -143,13 +171,43 @@ impl ToBigEndian for DebugU256 {
     }
 }
 
+impl ToBigEndian for DebugU64 {
+    /// Encode the value as byte array in big endian.
+    fn to_be_bytes(&self) -> [u8; 32] {
+        let mut bytes = [0u8; 32];
+        self.to_big_endian(&mut bytes);
+        bytes
+    }
+}
+
 impl ToWord for DebugU256 {
     fn to_word(&self) -> Word {
         Word::from(self.to_be_bytes())
     }
 }
 
+impl ToWord for DebugU64 {
+    fn to_word(&self) -> Word {
+        Word::from(self.to_be_bytes())
+    }
+}
+
+impl ToStackWord for DebugU64 {
+    fn to_stack_word(&self) -> StackWord {
+        let mut bytes: Vec<u8> = vec![0; 32];
+        self.to_big_endian(bytes.as_mut_slice());
+        let bytes = &bytes.as_slice()[24..];
+        StackWord::from_big_endian(bytes)
+    }
+}
+
 impl ToU256 for DebugU256 {
+    fn to_u256(&self) -> U256 {
+        U256::from(self.to_be_bytes())
+    }
+}
+
+impl ToU256 for DebugU64 {
     fn to_u256(&self) -> U256 {
         U256::from(self.to_be_bytes())
     }
@@ -160,6 +218,9 @@ impl ToWord for U256 {
         U256::from(self)
     }
 }
+
+/// WASM stack word size (64 bits)
+pub type StackWord = U64;
 
 /// Ethereum Word (256 bits).
 pub type Word = U256;
@@ -216,7 +277,7 @@ impl ToLittleEndian for U64 {
     /// Encode the value as byte array in little endian.
     fn to_le_bytes(&self) -> [u8; 32] {
         let mut bytes = [0u8; 32];
-        self.to_little_endian(&mut bytes);
+        self.to_little_endian(&mut bytes[0..8]);
         bytes
     }
 }
@@ -232,7 +293,7 @@ impl<F: Field> ToScalar<F> for U256 {
 impl<F: Field> ToScalar<F> for U64 {
     fn to_scalar(&self) -> Option<F> {
         let mut bytes = [0u8; 32];
-        self.to_little_endian(&mut bytes);
+        self.to_little_endian(&mut bytes[0..8]);
         F::from_repr(bytes).into()
     }
 }
@@ -390,7 +451,7 @@ struct GethExecStepInternal {
     depth: u16,
     error: Option<String>,
     // stack is in hex 0x prefixed
-    stack: Vec<DebugU256>,
+    stack: Vec<DebugU64>,
     // memory is in chunks of 32 bytes, in hex
     #[serde(default)]
     memory: String,
@@ -438,7 +499,7 @@ pub struct GethExecStep
     pub depth: u16,
     pub error: Option<String>,
     // stack is in hex 0x prefixed
-    pub stack: Stack<U256>,
+    pub stack: Stack<StackWord>,
     // memory is in chunks of 32 bytes, in hex
     pub memory: Memory,
     // storage is hex -> hex
@@ -451,6 +512,16 @@ pub(crate) struct DebugByte(pub(crate) u8);
 impl fmt::Debug for DebugByte {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("{:02x}", self.0))
+    }
+}
+
+// Wrapper over Word reference that provides formats the word in hex for
+// [`fmt::Debug`].
+pub(crate) struct DebugStackWord<'a>(pub(crate) &'a StackWord);
+
+impl<'a> fmt::Debug for DebugStackWord<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("0x{:x}", self.0))
     }
 }
 
@@ -502,7 +573,7 @@ impl<'de> Deserialize<'de> for GethExecStep {
             gas_cost: s.gas_cost,
             depth: s.depth,
             error: s.error,
-            stack: Stack(s.stack.iter().map(|dw| dw.to_word().to_u256()).collect::<Vec<_>>()),
+            stack: Stack(s.stack.iter().map(|dw| dw.to_stack_word()).collect::<Vec<_>>()),
             memory: Memory::from_bytes_with_offset(memory, s.memory_offset),
             storage: Storage(
                 s.storage
@@ -563,6 +634,14 @@ macro_rules! address {
 macro_rules! word {
     ($word_hex:expr) => {
         $crate::Word::from_str_radix(&$word_hex, 16).expect("invalid hex Word")
+    };
+}
+
+#[macro_export]
+/// Create a [`Word`] from a hex string.  Panics on invalid input.
+macro_rules! stack_word {
+    ($word_hex:expr) => {
+        $crate::StackWord::from_str_radix(&$word_hex, 16).expect("invalid hex StackWord")
     };
 }
 
@@ -670,7 +749,7 @@ mod tests {
                         gas_cost: GasCost(3),
                         depth: 1,
                         error: None,
-                        stack: Stack::<U256>::new(),
+                        stack: Stack::new(),
                         storage: Storage(word_map!()),
                         memory: Memory::new(),
                     },
@@ -684,7 +763,7 @@ mod tests {
                         gas_cost: GasCost(2100),
                         depth: 1,
                         error: None,
-                        stack: Stack(vec![word!("0x1003e2d2"), word!("0x2a"), word!("0x0")]),
+                        stack: Stack(vec![stack_word!("0x1003e2d2"), stack_word!("0x2a"), stack_word!("0x0")]),
                         storage: Storage(word_map!("0x0" => "0x6f")),
                         memory: Memory::from(vec![word!("0x0"), word!("0x0"), word!("0x080")]),
                     },
@@ -699,9 +778,9 @@ mod tests {
                         depth: 1,
                         error: None,
                         stack: Stack(vec![
-                            word!("0x3635c9adc5dea00000"),
-                            word!("0x40"),
-                            word!("0x0"),
+                            stack_word!("0x3635c9adc5dea00000"),
+                            stack_word!("0x40"),
+                            stack_word!("0x0"),
                         ]),
                         storage: Storage(word_map!()),
                         memory: Memory::from(vec![

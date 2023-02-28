@@ -73,7 +73,7 @@ impl Bytecode {
         let mut module = Module::new();
         // Encode the type & imports section.
         let mut types = TypeSection::new();
-        types.function(vec![ValType::I32], vec![]); // 0
+        types.function(vec![ValType::I32; 1], vec![]); // 0
         types.function(vec![], vec![]); // 1
         types.function(vec![ValType::I32; 2], vec![]); // 2
         types.function(vec![ValType::I32; 3], vec![]); // 3

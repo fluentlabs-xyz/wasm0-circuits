@@ -11,7 +11,7 @@ use crate::{
     },
     util::Expr,
 };
-use eth_types::{evm_types::OpcodeId, Field};
+use eth_types::{evm_types::OpcodeId, Field, ToU256};
 use halo2_proofs::plonk::Error;
 
 #[derive(Clone, Debug)]
@@ -74,7 +74,7 @@ impl<F: Field> ExecutionGadget<F> for SwapGadget<F> {
                 .map(|idx| block.rws[idx].stack_value())
                 .iter(),
         ) {
-            cell.assign(region, offset, region.word_rlc(*value))?;
+            cell.assign(region, offset, region.word_rlc(value.to_u256()))?;
         }
 
         Ok(())

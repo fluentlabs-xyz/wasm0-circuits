@@ -13,7 +13,7 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToScalar};
+use eth_types::{Field, ToScalar, ToU256};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
@@ -80,7 +80,7 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
 
         let self_balance = block.rws[step.rw_indices[2]].stack_value();
         self.phase2_self_balance
-            .assign(region, offset, region.word_rlc(self_balance))?;
+            .assign(region, offset, region.word_rlc(self_balance.to_u256()))?;
 
         Ok(())
     }

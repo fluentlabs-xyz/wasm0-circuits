@@ -1,5 +1,5 @@
 use crate::{operation::RW, Error};
-use eth_types::{evm_types::OpcodeId, Address, GethExecStep, GethExecTrace, ToAddress, Word};
+use eth_types::{evm_types::OpcodeId, Address, GethExecStep, GethExecTrace, ToAddress, Word, StackWord};
 use ethers_core::utils::get_contract_address;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
@@ -45,7 +45,7 @@ impl Access {
 
 /// Given a trace and assuming that the first step is a *CALL*/CREATE* kind
 /// opcode, return the result if found.
-fn get_call_result(trace: &[GethExecStep]) -> Option<Word> {
+fn get_call_result(trace: &[GethExecStep]) -> Option<StackWord> {
     let depth = trace[0].depth;
     trace[1..]
         .iter()
@@ -147,14 +147,16 @@ pub fn gen_state_access_trace<TX>(
 
         match step.op {
             OpcodeId::SSTORE => {
-                let address = contract_address;
-                let key = step.stack.nth_last(0)?;
-                accs.push(Access::new(i, WRITE, Storage { address, key }));
+                unreachable!("not implemented");
+                // let address = contract_address;
+                // let key = step.stack.nth_last(0)?;
+                // accs.push(Access::new(i, WRITE, Storage { address, key }));
             }
             OpcodeId::SLOAD => {
-                let address = contract_address;
-                let key = step.stack.nth_last(0)?;
-                accs.push(Access::new(i, READ, Storage { address, key }));
+                unreachable!("not implemented");
+                // let address = contract_address;
+                // let key = step.stack.nth_last(0)?;
+                // accs.push(Access::new(i, READ, Storage { address, key }));
             }
             OpcodeId::SELFBALANCE => {
                 let address = contract_address;
@@ -196,7 +198,7 @@ pub fn gen_state_access_trace<TX>(
                 if push_call_stack {
                     // Find CREATE result
                     let address = get_call_result(&geth_trace.struct_logs[index..])
-                        .unwrap_or_else(Word::zero)
+                        .unwrap_or_else(StackWord::zero)
                         .to_address();
                     if !address.is_zero() {
                         accs.push(Access::new(i, WRITE, Account { address }));
@@ -209,7 +211,7 @@ pub fn gen_state_access_trace<TX>(
                 if push_call_stack {
                     // Find CREATE2 result
                     let address = get_call_result(&geth_trace.struct_logs[index..])
-                        .unwrap_or_else(Word::zero)
+                        .unwrap_or_else(StackWord::zero)
                         .to_address();
                     if !address.is_zero() {
                         accs.push(Access::new(i, WRITE, Account { address }));

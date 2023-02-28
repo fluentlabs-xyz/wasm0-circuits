@@ -19,7 +19,7 @@ use crate::{
 };
 use array_init::array_init;
 use bus_mapping::circuit_input_builder::CopyDataType;
-use eth_types::{evm_types::GasCost, evm_types::OpcodeId, ToScalar};
+use eth_types::{evm_types::GasCost, evm_types::OpcodeId, StackWord, ToScalar, ToU256};
 use eth_types::{Field, U256};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
@@ -218,7 +218,7 @@ impl<F: Field> ExecutionGadget<F> for LogGadget<F> {
         for i in 0..4 {
             let mut topic = region.word_rlc(U256::zero());
             if i < topic_count {
-                topic = region.word_rlc(block.rws[topic_stack_entry].stack_value());
+                topic = region.word_rlc(block.rws[topic_stack_entry].stack_value().to_u256());
                 self.topic_selectors[i].assign(region, offset, Value::known(F::one()))?;
                 topic_stack_entry.1 += 1;
             } else {
@@ -249,7 +249,7 @@ impl<F: Field> ExecutionGadget<F> for LogGadget<F> {
             region,
             offset,
             Value::known(
-                ((msize + msize) * U256::from(is_persistent))
+                ((msize + msize) * StackWord::from(is_persistent))
                     .to_scalar()
                     .expect("unexpected U256 -> Scalar conversion failure"),
             ),

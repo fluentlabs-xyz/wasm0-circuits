@@ -4,7 +4,7 @@ use crate::{
     },
     Error,
 };
-use eth_types::{GethExecStep, Word, U256};
+use eth_types::{GethExecStep, Word, U256, StackWord};
 use ethers_core::utils::keccak256;
 
 use super::Opcode;
@@ -20,68 +20,69 @@ impl Opcode for Sha3 {
         let geth_step = &geth_steps[0];
         let mut exec_step = state.new_step(geth_step)?;
 
-        let expected_sha3 = geth_steps[1].stack.last()?;
-
-        // byte offset in the memory.
-        let offset = geth_step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), offset)?;
-
-        // byte size to read in the memory.
-        let size = geth_step.stack.nth_last(1)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), size)?;
-
-        if size.gt(&U256::zero()) {
-            state
-                .call_ctx_mut()?
-                .memory
-                .extend_at_least(offset.as_usize() + size.as_usize());
-        }
-
-        let memory = state
-            .call_ctx()?
-            .memory
-            .read_chunk(offset.as_usize().into(), size.as_usize().into());
-
-        // keccak-256 hash of the given data in memory.
-        let sha3 = keccak256(&memory);
-        debug_assert_eq!(Word::from_big_endian(&sha3), expected_sha3);
-        state.stack_write(
-            &mut exec_step,
-            geth_steps[1].stack.last_filled(),
-            sha3.into(),
-        )?;
-
-        // Memory read operations
-        let rw_counter_start = state.block_ctx.rwc;
-        let mut steps = Vec::with_capacity(size.as_usize());
-        for (i, byte) in memory.iter().enumerate() {
-            // Read step
-            state.memory_read(&mut exec_step, (offset.as_usize() + i).into(), *byte)?;
-            steps.push((*byte, false));
-        }
-        state.block.sha3_inputs.push(memory);
-
-        let call_id = state.call()?.call_id;
-        state.push_copy(CopyEvent {
-            src_addr: offset.as_u64(),
-            src_addr_end: offset.as_u64() + size.as_u64(),
-            src_type: CopyDataType::Memory,
-            src_id: NumberOrHash::Number(call_id),
-            dst_addr: 0,
-            dst_type: CopyDataType::RlcAcc,
-            dst_id: NumberOrHash::Number(call_id),
-            log_id: None,
-            rw_counter_start,
-            bytes: steps,
-        });
-
-        Ok(vec![exec_step])
+        unreachable!("sha3 is not supported yet");
+        // let expected_sha3 = geth_steps[1].stack.last()?;
+        //
+        // // byte offset in the memory.
+        // let offset = geth_step.stack.nth_last(0)?;
+        // state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), offset)?;
+        //
+        // // byte size to read in the memory.
+        // let size = geth_step.stack.nth_last(1)?;
+        // state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), size)?;
+        //
+        // if size.gt(&StackWord::zero()) {
+        //     state
+        //         .call_ctx_mut()?
+        //         .memory
+        //         .extend_at_least(offset.as_usize() + size.as_usize());
+        // }
+        //
+        // let memory = state
+        //     .call_ctx()?
+        //     .memory
+        //     .read_chunk(offset.as_usize().into(), size.as_usize().into());
+        //
+        // // keccak-256 hash of the given data in memory.
+        // let sha3 = keccak256(&memory);
+        // debug_assert_eq!(Word::from_big_endian(&sha3), expected_sha3);
+        // state.stack_write(
+        //     &mut exec_step,
+        //     geth_steps[1].stack.last_filled(),
+        //     sha3.into(),
+        // )?;
+        //
+        // // Memory read operations
+        // let rw_counter_start = state.block_ctx.rwc;
+        // let mut steps = Vec::with_capacity(size.as_usize());
+        // for (i, byte) in memory.iter().enumerate() {
+        //     // Read step
+        //     state.memory_read(&mut exec_step, (offset.as_usize() + i).into(), *byte)?;
+        //     steps.push((*byte, false));
+        // }
+        // state.block.sha3_inputs.push(memory);
+        //
+        // let call_id = state.call()?.call_id;
+        // state.push_copy(CopyEvent {
+        //     src_addr: offset.as_u64(),
+        //     src_addr_end: offset.as_u64() + size.as_u64(),
+        //     src_type: CopyDataType::Memory,
+        //     src_id: NumberOrHash::Number(call_id),
+        //     dst_addr: 0,
+        //     dst_type: CopyDataType::RlcAcc,
+        //     dst_id: NumberOrHash::Number(call_id),
+        //     log_id: None,
+        //     rw_counter_start,
+        //     bytes: steps,
+        // });
+        //
+        // Ok(vec![exec_step])
     }
 }
 
 #[cfg(any(feature = "test", test))]
 pub mod sha3_tests {
-    use eth_types::{bytecode, evm_types::OpcodeId, geth_types::GethData, Bytecode, Word};
+    use eth_types::{bytecode, evm_types::OpcodeId, geth_types::GethData, Bytecode, Word, StackWord};
     use ethers_core::utils::keccak256;
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
@@ -210,22 +211,22 @@ pub mod sha3_tests {
 
         // stack read and write.
         assert_eq!(
-            [0, 1, 2]
+            [0, 1]
                 .map(|idx| &builder.block.container.stack[step.bus_mapping_instance[idx].as_usize()])
                 .map(|op| (op.rw(), op.op())),
             [
                 (
                     RW::READ,
-                    &StackOp::new(call_id, 1022.into(), Word::from(offset)),
+                    &StackOp::new(call_id, 1022.into(), StackWord::from(offset)),
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(call_id, 1023.into(), Word::from(size)),
+                    &StackOp::new(call_id, 1023.into(), StackWord::from(size)),
                 ),
-                (
-                    RW::WRITE,
-                    &StackOp::new(call_id, 1023.into(), expected_sha3_value.into()),
-                ),
+                // (
+                //     RW::WRITE,
+                //     &StackOp::new(call_id, 1023.into(), expected_sha3_value.into()),
+                // ),
             ]
         );
 

@@ -7,11 +7,7 @@ use crate::{
 use bus_mapping::operation::{
     MemoryOp, Operation, OperationContainer, RWCounter, StackOp, StorageOp, RW,
 };
-use eth_types::{
-    address,
-    evm_types::{MemoryAddress, StackAddress},
-    Address, Field, ToAddress, Word, U256,
-};
+use eth_types::{address, evm_types::{MemoryAddress, StackAddress}, Address, Field, ToAddress, Word, U256, StackWord, U64};
 use gadgets::binary_number::AsBits;
 use halo2_proofs::arithmetic::Field as Halo2Field;
 use halo2_proofs::poly::kzg::commitment::ParamsKZG;
@@ -166,12 +162,12 @@ fn state_circuit_simple_2() {
     let stack_op_0 = Operation::new(
         RWCounter::from(17),
         RW::WRITE,
-        StackOp::new(1, StackAddress::from(1), Word::from(32)),
+        StackOp::new(1, StackAddress::from(1), StackWord::from(32)),
     );
     let stack_op_1 = Operation::new(
         RWCounter::from(87),
         RW::READ,
-        StackOp::new(1, StackAddress::from(1), Word::from(32)),
+        StackOp::new(1, StackAddress::from(1), StackWord::from(32)),
     );
 
     let storage_op_0 = Operation::new(
@@ -290,14 +286,14 @@ fn first_access_for_stack_is_write() {
             is_write: true,
             call_id: 1,
             stack_pointer: 1022,
-            value: U256::from(394500u64),
+            value: U64::from(394500u64),
         },
         Rw::Stack {
             rw_counter: 25,
             is_write: false,
             call_id: 1,
             stack_pointer: 1022,
-            value: U256::from(394500u64),
+            value: U64::from(394500u64),
         },
     ];
 
@@ -351,7 +347,7 @@ fn tx_log_ok() {
             is_write: true,
             call_id: 1,
             stack_pointer: 1023,
-            value: U256::from(394500u64),
+            value: U64::from(394500u64),
         },
         Rw::TxLog {
             rw_counter: 2,
@@ -824,7 +820,7 @@ fn stack_read_before_write() {
         is_write: false,
         call_id: 3,
         stack_pointer: 200,
-        value: U256::zero(),
+        value: U64::zero(),
     }];
 
     assert_error_matches(verify(rows), "first access to new stack address is a write");
@@ -837,7 +833,7 @@ fn invalid_stack_address() {
         is_write: true,
         call_id: 3,
         stack_pointer: 3000,
-        value: U256::from(10),
+        value: U64::from(10),
     }];
 
     assert_error_matches(verify(rows), "stack address fits into 10 bits");
@@ -851,14 +847,14 @@ fn invalid_stack_address_change() {
             is_write: true,
             call_id: 3,
             stack_pointer: 100,
-            value: U256::from(10),
+            value: U64::from(10),
         },
         Rw::Stack {
             rw_counter: 13,
             is_write: true,
             call_id: 3,
             stack_pointer: 102,
-            value: U256::from(20),
+            value: U64::from(20),
         },
     ];
 
@@ -900,7 +896,7 @@ fn bad_initial_stack_value() {
         is_write: true,
         call_id: 1,
         stack_pointer: 10,
-        value: Word::from(10),
+        value: U64::from(10),
     }];
 
     let overrides = HashMap::from([((AdviceColumn::InitialValue, 0), Fr::from(10))]);

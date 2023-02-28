@@ -12,7 +12,7 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::Field;
+use eth_types::{Field, ToU256};
 use halo2_proofs::plonk::Error;
 
 #[derive(Clone, Debug)]
@@ -62,7 +62,7 @@ impl<F: Field> ExecutionGadget<F> for PopGadget<F> {
 
         let value = block.rws[step.rw_indices[0]].stack_value();
         self.phase2_value
-            .assign(region, offset, region.word_rlc(value))?;
+            .assign(region, offset, region.word_rlc(value.to_u256()))?;
 
         Ok(())
     }

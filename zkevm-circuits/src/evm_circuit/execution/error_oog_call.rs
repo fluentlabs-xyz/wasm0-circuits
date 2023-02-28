@@ -16,7 +16,7 @@ use crate::evm_circuit::{
 use crate::table::CallContextFieldTag;
 use crate::util::Expr;
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, U256};
+use eth_types::{Field, ToU256, U256};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
@@ -167,9 +167,9 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCallGadget<F> {
         let memory_expansion_gas_cost = self.call.assign(
             region,
             offset,
-            gas,
-            callee_address,
-            value,
+            gas.to_u256(),
+            callee_address.to_u256(),
+            value.to_u256(),
             U256::from(0),
             cd_offset,
             cd_length,

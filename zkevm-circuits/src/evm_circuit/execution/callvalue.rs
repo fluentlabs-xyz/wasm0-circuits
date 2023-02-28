@@ -13,7 +13,7 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::Field;
+use eth_types::{Field, ToU256};
 use halo2_proofs::plonk::Error;
 
 #[derive(Clone, Debug)]
@@ -74,7 +74,7 @@ impl<F: Field> ExecutionGadget<F> for CallValueGadget<F> {
         let call_value = block.rws[step.rw_indices[1]].stack_value();
 
         self.call_value
-            .assign(region, offset, region.word_rlc(call_value))?;
+            .assign(region, offset, region.word_rlc(call_value.to_u256()))?;
 
         Ok(())
     }

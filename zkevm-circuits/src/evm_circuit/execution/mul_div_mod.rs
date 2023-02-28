@@ -14,7 +14,7 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian, U256};
+use eth_types::{Field, StackWord, ToLittleEndian, ToU256, U256};
 use halo2_proofs::plonk::Error;
 
 /// MulGadget verifies opcode MUL, DIV, and MOD.
@@ -121,11 +121,11 @@ impl<F: Field> ExecutionGadget<F> for MulDivModGadget<F> {
         let indices = [step.rw_indices[0], step.rw_indices[1], step.rw_indices[2]];
         let [pop1, pop2, push] = indices.map(|idx| block.rws[idx].stack_value());
         let (a, b, c, d) = match step.opcode.unwrap() {
-            OpcodeId::MUL => (pop1, pop2, U256::from(0), push),
+            OpcodeId::MUL => (pop1, pop2, StackWord::from(0), push),
             OpcodeId::DIV => (push, pop2, pop1 - push * pop2, pop1),
             OpcodeId::MOD => (
                 if pop2.is_zero() {
-                    U256::from(0)
+                    StackWord::from(0)
                 } else {
                     pop1 / pop2
                 },
@@ -139,8 +139,8 @@ impl<F: Field> ExecutionGadget<F> for MulDivModGadget<F> {
         self.words[1].assign(region, offset, Some(b.to_le_bytes()))?;
         self.words[2].assign(region, offset, Some(c.to_le_bytes()))?;
         self.words[3].assign(region, offset, Some(d.to_le_bytes()))?;
-        self.mul_add_words.assign(region, offset, [a, b, c, d])?;
-        self.lt_word.assign(region, offset, c, b)?;
+        self.mul_add_words.assign(region, offset, [a.to_u256(), b.to_u256(), c.to_u256(), d.to_u256()])?;
+        self.lt_word.assign(region, offset, c.to_u256(), b.to_u256())?;
         let b_sum = (0..32).fold(0, |acc, idx| acc + b.byte(idx) as u64);
         self.divisor_is_zero
             .assign(region, offset, F::from(b_sum))?;

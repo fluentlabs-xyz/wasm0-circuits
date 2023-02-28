@@ -16,7 +16,7 @@ use crate::{
     util::Expr,
 };
 
-use eth_types::{evm_types::GasCost, Field, ToScalar};
+use eth_types::{evm_types::GasCost, Field, ToScalar, ToU256};
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
@@ -170,9 +170,9 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
         let [key, value] =
             [step.rw_indices[5], step.rw_indices[6]].map(|idx| block.rws[idx].stack_value());
         self.phase2_key
-            .assign(region, offset, region.word_rlc(key))?;
+            .assign(region, offset, region.word_rlc(key.to_u256()))?;
         self.phase2_value
-            .assign(region, offset, region.word_rlc(value))?;
+            .assign(region, offset, region.word_rlc(value.to_u256()))?;
 
         let (_, value_prev, _, original_value) = block.rws[step.rw_indices[7]].storage_value_aux();
         self.phase2_value_prev
@@ -192,7 +192,7 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
             region,
             offset,
             step.gas_cost,
-            value,
+            value.to_u256(),
             value_prev,
             original_value,
             is_warm,
@@ -203,7 +203,7 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
             offset,
             tx_refund,
             tx_refund_prev,
-            value,
+            value.to_u256(),
             value_prev,
             original_value,
         )?;

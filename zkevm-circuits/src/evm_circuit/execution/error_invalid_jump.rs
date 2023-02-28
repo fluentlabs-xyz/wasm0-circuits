@@ -18,7 +18,7 @@ use crate::{
     table::CallContextFieldTag,
     util::Expr,
 };
-use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian, Word};
+use eth_types::{evm_types::OpcodeId, Field, StackWord, ToLittleEndian, ToU256, Word};
 
 use halo2_proofs::{circuit::Value, plonk::Error};
 
@@ -183,9 +183,9 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidJumpGadget<F> {
         let condition = if is_jumpi {
             block.rws[step.rw_indices[1]].stack_value()
         } else {
-            Word::zero()
+            StackWord::zero()
         };
-        let condition_rlc = region.word_rlc(condition);
+        let condition_rlc = region.word_rlc(condition.to_u256());
         self.destination.assign(
             region,
             offset,

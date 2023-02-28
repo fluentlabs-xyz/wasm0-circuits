@@ -1,7 +1,7 @@
 //! Utility functions to help calculate gas
 
 use super::GasCost;
-use crate::Word;
+use crate::{StackWord, Word};
 
 /// Calculate memory expansion gas cost by current and next memory word size.
 pub fn memory_expansion_gas_cost(curr_memory_word_size: u64, next_memory_word_size: u64) -> u64 {
@@ -29,7 +29,7 @@ pub fn memory_copier_gas_cost(
 }
 
 /// Calculate EIP 150 gas passed to callee.
-pub fn eip150_gas(gas_left: u64, gas_specified: Word) -> u64 {
+pub fn eip150_gas(gas_left: u64, gas_specified: StackWord) -> u64 {
     let capped_gas = gas_left - gas_left / 64;
 
     if gas_specified.bits() <= 64 {

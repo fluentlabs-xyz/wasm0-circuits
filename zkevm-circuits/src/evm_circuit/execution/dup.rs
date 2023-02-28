@@ -11,7 +11,7 @@ use crate::{
     },
     util::Expr,
 };
-use eth_types::{evm_types::OpcodeId, Field};
+use eth_types::{evm_types::OpcodeId, Field, ToU256};
 use halo2_proofs::plonk::Error;
 
 #[derive(Clone, Debug)]
@@ -66,7 +66,7 @@ impl<F: Field> ExecutionGadget<F> for DupGadget<F> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
         let value = block.rws[step.rw_indices[0]].stack_value();
-        self.value.assign(region, offset, region.word_rlc(value))?;
+        self.value.assign(region, offset, region.word_rlc(value.to_u256()))?;
 
         Ok(())
     }

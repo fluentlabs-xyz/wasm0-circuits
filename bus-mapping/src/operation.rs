@@ -12,7 +12,7 @@ pub use eth_types::evm_types::{MemoryAddress, StackAddress};
 use core::cmp::Ordering;
 use core::fmt;
 use core::fmt::Debug;
-use eth_types::{Address, Word};
+use eth_types::{Address, StackWord, Word};
 use std::mem::swap;
 
 /// Marker that defines whether an Operation performs a `READ` or a `WRITE`.
@@ -211,7 +211,7 @@ pub struct StackOp {
     /// Stack Address
     pub address: StackAddress,
     /// Value
-    pub value: Word,
+    pub value: StackWord,
 }
 
 impl fmt::Debug for StackOp {
@@ -227,7 +227,7 @@ impl fmt::Debug for StackOp {
 
 impl StackOp {
     /// Create a new instance of a `StackOp` from it's components.
-    pub const fn new(call_id: usize, address: StackAddress, value: Word) -> StackOp {
+    pub const fn new(call_id: usize, address: StackAddress, value: StackWord) -> StackOp {
         StackOp {
             call_id,
             address,
@@ -251,7 +251,7 @@ impl StackOp {
     }
 
     /// Returns the [`Word`] read or written by this operation.
-    pub const fn value(&self) -> &Word {
+    pub const fn value(&self) -> &StackWord {
         &self.value
     }
 }
@@ -1124,7 +1124,7 @@ mod operation_tests {
 
     #[test]
     fn unchecked_op_transmutations_are_safe() {
-        let stack_op = StackOp::new(1, StackAddress::from(1024), Word::from(0x40));
+        let stack_op = StackOp::new(1, StackAddress::from(1024), StackWord::from(0x40));
 
         let stack_op_as_operation = Operation::new(RWCounter(1), RW::WRITE, stack_op.clone());
 

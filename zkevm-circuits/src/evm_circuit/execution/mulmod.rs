@@ -14,7 +14,7 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian, U256};
+use eth_types::{Field, StackWord, ToLittleEndian, U256};
 use halo2_proofs::plonk::Error;
 
 /// MulModGadget verifies opcode MULMOD
@@ -122,7 +122,7 @@ impl<F: Field> ExecutionGadget<F> for MulModGadget<F> {
         self.words[3].assign(region, offset, Some(r.to_le_bytes()))?;
         // 1. quotient and reduction of a mod n
         let (k1, a_reduced) = if n.is_zero() {
-            (U256::zero(), U256::zero())
+            (StackWord::zero(), StackWord::zero())
         } else {
             a.div_mod(n)
         };
@@ -165,10 +165,10 @@ impl<F: Field> ExecutionGadget<F> for MulModGadget<F> {
 mod test {
     use crate::test_util::CircuitTestBuilder;
     use eth_types::evm_types::Stack;
-    use eth_types::{bytecode, Word, U256};
+    use eth_types::{bytecode, Word, U256, StackWord};
     use mock::TestContext;
 
-    fn test(a: Word, b: Word, n: Word, r: Option<Word>, ok: bool) {
+    fn test(a: Word, b: Word, n: Word, r: Option<StackWord>, ok: bool) {
         let bytecode = bytecode! {
             PUSH32(n)
             PUSH32(b)
@@ -201,11 +201,11 @@ mod test {
     }
 
     fn test_ok_u32(a: u32, b: u32, n: u32, r: Option<u32>) {
-        test(a.into(), b.into(), n.into(), r.map(Word::from), true)
+        test(a.into(), b.into(), n.into(), r.map(StackWord::from), true)
     }
 
     fn test_ko_u32(a: u32, b: u32, n: u32, r: Option<u32>) {
-        test(a.into(), b.into(), n.into(), r.map(Word::from), false)
+        test(a.into(), b.into(), n.into(), r.map(StackWord::from), false)
     }
 
     #[test]

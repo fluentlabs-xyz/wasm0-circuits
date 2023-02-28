@@ -20,7 +20,7 @@ use crate::{
     util::Expr,
     witness::{Block, Call, ExecStep},
 };
-use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar, U256};
+use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar, U256, U64};
 use gadgets::util::{select, sum};
 use halo2_proofs::{
     circuit::Value,
@@ -580,10 +580,10 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
         callee_address: U256,
         value: U256,
         is_success: U256,
-        cd_offset: U256,
-        cd_length: U256,
-        rd_offset: U256,
-        rd_length: U256,
+        cd_offset: U64,
+        cd_length: U64,
+        rd_offset: U64,
+        rd_length: U64,
         memory_word_size: u64,
         phase2_callee_code_hash: Value<F>,
     ) -> Result<u64, Error> {

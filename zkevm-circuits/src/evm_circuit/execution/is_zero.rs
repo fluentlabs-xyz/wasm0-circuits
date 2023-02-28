@@ -12,7 +12,7 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::Field;
+use eth_types::{Field, ToU256};
 use halo2_proofs::plonk::Error;
 
 #[derive(Clone, Debug)]
@@ -65,7 +65,7 @@ impl<F: Field> ExecutionGadget<F> for IsZeroGadget<F> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
         let value = block.rws[step.rw_indices[0]].stack_value();
-        let value = region.word_rlc(value);
+        let value = region.word_rlc(value.to_u256());
         self.value.assign(region, offset, value)?;
         self.is_zero.assign_value(region, offset, value)?;
 

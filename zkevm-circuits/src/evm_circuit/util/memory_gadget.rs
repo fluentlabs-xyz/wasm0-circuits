@@ -12,7 +12,7 @@ use crate::{
     util::Expr,
 };
 use array_init::array_init;
-use eth_types::{evm_types::GasCost, Field, ToLittleEndian, U256};
+use eth_types::{evm_types::GasCost, Field, StackWord, ToLittleEndian, U256, U64};
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
@@ -103,8 +103,8 @@ impl<F: Field> MemoryAddressGadget<F> {
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
-        memory_offset: U256,
-        memory_length: U256,
+        memory_offset: U64,
+        memory_length: U64,
     ) -> Result<u64, Error> {
         let memory_offset_bytes = memory_offset.to_le_bytes();
         let memory_length_bytes = memory_length.to_le_bytes();
