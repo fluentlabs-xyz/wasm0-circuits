@@ -14,7 +14,7 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian, ToScalar};
+use eth_types::{Field, ToLittleEndian, ToScalar, ToWord};
 use halo2_proofs::{circuit::Value, plonk::Error};
 use halo2_proofs::plonk::Error::Synthesis;
 
@@ -90,7 +90,7 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
         self.tx_id
             .assign(region, offset.clone(), Value::known(F::from(tx.id as u64)))?;
 
-        let origin = block.rws[step.rw_indices[0]].call_context_value();
+        let origin = tx.caller_address.to_word();
         let dest_offset = block.rws[step.rw_indices[1]].stack_value();
 
         // Assign Origin addr RLC.

@@ -113,10 +113,10 @@ mod test {
     fn test_ok() {
         let bytecode = bytecode! {
             I32Const[100]
-            // I32Const[20]
-            // I32Add
-            // I32Const[3]
-            // I32Add
+            I32Const[20]
+            I32Add
+            I32Const[3]
+            I32Add
             Drop
         };
 
