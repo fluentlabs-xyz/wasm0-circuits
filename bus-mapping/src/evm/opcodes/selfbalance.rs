@@ -2,7 +2,7 @@ use super::Opcode;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::operation::{AccountField, CallContextField};
 use crate::Error;
-use eth_types::GethExecStep;
+use eth_types::{GethExecStep, ToBigEndian};
 use eth_types::ToWord;
 use eth_types::U256;
 use eth_types::evm_types::MemoryAddress;
@@ -21,6 +21,8 @@ impl Opcode for Selfbalance {
         let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
         let self_balance = &geth_second_step.memory.0;
+        let self_balance = U256::from_big_endian(self_balance);
+        let self_balance_bytes = self_balance.to_be_bytes();
         let callee_address = state.call()?.address;
 
         // CallContext read of the callee_address
@@ -36,8 +38,8 @@ impl Opcode for Selfbalance {
             &mut exec_step,
             callee_address,
             AccountField::Balance,
-            U256::from_big_endian(self_balance),
-            U256::from_big_endian(self_balance),
+            self_balance,
+            self_balance,
         )?;
 
         // Copy result to memory
@@ -47,7 +49,7 @@ impl Opcode for Selfbalance {
 
         // Copy result to memory
         for i in 0..SELF_BALANCE_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), self_balance[i])?;
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), self_balance_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
         call_ctx.memory = geth_second_step.memory.clone();
@@ -142,7 +144,7 @@ mod selfbalance_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress::from(1023), Word::from(res_mem_address))
             )
         );
         for idx in 0..SELF_BALANCE_BYTE_LENGTH {

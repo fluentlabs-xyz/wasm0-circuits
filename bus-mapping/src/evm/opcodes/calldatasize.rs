@@ -106,7 +106,7 @@ mod calldatasize_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), U256::from(res_mem_address))
+                &StackOp::new(1, StackAddress::from(1023), U256::from(res_mem_address))
             )
         );
         // for idx in 0..CALL_DATA_SIZE_BYTE_LENGTH {

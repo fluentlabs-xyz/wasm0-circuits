@@ -29,9 +29,9 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let chain_id = cb.query_cell_phase2();
+        let dest_offset = cb.query_cell();
 
-        // Push the value to the stack
-        cb.stack_push(chain_id.expr());
+        cb.stack_pop(dest_offset.expr());
 
         // Lookup block table with chain_id
         cb.block_lookup(BlockContextFieldTag::ChainId.expr(), None, chain_id.expr());

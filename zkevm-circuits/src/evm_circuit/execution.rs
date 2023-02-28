@@ -102,6 +102,7 @@ use drop::DropGadget;
 use push::PushGadget;
 use crate::evm_circuit::execution::caller::CallerGadget;
 use crate::evm_circuit::execution::end::EndGadget;
+use crate::evm_circuit::execution::origin::OriginGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -184,7 +185,7 @@ pub(crate) struct ExecutionConfig<F> {
     // mul_div_mod_gadget: MulDivModGadget<F>,
     // mulmod_gadget: MulModGadget<F>,
     // not_gadget: NotGadget<F>,
-    // origin_gadget: OriginGadget<F>,
+    origin_gadget: OriginGadget<F>,
     // pc_gadget: PcGadget<F>,
     // pop_gadget: PopGadget<F>,
     drop_gadget: DropGadget<F>,
@@ -439,7 +440,7 @@ impl<F: Field> ExecutionConfig<F> {
             // mul_div_mod_gadget: configure_gadget!(),
             // mulmod_gadget: configure_gadget!(),
             // not_gadget: configure_gadget!(),
-            // origin_gadget: configure_gadget!(),
+            origin_gadget: configure_gadget!(),
             // pc_gadget: configure_gadget!(),
             // pop_gadget: configure_gadget!(),
             drop_gadget: configure_gadget!(),
@@ -1049,7 +1050,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::MUL_DIV_MOD => assign_exec_step!(self.mul_div_mod_gadget),
             // ExecutionState::MULMOD => assign_exec_step!(self.mulmod_gadget),
             // ExecutionState::NOT => assign_exec_step!(self.not_gadget),
-            // ExecutionState::ORIGIN => assign_exec_step!(self.origin_gadget),
+            ExecutionState::ORIGIN => assign_exec_step!(self.origin_gadget),
             // ExecutionState::PC => assign_exec_step!(self.pc_gadget),
             // ExecutionState::POP => assign_exec_step!(self.pop_gadget),
             ExecutionState::DROP => assign_exec_step!(self.drop_gadget),

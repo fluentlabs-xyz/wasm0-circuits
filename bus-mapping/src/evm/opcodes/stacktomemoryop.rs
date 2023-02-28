@@ -121,7 +121,7 @@ mod stacktomemoryop_tests {
                 DIFFICULTY
                 STOP
             },
-            vec![StackOp::new(1, StackAddress(1022), Word::from(0))],
+            vec![StackOp::new(1, StackAddress(1023), Word::from(0))],
             vec![],
             Vec::from(MOCK_DIFFICULTY.to_be_bytes()),
         );
@@ -136,7 +136,7 @@ mod stacktomemoryop_tests {
                 GASLIMIT
                 STOP
             },
-            vec![StackOp::new(1, StackAddress(1022), Word::from(0))],
+            vec![StackOp::new(1, StackAddress(1023), Word::from(0))],
             vec![],
             Vec::from(MOCK_GASLIMIT.as_u64().to_be_bytes()),
         );
@@ -151,7 +151,7 @@ mod stacktomemoryop_tests {
                 BASEFEE
                 STOP
             },
-            vec![StackOp::new(1, StackAddress(1022), Word::from(0))],
+            vec![StackOp::new(1, StackAddress(1023), Word::from(0))],
             vec![],
             Vec::from(MOCK_BASEFEE.to_be_bytes()),
         );

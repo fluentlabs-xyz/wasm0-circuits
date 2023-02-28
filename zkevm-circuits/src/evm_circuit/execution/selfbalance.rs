@@ -30,6 +30,7 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let callee_address = cb.call_context(None, CallContextFieldTag::CalleeAddress);
+        let dest_offset = cb.query_cell();
 
         let phase2_self_balance = cb.query_cell_phase2();
         cb.account_read(
@@ -38,13 +39,13 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
             phase2_self_balance.expr(),
         );
 
-        cb.stack_push(phase2_self_balance.expr());
+        cb.stack_pop(phase2_self_balance.expr());
 
         let opcode = cb.query_cell();
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(3.expr()),
             program_counter: Delta(1.expr()),
-            stack_pointer: Delta((-1).expr()),
+            stack_pointer: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::SELFBALANCE.constant_gas_cost().expr()),
             ..Default::default()
         };
@@ -78,7 +79,8 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
             ),
         )?;
 
-        let self_balance = block.rws[step.rw_indices[2]].stack_value();
+        let dest_offset = block.rws[step.rw_indices[2]].stack_value();
+        let self_balance = block.rws[step.rw_indices[3]].stack_value();
         self.phase2_self_balance
             .assign(region, offset, region.word_rlc(self_balance.to_u256()))?;
 
@@ -94,9 +96,11 @@ mod test {
 
     #[test]
     fn selfbalance_gadget_test() {
+        let res_mem_address = 0x7f;
         let bytecode = bytecode! {
+            I32Const[res_mem_address]
             SELFBALANCE
-            STOP
+            // STOP
         };
 
         CircuitTestBuilder::new_from_test_ctx(

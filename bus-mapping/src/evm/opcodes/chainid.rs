@@ -1,4 +1,4 @@
-use eth_types::{GethExecStep, U256};
+use eth_types::{GethExecStep, ToBigEndian, U256};
 use eth_types::evm_types::MemoryAddress;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::Error;
@@ -19,12 +19,14 @@ impl Opcode for ChainId {
         let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
         let chain_id = &geth_second_step.memory.0;
+        let chain_id = U256::from_big_endian(chain_id);
+        let chain_id_bytes = chain_id.to_be_bytes();
 
         state.call_context_read(
             &mut exec_step,
             state.call()?.call_id,
-            CallContextField::CallerAddress,
-            U256::from_big_endian(chain_id),
+            CallContextField::TxId,
+            chain_id,
         );
 
         // Read dest offset as the last stack element
@@ -34,7 +36,7 @@ impl Opcode for ChainId {
 
         // Copy result to memory
         for i in 0..CHAIN_ID_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), chain_id[i])?;
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), chain_id_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
         call_ctx.memory = geth_second_step.memory.clone();
@@ -49,11 +51,12 @@ mod chainid_tests {
 
     use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, Word};
     use eth_types::evm_types::MemoryAddress;
+    use mock::MOCK_CHAIN_ID;
     use mock::test_ctx::{helpers::*, TestContext};
 
     use crate::{circuit_input_builder::ExecState, mocks::BlockData, operation::StackOp};
     use crate::evm::opcodes::chainid::CHAIN_ID_BYTE_LENGTH;
-    use crate::operation::{MemoryOp, RW};
+    use crate::operation::{CallContextField, CallContextOp, MemoryOp, RW};
 
     #[test]
     fn chainid_opcode_impl() {
@@ -90,12 +93,23 @@ mod chainid_tests {
         assert_eq!(
             {
                 let operation =
+                    &builder.block.container.call_context[step.bus_mapping_instance[0].as_usize()];
+                (operation.rw(), operation.op())
+            },
+            (
+                RW::READ,
+                &CallContextOp::new(1, CallContextField::TxId, *MOCK_CHAIN_ID)
+            )
+        );
+        assert_eq!(
+            {
+                let operation =
                     &builder.block.container.stack[step.bus_mapping_instance[1].as_usize()];
                 (operation.rw(), operation.op())
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1022), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress::from(1023), Word::from(res_mem_address))
             )
         );
 
