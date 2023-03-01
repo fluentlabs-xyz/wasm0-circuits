@@ -116,7 +116,7 @@ mod test {
     fn selfbalance_gadget_test() {
         let res_mem_address = 0x7f;
         let bytecode = bytecode! {
-            I32Const[res_mem_address]
+            I32Const[res_morem_address]
             SELFBALANCE
         };
 

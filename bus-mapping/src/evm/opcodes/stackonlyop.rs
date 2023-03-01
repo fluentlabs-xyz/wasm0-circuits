@@ -383,42 +383,42 @@ mod stackonlyop_tests {
         );
     }
 
-    // #[test]
-    // fn difficulty_opcode_impl() {
-    //     stack_only_opcode_impl::<0, 1>(
-    //         OpcodeId::DIFFICULTY,
-    //         bytecode! {
-    //             DIFFICULTY
-    //             STOP
-    //         },
-    //         vec![],
-    //         vec![StackOp::new(1, StackAddress(1023), *MOCK_DIFFICULTY)],
-    //     );
-    // }
-    //
-    // #[test]
-    // fn gas_limit_opcode_impl() {
-    //     stack_only_opcode_impl::<0, 1>(
-    //         OpcodeId::GASLIMIT,
-    //         bytecode! {
-    //             GASLIMIT
-    //             STOP
-    //         },
-    //         vec![],
-    //         vec![StackOp::new(1, StackAddress(1023), *MOCK_GASLIMIT)],
-    //     );
-    // }
-    //
-    // #[test]
-    // fn basefee_opcode_impl() {
-    //     stack_only_opcode_impl::<0, 1>(
-    //         OpcodeId::BASEFEE,
-    //         bytecode! {
-    //             BASEFEE
-    //             STOP
-    //         },
-    //         vec![],
-    //         vec![StackOp::new(1, StackAddress(1023), *MOCK_BASEFEE)],
-    //     );
-    // }
+    #[test]
+    fn difficulty_opcode_impl() {
+        stack_only_opcode_impl::<0, 1>(
+            OpcodeId::DIFFICULTY,
+            bytecode! {
+                DIFFICULTY
+                STOP
+            },
+            vec![],
+            vec![StackOp::new(1, StackAddress(1023), *MOCK_DIFFICULTY)],
+        );
+    }
+
+    #[test]
+    fn gas_limit_opcode_impl() {
+        stack_only_opcode_impl::<0, 1>(
+            OpcodeId::GASLIMIT,
+            bytecode! {
+                GASLIMIT
+                STOP
+            },
+            vec![],
+            vec![StackOp::new(1, StackAddress(1023), *MOCK_GASLIMIT)],
+        );
+    }
+
+    #[test]
+    fn basefee_opcode_impl() {
+        stack_only_opcode_impl::<0, 1>(
+            OpcodeId::BASEFEE,
+            bytecode! {
+                BASEFEE
+                STOP
+            },
+            vec![],
+            vec![StackOp::new(1, StackAddress(1023), *MOCK_BASEFEE)],
+        );
+    }
 }

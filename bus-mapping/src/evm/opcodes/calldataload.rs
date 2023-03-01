@@ -140,7 +140,7 @@ mod calldataload_tests {
         call_data_offset: usize,
         offset: usize,
         pushdata: Vec<u8>,
-        call_data_word: Word,
+        call_data_word: StackWord,
     ) {
         let (addr_a, addr_b) = (mock::MOCK_ACCOUNTS[0], mock::MOCK_ACCOUNTS[1]);
 
@@ -227,21 +227,21 @@ mod calldataload_tests {
         assert_eq!(step.bus_mapping_instance.len(), CALLDATA_CHUNK_BYTE_LENGTH + 37);
 
         // stack read and write.
-        // assert_eq!(
-        //     [0, 36]
-        //         .map(|idx| &builder.block.container.stack[step.bus_mapping_instance[idx].as_usize()])
-        //         .map(|op| (op.rw(), op.op())),
-        //     [
-        //         (
-        //             RW::READ,
-        //             &StackOp::new(call_id, StackAddress::from(1023), StackWord::from(offset)),
-        //         ),
-        //         (
-        //             RW::WRITE,
-        //             &StackOp::new(call_id, StackAddress::from(1023), call_data_word),
-        //         ),
-        //     ]
-        // );
+        assert_eq!(
+            [0, 36]
+                .map(|idx| &builder.block.container.stack[step.bus_mapping_instance[idx].as_usize()])
+                .map(|op| (op.rw(), op.op())),
+            [
+                (
+                    RW::READ,
+                    &StackOp::new(call_id, StackAddress::from(1023), StackWord::from(offset)),
+                ),
+                (
+                    RW::WRITE,
+                    &StackOp::new(call_id, StackAddress::from(1023), call_data_word),
+                ),
+            ]
+        );
 
         // call context reads.
         assert_eq!(

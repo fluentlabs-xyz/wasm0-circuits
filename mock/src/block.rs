@@ -1,7 +1,7 @@
 //! Mock Block definition and builder related methods.
 
 use crate::{MockTransaction, MOCK_BASEFEE, MOCK_CHAIN_ID, MOCK_DIFFICULTY, MOCK_GASLIMIT};
-use eth_types::{Address, Block, Bytes, Hash, Transaction, Word, H64, U64};
+use eth_types::{Address, Block, Bytes, Hash, Transaction, Word, H64, U64, StackWord, ToU256};
 use ethers_core::types::Bloom;
 use ethers_core::types::OtherFields;
 
@@ -19,12 +19,12 @@ pub struct MockBlock {
     receipts_root: Hash,
     number: U64,
     gas_used: Word,
-    gas_limit: Word,
-    base_fee_per_gas: Word,
+    gas_limit: StackWord,
+    base_fee_per_gas: StackWord,
     extra_data: Bytes,
     logs_bloom: Option<Bloom>,
     timestamp: Word,
-    difficulty: Word,
+    difficulty: StackWord,
     total_difficulty: Word,
     seal_fields: Vec<Bytes>,
     uncles: Vec<Hash>,
@@ -80,11 +80,11 @@ impl From<MockBlock> for Block<Transaction> {
             receipts_root: mock.receipts_root,
             number: Some(mock.number),
             gas_used: mock.gas_used,
-            gas_limit: mock.gas_limit,
+            gas_limit: mock.gas_limit.to_u256(),
             extra_data: mock.extra_data,
             logs_bloom: mock.logs_bloom,
             timestamp: mock.timestamp,
-            difficulty: mock.difficulty,
+            difficulty: mock.difficulty.to_u256(),
             total_difficulty: Some(mock.total_difficulty),
             seal_fields: mock.seal_fields,
             uncles: mock.uncles,
@@ -96,7 +96,7 @@ impl From<MockBlock> for Block<Transaction> {
             size: Some(mock.size),
             mix_hash: Some(mock.mix_hash),
             nonce: Some(mock.nonce),
-            base_fee_per_gas: Some(mock.base_fee_per_gas),
+            base_fee_per_gas: Some(mock.base_fee_per_gas.to_u256()),
             other: OtherFields::default(),
         }
     }
@@ -114,11 +114,11 @@ impl From<MockBlock> for Block<()> {
             receipts_root: mock.receipts_root,
             number: Some(mock.number),
             gas_used: mock.gas_used,
-            gas_limit: mock.gas_limit,
+            gas_limit: mock.gas_limit.to_u256(),
             extra_data: mock.extra_data,
             logs_bloom: mock.logs_bloom,
             timestamp: mock.timestamp,
-            difficulty: mock.difficulty,
+            difficulty: mock.difficulty.to_u256(),
             total_difficulty: Some(mock.total_difficulty),
             seal_fields: mock.seal_fields,
             uncles: mock.uncles,
@@ -126,7 +126,7 @@ impl From<MockBlock> for Block<()> {
             size: Some(mock.size),
             mix_hash: Some(mock.mix_hash),
             nonce: Some(mock.nonce),
-            base_fee_per_gas: Some(mock.base_fee_per_gas),
+            base_fee_per_gas: Some(mock.base_fee_per_gas.to_u256()),
             other: OtherFields::default(),
         }
     }
@@ -189,13 +189,13 @@ impl MockBlock {
     }
 
     /// Set gas_limit field for the MockBlock.
-    pub fn gas_limit(&mut self, gas_limit: Word) -> &mut Self {
+    pub fn gas_limit(&mut self, gas_limit: StackWord) -> &mut Self {
         self.gas_limit = gas_limit;
         self
     }
 
     /// Set base_fee_per_gas field for the MockBlock.
-    pub fn base_fee_per_gas(&mut self, base_fee_per_gas: Word) -> &mut Self {
+    pub fn base_fee_per_gas(&mut self, base_fee_per_gas: StackWord) -> &mut Self {
         self.base_fee_per_gas = base_fee_per_gas;
         self
     }
@@ -219,7 +219,7 @@ impl MockBlock {
     }
 
     /// Set difficulty field for the MockBlock.
-    pub fn difficulty(&mut self, difficulty: Word) -> &mut Self {
+    pub fn difficulty(&mut self, difficulty: StackWord) -> &mut Self {
         self.difficulty = difficulty;
         self
     }
