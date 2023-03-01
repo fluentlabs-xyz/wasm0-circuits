@@ -66,7 +66,7 @@ mod selfbalance_tests {
         mocks::BlockData,
         operation::{AccountOp, CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, Word};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToBigEndian, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
     use crate::operation::MemoryOp;
@@ -144,7 +144,7 @@ mod selfbalance_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1023), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress::from(1023), StackWord::from(res_mem_address))
             )
         );
         for idx in 0..SELF_BALANCE_BYTE_LENGTH {

@@ -58,7 +58,7 @@ mod origin_tests {
         operation::{CallContextField, CallContextOp, StackOp, RW},
         Error,
     };
-    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, ToU256, Word};
+    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, StackWord, ToU256, Word};
     use mock::{
         test_ctx::{helpers::*, TestContext},
     };
@@ -104,7 +104,7 @@ mod origin_tests {
             (op_origin.rw(), op_origin.op()),
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress(1023usize), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress(1023usize), StackWord::from(res_mem_address))
             )
         );
         let call_id = builder.block.txs()[0].calls()[0].call_id;
@@ -131,7 +131,7 @@ mod origin_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1023), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress::from(1023), StackWord::from(res_mem_address))
             )
         );
         for idx in 0..ORIGIN_BYTE_LENGTH {

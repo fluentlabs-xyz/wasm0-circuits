@@ -203,7 +203,7 @@ mod container_test {
 
     use crate::operation::{RWCounter, RW};
     use eth_types::evm_types::{MemoryAddress, StackAddress};
-    use eth_types::{Address, Word};
+    use eth_types::{Address, StackWord, Word};
 
     #[test]
     fn operation_container_test() {
@@ -212,7 +212,7 @@ mod container_test {
         let stack_operation = Operation::new(
             global_counter.inc_pre(),
             RW::WRITE,
-            StackOp::new(1, StackAddress(1023), Word::from(0x100)),
+            StackOp::new(1, StackAddress(1023), StackWord::from(0x100)),
         );
         let memory_operation = Operation::new(
             global_counter.inc_pre(),

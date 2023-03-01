@@ -51,7 +51,7 @@ mod calldatasize_tests {
         mocks::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, U256};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, U256};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
 
@@ -106,7 +106,7 @@ mod calldatasize_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1023), U256::from(res_mem_address))
+                &StackOp::new(1, StackAddress::from(1023), StackWord::from(res_mem_address))
             )
         );
         // for idx in 0..CALL_DATA_SIZE_BYTE_LENGTH {

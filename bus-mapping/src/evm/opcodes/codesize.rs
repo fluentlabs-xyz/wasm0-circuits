@@ -48,7 +48,7 @@ impl Opcode for Codesize {
 
 #[cfg(test)]
 mod codesize_tests {
-    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, Word};
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
         TestContext,
@@ -122,7 +122,7 @@ mod codesize_tests {
         assert_eq!(op.rw(), RW::READ);
         assert_eq!(
             op.op(),
-            &StackOp::new(1, StackAddress::from(st_addr), Word::from(res_mem_address))
+            &StackOp::new(1, StackAddress::from(st_addr), StackWord::from(res_mem_address))
         );
     }
 

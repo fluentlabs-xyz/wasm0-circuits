@@ -8,9 +8,7 @@ use crate::geth_errors::{
 use crate::operation::RWCounter;
 use crate::state_db::Account;
 use eth_types::evm_types::{stack::Stack, Gas, OpcodeId};
-use eth_types::{
-    address, bytecode, geth_types::GethData, word, Bytecode, Hash, ToAddress, ToWord, Word,
-};
+use eth_types::{address, bytecode, geth_types::GethData, word, Bytecode, Hash, ToAddress, ToWord, Word, StackWord, ToStackWord};
 use lazy_static::lazy_static;
 use mock::test_ctx::{helpers::*, LoggerConfig, TestContext};
 use mock::MOCK_COINBASE;
@@ -179,7 +177,7 @@ fn tracer_err_depth() {
     // Some sanity checks
     assert_eq!(struct_logs[index + 1].op, OpcodeId::PUSH2);
     assert_eq!(struct_logs[index + 1].depth, 1025u16);
-    assert_eq!(struct_logs[index + 1].stack, Stack(vec![Word::zero()])); // success = 0
+    assert_eq!(struct_logs[index + 1].stack, Stack(vec![StackWord::zero()])); // success = 0
     assert_eq!(struct_logs[index + 2].op, OpcodeId::STOP);
     assert_eq!(struct_logs[index + 2].depth, 1025u16);
 
@@ -252,7 +250,7 @@ fn tracer_err_insufficient_balance() {
     let next_step = block.geth_traces[0].struct_logs.get(index + 1);
     assert_eq!(step.error, None);
     assert_eq!(next_step.unwrap().op, OpcodeId::PUSH2);
-    assert_eq!(next_step.unwrap().stack, Stack(vec![Word::zero()])); // failure = 0
+    assert_eq!(next_step.unwrap().stack, Stack(vec![StackWord::zero()])); // failure = 0
 
     let mut builder = CircuitInputBuilderTx::new(&block, step);
     assert_eq!(
@@ -463,7 +461,7 @@ fn check_err_code_store_out_of_gas(step: &GethExecStep, next_step: Option<&GethE
     step.op == OpcodeId::RETURN
         && step.error.is_none()
         && result(next_step).is_zero()
-        && Word::from(200) * length > Word::from(step.gas.0)
+        && StackWord::from(200) * length > StackWord::from(step.gas.0)
 }
 
 #[test]
@@ -569,7 +567,7 @@ fn check_err_invalid_code(step: &GethExecStep, next_step: Option<&GethExecStep>)
     step.op == OpcodeId::RETURN
         && step.error.is_none()
         && result(next_step).is_zero()
-        && length > Word::zero()
+        && length > StackWord::zero()
         && !step.memory.is_empty()
         && step.memory.0.get(offset.low_u64() as usize) == Some(&0xef)
 }
@@ -676,7 +674,7 @@ fn check_err_max_code_size_exceeded(step: &GethExecStep, next_step: Option<&Geth
     step.op == OpcodeId::RETURN
         && step.error.is_none()
         && result(next_step).is_zero()
-        && length > Word::from(0x6000)
+        && length > StackWord::from(0x6000)
 }
 
 #[test]
@@ -879,9 +877,9 @@ fn tracer_create_stop() {
 // step is executed, so when these errors happen, the trace step
 // contains error = null.
 
-fn result(step: Option<&GethExecStep>) -> Word {
-    step.map(|s| s.stack.last().unwrap_or_else(|_| Word::zero()))
-        .unwrap_or_else(Word::zero)
+fn result(step: Option<&GethExecStep>) -> StackWord {
+    step.map(|s| s.stack.last().unwrap_or_else(|_| StackWord::zero()))
+        .unwrap_or_else(StackWord::zero)
 }
 
 fn check_err_invalid_jump(step: &GethExecStep, next_step: Option<&GethExecStep>) -> bool {
@@ -1617,7 +1615,7 @@ fn create2_address() {
     builder.state_ref().call_ctx_mut().unwrap().memory = memory;
     let addr = builder.state_ref().create2_address(step_create2).unwrap();
 
-    assert_eq!(addr.to_word(), addr_expect);
+    assert_eq!(addr.to_stack_word(), addr_expect);
 }
 
 #[test]
@@ -1733,7 +1731,7 @@ fn create_address() {
     );
     let addr = builder.state_ref().create_address().unwrap();
 
-    assert_eq!(addr.to_word(), addr_expect);
+    assert_eq!(addr.to_stack_word(), addr_expect);
 }
 
 #[test]

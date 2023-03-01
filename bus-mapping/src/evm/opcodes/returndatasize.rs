@@ -60,7 +60,7 @@ mod returndatasize_tests {
         mocks::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Word};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
 
@@ -178,7 +178,7 @@ mod returndatasize_tests {
                 &StackOp::new(
                     call_id,
                     StackAddress::from(1021),
-                    Word::from(return_data_size)
+                    StackWord::from(return_data_size)
                 )
             )
         );

@@ -192,7 +192,7 @@ mod calldatacopy_tests {
         mocks::BlockData,
         operation::{CallContextField, CallContextOp, MemoryOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToWord, Word};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToWord, Word};
 
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
@@ -281,15 +281,15 @@ mod calldatacopy_tests {
             [
                 (
                     RW::READ,
-                    &StackOp::new(expected_call_id, StackAddress::from(1021), Word::from(dst_offset))
+                    &StackOp::new(expected_call_id, StackAddress::from(1021), StackWord::from(dst_offset))
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(expected_call_id, StackAddress::from(1022), Word::from(offset))
+                    &StackOp::new(expected_call_id, StackAddress::from(1022), StackWord::from(offset))
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(expected_call_id, StackAddress::from(1023), Word::from(copy_size))
+                    &StackOp::new(expected_call_id, StackAddress::from(1023), StackWord::from(copy_size))
                 ),
             ]
         );

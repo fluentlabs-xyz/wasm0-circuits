@@ -351,6 +351,14 @@ impl ToWord for Address {
     }
 }
 
+impl ToStackWord for Address {
+    fn to_stack_word(&self) -> StackWord {
+        let mut bytes = [0u8; 8];
+        bytes[8 - Self::len_bytes()..].copy_from_slice(self.as_bytes());
+        StackWord::from(bytes)
+    }
+}
+
 impl ToWord for bool {
     fn to_word(&self) -> Word {
         if *self {
@@ -749,7 +757,7 @@ mod tests {
                         gas_cost: GasCost(3),
                         depth: 1,
                         error: None,
-                        stack: Stack::new(),
+                        stack: Stack::<StackWord>::new(),
                         storage: Storage(word_map!()),
                         memory: Memory::new(),
                     },

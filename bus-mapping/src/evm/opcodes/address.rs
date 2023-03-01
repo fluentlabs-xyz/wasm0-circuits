@@ -55,7 +55,7 @@ impl Opcode for Address {
 mod address_tests {
     use pretty_assertions::assert_eq;
 
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToWord, Word};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToWord, Word};
     use mock::test_ctx::{helpers::*, TestContext};
 
     use crate::{
@@ -122,7 +122,7 @@ mod address_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1023), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress::from(1023), StackWord::from(res_mem_address))
             )
         );
         for idx in 0..ADDRESS_BYTE_LENGTH {

@@ -52,7 +52,7 @@ mod number_tests {
         operation::{StackOp, RW},
         Error,
     };
-    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, Word};
+    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, StackWord, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
     use eth_types::evm_types::MemoryAddress;
@@ -94,7 +94,7 @@ mod number_tests {
             (op_number.rw(), op_number.op()),
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress(1023usize), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress(1023usize), StackWord::from(res_mem_address))
             )
         );
 

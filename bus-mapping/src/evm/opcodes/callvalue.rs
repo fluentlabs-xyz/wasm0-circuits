@@ -53,7 +53,7 @@ mod callvalue_tests {
         mocks::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToLittleEndian, ToWord, Word};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToLittleEndian, ToWord, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
     use eth_types::evm_types::MemoryAddress;
@@ -116,7 +116,7 @@ mod callvalue_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1023), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress::from(1023), StackWord::from(res_mem_address))
             )
         );
         for idx in 0..CALL_VALUE_BYTE_LENGTH {

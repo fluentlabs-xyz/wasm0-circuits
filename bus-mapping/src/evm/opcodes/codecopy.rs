@@ -138,12 +138,7 @@ fn gen_copy_event(
 
 #[cfg(test)]
 mod codecopy_tests {
-    use eth_types::{
-        bytecode,
-        evm_types::{MemoryAddress, OpcodeId, StackAddress},
-        geth_types::GethData,
-        Word, H256,
-    };
+    use eth_types::{bytecode, evm_types::{MemoryAddress, OpcodeId, StackAddress}, geth_types::GethData, Word, H256, StackWord};
     use ethers_core::utils::keccak256;
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
@@ -200,15 +195,15 @@ mod codecopy_tests {
             [
                 (
                     RW::READ,
-                    &StackOp::new(1, StackAddress::from(1021), Word::from(dst_offset)),
+                    &StackOp::new(1, StackAddress::from(1021), StackWord::from(dst_offset)),
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(1, StackAddress::from(1022), Word::from(code_offset)),
+                    &StackOp::new(1, StackAddress::from(1022), StackWord::from(code_offset)),
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(1, StackAddress::from(1023), Word::from(size)),
+                    &StackOp::new(1, StackAddress::from(1023), StackWord::from(size)),
                 ),
             ]
         );

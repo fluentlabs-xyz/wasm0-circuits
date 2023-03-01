@@ -45,7 +45,7 @@ mod stacktomemoryop_tests {
     use itertools::Itertools;
     use pretty_assertions::assert_eq;
 
-    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToBigEndian, Word};
     use mock::{MOCK_BASEFEE, MOCK_DIFFICULTY, MOCK_GASLIMIT};
     use mock::test_ctx::{helpers::*, TestContext};
 
@@ -121,7 +121,7 @@ mod stacktomemoryop_tests {
                 DIFFICULTY
                 STOP
             },
-            vec![StackOp::new(1, StackAddress(1023), Word::from(0))],
+            vec![StackOp::new(1, StackAddress(1023), StackWord::from(0))],
             vec![],
             Vec::from(MOCK_DIFFICULTY.to_be_bytes()),
         );
@@ -136,7 +136,7 @@ mod stacktomemoryop_tests {
                 GASLIMIT
                 STOP
             },
-            vec![StackOp::new(1, StackAddress(1023), Word::from(0))],
+            vec![StackOp::new(1, StackAddress(1023), StackWord::from(0))],
             vec![],
             Vec::from(MOCK_GASLIMIT.as_u64().to_be_bytes()),
         );
@@ -151,7 +151,7 @@ mod stacktomemoryop_tests {
                 BASEFEE
                 STOP
             },
-            vec![StackOp::new(1, StackAddress(1023), Word::from(0))],
+            vec![StackOp::new(1, StackAddress(1023), StackWord::from(0))],
             vec![],
             Vec::from(MOCK_BASEFEE.to_be_bytes()),
         );

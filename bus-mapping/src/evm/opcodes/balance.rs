@@ -136,7 +136,7 @@ impl Opcode for Balance {
 mod balance_tests {
     use pretty_assertions::assert_eq;
 
-    use eth_types::{address, bytecode, Bytecode, ToBigEndian, U256, Word};
+    use eth_types::{address, bytecode, Bytecode, StackWord, ToBigEndian, U256, Word};
     use eth_types::bytecode::DataSectionDescriptor;
     use eth_types::evm_types::{OpcodeId, StackAddress};
     use eth_types::geth_types::GethData;
@@ -258,7 +258,7 @@ mod balance_tests {
             &StackOp {
                 call_id,
                 address: StackAddress::from(1022u32),
-                value: Word::from(account_mem_address)
+                value: StackWord::from(account_mem_address)
             }
         );
 
@@ -270,7 +270,7 @@ mod balance_tests {
             &StackOp {
                 call_id,
                 address: StackAddress::from(1021u32),
-                value: Word::from(res_mem_address)
+                value: StackWord::from(res_mem_address)
             }
         );
 
@@ -282,7 +282,7 @@ mod balance_tests {
             &StackOp {
                 call_id,
                 address: StackAddress::from(1021u32),
-                value: Word::from(res_mem_address)
+                value: StackWord::from(res_mem_address)
             }
         );
 
@@ -330,7 +330,7 @@ mod balance_tests {
             &StackOp {
                 call_id,
                 address: StackAddress::from(1023u32),
-                value: Word::from(account_mem_address)
+                value: StackWord::from(account_mem_address)
             }
         );
 
@@ -342,7 +342,7 @@ mod balance_tests {
             &StackOp {
                 call_id,
                 address: StackAddress::from(1021u32),
-                value: Word::from(res_mem_address)
+                value: StackWord::from(res_mem_address)
             }
         );
 

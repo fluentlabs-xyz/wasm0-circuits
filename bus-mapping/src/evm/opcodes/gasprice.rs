@@ -57,7 +57,7 @@ mod gasprice_tests {
         operation::{CallContextField, CallContextOp, StackOp, RW},
         Error,
     };
-    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, ToBigEndian, Word};
+    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, StackWord, ToBigEndian, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
     use eth_types::evm_types::MemoryAddress;
@@ -108,7 +108,7 @@ mod gasprice_tests {
             (op_gasprice.rw(), op_gasprice.op()),
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress(1023usize), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress(1023usize), StackWord::from(res_mem_address))
             )
         );
         let call_id = builder.block.txs()[0].calls()[0].call_id;

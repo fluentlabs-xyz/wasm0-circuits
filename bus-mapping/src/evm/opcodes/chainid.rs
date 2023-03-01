@@ -49,7 +49,7 @@ impl Opcode for ChainId {
 mod chainid_tests {
     use pretty_assertions::assert_eq;
 
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, ToBigEndian, Word};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToBigEndian, Word};
     use eth_types::evm_types::MemoryAddress;
     use mock::MOCK_CHAIN_ID;
     use mock::test_ctx::{helpers::*, TestContext};
@@ -109,7 +109,7 @@ mod chainid_tests {
             },
             (
                 RW::READ,
-                &StackOp::new(1, StackAddress::from(1023), Word::from(res_mem_address))
+                &StackOp::new(1, StackAddress::from(1023), StackWord::from(res_mem_address))
             )
         );
 
