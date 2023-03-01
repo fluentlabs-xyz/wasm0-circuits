@@ -47,14 +47,7 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
 
         cb.stack_pop(dest_offset.expr());
 
-        for idx in 0..20 {
-            cb.memory_lookup(
-                true.expr(),
-                dest_offset.expr() + idx.expr(),
-                origin.cells[20 - idx - 1].expr(),
-                None,
-            );
-        }
+        cb.memory_rlc_lookup(true.expr(), &dest_offset, &origin);
 
         // State transition
         let opcode = cb.query_cell();
