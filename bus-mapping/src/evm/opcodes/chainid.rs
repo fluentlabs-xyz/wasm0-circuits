@@ -1,4 +1,4 @@
-use eth_types::{GethExecStep, ToBigEndian, ToLittleEndian, U256};
+use eth_types::{GethExecStep, ToBigEndian, U256};
 use eth_types::evm_types::MemoryAddress;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::Error;
@@ -21,12 +21,13 @@ impl Opcode for ChainId {
         let chain_id = &geth_second_step.memory.0;
         let chain_id = U256::from_big_endian(chain_id);
         let chain_id_bytes = chain_id.to_be_bytes();
+        let tx_id = state.tx_ctx.id();
 
         state.call_context_read(
             &mut exec_step,
             state.call()?.call_id,
             CallContextField::TxId,
-            chain_id,
+            tx_id.into(),
         );
 
         // Read dest offset as the last stack element
@@ -51,7 +52,6 @@ mod chainid_tests {
 
     use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToBigEndian, Word};
     use eth_types::evm_types::MemoryAddress;
-    use mock::MOCK_CHAIN_ID;
     use mock::test_ctx::{helpers::*, TestContext};
 
     use crate::{circuit_input_builder::ExecState, mocks::BlockData, operation::StackOp};
@@ -98,7 +98,7 @@ mod chainid_tests {
             },
             (
                 RW::READ,
-                &CallContextOp::new(1, CallContextField::TxId, *MOCK_CHAIN_ID)
+                &CallContextOp::new(1, CallContextField::TxId, Word::one())
             )
         );
         assert_eq!(

@@ -21,6 +21,7 @@ impl Opcode for Origin {
         // Get origin result from next step
         let origin = &second_step.memory.0;
         let origin = U256::from_big_endian(origin);
+        let origin_as_address = origin.to_address();
         let tx_id = state.tx_ctx.id();
 
         // CallContext read of the TxId
@@ -31,8 +32,6 @@ impl Opcode for Origin {
             tx_id.into(),
         );
 
-        let origin = origin.to_address();
-
         // Read dest offset as the last stack element
         let dest_offset = step.stack.nth_last(0)?;
         state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
@@ -40,7 +39,7 @@ impl Opcode for Origin {
 
         // Copy result to memory
         for i in 0..ORIGIN_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), origin[i])?;
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), origin_as_address[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
         call_ctx.memory = second_step.memory.clone();
