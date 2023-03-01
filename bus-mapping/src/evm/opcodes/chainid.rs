@@ -1,4 +1,4 @@
-use eth_types::{GethExecStep, ToBigEndian, U256};
+use eth_types::{GethExecStep, ToBigEndian, ToLittleEndian, U256};
 use eth_types::evm_types::MemoryAddress;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::Error;

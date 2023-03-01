@@ -1,5 +1,7 @@
+use halo2_proofs::circuit::Value;
 use crate::{
     evm_circuit::{
+        param::N_BYTES_WORD,
         execution::ExecutionGadget,
         step::ExecutionState,
         util::{
@@ -9,17 +11,19 @@ use crate::{
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    table::BlockContextFieldTag,
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToU256};
+use eth_types::{Field, ToLittleEndian, ToScalar};
 use halo2_proofs::plonk::Error;
+use halo2_proofs::plonk::Error::Synthesis;
+use crate::evm_circuit::util::RandomLinearCombination;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ChainIdGadget<F> {
     same_context: SameContextGadget<F>,
-    chain_id: Cell<F>,
+    chain_id: RandomLinearCombination<F, N_BYTES_WORD>,
+    dest_offset: Cell<F>
 }
 
 impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
@@ -28,20 +32,20 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::CHAINID;
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
-        let chain_id = cb.query_cell_phase2();
+        let chain_id = cb.query_word_rlc();
         let dest_offset = cb.query_cell();
 
         cb.stack_pop(dest_offset.expr());
 
         // Lookup block table with chain_id
-        cb.block_lookup(BlockContextFieldTag::ChainId.expr(), None, chain_id.expr());
+        cb.memory_rlc_lookup(true.expr(), &dest_offset, &chain_id);
 
         // State transition
         let opcode = cb.query_cell();
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(1.expr()),
+            rw_counter: Delta(34.expr()),
             program_counter: Delta(1.expr()),
-            stack_pointer: Delta((-1).expr()),
+            stack_pointer: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::CHAINID.constant_gas_cost().expr()),
             ..Default::default()
         };
@@ -50,6 +54,7 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
         Self {
             same_context,
             chain_id,
+            dest_offset,
         }
     }
 
@@ -63,10 +68,26 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
         step: &ExecStep,
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
-        let chain_id = block.rws[step.rw_indices[0]].stack_value();
 
-        self.chain_id
-            .assign(region, offset, region.word_rlc(chain_id.to_u256()))?;
+        let chain_id = block.rws[step.rw_indices[0]].call_context_value();
+        let dest_offset = block.rws[step.rw_indices[1]].stack_value();
+
+        self.chain_id.assign(
+            region,
+            offset,
+            Some(
+                chain_id.to_le_bytes()
+                    .try_into()
+                    .unwrap(),
+            ),
+        )?;
+
+        self.dest_offset.assign(
+            region,
+            offset,
+            Value::<F>::known(dest_offset.to_scalar().ok_or(Synthesis)?),
+        )?;
+
         Ok(())
     }
 }
@@ -79,10 +100,10 @@ mod test {
 
     #[test]
     fn chainid_gadget_test() {
+        let res_mem_address = 0x7f;
         let bytecode = bytecode! {
-            // #[start]
+            I32Const[res_mem_address]
             CHAINID
-            STOP
         };
 
         CircuitTestBuilder::new_from_test_ctx(

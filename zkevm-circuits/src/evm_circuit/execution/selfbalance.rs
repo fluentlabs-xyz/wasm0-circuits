@@ -14,7 +14,7 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian, ToScalar, ToU256};
+use eth_types::{Field, ToLittleEndian, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
 use halo2_proofs::plonk::Error::Synthesis;
 use crate::evm_circuit::util::{RandomLinearCombination};
