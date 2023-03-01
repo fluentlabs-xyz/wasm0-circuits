@@ -127,15 +127,25 @@ type FnGenAssociatedOps = fn(
 ) -> Result<Vec<ExecStep>, Error>;
 
 fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
-    // if opcode_id.is_push() {
-    //     return StackOnlyOpcode::<0, 1>::gen_associated_ops;
-    // }
-
     match opcode_id {
         // WASM opcodes
         OpcodeId::I32Const(_) => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::I64Const(_) => StackOnlyOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::I32Add => StackOnlyOpcode::<2, 1>::gen_associated_ops,
+        OpcodeId::I32Add |
+        OpcodeId::I32Sub |
+        OpcodeId::I32Mul |
+        OpcodeId::I32DivS |
+        OpcodeId::I32DivU |
+        OpcodeId::I32RemS |
+        OpcodeId::I32RemU |
+        OpcodeId::I32And |
+        OpcodeId::I32Or |
+        OpcodeId::I32Xor |
+        OpcodeId::I32Shl |
+        OpcodeId::I32ShrS |
+        OpcodeId::I32ShrU |
+        OpcodeId::I32Rotl |
+        OpcodeId::I32Rotr => StackOnlyOpcode::<2, 1>::gen_associated_ops,
         OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
         OpcodeId::End => Stop::gen_associated_ops,
         OpcodeId::Return => Dummy::gen_associated_ops,
@@ -178,14 +188,11 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::CHAINID => ChainId::gen_associated_ops,
         OpcodeId::SELFBALANCE => Selfbalance::gen_associated_ops,
         OpcodeId::BASEFEE => StackToMemoryOpcode::gen_associated_ops,
-        OpcodeId::POP => StackOnlyOpcode::<1, 0>::gen_associated_ops,
         // OpcodeId::MLOAD => Mload::gen_associated_ops,
         // OpcodeId::MSTORE => Mstore::<false>::gen_associated_ops,
         // OpcodeId::MSTORE8 => Mstore::<true>::gen_associated_ops,
         // OpcodeId::SLOAD => Sload::gen_associated_ops,
         // OpcodeId::SSTORE => Sstore::gen_associated_ops,
-        OpcodeId::JUMP => StackOnlyOpcode::<1, 0>::gen_associated_ops,
-        OpcodeId::JUMPI => StackOnlyOpcode::<2, 0>::gen_associated_ops,
         OpcodeId::PC => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::MSIZE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::GAS => StackOnlyOpcode::<0, 1>::gen_associated_ops,

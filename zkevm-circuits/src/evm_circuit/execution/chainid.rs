@@ -49,7 +49,7 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
         // State transition
         let opcode = cb.query_cell();
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(34.expr()),
+            rw_counter: Delta(33.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::CHAINID.constant_gas_cost().expr()),
