@@ -125,8 +125,6 @@ mod test {
         let bytecode = bytecode! {
             I32Const[res_mem_address]
             CALLER
-            // STOP
-            // Drop
         };
 
         CircuitTestBuilder::new_from_test_ctx(

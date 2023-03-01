@@ -21,14 +21,6 @@ impl Opcode for ChainId {
         let chain_id = &geth_second_step.memory.0;
         let chain_id = U256::from_big_endian(chain_id);
         let chain_id_bytes = chain_id.to_be_bytes();
-        let tx_id = state.tx_ctx.id();
-
-        state.call_context_read(
-            &mut exec_step,
-            state.call()?.call_id,
-            CallContextField::TxId,
-            tx_id.into(),
-        );
 
         // Read dest offset as the last stack element
         let dest_offset = geth_step.stack.nth_last(0)?;

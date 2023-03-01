@@ -22,7 +22,6 @@ use crate::table::{BlockContextFieldTag, CallContextFieldTag};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ChainIdGadget<F> {
-    tx_id: Cell<F>,
     same_context: SameContextGadget<F>,
     chain_id: RandomLinearCombination<F, N_BYTES_WORD>,
     dest_offset: Cell<F>
@@ -39,14 +38,13 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
 
         cb.stack_pop(dest_offset.expr());
 
-        // Lookup block table with chain_id
-        let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         // Lookup rw_table -> call_context with tx origin address
         cb.block_lookup(
             BlockContextFieldTag::ChainId.expr(),
             None, // None because unrelated to calldata
             chain_id.expr(),
         );
+        cb.memory_rlc_lookup(true.expr(), &dest_offset, &chain_id);
 
         // State transition
         let opcode = cb.query_cell();
@@ -63,7 +61,6 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
             same_context,
             chain_id,
             dest_offset,
-            tx_id,
         }
     }
 
@@ -78,11 +75,8 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        self.tx_id
-            .assign(region, offset.clone(), Value::known(F::from(tx.id as u64)))?;
-
         let chain_id = block.eth_block.transactions[0].chain_id.unwrap();
-        let dest_offset = block.rws[step.rw_indices[1]].stack_value();
+        let dest_offset = block.rws[step.rw_indices[0]].stack_value();
 
         self.chain_id.assign(
             region,
