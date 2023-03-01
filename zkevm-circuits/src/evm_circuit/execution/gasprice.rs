@@ -1,5 +1,6 @@
 use crate::{
     evm_circuit::{
+        param::N_BYTES_WORD,
         execution::ExecutionGadget,
         step::ExecutionState,
         util::{
@@ -13,13 +14,16 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToU256};
+use eth_types::{Field, ToLittleEndian, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use halo2_proofs::plonk::Error::Synthesis;
+use crate::evm_circuit::util::{RandomLinearCombination};
 
 #[derive(Clone, Debug)]
 pub(crate) struct GasPriceGadget<F> {
     tx_id: Cell<F>,
-    gas_price: Cell<F>,
+    gas_price: RandomLinearCombination<F, N_BYTES_WORD>,
+    dest_offset: Cell<F>,
     same_context: SameContextGadget<F>,
 }
 
@@ -30,7 +34,8 @@ impl<F: Field> ExecutionGadget<F> for GasPriceGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         // Query gasprice value
-        let gas_price = cb.query_cell_phase2();
+        let gas_price = cb.query_word_rlc();
+        let dest_offset = cb.query_cell();
 
         // Lookup in call_ctx the TxId
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
@@ -43,14 +48,14 @@ impl<F: Field> ExecutionGadget<F> for GasPriceGadget<F> {
         );
 
         // Push the value to the stack
-        cb.stack_push(gas_price.expr());
+        cb.stack_pop(dest_offset.expr());
 
         // State transition
         let opcode = cb.query_cell();
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(2u64.expr()),
-            program_counter: Delta(1u64.expr()),
-            stack_pointer: Delta((-1i32).expr()),
+            rw_counter: Delta(34.expr()),
+            program_counter: Delta(1.expr()),
+            stack_pointer: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::GASPRICE.constant_gas_cost().expr()),
             ..Default::default()
         };
@@ -60,6 +65,7 @@ impl<F: Field> ExecutionGadget<F> for GasPriceGadget<F> {
             tx_id,
             gas_price,
             same_context,
+            dest_offset,
         }
     }
 
@@ -72,13 +78,26 @@ impl<F: Field> ExecutionGadget<F> for GasPriceGadget<F> {
         _: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        let gas_price = block.rws[step.rw_indices[1]].stack_value();
+        let gas_price = tx.gas_price;
+        let dest_offset = block.rws[step.rw_indices[1]].stack_value();
 
         self.tx_id
             .assign(region, offset, Value::known(F::from(tx.id as u64)))?;
 
-        self.gas_price
-            .assign(region, offset, region.word_rlc(gas_price.to_u256()))?;
+        self.gas_price.assign(
+            region,
+            offset,
+            Some(
+                gas_price.to_le_bytes()
+                    .try_into()
+                    .unwrap(),
+            ),
+        )?;
+        self.dest_offset.assign(
+            region,
+            offset,
+            Value::<F>::known(dest_offset.to_scalar().ok_or(Synthesis)?),
+        )?;
 
         self.same_context.assign_exec_step(region, offset, step)?;
 
@@ -94,10 +113,10 @@ mod test {
 
     #[test]
     fn gasprice_gadget_test() {
+        let res_mem_address = 0x7f;
         let bytecode = bytecode! {
-            #[start]
+            I32Const[res_mem_address]
             GASPRICE
-            STOP
         };
 
         let two_gwei = Word::from(2_000_000_000u64);

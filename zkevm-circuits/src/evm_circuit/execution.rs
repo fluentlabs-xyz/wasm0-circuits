@@ -104,6 +104,7 @@ use crate::evm_circuit::execution::caller::CallerGadget;
 use crate::evm_circuit::execution::callvalue::CallValueGadget;
 use crate::evm_circuit::execution::chainid::ChainIdGadget;
 use crate::evm_circuit::execution::end::EndGadget;
+use crate::evm_circuit::execution::gasprice::GasPriceGadget;
 use crate::evm_circuit::execution::origin::OriginGadget;
 use crate::evm_circuit::execution::selfbalance::SelfbalanceGadget;
 
@@ -177,7 +178,7 @@ pub(crate) struct ExecutionConfig<F> {
     // extcodesize_gadget: ExtcodesizeGadget<F>,
     // extcodecopy_gadget: ExtcodecopyGadget<F>,
     // gas_gadget: GasGadget<F>,
-    // gasprice_gadget: GasPriceGadget<F>,
+    gasprice_gadget: GasPriceGadget<F>,
     // iszero_gadget: IsZeroGadget<F>,
     // jump_gadget: JumpGadget<F>,
     // jumpdest_gadget: JumpdestGadget<F>,
@@ -433,7 +434,7 @@ impl<F: Field> ExecutionConfig<F> {
             // extcodehash_gadget: configure_gadget!(),
             // extcodesize_gadget: configure_gadget!(),
             // gas_gadget: configure_gadget!(),
-            // gasprice_gadget: configure_gadget!(),
+            gasprice_gadget: configure_gadget!(),
             // iszero_gadget: configure_gadget!(),
             // jump_gadget: configure_gadget!(),
             // jumpdest_gadget: configure_gadget!(),
@@ -1043,7 +1044,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::EXTCODEHASH => assign_exec_step!(self.extcodehash_gadget),
             // ExecutionState::EXTCODESIZE => assign_exec_step!(self.extcodesize_gadget),
             // ExecutionState::GAS => assign_exec_step!(self.gas_gadget),
-            // ExecutionState::GASPRICE => assign_exec_step!(self.gasprice_gadget),
+            ExecutionState::GASPRICE => assign_exec_step!(self.gasprice_gadget),
             // ExecutionState::ISZERO => assign_exec_step!(self.iszero_gadget),
             // ExecutionState::JUMP => assign_exec_step!(self.jump_gadget),
             // ExecutionState::JUMPDEST => assign_exec_step!(self.jumpdest_gadget),
