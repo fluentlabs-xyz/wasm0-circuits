@@ -53,7 +53,7 @@ mod callvalue_tests {
         mocks::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToLittleEndian, ToWord, Word};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToLittleEndian, ToWord};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
     use eth_types::evm_types::MemoryAddress;

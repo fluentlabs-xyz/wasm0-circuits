@@ -101,6 +101,7 @@ use end_tx::EndTxGadget;
 use drop::DropGadget;
 use push::PushGadget;
 use crate::evm_circuit::execution::caller::CallerGadget;
+use crate::evm_circuit::execution::callvalue::CallValueGadget;
 use crate::evm_circuit::execution::chainid::ChainIdGadget;
 use crate::evm_circuit::execution::end::EndGadget;
 use crate::evm_circuit::execution::origin::OriginGadget;
@@ -161,7 +162,7 @@ pub(crate) struct ExecutionConfig<F> {
     // bitwise_gadget: BitwiseGadget<F>,
     // byte_gadget: ByteGadget<F>,
     // call_op_gadget: CallOpGadget<F>,
-    // call_value_gadget: CallValueGadget<F>,
+    call_value_gadget: CallValueGadget<F>,
     // calldatacopy_gadget: CallDataCopyGadget<F>,
     // calldataload_gadget: CallDataLoadGadget<F>,
     // calldatasize_gadget: CallDataSizeGadget<F>,
@@ -423,6 +424,7 @@ impl<F: Field> ExecutionConfig<F> {
             // calldataload_gadget: configure_gadget!(),
             // calldatasize_gadget: configure_gadget!(),
             caller_gadget: configure_gadget!(),
+            call_value_gadget: configure_gadget!(),
             chainid_gadget: configure_gadget!(),
             // codecopy_gadget: configure_gadget!(),
             // codesize_gadget: configure_gadget!(),
@@ -1031,7 +1033,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::CALLDATALOAD => assign_exec_step!(self.calldataload_gadget),
             // ExecutionState::CALLDATASIZE => assign_exec_step!(self.calldatasize_gadget),
             ExecutionState::CALLER => assign_exec_step!(self.caller_gadget),
-            // ExecutionState::CALLVALUE => assign_exec_step!(self.call_value_gadget),
+            ExecutionState::CALLVALUE => assign_exec_step!(self.call_value_gadget),
             ExecutionState::CHAINID => assign_exec_step!(self.chainid_gadget),
             // ExecutionState::CODECOPY => assign_exec_step!(self.codecopy_gadget),
             // ExecutionState::CODESIZE => assign_exec_step!(self.codesize_gadget),
