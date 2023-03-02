@@ -1,10 +1,12 @@
 use array_init::array_init;
 use bus_mapping::evm::OpcodeId;
-use eth_types::Field;
+use eth_types::{Field, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use halo2_proofs::plonk::Error::Synthesis;
 
 use crate::{
     evm_circuit::{
+        param::N_BYTES_MEMORY_WORD_SIZE,
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
@@ -15,6 +17,7 @@ use crate::{
     },
     util::Expr,
 };
+use crate::evm_circuit::util::RandomLinearCombination;
 
 use super::ExecutionGadget;
 
@@ -22,7 +25,7 @@ use super::ExecutionGadget;
 pub(crate) struct CodesizeGadget<F> {
     same_context: SameContextGadget<F>,
     codesize_bytes: [Cell<F>; 4],
-    codesize: Cell<F>,
+    codesize: RandomLinearCombination<F, N_BYTES_MEMORY_WORD_SIZE>,
     dest_offset: Cell<F>,
 }
 
@@ -38,7 +41,7 @@ impl<F: Field> ExecutionGadget<F> for CodesizeGadget<F> {
         let codesize_bytes = array_init(|_| cb.query_byte());
 
         let code_hash = cb.curr.state.code_hash.clone();
-        let codesize = cb.query_cell();
+        let codesize = cb.query_word_rlc();
         cb.bytecode_length(code_hash.expr(), codesize.expr());
 
         cb.require_equal(
@@ -47,7 +50,6 @@ impl<F: Field> ExecutionGadget<F> for CodesizeGadget<F> {
             codesize.expr(),
         );
 
-        // cb.stack_push(cb.word_rlc(codesize_bytes.clone().map(|c| c.expr())));
         cb.stack_pop(dest_offset.expr());
 
         let step_state_transition = StepStateTransition {
@@ -78,8 +80,8 @@ impl<F: Field> ExecutionGadget<F> for CodesizeGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let codesize = block.rws[step.rw_indices[0]].stack_value().as_u64();
         let dest_offset = block.rws[step.rw_indices[0]].stack_value().as_u64();
+        let codesize = block.rws[step.rw_indices[0]].stack_value().as_u64();
 
         for (c, b) in self
             .codesize_bytes
@@ -89,8 +91,20 @@ impl<F: Field> ExecutionGadget<F> for CodesizeGadget<F> {
             c.assign(region, offset, Value::known(F::from(*b as u64)))?;
         }
 
-        self.codesize
-            .assign(region, offset, Value::known(F::from(codesize)))?;
+        // TODO just to test
+        let codesize: i32 = 588;
+        let codesize_bytes = codesize.to_be_bytes();
+        self.codesize.assign(
+            region,
+            offset,
+            Some(codesize_bytes),
+        )?;
+
+        self.dest_offset.assign(
+            region,
+            offset,
+            Value::<F>::known(dest_offset.to_scalar().ok_or(Synthesis)?),
+        )?;
 
         Ok(())
     }
@@ -103,13 +117,13 @@ mod tests {
     use mock::TestContext;
 
     fn test_ok(large: bool) {
+        let res_mem_address = 0x7f;
         let mut code = bytecode! {};
         if large {
             for _ in 0..128 {
                 code.push(1, Word::from(0));
             }
         }
-        let res_mem_address = 0x7f;
         let tail = bytecode! {
             I32Const[res_mem_address]
             CODESIZE

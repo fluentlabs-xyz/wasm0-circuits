@@ -68,7 +68,7 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
         block: &Block<F>,
-        tx: &Transaction,
+        _tx: &Transaction,
         _: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
