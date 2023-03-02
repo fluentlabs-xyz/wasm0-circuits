@@ -78,7 +78,7 @@ mod chainid_tests {
             .find(|step| step.exec_state == ExecState::Op(OpcodeId::CHAINID))
             .unwrap();
 
-        assert_eq!(step.bus_mapping_instance.len(), CHAIN_ID_BYTE_LENGTH + 2);
+        assert_eq!(step.bus_mapping_instance.len(), CHAIN_ID_BYTE_LENGTH + 1);
         let chain_id = block.eth_block.transactions[0].chain_id.unwrap();
         let chain_id_bytes = chain_id.to_be_bytes();
         assert_eq!(
@@ -88,14 +88,14 @@ mod chainid_tests {
                 (operation.rw(), operation.op())
             },
             (
-                RW::READ,
-                &CallContextOp::new(1, CallContextField::TxId, Word::one())
+                RW::WRITE,
+                &CallContextOp::new(1, CallContextField::RwCounterEndOfReversion, Word::zero())
             )
         );
         assert_eq!(
             {
                 let operation =
-                    &builder.block.container.stack[step.bus_mapping_instance[1].as_usize()];
+                    &builder.block.container.stack[step.bus_mapping_instance[0].as_usize()];
                 (operation.rw(), operation.op())
             },
             (
@@ -108,7 +108,7 @@ mod chainid_tests {
             assert_eq!(
                 {
                     let operation =
-                        &builder.block.container.memory[step.bus_mapping_instance[2 + idx].as_usize()];
+                        &builder.block.container.memory[step.bus_mapping_instance[1 + idx].as_usize()];
                     (operation.rw(), operation.op())
                 },
                 (
