@@ -103,6 +103,7 @@ use push::PushGadget;
 use crate::evm_circuit::execution::caller::CallerGadget;
 use crate::evm_circuit::execution::callvalue::CallValueGadget;
 use crate::evm_circuit::execution::chainid::ChainIdGadget;
+use crate::evm_circuit::execution::codesize::CodesizeGadget;
 use crate::evm_circuit::execution::end::EndGadget;
 use crate::evm_circuit::execution::gasprice::GasPriceGadget;
 use crate::evm_circuit::execution::origin::OriginGadget;
@@ -170,7 +171,7 @@ pub(crate) struct ExecutionConfig<F> {
     caller_gadget: CallerGadget<F>,
     chainid_gadget: ChainIdGadget<F>,
     // codecopy_gadget: CodeCopyGadget<F>,
-    // codesize_gadget: CodesizeGadget<F>,
+    codesize_gadget: CodesizeGadget<F>,
     // comparator_gadget: ComparatorGadget<F>,
     // dup_gadget: DupGadget<F>,
     // exp_gadget: ExponentiationGadget<F>,
@@ -428,7 +429,7 @@ impl<F: Field> ExecutionConfig<F> {
             call_value_gadget: configure_gadget!(),
             chainid_gadget: configure_gadget!(),
             // codecopy_gadget: configure_gadget!(),
-            // codesize_gadget: configure_gadget!(),
+            codesize_gadget: configure_gadget!(),
             // comparator_gadget: configure_gadget!(),
             // dup_gadget: configure_gadget!(),
             // extcodehash_gadget: configure_gadget!(),
@@ -1037,7 +1038,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::CALLVALUE => assign_exec_step!(self.call_value_gadget),
             ExecutionState::CHAINID => assign_exec_step!(self.chainid_gadget),
             // ExecutionState::CODECOPY => assign_exec_step!(self.codecopy_gadget),
-            // ExecutionState::CODESIZE => assign_exec_step!(self.codesize_gadget),
+            ExecutionState::CODESIZE => assign_exec_step!(self.codesize_gadget),
             // ExecutionState::CMP => assign_exec_step!(self.comparator_gadget),
             // ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
             // ExecutionState::EXP => assign_exec_step!(self.exp_gadget),

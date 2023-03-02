@@ -28,8 +28,6 @@ impl Opcode for Codesize {
         let codesize = code.len() as i32;
         let codesize_bytes = codesize.to_vec().unwrap();
 
-        // debug_assert_eq!(codesize, geth_steps[1].stack.last()?.as_usize());
-
         // Read dest offset as the last stack element
         let dest_offset = geth_step.stack.nth_last(0)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
@@ -48,7 +46,7 @@ impl Opcode for Codesize {
 
 #[cfg(test)]
 mod codesize_tests {
-    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord};
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
         TestContext,

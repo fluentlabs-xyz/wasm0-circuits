@@ -395,6 +395,7 @@ mod memory_tests {
                 .iter()
                 .flat_map(|w| w.to_be_bytes())
                 .collect(),
+            0
         );
 
         // At this point at position [0x40, 0x80) we've allocated the `0x80`

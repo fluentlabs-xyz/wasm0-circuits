@@ -1,8 +1,8 @@
 //! CircuitInput builder tooling module.
 
 use super::{
-    get_call_memory_offset_length, get_create_init_code, Block, BlockContext, Call, CallContext,
-    CallKind, CodeSource, CopyEvent, ExecState, ExecStep, ExpEvent, Transaction,
+    get_create_init_code, Block, BlockContext, Call, CallContext,
+    CallKind, CopyEvent, ExecState, ExecStep, ExpEvent, Transaction,
     TransactionContext,
 };
 use crate::{
@@ -18,7 +18,7 @@ use crate::{
 };
 use eth_types::{evm_types::{
     gas_utils::memory_expansion_gas_cost, Gas, GasCost, MemoryAddress, OpcodeId, StackAddress,
-}, evm_unimplemented, Address, GethExecStep, ToAddress, ToBigEndian, ToWord, Word, H256, StackWord, ToU256};
+}, evm_unimplemented, Address, GethExecStep, ToBigEndian, ToWord, Word, H256, StackWord, ToU256};
 use ethers_core::utils::{get_contract_address, get_create2_address};
 use std::cmp::max;
 
