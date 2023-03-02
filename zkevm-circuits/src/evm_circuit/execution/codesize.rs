@@ -17,15 +17,14 @@ use crate::{
     },
     util::Expr,
 };
-use crate::evm_circuit::util::RandomLinearCombination;
 
 use super::ExecutionGadget;
 
 #[derive(Clone, Debug)]
 pub(crate) struct CodesizeGadget<F> {
     same_context: SameContextGadget<F>,
-    codesize_bytes: [Cell<F>; 4],
-    codesize: RandomLinearCombination<F, N_BYTES_MEMORY_WORD_SIZE>,
+    codesize_bytes: [Cell<F>; N_BYTES_MEMORY_WORD_SIZE],
+    codesize: Cell<F>,
     dest_offset: Cell<F>,
 }
 
@@ -38,10 +37,11 @@ impl<F: Field> ExecutionGadget<F> for CodesizeGadget<F> {
         let opcode = cb.query_cell();
         let dest_offset = cb.query_cell();
 
-        let codesize_bytes = array_init(|_| cb.query_byte());
+        let codesize_bytes: [Cell<F>; N_BYTES_MEMORY_WORD_SIZE] = array_init(|_| cb.query_byte());
 
         let code_hash = cb.curr.state.code_hash.clone();
-        let codesize = cb.query_word_rlc();
+        // let codesize = cb.query_word_rlc();
+        let codesize = cb.query_cell();
         cb.bytecode_length(code_hash.expr(), codesize.expr());
 
         cb.require_equal(
@@ -81,7 +81,10 @@ impl<F: Field> ExecutionGadget<F> for CodesizeGadget<F> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
         let dest_offset = block.rws[step.rw_indices[0]].stack_value().as_u64();
-        let codesize = block.rws[step.rw_indices[0]].stack_value().as_u64();
+
+        let code_hash = _call.code_hash;
+        let code = block.bytecodes.get(&code_hash).unwrap();
+        let codesize: u64 = code.bytes.len() as u64;
 
         for (c, b) in self
             .codesize_bytes
@@ -91,14 +94,8 @@ impl<F: Field> ExecutionGadget<F> for CodesizeGadget<F> {
             c.assign(region, offset, Value::known(F::from(*b as u64)))?;
         }
 
-        // TODO just to test
-        let codesize: i32 = 588;
-        let codesize_bytes = codesize.to_be_bytes();
-        self.codesize.assign(
-            region,
-            offset,
-            Some(codesize_bytes),
-        )?;
+        self.codesize
+            .assign(region, offset, Value::known(F::from(codesize)))?;
 
         self.dest_offset.assign(
             region,
