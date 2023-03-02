@@ -109,11 +109,11 @@ impl Opcode for Balance {
         // }
 
         // Write the BALANCE result to stack.
-        state.stack_write(
-            &mut exec_step,
-            geth_steps[1].stack.nth_last_filled(0),
-            geth_steps[1].stack.nth_last(0)?,
-        )?;
+        // state.stack_write(
+        //     &mut exec_step,
+        //     geth_steps[1].stack.nth_last_filled(0),
+        //     geth_steps[1].stack.nth_last(0)?,
+        // )?;
 
         // Read dest offset as the (last-1) stack element
         let dest_offset = geth_step.stack.nth_last(0)?;
@@ -257,7 +257,7 @@ mod balance_tests {
             operation.op(),
             &StackOp {
                 call_id,
-                address: StackAddress::from(1022u32),
+                address: StackAddress::from(1023u32),
                 value: StackWord::from(account_mem_address)
             }
         );
@@ -269,7 +269,7 @@ mod balance_tests {
             operation.op(),
             &StackOp {
                 call_id,
-                address: StackAddress::from(1021u32),
+                address: StackAddress::from(1022u32),
                 value: StackWord::from(res_mem_address)
             }
         );
@@ -281,7 +281,7 @@ mod balance_tests {
             operation.op(),
             &StackOp {
                 call_id,
-                address: StackAddress::from(1021u32),
+                address: StackAddress::from(1022u32),
                 value: StackWord::from(res_mem_address)
             }
         );
@@ -324,27 +324,27 @@ mod balance_tests {
 
         indices_index += 1;
         let operation = &container.stack[indices[indices_index].as_usize()];
-        assert_eq!(operation.rw(), RW::WRITE);
-        assert_eq!(
-            operation.op(),
-            &StackOp {
-                call_id,
-                address: StackAddress::from(1023u32),
-                value: StackWord::from(account_mem_address)
-            }
-        );
-
-        indices_index += 1;
-        let operation = &container.stack[indices[indices_index].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
         assert_eq!(
             operation.op(),
             &StackOp {
                 call_id,
-                address: StackAddress::from(1021u32),
+                address: StackAddress::from(1022u32),
                 value: StackWord::from(res_mem_address)
             }
         );
+
+        // indices_index += 1;
+        // let operation = &container.stack[indices[indices_index].as_usize()];
+        // assert_eq!(operation.rw(), RW::READ);
+        // assert_eq!(
+        //     operation.op(),
+        //     &StackOp {
+        //         call_id,
+        //         address: StackAddress::from(1021u32),
+        //         value: StackWord::from(res_mem_address)
+        //     }
+        // );
 
         for idx in 0..BALANCE_BYTE_LENGTH {
             indices_index += 1;

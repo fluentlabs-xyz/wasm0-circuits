@@ -102,7 +102,7 @@ impl Bytecode {
             ("_evm_return", 2), // 18 TODO
             ("_evm_revert", 2), // 19 TODO
             ("_evm_codesize", 0), // 20
-            ("_evm_self_balance", 0), // 21
+            ("_evm_selfbalance", 0), // 21
             ("_evm_extcodehash", 2), // 22
             ("_evm_extcodesize", 2), // 23
             ("_evm_calldataload", 2), // 24 TODO
