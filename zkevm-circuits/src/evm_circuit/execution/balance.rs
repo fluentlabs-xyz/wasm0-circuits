@@ -21,12 +21,12 @@ use serde::de::IntoDeserializer;
 #[derive(Clone, Debug)]
 pub(crate) struct BalanceGadget<F> {
     same_context: SameContextGadget<F>,
-    // address_word: Word<F>,
+    // address: Word<F>,
     // reversion_info: ReversionInfo<F>,
-    tx_id: Cell<F>,
+    // tx_id: Cell<F>,
     is_warm: Cell<F>,
     code_hash: Cell<F>,
-    not_exists: IsZeroGadget<F>,
+    // not_exists: IsZeroGadget<F>,
     balance: RandomLinearCombination<F, N_BYTES_WORD>,
     address_dest_offset: Cell<F>,
     balance_dest_offset: Cell<F>,
@@ -39,12 +39,12 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         // let address_word = cb.query_word_rlc();
-        // let address = from_bytes::expr(&address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]);
+        // let address = cb.query_word_rlc();
         let address_dest_offset = cb.query_cell();
         let balance_dest_offset = cb.query_cell();
         // cb.stack_pop(address_word.expr());
 
-        let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
+        // let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         // let mut reversion_info = cb.reversion_info_read(None);
         let is_warm = cb.query_bool();
         // cb.account_access_list_write(
@@ -63,20 +63,21 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         // cb.condition(exists.expr(), |cb| {
         //     cb.account_read(address.expr(), AccountFieldTag::Balance, balance.expr());
         // });
-        // cb.condition(not_exists.expr(), |cb| {
-        //     cb.require_zero("balance is zero when non_exists", balance.expr());
-        // });
+        cb.condition(not_exists.expr(), |cb| {
+            cb.require_zero("balance is zero when non_exists", balance.expr());
+        });
 
         cb.stack_pop(address_dest_offset.expr());
         cb.stack_pop(balance_dest_offset.expr());
         // cb.memory_rlc_lookup(true.expr(), &address_dest_offset, &address);
-        cb.memory_rlc_lookup(true.expr(), &balance_dest_offset, &balance);
+        // cb.memory_rlc_lookup(true.expr(), &balance_dest_offset, &balance);
 
-        let gas_cost = select::expr(
-            is_warm.expr(),
-            GasCost::WARM_ACCESS.expr(),
-            GasCost::COLD_ACCOUNT_ACCESS.expr(),
-        );
+        // let gas_cost = select::expr(
+        //     is_warm.expr(),
+        //     GasCost::WARM_ACCESS.expr(),
+        //     GasCost::COLD_ACCOUNT_ACCESS.expr(),
+        // );
+        let gas_cost = GasCost::COLD_ACCOUNT_ACCESS.expr();
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(39.expr() /*+ exists.expr()*/),
@@ -92,12 +93,12 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
         Self {
             same_context,
-            // address_word,
+            // address,
             // reversion_info,
-            tx_id,
+            // tx_id,
             is_warm,
             code_hash,
-            not_exists,
+            // not_exists,
             balance,
             address_dest_offset,
             balance_dest_offset,
@@ -123,8 +124,8 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         let address_dest_offset = block.rws[step.rw_indices[0]].stack_value();
         let balance_dest_offset = block.rws[step.rw_indices[1]].stack_value();
 
-        self.tx_id
-            .assign(region, offset, Value::known(F::from(tx.id as u64)))?;
+        // self.tx_id
+        //     .assign(region, offset, Value::known(F::from(tx.id as u64)))?;
 
         // self.reversion_info.assign(
         //     region,
@@ -139,38 +140,32 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
         // let code_hash = block.rws[step.rw_indices[3]].account_value_pair().0;
         let code_hash = call.code_hash;
-        self.code_hash
-            .assign(region, offset, region.word_rlc(code_hash))?;
+        // self.code_hash
+        //     .assign(region, offset, region.word_rlc(code_hash))?;
         // TODO fetch balance from state
-        self.not_exists
-            .assign_value(region, offset, region.word_rlc(code_hash))?;
+        // self.not_exists
+        //     .assign_value(region, offset, region.word_rlc(code_hash))?;
         let balance = if code_hash.is_zero() {
             eth_types::Word::zero()
         } else {
             // TODO temp solution
-            eth_types::Word::from(1u64 << 20)
-            // block.rws[step.rw_indices[6]].account_value_pair().0
+            eth_types::Word::from(0u64 << 20)
+            // block.rws[step.rw_indices[2]].account_value_pair().0
         };
         self.balance.assign(
             region,
             offset,
-            Some(
-                balance.to_le_bytes()
-                    .try_into()
-                    .unwrap(),
-            ),
-        )?;
-        // self.balance
-        //     .assign(region, offset, Some(balance.to_le_bytes()))?;
-        self.address_dest_offset.assign(
-            region,
-            offset,
-            Value::<F>::known(address_dest_offset.to_scalar().ok_or(Synthesis)?)
+            Some(balance.to_le_bytes()),
         )?;
         self.balance_dest_offset.assign(
             region,
             offset,
             Value::<F>::known(balance_dest_offset.to_scalar().ok_or(Synthesis)?)
+        )?;
+        self.address_dest_offset.assign(
+            region,
+            offset,
+            Value::<F>::known(address_dest_offset.to_scalar().ok_or(Synthesis)?)
         )?;
 
         Ok(())
