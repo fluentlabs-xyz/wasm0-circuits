@@ -111,7 +111,8 @@ impl<F: Field> EventTableOpcodeConfigBuilder<F> for BinConfigBuilder {
         constraint_builder.push(
             "binop: add/sub constraints",
             Box::new(move |meta| {
-                let modulus = constant!(bn_to_field(&(BigUint::from(1u64) << 32usize)))
+                let modulus =
+                    constant!(bn_to_field(&(BigUint::from(1u64) << 32usize)))
                     + constant!(bn_to_field(&(BigUint::from((u32::MAX as u64) << 32usize))))
                         * is_64bits.expr(meta);
 

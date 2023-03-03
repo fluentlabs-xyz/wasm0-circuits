@@ -30,7 +30,6 @@ use std::{
 };
 use ethers_core::types::NameOrAddress::Name;
 
-mod add_sub;
 mod address;
 mod balance;
 mod begin_tx;
@@ -93,8 +92,8 @@ mod sstore;
 mod stop;
 mod swap;
 mod end;
+mod wasm_bin;
 
-use add_sub::AddSubGadget;
 use begin_tx::BeginTxGadget;
 use end_block::EndBlockGadget;
 use end_tx::EndTxGadget;
@@ -107,6 +106,7 @@ use crate::evm_circuit::execution::end::EndGadget;
 use crate::evm_circuit::execution::gasprice::GasPriceGadget;
 use crate::evm_circuit::execution::origin::OriginGadget;
 use crate::evm_circuit::execution::selfbalance::SelfbalanceGadget;
+use crate::evm_circuit::execution::wasm_bin::WasmBinGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -156,7 +156,6 @@ pub(crate) struct ExecutionConfig<F> {
     end_block_gadget: EndBlockGadget<F>,
     end_tx_gadget: EndTxGadget<F>,
     // opcode gadgets
-    add_sub_gadget: AddSubGadget<F>,
     // addmod_gadget: AddModGadget<F>,
     // address_gadget: AddressGadget<F>,
     // balance_gadget: BalanceGadget<F>,
@@ -249,6 +248,8 @@ pub(crate) struct ExecutionConfig<F> {
     // error_return_data_out_of_bound:
     //     DummyGadget<F, 0, 0, { ExecutionState::ErrorReturnDataOutOfBound }>,
     // invalid_opcode_gadget: DummyGadget<F, 0, 0, { ExecutionState::ErrorInvalidOpcode }>,
+
+    wasm_bin_gadget: WasmBinGadget<F>,
 }
 
 impl<F: Field> ExecutionConfig<F> {
@@ -415,7 +416,6 @@ impl<F: Field> ExecutionConfig<F> {
             end_block_gadget: configure_gadget!(),
             end_tx_gadget: configure_gadget!(),
             // opcode gadgets
-            add_sub_gadget: configure_gadget!(),
             // addmod_gadget: configure_gadget!(),
             // bitwise_gadget: configure_gadget!(),
             // byte_gadget: configure_gadget!(),
@@ -505,6 +505,9 @@ impl<F: Field> ExecutionConfig<F> {
             // error_invalid_creation_code: configure_gadget!(),
             // error_return_data_out_of_bound: configure_gadget!(),
             // invalid_opcode_gadget: configure_gadget!(),
+
+            wasm_bin_gadget: configure_gadget!(),
+
             // step and presets
             step: step_curr,
             height_map,
@@ -1022,8 +1025,9 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::BeginTx => assign_exec_step!(self.begin_tx_gadget),
             ExecutionState::EndTx => assign_exec_step!(self.end_tx_gadget),
             ExecutionState::EndBlock => assign_exec_step!(self.end_block_gadget),
+            // WASM opcodes
+            ExecutionState::WASM_BIN => assign_exec_step!(self.wasm_bin_gadget),
             // opcode
-            ExecutionState::ADD_SUB => assign_exec_step!(self.add_sub_gadget),
             // ExecutionState::ADDMOD => assign_exec_step!(self.addmod_gadget),
             // ExecutionState::ADDRESS => assign_exec_step!(self.address_gadget),
             // ExecutionState::BALANCE => assign_exec_step!(self.balance_gadget),

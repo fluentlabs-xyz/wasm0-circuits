@@ -131,12 +131,25 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
 
                 match op {
                     // WASM opcodes
+                    OpcodeId::I32Add |
+                    OpcodeId::I64Add |
+                    OpcodeId::I32Sub |
+                    OpcodeId::I64Sub |
+                    OpcodeId::I32Mul |
+                    OpcodeId::I64Mul |
+                    OpcodeId::I32DivS |
+                    OpcodeId::I64DivS |
+                    OpcodeId::I32DivU |
+                    OpcodeId::I64DivU |
+                    OpcodeId::I32RemS |
+                    OpcodeId::I64RemS |
+                    OpcodeId::I32RemU |
+                    OpcodeId::I64RemU => ExecutionState::WASM_BIN,
+
                     OpcodeId::Drop => ExecutionState::DROP,
                     OpcodeId::End => ExecutionState::END,
-                    OpcodeId::I32Add | OpcodeId::I32Sub => ExecutionState::ADD_SUB,
 
                     // EVM opcodes
-                    OpcodeId::ADD | OpcodeId::SUB => ExecutionState::ADD_SUB,
                     OpcodeId::ADDMOD => ExecutionState::ADDMOD,
                     OpcodeId::ADDRESS => ExecutionState::ADDRESS,
                     OpcodeId::BALANCE => ExecutionState::BALANCE,

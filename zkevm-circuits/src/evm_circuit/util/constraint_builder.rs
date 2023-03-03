@@ -424,7 +424,28 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         self.word_rlc((*EMPTY_HASH_LE).map(|byte| byte.expr()))
     }
 
+    // WASM helpers
+
+    pub(crate) fn alloc_u64(&mut self) -> Cell<F> {
+        self.query_cell()
+    }
+    pub(crate) fn alloc_u64_on_u8(&mut self) -> Cell<F> {
+        self.query_cell()
+    }
+    pub(crate) fn alloc_bit_value(&mut self) -> Cell<F> {
+        self.query_cell()
+    }
+    pub(crate) fn alloc_common_range_value(&mut self) -> Cell<F> {
+        self.query_cell()
+    }
+
     // Common
+
+    pub(crate) fn require_zeros(&mut self, name: &'static str, constraints: Vec<Expression<F>>) {
+        for constraint in constraints {
+            self.add_constraint(name, constraint);
+        }
+    }
 
     pub(crate) fn require_zero(&mut self, name: &'static str, constraint: Expression<F>) {
         self.add_constraint(name, constraint);

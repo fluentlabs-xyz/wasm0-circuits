@@ -25,8 +25,9 @@ pub enum ExecutionState {
     BeginTx,
     EndTx,
     EndBlock,
+    // WASM opcode cases
+    WASM_BIN,
     // Opcode successful cases
-    WASM,
     STOP,
     END,
     ADD_SUB,     // ADD, SUB
@@ -174,9 +175,26 @@ impl ExecutionState {
 
     pub(crate) fn responsible_opcodes(&self) -> Vec<OpcodeId> {
         match self {
+            // WASM opcodes
+            Self::WASM_BIN => vec![
+                OpcodeId::I32Add,
+                OpcodeId::I64Add,
+                OpcodeId::I32Sub,
+                OpcodeId::I64Sub,
+                OpcodeId::I32Mul,
+                OpcodeId::I64Mul,
+                OpcodeId::I32DivS,
+                OpcodeId::I64DivS,
+                OpcodeId::I32DivU,
+                OpcodeId::I64DivU,
+                OpcodeId::I32RemS,
+                OpcodeId::I64RemS,
+                OpcodeId::I32RemU,
+                OpcodeId::I64RemU,
+            ],
+            // EVM opcodes
             Self::STOP => vec![OpcodeId::STOP],
             Self::END => vec![OpcodeId::End],
-            Self::ADD_SUB => vec![OpcodeId::ADD, OpcodeId::SUB],
             Self::MUL_DIV_MOD => vec![OpcodeId::MUL, OpcodeId::DIV, OpcodeId::MOD],
             Self::SDIV_SMOD => vec![OpcodeId::SDIV, OpcodeId::SMOD],
             Self::SHL_SHR => vec![OpcodeId::SHL, OpcodeId::SHR],

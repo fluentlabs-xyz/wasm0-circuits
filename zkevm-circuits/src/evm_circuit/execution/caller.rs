@@ -129,7 +129,6 @@ mod test {
 
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
-        )
-        .run();
+        ).run();
     }
 }

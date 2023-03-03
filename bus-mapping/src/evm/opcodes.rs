@@ -1,20 +1,56 @@
 //! Definition of each opcode of the EVM.
-use crate::{
-    circuit_input_builder::{CircuitInputStateRef, ExecStep},
-    error::{ExecError, OogError},
-    evm::OpcodeId,
-    operation::{
-        AccountField, CallContextField, TxAccessListAccountOp, TxReceiptField, TxRefundOp, RW,
-    },
-    Error,
-};
 use core::fmt::Debug;
+
+use address::Address;
+use balance::Balance;
+use calldatacopy::Calldatacopy;
+use calldataload::Calldataload;
+use calldatasize::Calldatasize;
+use caller::Caller;
+use callop::CallOpcode;
+use callvalue::Callvalue;
+use codecopy::Codecopy;
+use codesize::Codesize;
+// use create::DummyCreate;
+use error_invalid_jump::ErrorInvalidJump;
+use error_oog_call::OOGCall;
 use eth_types::{
     evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED},
     evm_unimplemented, GethExecStep, ToAddress, ToWord, Word,
 };
+// use exp::Exponentiation;
+// use extcodecopy::Extcodecopy;
+// use extcodehash::Extcodehash;
+// use extcodesize::Extcodesize;
+use gasprice::GasPrice;
 use keccak256::EMPTY_HASH;
+// use logs::Log;
+// use mload::Mload;
+// use mstore::Mstore;
+use origin::Origin;
+use return_revert::ReturnRevert;
+use returndatacopy::Returndatacopy;
+use returndatasize::Returndatasize;
+use selfbalance::Selfbalance;
+// use sload::Sload;
+// use sstore::Sstore;
+use stackonlyop::StackOnlyOpcode;
+use stop::Stop;
 
+use crate::{
+    circuit_input_builder::{CircuitInputStateRef, ExecStep},
+    error::{ExecError, OogError},
+    Error,
+    evm::OpcodeId,
+    operation::{
+        AccountField, CallContextField, RW, TxAccessListAccountOp, TxReceiptField, TxRefundOp,
+    },
+};
+use crate::evm::opcodes::chainid::ChainId;
+use crate::evm::opcodes::number::Number;
+use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
+
+use self::sha3::Sha3;
 #[cfg(any(feature = "test", test))]
 pub use self::sha3::sha3_tests::{gen_sha3_code, MemoryKind};
 
@@ -59,41 +95,6 @@ mod error_oog_call;
 #[cfg(test)]
 mod memory_expansion_test;
 
-use self::sha3::Sha3;
-use address::Address;
-use balance::Balance;
-use calldatacopy::Calldatacopy;
-use calldataload::Calldataload;
-use calldatasize::Calldatasize;
-use caller::Caller;
-use callop::CallOpcode;
-use callvalue::Callvalue;
-use codecopy::Codecopy;
-use codesize::Codesize;
-// use create::DummyCreate;
-use error_invalid_jump::ErrorInvalidJump;
-use error_oog_call::OOGCall;
-// use exp::Exponentiation;
-// use extcodecopy::Extcodecopy;
-// use extcodehash::Extcodehash;
-// use extcodesize::Extcodesize;
-use gasprice::GasPrice;
-// use logs::Log;
-// use mload::Mload;
-// use mstore::Mstore;
-use origin::Origin;
-use return_revert::ReturnRevert;
-use returndatacopy::Returndatacopy;
-use returndatasize::Returndatasize;
-use selfbalance::Selfbalance;
-// use sload::Sload;
-// use sstore::Sstore;
-use stackonlyop::StackOnlyOpcode;
-use stop::Stop;
-use crate::evm::opcodes::chainid::ChainId;
-use crate::evm::opcodes::number::Number;
-use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
-
 /// Generic opcode trait which defines the logic of the
 /// [`Operation`](crate::operation::Operation) that should be generated for one
 /// or multiple [`ExecStep`](crate::circuit_input_builder::ExecStep) depending
@@ -129,8 +130,54 @@ type FnGenAssociatedOps = fn(
 fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
     match opcode_id {
         // WASM opcodes
-        OpcodeId::I32Const(_) => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::Unreachable => Stop::gen_associated_ops,
+        // OpcodeId::Nop => Dummy::gen_associated_ops,
+        // OpcodeId::Block => Dummy::gen_associated_ops,
+        // OpcodeId::Loop => Dummy::gen_associated_ops,
+        // OpcodeId::If => Dummy::gen_associated_ops,
+        // OpcodeId::Else => Dummy::gen_associated_ops,
+        OpcodeId::End => Stop::gen_associated_ops,
+        // OpcodeId::Br => Dummy::gen_associated_ops,
+        // OpcodeId::BrIf => Dummy::gen_associated_ops,
+        // OpcodeId::BrTable => Dummy::gen_associated_ops,
+        // OpcodeId::Return => Dummy::gen_associated_ops,
+        // OpcodeId::Call => Dummy::gen_associated_ops,
+        // OpcodeId::CallIndirect => Dummy::gen_associated_ops,
+        // OpcodeId::Drop => Dummy::gen_associated_ops,
+        // OpcodeId::Select => Dummy::gen_associated_ops,
+        // OpcodeId::GetLocal => Dummy::gen_associated_ops,
+        // OpcodeId::SetLocal => Dummy::gen_associated_ops,
+        // OpcodeId::TeeLocal => Dummy::gen_associated_ops,
+        // OpcodeId::GetGlobal => Dummy::gen_associated_ops,
+        // OpcodeId::SetGlobal => Dummy::gen_associated_ops,
+        // OpcodeId::I32Load => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load => Dummy::gen_associated_ops,
+        // OpcodeId::F32Load => Dummy::gen_associated_ops,
+        // OpcodeId::F64Load => Dummy::gen_associated_ops,
+        // OpcodeId::I32Load8S => Dummy::gen_associated_ops,
+        // OpcodeId::I32Load8U => Dummy::gen_associated_ops,
+        // OpcodeId::I32Load16S => Dummy::gen_associated_ops,
+        // OpcodeId::I32Load16U => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load8S => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load8U => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load16S => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load16U => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load32S => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load32U => Dummy::gen_associated_ops,
+        // OpcodeId::I32Store => Dummy::gen_associated_ops,
+        // OpcodeId::I64Store => Dummy::gen_associated_ops,
+        // OpcodeId::F32Store => Dummy::gen_associated_ops,
+        // OpcodeId::F64Store => Dummy::gen_associated_ops,
+        // OpcodeId::I32Store8 => Dummy::gen_associated_ops,
+        // OpcodeId::I32Store16 => Dummy::gen_associated_ops,
+        // OpcodeId::I64Store8 => Dummy::gen_associated_ops,
+        // OpcodeId::I64Store16 => Dummy::gen_associated_ops,
+        // OpcodeId::I64Store32 => Dummy::gen_associated_ops,
+        // OpcodeId::CurrentMemory => Dummy::gen_associated_ops,
+        // OpcodeId::GrowMemory => Dummy::gen_associated_ops,
+        OpcodeId::I32Const(_) |
         OpcodeId::I64Const(_) => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        // WASM binary opcodes
         OpcodeId::I32Add |
         OpcodeId::I32Sub |
         OpcodeId::I32Mul |
@@ -145,9 +192,24 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I32ShrS |
         OpcodeId::I32ShrU |
         OpcodeId::I32Rotl |
-        OpcodeId::I32Rotr => StackOnlyOpcode::<2, 1>::gen_associated_ops,
+        OpcodeId::I32Rotr |
+        OpcodeId::I64Add |
+        OpcodeId::I64Sub |
+        OpcodeId::I64Mul |
+        OpcodeId::I64DivS |
+        OpcodeId::I64DivU |
+        OpcodeId::I64RemS |
+        OpcodeId::I64RemU |
+        OpcodeId::I64And |
+        OpcodeId::I64Or |
+        OpcodeId::I64Xor |
+        OpcodeId::I64Shl |
+        OpcodeId::I64ShrS |
+        OpcodeId::I64ShrU |
+        OpcodeId::I64Rotl |
+        OpcodeId::I64Rotr => StackOnlyOpcode::<2, 1>::gen_associated_ops,
+
         OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
-        OpcodeId::End => Stop::gen_associated_ops,
         OpcodeId::Return => Dummy::gen_associated_ops,
 
         // TODO these are temporal. need a fix.
@@ -237,6 +299,7 @@ fn fn_gen_error_state_associated_ops(error: &ExecError) -> Option<FnGenAssociate
         }
     }
 }
+
 #[allow(clippy::collapsible_else_if)]
 /// Generate the associated operations according to the particular
 /// [`OpcodeId`].
@@ -286,8 +349,8 @@ pub fn gen_associated_ops(
             if geth_step.op.is_call_or_create() && !exec_step.oog_or_stack_error() {
                 let call = state.parse_call(geth_step)?;
                 state.push_call(call);
-            // For exceptions that fail to enter next call context, we need
-            // to restore call context of current caller
+                // For exceptions that fail to enter next call context, we need
+                // to restore call context of current caller
             } else {
                 state.gen_restore_context_ops(&mut exec_step, geth_steps)?;
             }
@@ -581,6 +644,7 @@ impl Opcode for DummySelfDestruct {
         dummy_gen_selfdestruct_ops(state, geth_steps)
     }
 }
+
 fn dummy_gen_selfdestruct_ops(
     state: &mut CircuitInputStateRef,
     geth_steps: &[GethExecStep],

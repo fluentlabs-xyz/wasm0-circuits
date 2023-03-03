@@ -102,7 +102,7 @@ impl Bytecode {
             ("_evm_return", 2), // 18 TODO
             ("_evm_revert", 2), // 19 TODO
             ("_evm_codesize", 0), // 20
-            ("_evm_self_balance", 0), // 21
+            ("_evm_selfbalance", 0), // 21
             ("_evm_extcodehash", 2), // 22
             ("_evm_extcodesize", 2), // 23
             ("_evm_calldataload", 2), // 24 TODO
@@ -196,10 +196,20 @@ impl Bytecode {
     pub fn write_op(&mut self, op: OpcodeId) -> &mut Self {
         let op = match op {
             // WASM opcode mapping
-            OpcodeId::I32Const(val) => Instruction::I32Const(val),
-            OpcodeId::I64Const(val) => Instruction::I64Const(val),
+            OpcodeId::I32Const(val) => Instruction::I32Const(val as i32),
+            OpcodeId::I64Const(val) => Instruction::I64Const(val as i64),
             OpcodeId::I32Add => Instruction::I32Add,
             OpcodeId::I64Add => Instruction::I64Add,
+            OpcodeId::I32Sub => Instruction::I32Sub,
+            OpcodeId::I64Sub => Instruction::I64Sub,
+            OpcodeId::I32Mul => Instruction::I32Mul,
+            OpcodeId::I64Mul => Instruction::I64Mul,
+            OpcodeId::I32DivS => Instruction::I32DivS,
+            OpcodeId::I64DivS => Instruction::I64DivS,
+            OpcodeId::I32DivU => Instruction::I32DivU,
+            OpcodeId::I64DivU => Instruction::I64DivU,
+            OpcodeId::I32RemU => Instruction::I32RemU,
+            OpcodeId::I64RemU => Instruction::I64RemU,
             OpcodeId::End => Instruction::End,
             OpcodeId::Unreachable => Instruction::Unreachable,
             OpcodeId::Drop => Instruction::Drop,

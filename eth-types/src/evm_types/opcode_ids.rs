@@ -113,10 +113,10 @@ pub enum OpcodeId {
     I64Store32,
     CurrentMemory,
     GrowMemory,
-    I32Const(i32),
-    I64Const(i64),
-    F32Const(i32),
-    F64Const(i64),
+    I32Const(u32),
+    I64Const(u64),
+    F32Const(u32),
+    F64Const(u64),
     I32Eqz,
     I32Eq,
     I32Ne,
@@ -1083,10 +1083,10 @@ impl FromStr for OpcodeId {
             "current_memory" => OpcodeId::CurrentMemory,
             "grow_memory" => OpcodeId::GrowMemory,
             "i32_const" => {
-                OpcodeId::I32Const(items[1].parse::<i32>().map_err(|e| TracingError(e.to_string()))?)
+                OpcodeId::I32Const(items[1].parse::<u32>().map_err(|e| TracingError(e.to_string()))?)
             }
             "i64_const" => {
-                OpcodeId::I64Const(items[1].parse::<i64>().map_err(|e| TracingError(e.to_string()))?)
+                OpcodeId::I64Const(items[1].parse::<u64>().map_err(|e| TracingError(e.to_string()))?)
             }
             "f32_const" => OpcodeId::F32Const(0),
             "f64_const" => OpcodeId::F64Const(0),
