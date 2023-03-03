@@ -18,7 +18,7 @@ use eth_types::{Field, ToLittleEndian, ToScalar};
 use halo2_proofs::plonk::Error;
 use halo2_proofs::plonk::Error::Synthesis;
 use crate::evm_circuit::util::{RandomLinearCombination};
-use crate::table::{BlockContextFieldTag, CallContextFieldTag};
+use crate::table::{BlockContextFieldTag};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ChainIdGadget<F> {
@@ -38,7 +38,6 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
 
         cb.stack_pop(dest_offset.expr());
 
-        // Lookup rw_table -> call_context with tx origin address
         cb.block_lookup(
             BlockContextFieldTag::ChainId.expr(),
             None, // None because unrelated to calldata
@@ -69,7 +68,7 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
         block: &Block<F>,
-        tx: &Transaction,
+        _tx: &Transaction,
         _: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {

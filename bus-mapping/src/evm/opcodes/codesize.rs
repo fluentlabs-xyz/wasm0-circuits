@@ -1,4 +1,3 @@
-use ethers_core::k256::pkcs8::der::Encode;
 use eth_types::evm_types::MemoryAddress;
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, ExecStep},
@@ -26,9 +25,7 @@ impl Opcode for Codesize {
         let code_hash = state.call()?.code_hash;
         let code = state.code(code_hash)?;
         let codesize = code.len() as i32;
-        let codesize_bytes = codesize.to_vec().unwrap();
-
-        // debug_assert_eq!(codesize, geth_steps[1].stack.last()?.as_usize());
+        let codesize_bytes = codesize.to_be_bytes();
 
         // Read dest offset as the last stack element
         let dest_offset = geth_step.stack.nth_last(0)?;
@@ -48,18 +45,16 @@ impl Opcode for Codesize {
 
 #[cfg(test)]
 mod codesize_tests {
-    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord};
+    use eth_types::evm_types::MemoryAddress;
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
         TestContext,
     };
 
-    use crate::{
-        circuit_input_builder::ExecState,
-        mocks::BlockData,
-        operation::{StackOp, RW},
-    };
+    use crate::{circuit_input_builder::ExecState, Error, mocks::BlockData, operation::{StackOp, RW}};
     use crate::evm::opcodes::codesize::CODE_SIZE_BYTE_LENGTH;
+    use crate::operation::MemoryOp;
 
     fn test_ok(large: bool) {
         let res_mem_address = 0x7f;
@@ -111,6 +106,12 @@ mod codesize_tests {
             .handle_block(&block.eth_block, &block.geth_traces)
             .unwrap();
 
+        let code_hash = builder.block.txs[0].calls[0].code_hash;
+        let code = builder.code_db.0.get(&code_hash).cloned()
+            .ok_or(Error::CodeNotFound(code_hash)).unwrap();
+        let codesize = code.len() as i32;
+        let codesize_bytes = codesize.to_be_bytes();
+
         let step = builder.block.txs()[0]
             .steps()
             .iter()
@@ -124,6 +125,19 @@ mod codesize_tests {
             op.op(),
             &StackOp::new(1, StackAddress::from(st_addr), StackWord::from(res_mem_address))
         );
+        for idx in 0..CODE_SIZE_BYTE_LENGTH {
+            assert_eq!(
+                {
+                    let operation =
+                        &builder.block.container.memory[step.bus_mapping_instance[1 + idx].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::WRITE,
+                    &MemoryOp::new(1, MemoryAddress::from(res_mem_address + idx as i32), codesize_bytes[idx])
+                )
+            );
+        }
     }
 
     #[test]

@@ -258,7 +258,7 @@ fn gen_geth_traces<const NACC: usize, const NTX: usize>(
 /// Collection of helper functions which contribute to specific rutines on the
 /// builder pattern used to construct [`TestContext`]s.
 pub mod helpers {
-    use eth_types::bytecode::DataSectionDescriptor;
+    use eth_types::bytecode::WasmDataSectionDescriptor;
     use super::*;
     use crate::MOCK_ACCOUNTS;
 
@@ -267,7 +267,7 @@ pub mod helpers {
     /// - 0x000000000000000000000000000000000cafe111
     /// - 0x000000000000000000000000000000000cafe222
     /// And injects the provided bytecode into the first one.
-    pub fn account_0_code_account_1_no_code(code: Bytecode, data_section_descriptors: Option<Vec<DataSectionDescriptor>>) -> impl FnOnce([&mut MockAccount; 2]) {
+    pub fn account_0_code_account_1_no_code(code: Bytecode, data_section_descriptors: Option<Vec<WasmDataSectionDescriptor>>) -> impl FnOnce([&mut MockAccount; 2]) {
         let wasm_binary = code.wasm_binary(data_section_descriptors);
         |accs| {
             accs[0]

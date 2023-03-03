@@ -99,9 +99,11 @@ use end_block::EndBlockGadget;
 use end_tx::EndTxGadget;
 use drop::DropGadget;
 use push::PushGadget;
+use crate::evm_circuit::execution::balance::BalanceGadget;
 use crate::evm_circuit::execution::caller::CallerGadget;
 use crate::evm_circuit::execution::callvalue::CallValueGadget;
 use crate::evm_circuit::execution::chainid::ChainIdGadget;
+use crate::evm_circuit::execution::codesize::CodesizeGadget;
 use crate::evm_circuit::execution::end::EndGadget;
 use crate::evm_circuit::execution::gasprice::GasPriceGadget;
 use crate::evm_circuit::execution::origin::OriginGadget;
@@ -158,7 +160,7 @@ pub(crate) struct ExecutionConfig<F> {
     // opcode gadgets
     // addmod_gadget: AddModGadget<F>,
     // address_gadget: AddressGadget<F>,
-    // balance_gadget: BalanceGadget<F>,
+    balance_gadget: BalanceGadget<F>,
     // bitwise_gadget: BitwiseGadget<F>,
     // byte_gadget: ByteGadget<F>,
     // call_op_gadget: CallOpGadget<F>,
@@ -169,7 +171,7 @@ pub(crate) struct ExecutionConfig<F> {
     caller_gadget: CallerGadget<F>,
     chainid_gadget: ChainIdGadget<F>,
     // codecopy_gadget: CodeCopyGadget<F>,
-    // codesize_gadget: CodesizeGadget<F>,
+    codesize_gadget: CodesizeGadget<F>,
     // comparator_gadget: ComparatorGadget<F>,
     // dup_gadget: DupGadget<F>,
     // exp_gadget: ExponentiationGadget<F>,
@@ -428,7 +430,7 @@ impl<F: Field> ExecutionConfig<F> {
             call_value_gadget: configure_gadget!(),
             chainid_gadget: configure_gadget!(),
             // codecopy_gadget: configure_gadget!(),
-            // codesize_gadget: configure_gadget!(),
+            codesize_gadget: configure_gadget!(),
             // comparator_gadget: configure_gadget!(),
             // dup_gadget: configure_gadget!(),
             // extcodehash_gadget: configure_gadget!(),
@@ -455,7 +457,7 @@ impl<F: Field> ExecutionConfig<F> {
             selfbalance_gadget: configure_gadget!(),
             // sha3_gadget: configure_gadget!(),
             // address_gadget: configure_gadget!(),
-            // balance_gadget: configure_gadget!(),
+            balance_gadget: configure_gadget!(),
             // blockhash_gadget: configure_gadget!(),
             // exp_gadget: configure_gadget!(),
             // sar_gadget: configure_gadget!(),
@@ -1030,7 +1032,7 @@ impl<F: Field> ExecutionConfig<F> {
             // opcode
             // ExecutionState::ADDMOD => assign_exec_step!(self.addmod_gadget),
             // ExecutionState::ADDRESS => assign_exec_step!(self.address_gadget),
-            // ExecutionState::BALANCE => assign_exec_step!(self.balance_gadget),
+            ExecutionState::BALANCE => assign_exec_step!(self.balance_gadget),
             // ExecutionState::BITWISE => assign_exec_step!(self.bitwise_gadget),
             // ExecutionState::BYTE => assign_exec_step!(self.byte_gadget),
             // ExecutionState::CALL_OP => assign_exec_step!(self.call_op_gadget),
@@ -1041,7 +1043,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::CALLVALUE => assign_exec_step!(self.call_value_gadget),
             ExecutionState::CHAINID => assign_exec_step!(self.chainid_gadget),
             // ExecutionState::CODECOPY => assign_exec_step!(self.codecopy_gadget),
-            // ExecutionState::CODESIZE => assign_exec_step!(self.codesize_gadget),
+            ExecutionState::CODESIZE => assign_exec_step!(self.codesize_gadget),
             // ExecutionState::CMP => assign_exec_step!(self.comparator_gadget),
             // ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
             // ExecutionState::EXP => assign_exec_step!(self.exp_gadget),

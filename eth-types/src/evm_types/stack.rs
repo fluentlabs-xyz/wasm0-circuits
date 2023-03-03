@@ -1,5 +1,5 @@
 //! Doc this
-use crate::{DebugStackWord, DebugWord, StackWord, U256, U64, Word};
+use crate::{DebugStackWord, StackWord, U256, U64};
 use crate::{Error, ToBigEndian};
 use core::str::FromStr;
 use serde::ser::SerializeSeq;
@@ -159,13 +159,13 @@ impl<W : Clone + Sized + Serialize + ToBigEndian> Stack<W> {
 #[cfg(test)]
 mod stack_tests {
     use super::*;
-    use crate::word;
+    use crate::{stack_word};
 
     fn setup_stack(stack_value: [&str; 3]) -> Stack {
         Stack::from_vec(vec![
-            word!(stack_value[0]),
-            word!(stack_value[1]),
-            word!(stack_value[2]),
+            stack_word!(stack_value[0]),
+            stack_word!(stack_value[1]),
+            stack_word!(stack_value[2]),
         ])
     }
 
@@ -194,8 +194,8 @@ mod stack_tests {
     fn stack_get_value() -> Result<(), Error> {
         let stack = setup_stack(["0x15", "0x16", "0x17"]);
 
-        assert_eq!(stack.last().unwrap(), word!("0x17"));
-        assert_eq!(stack.nth_last(1).unwrap(), word!("0x16"));
+        assert_eq!(stack.last().unwrap(), stack_word!("0x17"));
+        assert_eq!(stack.nth_last(1).unwrap(), stack_word!("0x16"));
         Ok(())
     }
 }

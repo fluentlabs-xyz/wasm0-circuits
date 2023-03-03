@@ -1,10 +1,7 @@
 use eth_types::{GethExecStep, ToBigEndian, U256};
 use eth_types::evm_types::MemoryAddress;
-
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::Error;
-use crate::operation::CallContextField;
-
 use super::Opcode;
 
 pub const CHAIN_ID_BYTE_LENGTH: usize = 32;
@@ -20,8 +17,9 @@ impl Opcode for ChainId {
         let geth_step = &geth_steps[0];
         let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
-        let chain_id = U256::from_big_endian(&geth_second_step.memory.0);
-        let chain_id = chain_id.to_be_bytes();
+        let chain_id = &geth_second_step.memory.0;
+        let chain_id = U256::from_big_endian(chain_id);
+        let chain_id_bytes = chain_id.to_be_bytes();
 
         // Read dest offset as the last stack element
         let dest_offset = geth_step.stack.nth_last(0)?;
@@ -30,7 +28,7 @@ impl Opcode for ChainId {
 
         // Copy result to memory
         for i in 0..CHAIN_ID_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), chain_id[i])?;
+            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), chain_id_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
         call_ctx.memory = geth_second_step.memory.clone();
@@ -66,8 +64,8 @@ mod chainid_tests {
             tx_from_1_to_0,
             |block, _tx| block,
         )
-            .unwrap()
-            .into();
+        .unwrap()
+        .into();
 
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
         builder
@@ -80,7 +78,7 @@ mod chainid_tests {
             .find(|step| step.exec_state == ExecState::Op(OpcodeId::CHAINID))
             .unwrap();
 
-        assert_eq!(step.bus_mapping_instance.len(), CHAIN_ID_BYTE_LENGTH + 2);
+        assert_eq!(step.bus_mapping_instance.len(), CHAIN_ID_BYTE_LENGTH + 1);
         let chain_id = block.eth_block.transactions[0].chain_id.unwrap();
         let chain_id_bytes = chain_id.to_be_bytes();
         assert_eq!(
@@ -90,14 +88,14 @@ mod chainid_tests {
                 (operation.rw(), operation.op())
             },
             (
-                RW::READ,
-                &CallContextOp::new(1, CallContextField::TxId, Word::one())
+                RW::WRITE,
+                &CallContextOp::new(1, CallContextField::RwCounterEndOfReversion, Word::zero())
             )
         );
         assert_eq!(
             {
                 let operation =
-                    &builder.block.container.stack[step.bus_mapping_instance[1].as_usize()];
+                    &builder.block.container.stack[step.bus_mapping_instance[0].as_usize()];
                 (operation.rw(), operation.op())
             },
             (
@@ -110,7 +108,7 @@ mod chainid_tests {
             assert_eq!(
                 {
                     let operation =
-                        &builder.block.container.memory[step.bus_mapping_instance[2 + idx].as_usize()];
+                        &builder.block.container.memory[step.bus_mapping_instance[1 + idx].as_usize()];
                     (operation.rw(), operation.op())
                 },
                 (
