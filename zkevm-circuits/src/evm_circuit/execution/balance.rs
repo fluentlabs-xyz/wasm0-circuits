@@ -12,7 +12,7 @@ use crate::evm_circuit::witness::{Block, Call, ExecStep, Transaction};
 use crate::table::{AccountFieldTag, CallContextFieldTag};
 use crate::util::Expr;
 use eth_types::evm_types::GasCost;
-use eth_types::{Field, ToLittleEndian, ToScalar};
+use eth_types::{address, Field, ToLittleEndian, ToScalar};
 use halo2_proofs::circuit::Value;
 use halo2_proofs::plonk::Error;
 use halo2_proofs::plonk::Error::Synthesis;
@@ -21,7 +21,7 @@ use serde::de::IntoDeserializer;
 #[derive(Clone, Debug)]
 pub(crate) struct BalanceGadget<F> {
     same_context: SameContextGadget<F>,
-    // address: Word<F>,
+    // address: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
     // reversion_info: ReversionInfo<F>,
     // tx_id: Cell<F>,
     is_warm: Cell<F>,
@@ -47,6 +47,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         // let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         // let mut reversion_info = cb.reversion_info_read(None);
         let is_warm = cb.query_bool();
+        // TODO temp solution
         // cb.account_access_list_write(
         //     tx_id.expr(),
         //     address.expr(),
@@ -72,12 +73,12 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         // cb.memory_rlc_lookup(true.expr(), &address_dest_offset, &address);
         // cb.memory_rlc_lookup(true.expr(), &balance_dest_offset, &balance);
 
-        // let gas_cost = select::expr(
-        //     is_warm.expr(),
-        //     GasCost::WARM_ACCESS.expr(),
-        //     GasCost::COLD_ACCOUNT_ACCESS.expr(),
-        // );
-        let gas_cost = GasCost::COLD_ACCOUNT_ACCESS.expr();
+        let gas_cost = select::expr(
+            is_warm.expr(),
+            GasCost::WARM_ACCESS.expr(),
+            GasCost::COLD_ACCOUNT_ACCESS.expr(),
+        );
+        // let gas_cost = GasCost::COLD_ACCOUNT_ACCESS.expr();
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(39.expr() /*+ exists.expr()*/),
@@ -134,9 +135,10 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         //     call.is_persistent,
         // )?;
 
-        // let (_, is_warm) = block.rws[step.rw_indices[2]].tx_access_list_value_pair();
-        // self.is_warm
-        //     .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
+        // let (_, is_warm) = block.rws[step.rw_indices[4]].tx_access_list_value_pair();
+        self.is_warm
+            .assign(region, offset, Value::known(F::from(false as u64)))?; // TODO temporal hardcoded 'false'
+            // .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
 
         // let code_hash = block.rws[step.rw_indices[3]].account_value_pair().0;
         let code_hash = call.code_hash;
