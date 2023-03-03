@@ -40,7 +40,6 @@ impl<F: Field> ExecutionGadget<F> for CodesizeGadget<F> {
         let codesize_bytes: [Cell<F>; N_BYTES_MEMORY_WORD_SIZE] = array_init(|_| cb.query_byte());
 
         let code_hash = cb.curr.state.code_hash.clone();
-        // let codesize = cb.query_word_rlc();
         let codesize = cb.query_cell();
         cb.bytecode_length(code_hash.expr(), codesize.expr());
 

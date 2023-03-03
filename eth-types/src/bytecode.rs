@@ -15,7 +15,7 @@ pub enum Error {
 
 /// Helper struct that represents a single data section in wasm binary
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct DataSectionDescriptor {
+pub struct WasmDataSectionDescriptor {
     pub memory_index: u32,
     pub mem_offset: i32,
     pub data: Vec<u8>,
@@ -65,7 +65,7 @@ impl Bytecode {
         }
     }
 
-    pub fn wasm_binary(&self, data_section_descriptors: Option<Vec<DataSectionDescriptor>>) -> Vec<u8> {
+    pub fn wasm_binary(&self, data_section_descriptors: Option<Vec<WasmDataSectionDescriptor>>) -> Vec<u8> {
         use wasm_encoder::{
             CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
             ImportSection, MemorySection, MemoryType, Module, TypeSection, ValType,

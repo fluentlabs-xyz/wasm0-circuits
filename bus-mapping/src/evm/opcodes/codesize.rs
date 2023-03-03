@@ -1,4 +1,3 @@
-use ethers_core::k256::pkcs8::der::Encode;
 use eth_types::evm_types::MemoryAddress;
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, ExecStep},

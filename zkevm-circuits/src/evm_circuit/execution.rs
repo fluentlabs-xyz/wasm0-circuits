@@ -100,6 +100,7 @@ use end_block::EndBlockGadget;
 use end_tx::EndTxGadget;
 use drop::DropGadget;
 use push::PushGadget;
+use crate::evm_circuit::execution::balance::BalanceGadget;
 use crate::evm_circuit::execution::caller::CallerGadget;
 use crate::evm_circuit::execution::callvalue::CallValueGadget;
 use crate::evm_circuit::execution::chainid::ChainIdGadget;
@@ -160,7 +161,7 @@ pub(crate) struct ExecutionConfig<F> {
     add_sub_gadget: AddSubGadget<F>,
     // addmod_gadget: AddModGadget<F>,
     // address_gadget: AddressGadget<F>,
-    // balance_gadget: BalanceGadget<F>,
+    balance_gadget: BalanceGadget<F>,
     // bitwise_gadget: BitwiseGadget<F>,
     // byte_gadget: ByteGadget<F>,
     // call_op_gadget: CallOpGadget<F>,
@@ -456,7 +457,7 @@ impl<F: Field> ExecutionConfig<F> {
             selfbalance_gadget: configure_gadget!(),
             // sha3_gadget: configure_gadget!(),
             // address_gadget: configure_gadget!(),
-            // balance_gadget: configure_gadget!(),
+            balance_gadget: configure_gadget!(),
             // blockhash_gadget: configure_gadget!(),
             // exp_gadget: configure_gadget!(),
             // sar_gadget: configure_gadget!(),
@@ -1027,7 +1028,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::ADD_SUB => assign_exec_step!(self.add_sub_gadget),
             // ExecutionState::ADDMOD => assign_exec_step!(self.addmod_gadget),
             // ExecutionState::ADDRESS => assign_exec_step!(self.address_gadget),
-            // ExecutionState::BALANCE => assign_exec_step!(self.balance_gadget),
+            ExecutionState::BALANCE => assign_exec_step!(self.balance_gadget),
             // ExecutionState::BITWISE => assign_exec_step!(self.bitwise_gadget),
             // ExecutionState::BYTE => assign_exec_step!(self.byte_gadget),
             // ExecutionState::CALL_OP => assign_exec_step!(self.call_op_gadget),
