@@ -38,6 +38,7 @@ impl CircuitInputBuilderTx {
             &GethExecTrace {
                 gas: Gas(0),
                 failed: false,
+                global_memory: vec![],
                 return_value: "".to_owned(),
                 struct_logs: vec![geth_step.clone()],
             },

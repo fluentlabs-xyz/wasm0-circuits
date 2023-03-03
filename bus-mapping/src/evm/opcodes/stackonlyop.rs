@@ -180,8 +180,8 @@ mod stackonlyop_tests {
         stack_only_opcode_impl::<2, 1>(
             OpcodeId::I32Add,
             bytecode! {
-                I32Const[0x80i32]
-                I32Const[0x60i32]
+                I32Const[0x80]
+                I32Const[0x60]
                 I32Add
                 Drop
             },

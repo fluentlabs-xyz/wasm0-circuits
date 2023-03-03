@@ -70,8 +70,8 @@ mod codesize_tests {
             for i in 1..10 {
                 if i%2 == 1 {
                     code.append(&bytecode! {
-                        I32Const[-res_mem_address]
-                        I32Add
+                        // I32Const[-res_mem_address]
+                        // I32Add
                     });
                 } else {
                     code.append(&bytecode! {
@@ -134,7 +134,7 @@ mod codesize_tests {
                 },
                 (
                     RW::WRITE,
-                    &MemoryOp::new(1, MemoryAddress::from(res_mem_address + idx as i32), codesize_bytes[idx])
+                    &MemoryOp::new(1, MemoryAddress::from(res_mem_address + idx as u32), codesize_bytes[idx])
                 )
             );
         }

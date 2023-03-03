@@ -17,7 +17,7 @@ pub enum Error {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WasmDataSectionDescriptor {
     pub memory_index: u32,
-    pub mem_offset: i32,
+    pub mem_offset: u32,
     pub data: Vec<u8>,
 }
 
@@ -160,7 +160,7 @@ impl Bytecode {
         if let Some(vec) = data_section_descriptors {
             for dsd in vec {
                 let mut data_section = DataSection::new();
-                data_section.active(dsd.memory_index, &ConstExpr::i32_const(dsd.mem_offset), dsd.data.clone());
+                data_section.active(dsd.memory_index, &ConstExpr::i32_const(dsd.mem_offset as i32), dsd.data.clone());
                 module.section(&data_section);
             }
         };

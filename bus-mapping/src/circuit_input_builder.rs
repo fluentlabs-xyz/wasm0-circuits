@@ -267,6 +267,7 @@ impl<'a> CircuitInputBuilder {
                 &geth_step.op,
                 &mut state_ref,
                 &geth_trace.struct_logs[index..],
+                geth_trace,
             )?;
             tx.steps_mut().extend(exec_steps);
         }

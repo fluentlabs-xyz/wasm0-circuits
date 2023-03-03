@@ -1,5 +1,5 @@
 use eth_types::evm_types::MemoryAddress;
-use eth_types::GethExecStep;
+use eth_types::{GethExecStep, GethExecTrace};
 use eth_types::U256;
 
 use crate::circuit_input_builder::CircuitInputStateRef;
@@ -14,9 +14,10 @@ pub const BALANCE_BYTE_LENGTH: usize = 32;
 pub(crate) struct Balance;
 
 impl Opcode for Balance {
-    fn gen_associated_ops(
+    fn gen_associated_ops_extended(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
+        geth_trace: &GethExecTrace,
     ) -> Result<Vec<ExecStep>, Error> {
         let geth_step = &geth_steps[0];
         let geth_second_step = &geth_steps[1];
@@ -157,8 +158,8 @@ mod balance_tests {
     // }
 
     fn test_ok(exists: bool, is_warm: bool) {
-        let account_mem_address: i32 = 0x0;
-        let res_mem_address: i32 = 0x7f;
+        let account_mem_address: u32 = 0x0;
+        let res_mem_address: u32 = 0x7f;
         let address = address!("0xaabbccddee000000000000000000000000000000");
 
         // Pop balance first for warm account.
@@ -340,7 +341,7 @@ mod balance_tests {
                     RW::WRITE,
                     &MemoryOp::new(
                         1,
-                        MemoryAddress::from(res_mem_address + idx as i32),
+                        MemoryAddress::from(res_mem_address + idx as u32),
                         address_balance_bytes[idx]
                     )
                 )

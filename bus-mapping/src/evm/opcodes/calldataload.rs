@@ -145,8 +145,8 @@ mod calldataload_tests {
         let (addr_a, addr_b) = (mock::MOCK_ACCOUNTS[0], mock::MOCK_ACCOUNTS[1]);
 
         // code B gets called by code A, so the call is an internal call.
-        let byte_offset_mem_address: i32 = 0x0;
-        let res_mem_address: i32 = 0x7f;
+        let byte_offset_mem_address: u32 = 0x0;
+        let res_mem_address: u32 = 0x7f;
         let code_b = bytecode! {
             // PUSH32(offset)
             // CALLDATALOAD
@@ -300,8 +300,8 @@ mod calldataload_tests {
     }
 
     fn test_root_ok(offset: u64, calldata: Vec<u8>, _calldata_word: Word) {
-        let byte_offset_mem_address: i32 = 0x0;
-        let res_mem_address: i32 = 0x7f;
+        let byte_offset_mem_address: u32 = 0x0;
+        let res_mem_address: u32 = 0x7f;
         let code = bytecode! {
             I32Const[byte_offset_mem_address]
             I32Const[res_mem_address]
@@ -395,7 +395,7 @@ mod calldataload_tests {
                     RW::WRITE,
                     &MemoryOp{
                         call_id,
-                        address: MemoryAddress::from(res_mem_address + idx as i32),
+                        address: MemoryAddress::from(res_mem_address + idx as u32),
                         value: 0x0,
                     }
                 )

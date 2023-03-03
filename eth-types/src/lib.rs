@@ -469,6 +469,9 @@ struct GethExecStepInternal {
     // storage is hex -> hex
     #[serde(default)]
     storage: HashMap<DebugU256, DebugU256>,
+    // #[serde(rename = "globalMemory")]
+    // #[serde(default)]
+    // global_memory: HashMap<u32, String>,
 }
 
 #[derive(Clone, Eq, PartialEq, Serialize, Debug)]
@@ -571,6 +574,15 @@ impl<'de> Deserialize<'de> for GethExecStep {
             s.memory
         };
         let memory = hex::decode(memory).map_err(de::Error::custom)?;
+        // let global_memory = s.global_memory.iter().map(|(offset, mem)| {
+        //     let mem = if mem.starts_with("0x") {
+        //         mem[2..].to_string()
+        //     } else {
+        //         mem.clone()
+        //     };
+        //     let mem = hex::decode(mem).unwrap();
+        //     Memory(mem, *offset)
+        // }).collect::<Vec<_>>();
         Ok(Self {
             pc: s.pc,
             op_family: s.op_family.map(|f| GethExecStepFamily::from_string(&f)),
@@ -583,6 +595,7 @@ impl<'de> Deserialize<'de> for GethExecStep {
             error: s.error,
             stack: Stack(s.stack.iter().map(|dw| dw.to_stack_word()).collect::<Vec<_>>()),
             memory: Memory::from_bytes_with_offset(memory, s.memory_offset),
+            // global_memory,
             storage: Storage(
                 s.storage
                     .iter()
@@ -614,18 +627,66 @@ pub struct ResultGethExecTrace {
 /// The deserialization truncates the memory of each step in `struct_logs` to
 /// the memory size before the expansion, so that it corresponds to the memory
 /// before the step is executed.
-#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Clone, Debug, Eq, PartialEq)]
 pub struct GethExecTrace {
     /// Used gas
     pub gas: Gas,
     /// True when the transaction has failed.
     pub failed: bool,
+    /// Global memory
+    #[serde(rename = "globalMemory")]
+    #[serde(default)]
+    pub global_memory: Vec<Memory>,
     /// Return value of execution which is a hex encoded byte array
     #[serde(rename = "returnValue")]
     pub return_value: String,
     /// Vector of geth execution steps of the trace.
     #[serde(rename = "structLogs")]
     pub struct_logs: Vec<GethExecStep>,
+}
+
+#[derive(Deserialize)]
+#[doc(hidden)]
+pub struct GethExecTraceInternal {
+    /// Used gas
+    pub gas: Gas,
+    /// True when the transaction has failed.
+    pub failed: bool,
+    /// Global memory
+    #[serde(rename = "globalMemory")]
+    #[serde(default)]
+    pub global_memory: HashMap<u32, String>,
+    /// Return value of execution which is a hex encoded byte array
+    #[serde(rename = "returnValue")]
+    pub return_value: String,
+    /// Vector of geth execution steps of the trace.
+    #[serde(rename = "structLogs")]
+    pub struct_logs: Vec<GethExecStep>,
+}
+
+impl<'de> Deserialize<'de> for GethExecTrace {
+    fn deserialize<D>(deserializer: D) -> Result<GethExecTrace, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+    {
+        let s = GethExecTraceInternal::deserialize(deserializer)?;
+        let global_memory = s.global_memory.iter().map(|(offset, mem)| {
+            let mem = if mem.starts_with("0x") {
+                mem[2..].to_string()
+            } else {
+                mem.clone()
+            };
+            let mem = hex::decode(mem).unwrap();
+            Memory(mem, *offset)
+        }).collect::<Vec<_>>();
+        Ok(Self {
+            gas: s.gas,
+            failed: s.failed,
+            global_memory,
+            return_value: s.return_value,
+            struct_logs: s.struct_logs,
+        })
+    }
 }
 
 #[macro_export]

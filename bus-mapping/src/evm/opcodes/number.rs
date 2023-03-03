@@ -109,7 +109,7 @@ mod number_tests {
                     RW::WRITE,
                     &MemoryOp::new(
                         1,
-                        MemoryAddress::from(res_mem_address + idx as i32),
+                        MemoryAddress::from(res_mem_address + idx as u32),
                         block_number_bytes[idx]
                     )
                 )

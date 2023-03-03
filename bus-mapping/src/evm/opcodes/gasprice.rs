@@ -136,7 +136,7 @@ mod gasprice_tests {
                 },
                 (
                     RW::WRITE,
-                    &MemoryOp::new(1, MemoryAddress::from(res_mem_address + idx as i32), gas_price_bytes[idx])
+                    &MemoryOp::new(1, MemoryAddress::from(res_mem_address + idx as u32), gas_price_bytes[idx])
                 )
             );
         }

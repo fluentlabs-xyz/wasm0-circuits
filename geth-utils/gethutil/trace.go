@@ -1,6 +1,7 @@
 package gethutil
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -142,9 +143,9 @@ func Trace(config TraceConfig) ([]*logger.WasmExecutionResult, error) {
 		for key, value := range account.Storage {
 			stateDB.SetState(address, key, value)
 		}
-// 		if len(account.Code) > 0 {
-// 			_ = os.WriteFile(fmt.Sprintf("%s.wasm", address.Hex()), account.Code, os.ModePerm)
-// 		}
+		// 		if len(account.Code) > 0 {
+		// 			_ = os.WriteFile(fmt.Sprintf("%s.wasm", address.Hex()), account.Code, os.ModePerm)
+		// 		}
 	}
 	stateDB.Finalise(true)
 
@@ -154,25 +155,21 @@ func Trace(config TraceConfig) ([]*logger.WasmExecutionResult, error) {
 		tracer := logger.NewWebAssemblyLogger(config.LoggerConfig)
 		evm := vm.NewEVM(blockCtx, core.NewEVMTxContext(message), stateDB, &chainConfig, vm.Config{Debug: true, Tracer: tracer, NoBaseFee: true})
 
-		result, err := core.ApplyMessage(evm, message, new(core.GasPool).AddGas(message.Gas()))
+		_, err := core.ApplyMessage(evm, message, new(core.GasPool).AddGas(message.Gas()))
 		if err != nil {
 			return nil, fmt.Errorf("Failed to apply config.Transactions[%d]: %w", i, err)
 		}
 		stateDB.Finalise(true)
 
-		var errString string
-		if len(result.ReturnData) == 0 && result.Err != nil {
-			errString = result.Err.Error()
-		} else {
-			errString = fmt.Sprintf("%x", result.ReturnData)
+		rawTrace, err := tracer.GetResult()
+		if err != nil {
+			return nil, err
 		}
-
-		executionResults[i] = &logger.WasmExecutionResult{
-			Gas:         result.UsedGas,
-			Failed:      result.Failed(),
-			ReturnValue: errString,
-			StructLogs:  logger.FormatWasmLogs(tracer.WasmLogs()),
+		res := &logger.WasmExecutionResult{}
+		if err := json.Unmarshal(rawTrace, res); err != nil {
+			return nil, err
 		}
+		executionResults[i] = res
 	}
 
 	return executionResults, nil

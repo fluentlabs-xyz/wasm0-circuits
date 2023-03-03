@@ -231,8 +231,8 @@ mod test {
     // }
 
     fn test_root_ok(account: &Option<Account>, is_warm: bool) {
-        let account_mem_address: i32 = 0x0;
-        let res_mem_address: i32 = 0x7f;
+        let account_mem_address: u32 = 0x0;
+        let res_mem_address: u32 = 0x7f;
         let address = account.as_ref().map(|a| a.address).unwrap_or(*TEST_ADDRESS);
 
         let mut code = Bytecode::default();
@@ -258,7 +258,7 @@ mod test {
 
         let wasm_binary_vec = code.wasm_binary(Some(vec![WasmDataSectionDescriptor {
             memory_index: 0,
-            mem_offset: account_mem_address,
+            mem_offset: account_mem_address as i32,
             data: address.0.to_vec(),
         }]));
         let ctx = TestContext::<3, 1>::new(

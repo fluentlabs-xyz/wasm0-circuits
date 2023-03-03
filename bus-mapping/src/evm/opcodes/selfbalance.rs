@@ -148,7 +148,7 @@ mod selfbalance_tests {
             )
         );
         for idx in 0..SELF_BALANCE_BYTE_LENGTH {
-            let mem_address = MemoryAddress::from(res_mem_address + idx as i32);
+            let mem_address = MemoryAddress::from(res_mem_address + idx as u32);
             assert_eq!(
                 {
                     let operation =
