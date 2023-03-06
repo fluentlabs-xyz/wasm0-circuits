@@ -110,10 +110,15 @@ impl Opcode for Balance {
         }
 
         // Copy result to memory
-        let offset_addr = MemoryAddress::try_from(res_mem_address)?;
+        let balance_offset_addr = MemoryAddress::try_from(res_mem_address)?;
         let balance_bytes = balance_vec.as_slice();
         for i in 0..BALANCE_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), balance_bytes[i])?;
+            state.memory_write(&mut exec_step, balance_offset_addr.map(|a| a + i), balance_bytes[i])?;
+        }
+        let account_offset_addr = MemoryAddress::try_from(account_mem_address)?;
+        let address_bytes = address.as_bytes();
+        for i in 0..ADDRESS_BYTE_LENGTH {
+            state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), address_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
         call_ctx.memory = geth_second_step.memory.clone();
@@ -155,7 +160,7 @@ mod balance_tests {
 
     fn test_ok(exists: bool, is_warm: bool) {
         let account_mem_address: u32 = 0x0;
-        let res_mem_address: u32 = 0x7f;
+        let balance_mem_address: u32 = 0x7f;
         let address = address!("0xaabbccddee000000000000000000000000000000");
 
         // Pop balance first for warm account.
@@ -163,13 +168,13 @@ mod balance_tests {
         if is_warm {
             code.append(&bytecode! {
                 I32Const[account_mem_address]
-                I32Const[res_mem_address]
+                I32Const[balance_mem_address]
                 BALANCE
             });
         }
         code.append(&bytecode! {
             I32Const[account_mem_address]
-            I32Const[res_mem_address]
+            I32Const[balance_mem_address]
             BALANCE
         });
 
@@ -251,7 +256,7 @@ mod balance_tests {
             &StackOp {
                 call_id,
                 address: StackAddress::from(1022u32),
-                value: StackWord::from(res_mem_address)
+                value: StackWord::from(balance_mem_address)
             }
         );
 
@@ -356,8 +361,27 @@ mod balance_tests {
                     RW::WRITE,
                     &MemoryOp::new(
                         1,
-                        MemoryAddress::from(res_mem_address + idx as u32),
+                        MemoryAddress::from(balance_mem_address + idx as u32),
                         address_balance_bytes[idx]
+                    )
+                )
+            );
+        }
+
+        for idx in 0..ADDRESS_BYTE_LENGTH {
+            indices_index += 1;
+            assert_eq!(
+                {
+                    let operation =
+                        &container.memory[indices[indices_index].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::READ,
+                    &MemoryOp::new(
+                        1,
+                        MemoryAddress::from(account_mem_address + idx as u32),
+                        address[idx]
                     )
                 )
             );
