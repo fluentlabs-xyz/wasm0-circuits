@@ -258,7 +258,7 @@ mod test {
 
         let wasm_binary_vec = code.wasm_binary(Some(vec![WasmDataSectionDescriptor {
             memory_index: 0,
-            mem_offset: account_mem_address as i32,
+            mem_offset: account_mem_address as u32,
             data: address.0.to_vec(),
         }]));
         let ctx = TestContext::<3, 1>::new(

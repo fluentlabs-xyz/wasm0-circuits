@@ -108,6 +108,7 @@ pub trait Opcode: Debug {
         unreachable!("not implemented")
     }
 
+    ///
     fn gen_associated_ops_extended(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
