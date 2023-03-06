@@ -1,4 +1,4 @@
-use eth_types::evm_types::MemoryAddress;
+use eth_types::evm_types::{Memory, MemoryAddress};
 use eth_types::{Address, GethExecStep, GethExecTrace, H256, ToWord, Word};
 use eth_types::U256;
 
@@ -18,7 +18,7 @@ impl Opcode for Balance {
     fn gen_associated_ops_extended(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
-        geth_trace: &GethExecTrace,
+        global_memory: &Memory,
     ) -> Result<Vec<ExecStep>, Error> {
         let geth_step = &geth_steps[0];
         let geth_second_step = &geth_steps[1];
@@ -29,7 +29,8 @@ impl Opcode for Balance {
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), res_mem_address)?;
         let account_mem_address = geth_step.stack.nth_last(1)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), account_mem_address)?;
-        let account = &geth_trace.global_memory[0].0.as_slice()[account_mem_address.as_usize()..ADDRESS_BYTE_LENGTH];
+
+        let account = &global_memory.0[account_mem_address.as_usize()..ADDRESS_BYTE_LENGTH];
         let account_fixed_bytes: [u8; ADDRESS_BYTE_LENGTH] = account.try_into().unwrap();
         let address: Address = Address::from(account_fixed_bytes);
 
@@ -110,18 +111,18 @@ impl Opcode for Balance {
         }
 
         // Copy result to memory
+        let account_offset_addr = MemoryAddress::try_from(account_mem_address)?;
+        let address_bytes = address.as_bytes();
+        for i in 0..ADDRESS_BYTE_LENGTH {
+            state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), address_bytes[i])?;
+        }
         let balance_offset_addr = MemoryAddress::try_from(res_mem_address)?;
         let balance_bytes = balance_vec.as_slice();
         for i in 0..BALANCE_BYTE_LENGTH {
             state.memory_write(&mut exec_step, balance_offset_addr.map(|a| a + i), balance_bytes[i])?;
         }
-        let account_offset_addr = MemoryAddress::try_from(account_mem_address)?;
-        let address_bytes = address.as_bytes();
-        // for i in 0..ADDRESS_BYTE_LENGTH {
-        //     state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), address_bytes[i])?;
-        // }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_second_step.memory.clone();
+        call_ctx.memory = global_memory.clone();
 
         Ok(vec![exec_step])
     }

@@ -423,6 +423,9 @@ impl RwTable {
             (self.aux1, row.aux1),
             (self.aux2, row.aux2),
         ] {
+            if column == self.value {
+                println!("value: offset={} value={:?}", offset, value);
+            }
             region.assign_advice(|| "assign rw row on rw table", column, offset, || value)?;
         }
         Ok(())

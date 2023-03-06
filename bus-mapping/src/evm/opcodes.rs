@@ -15,6 +15,7 @@ use codesize::Codesize;
 use error_invalid_jump::ErrorInvalidJump;
 use error_oog_call::OOGCall;
 use eth_types::{evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED}, evm_unimplemented, GethExecStep, GethExecTrace, ToAddress, ToWord, Word};
+use eth_types::evm_types::{Memory, MemoryAddress};
 // use exp::Exponentiation;
 // use extcodecopy::Extcodecopy;
 // use extcodehash::Extcodehash;
@@ -115,7 +116,7 @@ pub trait Opcode: Debug {
     fn gen_associated_ops_extended(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
-        _geth_trace: &GethExecTrace,
+        global_memory: &Memory,
     ) -> Result<Vec<ExecStep>, Error> {
         Self::gen_associated_ops(state, geth_steps)
     }
@@ -136,7 +137,7 @@ impl Opcode for Dummy {
 type FnGenAssociatedOps = fn(
     state: &mut CircuitInputStateRef,
     geth_steps: &[GethExecStep],
-    geth_trace: &GethExecTrace,
+    global_memory: &Memory,
 ) -> Result<Vec<ExecStep>, Error>;
 
 fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
@@ -326,21 +327,27 @@ pub fn gen_associated_ops(
     opcode_id: &OpcodeId,
     state: &mut CircuitInputStateRef,
     geth_steps: &[GethExecStep],
-    geth_trace: &GethExecTrace,
+    global_memory: &mut Memory,
 ) -> Result<Vec<ExecStep>, Error> {
     let fn_gen_associated_ops = fn_gen_associated_ops(opcode_id);
 
     let memory_enabled = !geth_steps.iter().all(|s| s.memory.is_empty());
-    let state_memory = &state.call_ctx()?.memory;
-    let steps_memory = &geth_steps[0].memory;
+
     if memory_enabled {
-        assert_eq!(
-            state_memory,
-            steps_memory,
-            "last step of {:?} goes wrong",
-            opcode_id
-        );
+        let steps_memory = &geth_steps[0].memory;
+        global_memory.extends_with(steps_memory);
     }
+
+    // let state_memory = &state.call_ctx()?.memory;
+    // let steps_memory = &geth_steps[0].memory;
+    // if memory_enabled {
+    //     assert_eq!(
+    //         state_memory,
+    //         steps_memory,
+    //         "last step of {:?} goes wrong",
+    //         opcode_id
+    //     );
+    // }
 
     // check if have error
     let geth_step = &geth_steps[0];
@@ -362,7 +369,7 @@ pub fn gen_associated_ops(
         // fn_gen_error_state_associated_ops method
         // For exceptions that have been implemented
         if let Some(fn_gen_error_ops) = fn_gen_error_state_associated_ops(&exec_error) {
-            return fn_gen_error_ops(state, geth_steps, geth_trace);
+            return fn_gen_error_ops(state, geth_steps, global_memory);
         } else {
             // For exceptions that already enter next call context, but fail immediately
             // (e.g. Depth, InsufficientBalance), we still need to parse the call.
@@ -379,10 +386,10 @@ pub fn gen_associated_ops(
         }
     }
     // if no errors, continue as normal
-    fn_gen_associated_ops(state, geth_steps, geth_trace)
+    fn_gen_associated_ops(state, geth_steps, global_memory)
 }
 
-pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef) -> Result<ExecStep, Error> {
+pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory) -> Result<ExecStep, Error> {
     let mut exec_step = state.new_begin_tx_step();
     let call = state.call()?.clone();
 
@@ -458,6 +465,7 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef) -> Result<ExecStep, Er
         (Word::zero(), true)
     };
 
+
     // There are 4 branches from here.
     match (
         call.is_create(),
@@ -492,12 +500,10 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef) -> Result<ExecStep, Er
             ] {
                 state.call_context_write(&mut exec_step, call.call_id, field, value);
             }
-            Ok(exec_step)
         }
         // 2. Call to precompiled.
         (_, true, _) => {
             evm_unimplemented!("Call to precompiled is left unimplemented");
-            Ok(exec_step)
         }
         (_, _, is_empty_code_hash) => {
             state.account_read(
@@ -509,41 +515,45 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef) -> Result<ExecStep, Er
             )?;
 
             // 3. Call to account with empty code.
-            if is_empty_code_hash {
-                return Ok(exec_step);
-            }
+            if !is_empty_code_hash {
 
-            // 4. Call to account with non-empty code.
-            for (field, value) in [
-                (CallContextField::Depth, call.depth.into()),
-                (
-                    CallContextField::CallerAddress,
-                    call.caller_address.to_word(),
-                ),
-                (CallContextField::CalleeAddress, call.address.to_word()),
-                (
-                    CallContextField::CallDataOffset,
-                    call.call_data_offset.into(),
-                ),
-                (
-                    CallContextField::CallDataLength,
-                    call.call_data_length.into(),
-                ),
-                (CallContextField::Value, call.value),
-                (CallContextField::IsStatic, (call.is_static as usize).into()),
-                (CallContextField::LastCalleeId, 0.into()),
-                (CallContextField::LastCalleeReturnDataOffset, 0.into()),
-                (CallContextField::LastCalleeReturnDataLength, 0.into()),
-                (CallContextField::IsRoot, 1.into()),
-                (CallContextField::IsCreate, 0.into()),
-                (CallContextField::CodeHash, callee_code_hash_word),
-            ] {
-                state.call_context_write(&mut exec_step, call.call_id, field, value);
+                // 4. Call to account with non-empty code.
+                for (field, value) in [
+                    (CallContextField::Depth, call.depth.into()),
+                    (
+                        CallContextField::CallerAddress,
+                        call.caller_address.to_word(),
+                    ),
+                    (CallContextField::CalleeAddress, call.address.to_word()),
+                    (
+                        CallContextField::CallDataOffset,
+                        call.call_data_offset.into(),
+                    ),
+                    (
+                        CallContextField::CallDataLength,
+                        call.call_data_length.into(),
+                    ),
+                    (CallContextField::Value, call.value),
+                    (CallContextField::IsStatic, (call.is_static as usize).into()),
+                    (CallContextField::LastCalleeId, 0.into()),
+                    (CallContextField::LastCalleeReturnDataOffset, 0.into()),
+                    (CallContextField::LastCalleeReturnDataLength, 0.into()),
+                    (CallContextField::IsRoot, 1.into()),
+                    (CallContextField::IsCreate, 0.into()),
+                    (CallContextField::CodeHash, callee_code_hash_word),
+                ] {
+                    state.call_context_write(&mut exec_step, call.call_id, field, value);
+                }
             }
-
-            Ok(exec_step)
         }
+    };
+
+    // Initialize WASM global memory section
+    for (i, byte) in global_memory.0.iter().enumerate() {
+        state.memory_write(&mut exec_step, MemoryAddress::from(i), *byte)?;
     }
+
+    Ok(exec_step)
 }
 
 pub fn gen_end_tx_ops(state: &mut CircuitInputStateRef) -> Result<ExecStep, Error> {

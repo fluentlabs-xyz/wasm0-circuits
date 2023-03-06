@@ -215,6 +215,19 @@ impl Memory {
     pub fn from_bytes_with_offset(bytes: Vec<u8>, offset: u32) -> Self {
         Self(bytes, offset)
     }
+
+    pub fn extends_with(&mut self, memory: &Memory) {
+        let offset = memory.1 as usize;
+        let length = memory.0.len();
+        if offset + length > self.0.len() {
+            self.0.extend(vec![0].repeat((offset + length) as usize));
+        }
+        let from = memory.0.as_slice();
+        let mut ptr = self.0.as_mut_ptr();
+        unsafe {
+            std::ptr::copy(from.as_ptr(), ptr.add(offset), length);
+        }
+    }
 }
 
 impl Default for Memory {
