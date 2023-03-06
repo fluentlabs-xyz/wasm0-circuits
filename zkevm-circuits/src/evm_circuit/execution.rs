@@ -93,6 +93,7 @@ mod swap;
 mod end;
 mod wasm_bin;
 mod wasm_const;
+mod wasm_unary;
 
 use begin_tx::BeginTxGadget;
 use end_block::EndBlockGadget;
@@ -109,6 +110,7 @@ use crate::evm_circuit::execution::origin::OriginGadget;
 use crate::evm_circuit::execution::selfbalance::SelfbalanceGadget;
 use crate::evm_circuit::execution::wasm_bin::WasmBinGadget;
 use crate::evm_circuit::execution::wasm_const::WasmConstGadget;
+use crate::evm_circuit::execution::wasm_unary::WasmUnaryGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -250,6 +252,7 @@ pub(crate) struct ExecutionConfig<F> {
     wasm_bin_gadget: WasmBinGadget<F>,
     wasm_const_gadget: WasmConstGadget<F>,
     wasm_drop_gadget: WasmDropGadget<F>,
+    wasm_unary_gadget: WasmUnaryGadget<F>,
     wasm_end_gadget: WasmEndGadget<F>,
 }
 
@@ -507,6 +510,7 @@ impl<F: Field> ExecutionConfig<F> {
             wasm_bin_gadget: configure_gadget!(),
             wasm_const_gadget: configure_gadget!(),
             wasm_drop_gadget: configure_gadget!(),
+            wasm_unary_gadget: configure_gadget!(),
 
             // step and presets
             step: step_curr,
@@ -1029,6 +1033,8 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::WASM_BIN => assign_exec_step!(self.wasm_bin_gadget),
             ExecutionState::WASM_CONST => assign_exec_step!(self.wasm_const_gadget),
             ExecutionState::WASM_DROP => assign_exec_step!(self.wasm_drop_gadget),
+            ExecutionState::WASM_UNARY => assign_exec_step!(self.wasm_unary_gadget),
+            ExecutionState::WASM_END => assign_exec_step!(self.wasm_end_gadget),
             // opcode
             // ExecutionState::ADDMOD => assign_exec_step!(self.addmod_gadget),
             // ExecutionState::ADDRESS => assign_exec_step!(self.address_gadget),
@@ -1086,7 +1092,6 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::SLOAD => assign_exec_step!(self.sload_gadget),
             // ExecutionState::SSTORE => assign_exec_step!(self.sstore_gadget),
             // ExecutionState::STOP => assign_exec_step!(self.stop_gadget),
-            ExecutionState::WASM_END => assign_exec_step!(self.wasm_end_gadget),
             // ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
             // dummy errors
             // ExecutionState::ErrorOutOfGasStaticMemoryExpansion => {

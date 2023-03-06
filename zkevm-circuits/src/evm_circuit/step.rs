@@ -1,5 +1,15 @@
-use super::util::{CachedRegion, CellManager, CellType};
-use crate::evm_circuit::param::EXECUTION_STATE_HEIGHT_MAP;
+use std::iter;
+
+use halo2_proofs::{
+    arithmetic::FieldExt,
+    circuit::Value,
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression},
+};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+
+use bus_mapping::evm::OpcodeId;
+
 use crate::{
     evm_circuit::{
         param::{MAX_STEP_HEIGHT, STEP_STATE_HEIGHT, STEP_WIDTH},
@@ -8,15 +18,9 @@ use crate::{
     },
     util::Expr,
 };
-use bus_mapping::evm::OpcodeId;
-use halo2_proofs::{
-    arithmetic::FieldExt,
-    circuit::Value,
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression},
-};
-use std::iter;
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
+use crate::evm_circuit::param::EXECUTION_STATE_HEIGHT_MAP;
+
+use super::util::{CachedRegion, CellManager, CellType};
 
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumIter)]
@@ -29,21 +33,29 @@ pub enum ExecutionState {
     WASM_BIN,
     WASM_CONST,
     WASM_DROP,
+    WASM_UNARY,
     WASM_END,
     // Opcode successful cases
     STOP,
-    ADD_SUB,     // ADD, SUB
-    MUL_DIV_MOD, // MUL, DIV, MOD
-    SDIV_SMOD,   // SDIV, SMOD
-    SHL_SHR,     // SHL, SHR
+    ADD_SUB,
+    // ADD, SUB
+    MUL_DIV_MOD,
+    // MUL, DIV, MOD
+    SDIV_SMOD,
+    // SDIV, SMOD
+    SHL_SHR,
+    // SHL, SHR
     ADDMOD,
     MULMOD,
     EXP,
     SIGNEXTEND,
-    CMP,  // LT, GT, EQ
-    SCMP, // SLT, SGT
+    CMP,
+    // LT, GT, EQ
+    SCMP,
+    // SLT, SGT
     ISZERO,
-    BITWISE, // AND, OR, XOR
+    BITWISE,
+    // AND, OR, XOR
     NOT,
     BYTE,
     SAR,
@@ -65,13 +77,17 @@ pub enum ExecutionState {
     RETURNDATACOPY,
     EXTCODEHASH,
     BLOCKHASH,
-    BLOCKCTXU64,  // TIMESTAMP, NUMBER, GASLIMIT
-    BLOCKCTXU160, // COINBASE
-    BLOCKCTXU256, // DIFFICULTY, BASEFEE
+    BLOCKCTXU64,
+    // TIMESTAMP, NUMBER, GASLIMIT
+    BLOCKCTXU160,
+    // COINBASE
+    BLOCKCTXU256,
+    // DIFFICULTY, BASEFEE
     CHAINID,
     SELFBALANCE,
     POP,
-    MEMORY, // MLOAD, MSTORE, MSTORE8
+    MEMORY,
+    // MLOAD, MSTORE, MSTORE8
     SLOAD,
     SSTORE,
     JUMP,
@@ -81,12 +97,17 @@ pub enum ExecutionState {
     GAS,
     JUMPDEST,
     // PUSH, // PUSH1, PUSH2, ..., PUSH32
-    DUP,  // DUP1, DUP2, ..., DUP16
-    SWAP, // SWAP1, SWAP2, ..., SWAP16
-    LOG,  // LOG0, LOG1, ..., LOG4
+    DUP,
+    // DUP1, DUP2, ..., DUP16
+    SWAP,
+    // SWAP1, SWAP2, ..., SWAP16
+    LOG,
+    // LOG0, LOG1, ..., LOG4
     CREATE,
-    CALL_OP,       // CALL, CALLCODE, DELEGATECALL, STATICCALL
-    RETURN_REVERT, // RETURN, REVERT
+    CALL_OP,
+    // CALL, CALLCODE, DELEGATECALL, STATICCALL
+    RETURN_REVERT,
+    // RETURN, REVERT
     CREATE2,
     SELFDESTRUCT,
     // Error cases
@@ -199,6 +220,14 @@ impl ExecutionState {
             ],
             Self::WASM_DROP => vec![
                 OpcodeId::Drop,
+            ],
+            Self::WASM_UNARY => vec![
+                OpcodeId::I32Ctz,
+                OpcodeId::I64Ctz,
+                OpcodeId::I32Clz,
+                OpcodeId::I64Clz,
+                OpcodeId::I32Popcnt,
+                OpcodeId::I64Popcnt,
             ],
             Self::WASM_END => vec![OpcodeId::End],
             // EVM opcodes
@@ -338,7 +367,7 @@ impl<F: FieldExt> DynamicSelectorHalf<F> {
         constraints
     }
 
-    pub(crate) fn selector(&self, targets: impl IntoIterator<Item = usize>) -> Expression<F> {
+    pub(crate) fn selector(&self, targets: impl IntoIterator<Item=usize>) -> Expression<F> {
         targets
             .into_iter()
             .map(|target| {
@@ -462,7 +491,7 @@ impl<F: FieldExt> Step<F> {
 
     pub(crate) fn execution_state_selector(
         &self,
-        execution_states: impl IntoIterator<Item = ExecutionState>,
+        execution_states: impl IntoIterator<Item=ExecutionState>,
     ) -> Expression<F> {
         self.state
             .execution_state

@@ -220,6 +220,13 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I64ShrU |
         OpcodeId::I64Rotl |
         OpcodeId::I64Rotr => StackOnlyOpcode::<2, 1>::gen_associated_ops_extended,
+        // WASM unary opcodes
+        OpcodeId::I32Ctz |
+        OpcodeId::I64Ctz |
+        OpcodeId::I32Clz |
+        OpcodeId::I64Clz |
+        OpcodeId::I32Popcnt |
+        OpcodeId::I64Popcnt => StackOnlyOpcode::<1, 1>::gen_associated_ops_extended,
 
         OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops_extended,
         OpcodeId::Return => Dummy::gen_associated_ops_extended,

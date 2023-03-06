@@ -55,7 +55,7 @@ impl ExecStep {
         // TODO wasm0: what about word size and number below if `self.memory_size / N_BYTES_WORD * N_BYTES_WORD < self.memory_size`
         // temporal fix
         let mut word_count = self.memory_size / N_BYTES_WORD as u64;
-        if word_count * (N_BYTES_WORD as u64) < self.memory_size { word_count += 1}
+        if word_count * (N_BYTES_WORD as u64) < self.memory_size { word_count += 1 }
         word_count
     }
 }
@@ -109,7 +109,6 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
         }
         match step.exec_state {
             circuit_input_builder::ExecState::Op(op) => {
-
                 if op.is_log() {
                     return ExecutionState::LOG;
                 }
@@ -137,9 +136,19 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::I64RemS |
                     OpcodeId::I32RemU |
                     OpcodeId::I64RemU => ExecutionState::WASM_BIN,
+
                     OpcodeId::I32Const |
                     OpcodeId::I64Const => ExecutionState::WASM_CONST,
+
                     OpcodeId::Drop => ExecutionState::WASM_DROP,
+
+                    OpcodeId::I32Ctz |
+                    OpcodeId::I64Ctz |
+                    OpcodeId::I32Clz |
+                    OpcodeId::I64Clz |
+                    OpcodeId::I32Popcnt |
+                    OpcodeId::I64Popcnt => ExecutionState::WASM_UNARY,
+
                     OpcodeId::End => ExecutionState::WASM_END,
 
                     // EVM opcodes

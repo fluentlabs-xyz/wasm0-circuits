@@ -438,6 +438,9 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
     pub(crate) fn alloc_common_range_value(&mut self) -> Cell<F> {
         self.query_cell()
     }
+    pub(crate) fn alloc_unlimited_value(&mut self) -> Cell<F> {
+        self.query_cell()
+    }
 
     // Common
 
