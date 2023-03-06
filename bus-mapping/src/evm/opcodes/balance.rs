@@ -117,9 +117,9 @@ impl Opcode for Balance {
         }
         let account_offset_addr = MemoryAddress::try_from(account_mem_address)?;
         let address_bytes = address.as_bytes();
-        for i in 0..ADDRESS_BYTE_LENGTH {
-            state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), address_bytes[i])?;
-        }
+        // for i in 0..ADDRESS_BYTE_LENGTH {
+        //     state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), address_bytes[i])?;
+        // }
         let call_ctx = state.call_ctx_mut()?;
         call_ctx.memory = geth_second_step.memory.clone();
 

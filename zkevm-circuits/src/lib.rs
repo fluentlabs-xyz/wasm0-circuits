@@ -18,6 +18,8 @@
 #![deny(clippy::debug_assert_with_mut_call)]
 #![feature(thread_local)]
 
+extern crate core;
+
 pub mod bytecode_circuit;
 pub mod copy_circuit;
 pub mod evm_circuit;

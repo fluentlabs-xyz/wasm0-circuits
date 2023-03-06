@@ -5,18 +5,26 @@ use crate::evm_circuit::step::ExecutionState;
 use crate::evm_circuit::util::common_gadget::SameContextGadget;
 use crate::evm_circuit::util::constraint_builder::Transition::Delta;
 use crate::evm_circuit::util::constraint_builder::{
-    ConstraintBuilder, ReversionInfo, StepStateTransition,
+    ConstraintBuilder, StepStateTransition,
 };
-use crate::evm_circuit::util::{from_bytes, math_gadget::IsZeroGadget, not, select, CachedRegion, Cell, Word, RandomLinearCombination};
+use crate::evm_circuit::util::math_gadget::IsZeroGadget;
+use crate::evm_circuit::util::{not, Word};
+use crate::evm_circuit::util::select;
+use crate::evm_circuit::util::CachedRegion;
+use crate::evm_circuit::util::Cell;
+use crate::evm_circuit::util::RandomLinearCombination;
 use crate::evm_circuit::witness::{Block, Call, ExecStep, Transaction};
-use crate::table::{AccountFieldTag, CallContextFieldTag};
+use crate::table::{AccountFieldTag, RwTableTag};
 use crate::util::Expr;
 use eth_types::evm_types::GasCost;
-use eth_types::{address, Field, ToLittleEndian, ToScalar};
+use eth_types::Address;
+use eth_types::Field;
+use eth_types::ToLittleEndian;
+use eth_types::ToScalar;
+use eth_types::U256;
 use halo2_proofs::circuit::Value;
 use halo2_proofs::plonk::Error;
 use halo2_proofs::plonk::Error::Synthesis;
-use serde::de::IntoDeserializer;
 
 #[derive(Clone, Debug)]
 pub(crate) struct BalanceGadget<F> {
@@ -26,7 +34,7 @@ pub(crate) struct BalanceGadget<F> {
     // tx_id: Cell<F>,
     is_warm: Cell<F>,
     code_hash: Cell<F>,
-    // not_exists: IsZeroGadget<F>,
+    not_exists: IsZeroGadget<F>,
     balance: RandomLinearCombination<F, N_BYTES_WORD>,
     address_dest_offset: Cell<F>,
     balance_dest_offset: Cell<F>,
@@ -79,7 +87,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
             GasCost::COLD_ACCOUNT_ACCESS.expr(),
         );
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(39.expr() + exists.expr()),
+            rw_counter: Delta(59.expr()/* + exists.expr()*/),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(2.expr()),
             gas_left: Delta(-gas_cost),
@@ -97,7 +105,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
             // tx_id,
             is_warm,
             code_hash,
-            // not_exists,
+            not_exists,
             balance,
             address_dest_offset,
             balance_dest_offset,
@@ -136,32 +144,45 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
         let (_, is_warm) = block.rws[step.rw_indices[5]].tx_access_list_value_pair();
         self.is_warm
-            .assign(region, offset, Value::known(F::from(false as u64)))?; // TODO temporal hardcoded 'false'
+            .assign(region, offset, Value::known(F::from(is_warm as u64)))?; // TODO temporal hardcoded 'false'
             // .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
 
-        // let code_hash = block.rws[step.rw_indices[3]].account_value_pair().0;
-        let code_hash = call.code_hash;
-        // self.code_hash
-        //     .assign(region, offset, region.word_rlc(code_hash))?;
+        let code_hash = block.rws[step.rw_indices[6]].account_value_pair().0;
+        // let code_hash = call.code_hash;
+        // self.code_hash.assign(region, offset, region.word_rlc(code_hash))?;
         // TODO fetch balance from state
-        // self.not_exists
-        //     .assign_value(region, offset, region.word_rlc(code_hash))?;
-        let balance = if code_hash.is_zero() {
+        // self.not_exists.assign_value(region, offset, region.word_rlc(code_hash))?;
+        let balance_rw_index: usize = 8;
+        let address_rw_index = balance_rw_index + N_BYTES_WORD;
+        let balance: U256 = if code_hash.is_zero() {
             eth_types::Word::zero()
         } else {
             // TODO temp solution
-            eth_types::Word::from(0u64 << 20)
-            // block.rws[step.rw_indices[2]].account_value_pair().0
+            let balance_vec = step.rw_indices[balance_rw_index..(balance_rw_index+N_BYTES_WORD)]
+                .iter()
+                .map(|&b| block.rws[b].memory_value())
+                .collect::<Vec<u8>>();
+            let balance: eth_types::Word = balance_vec.as_slice().try_into().unwrap();
+            let balance = eth_types::Word::from(0u64 << 20);
+            balance
         };
         self.balance.assign(
             region,
             offset,
             Some(balance.to_le_bytes()),
         )?;
+        // let address: [u8; N_BYTES_ACCOUNT_ADDRESS] = {
+        //     let step1: Vec<(RwTableTag, usize)> = step.rw_indices[address_rw_index..(address_rw_index+N_BYTES_ACCOUNT_ADDRESS)].to_vec();
+        //     let step2: Vec<u8> = step1
+        //         .iter()
+        //         .map(|&b| block.rws[b].memory_value())
+        //         .collect();
+        //     step2.as_slice().try_into().unwrap()
+        // };
         // self.address.assign(
         //     region,
         //     offset,
-        //     Some(address.to_le_bytes()),
+        //     Some(address),
         // )?;
         self.balance_dest_offset.assign(
             region,
@@ -199,14 +220,14 @@ mod test {
     //     test_internal_ok(0x1010, 0xff, &None, false);
     // }
     //
-    // #[test]
-    // fn balance_gadget_empty_account() {
-    //     let account = Some(Account::default());
-    //
-    //     test_root_ok(&account, false);
-    //     test_internal_ok(0x20, 0x00, &account, false);
-    //     test_internal_ok(0x1010, 0xff, &account, false);
-    // }
+    #[test]
+    fn balance_gadget_empty_account() {
+        let account = Some(Account::default());
+
+        test_root_ok(&account, false);
+        // test_internal_ok(0x20, 0x00, &account, false);
+        // test_internal_ok(0x1010, 0xff, &account, false);
+    }
 
     #[test]
     fn balance_gadget_cold_account() {
