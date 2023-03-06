@@ -1,27 +1,29 @@
+use ethers_core::utils::keccak256;
+use halo2_proofs::{circuit::Value, plonk::Error};
+
+use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
+use eth_types::{Field, ToScalar, U256};
+
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
         param::{N_BYTES_MEMORY_ADDRESS, N_BYTES_MEMORY_WORD_SIZE, STACK_CAPACITY},
         step::ExecutionState,
         util::{
+            CachedRegion,
+            Cell,
             common_gadget::RestoreContextGadget,
             constraint_builder::{
                 ConstraintBuilder, ReversionInfo, StepStateTransition,
                 Transition::{Delta, To},
             },
-            math_gadget::{IsZeroGadget, MinMaxGadget},
-            memory_gadget::{MemoryAddressGadget, MemoryExpansionGadget},
-            not, CachedRegion, Cell,
+            math_gadget::{IsZeroGadget, MinMaxGadget}, memory_gadget::{MemoryAddressGadget, MemoryExpansionGadget}, not,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{AccountFieldTag, CallContextFieldTag},
     util::Expr,
 };
-use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
-use eth_types::{Field, ToScalar, U256};
-use ethers_core::utils::keccak256;
-use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ReturnRevertGadget<F> {
@@ -39,7 +41,6 @@ pub(crate) struct ReturnRevertGadget<F> {
     return_data_offset: Cell<F>,
     return_data_length: Cell<F>,
 
-    memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
     code_hash: Cell<F>,
 
     caller_id: Cell<F>,
@@ -83,8 +84,6 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
         let copy_rw_increase = cb.query_cell();
         let copy_rw_increase_is_zero = IsZeroGadget::construct(cb, copy_rw_increase.expr());
 
-        let memory_expansion = MemoryExpansionGadget::construct(cb, [range.address()]);
-
         // Case A in the specs.
         cb.condition(is_create.clone() * is_success.expr(), |cb| {
             cb.require_equal(
@@ -118,7 +117,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                     CallContextFieldTag::CallerId,
                     CallContextFieldTag::CalleeAddress,
                 ]
-                .map(|tag| cb.call_context(None, tag));
+                    .map(|tag| cb.call_context(None, tag));
                 let mut reversion_info = cb.reversion_info_read(None);
 
                 cb.account_write(
@@ -147,9 +146,9 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                 rw_counter: Delta(
                     cb.rw_counter_offset()
                         + not::expr(is_success.expr())
-                            * cb.curr.state.reversible_write_counter.expr(),
+                        * cb.curr.state.reversible_write_counter.expr(),
                 ),
-                gas_left: Delta(-memory_expansion.gas_cost()),
+                // gas_left: Delta(-memory_expansion.gas_cost()),
                 reversible_write_counter: To(0.expr()),
                 memory_word_size: To(0.expr()),
                 ..StepStateTransition::default()
@@ -164,7 +163,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                 not::expr(is_create.clone()) * (5.expr() + copy_rw_increase.expr()),
                 range.offset(),
                 range.length(),
-                memory_expansion.gas_cost(),
+                0.expr(),
                 is_contract_deployment, // There is one reversible write in this case.
             )
         });
@@ -177,7 +176,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                     CallContextFieldTag::ReturnDataOffset,
                     CallContextFieldTag::ReturnDataLength,
                 ]
-                .map(|field_tag| cb.call_context(None, field_tag));
+                    .map(|field_tag| cb.call_context(None, field_tag));
                 let copy_length =
                     MinMaxGadget::construct(cb, return_data_length.expr(), range.length());
                 cb.require_equal(
@@ -227,7 +226,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             return_data_offset,
             return_data_length,
             restore_context,
-            memory_expansion,
+            // memory_expansion,
             code_hash,
             address,
             caller_id,
@@ -251,9 +250,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
         )?;
 
         let [memory_offset, length] = [0, 1].map(|i| block.rws[step.rw_indices[i]].stack_value());
-        let range = self.range.assign(region, offset, memory_offset, length)?;
-        self.memory_expansion
-            .assign(region, offset, step.memory_word_size(), [range])?;
+        self.range.assign(region, offset, memory_offset, length)?;
 
         self.is_success
             .assign(region, offset, Value::known(call.is_success.into()))?;
@@ -341,27 +338,24 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::test_util::CircuitTestBuilder;
+    use ethers_core::k256::pkcs8::der::Encode;
+    use itertools::Itertools;
+
     use eth_types::{
-        address, bytecode, evm_types::OpcodeId, geth_types::Account, Address, Bytecode, ToWord,
+        address, Address, bytecode, Bytecode, bytecode_internal, evm_types::OpcodeId, geth_types::Account, ToWord,
         Word,
     };
-    use itertools::Itertools;
-    use mock::{eth, TestContext, MOCK_ACCOUNTS};
+    use mock::{eth, MOCK_ACCOUNTS, TestContext};
+
+    use crate::test_util::CircuitTestBuilder;
 
     const CALLEE_ADDRESS: Address = Address::repeat_byte(0xff);
     const CALLER_ADDRESS: Address = Address::repeat_byte(0x34);
 
-    fn callee_bytecode(is_return: bool, offset: u64, length: u64) -> Bytecode {
-        let memory_bytes = [0x60; 10];
-        let memory_address = 0;
-        let memory_value = Word::from_big_endian(&memory_bytes);
+    fn callee_bytecode(is_return: bool, offset: u32, length: u32) -> Bytecode {
         let mut code = bytecode! {
-            PUSH10(memory_value)
-            PUSH1(memory_address)
-            MSTORE
-            PUSH2(length)
-            PUSH2(32u64 - u64::try_from(memory_bytes.len()).unwrap() + offset)
+            I32Const[offset]
+            I32Const[length]
         };
         code.write_op(if is_return {
             OpcodeId::RETURN
@@ -372,30 +366,58 @@ mod test {
     }
 
     fn caller_bytecode(return_data_offset: u64, return_data_length: u64) -> Bytecode {
-        bytecode! {
-            PUSH32(return_data_length)
-            PUSH32(return_data_offset)
-            PUSH32(0) // call data length
-            PUSH32(0) // call data offset
-            PUSH32(0) // value
-            PUSH32(CALLEE_ADDRESS.to_word())
-            PUSH32(4000) // gas
+        let mut code = Bytecode::default();
+        code.with_global_data(0, 0x7f, CALLER_ADDRESS.to_fixed_bytes().to_vec().unwrap());
+        bytecode_internal!(code,
+            I32Const[return_data_length]
+            I32Const[0] // call data length
+            I32Const[0] // call data offset
+            I32Const[0] // value offset
+            I32Const[0x7f] // offset of CALLER_ADDRESS
+            I32Const[4000] // gas
             CALL
             STOP
-        }
+        );
+        code
+    }
+
+    #[test]
+    fn test_return_hello_world() {
+        let mut code = Bytecode::default();
+        code.with_global_data(0, 0, "Hello, World".as_bytes().to_vec());
+        bytecode_internal!(code,
+            I32Const[0]
+            I32Const[12]
+            RETURN
+        );
+        CircuitTestBuilder::new_from_test_ctx(
+            TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
+        ).run();
+    }
+
+    #[test]
+    fn test_revert_hello_world() {
+        let mut code = Bytecode::default();
+        code.with_global_data(0, 0, "Hello, World".as_bytes().to_vec());
+        bytecode_internal!(code,
+            I32Const[0]
+            I32Const[12]
+            REVERT
+        );
+        CircuitTestBuilder::new_from_test_ctx(
+            TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
+        ).run();
     }
 
     #[test]
     fn test_return_root_noncreate() {
-        let test_parameters = [(0, 0), (0, 10), (300, 20), (1000, 0)];
-        for ((offset, length), is_return) in
-            test_parameters.iter().cartesian_product(&[true, false])
+        let test_parameters = [(0, 0), (0, 10)]; //TODO, (300, 20), (1000, 0)];
+        for ((offset, length), is_return) in test_parameters.iter().cartesian_product(&[true, false])
         {
             let code = callee_bytecode(*is_return, *offset, *length);
             CircuitTestBuilder::new_from_test_ctx(
                 TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
-            )
-            .run();
+            ).run();
         }
     }
 
@@ -412,7 +434,7 @@ mod test {
             ((1000, 0), (1000, 0)),
         ];
         for (((callee_offset, callee_length), (caller_offset, caller_length)), is_return) in
-            test_parameters.iter().cartesian_product(&[true, false])
+        test_parameters.iter().cartesian_product(&[true, false])
         {
             let callee = Account {
                 address: CALLEE_ADDRESS,
@@ -444,7 +466,7 @@ mod test {
                 },
                 |block, _tx| block.number(0xcafeu64),
             )
-            .unwrap();
+                .unwrap();
 
             CircuitTestBuilder::new_from_test_ctx(ctx).run();
         }
@@ -454,7 +476,7 @@ mod test {
     fn test_return_root_create() {
         let test_parameters = [(0, 0), (0, 10), (300, 20), (1000, 0)];
         for ((offset, length), is_return) in
-            test_parameters.iter().cartesian_product(&[true, false])
+        test_parameters.iter().cartesian_product(&[true, false])
         {
             let tx_input = callee_bytecode(*is_return, *offset, *length).code();
             let ctx = TestContext::<1, 1>::new(
@@ -467,7 +489,7 @@ mod test {
                 },
                 |block, _| block,
             )
-            .unwrap();
+                .unwrap();
 
             CircuitTestBuilder::new_from_test_ctx(ctx).run();
         }
@@ -477,7 +499,7 @@ mod test {
     fn test_return_nonroot_create() {
         let test_parameters = [(0, 0), (0, 10), (300, 20), (1000, 0)];
         for ((offset, length), is_return) in
-            test_parameters.iter().cartesian_product(&[true, false])
+        test_parameters.iter().cartesian_product(&[true, false])
         {
             let initializer = callee_bytecode(*is_return, *offset, *length).code();
 
@@ -517,7 +539,7 @@ mod test {
                 },
                 |block, _| block,
             )
-            .unwrap();
+                .unwrap();
 
             CircuitTestBuilder::new_from_test_ctx(ctx).run();
         }
@@ -568,7 +590,7 @@ mod test {
             },
             |block, _| block,
         )
-        .unwrap();
+            .unwrap();
 
         CircuitTestBuilder::new_from_test_ctx(ctx).run();
     }

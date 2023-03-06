@@ -219,7 +219,7 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
     pub fn simple_ctx_with_bytecode(bytecode: Bytecode) -> Result<TestContext<2, 1>, Error> {
         TestContext::new(
             None,
-            account_0_code_account_1_no_code(bytecode, None),
+            account_0_code_account_1_no_code(bytecode),
             tx_from_1_to_0,
             |block, _txs| block,
         )
@@ -267,8 +267,8 @@ pub mod helpers {
     /// - 0x000000000000000000000000000000000cafe111
     /// - 0x000000000000000000000000000000000cafe222
     /// And injects the provided bytecode into the first one.
-    pub fn account_0_code_account_1_no_code(code: Bytecode, data_section_descriptors: Option<Vec<WasmDataSectionDescriptor>>) -> impl FnOnce([&mut MockAccount; 2]) {
-        let wasm_binary = code.wasm_binary(data_section_descriptors);
+    pub fn account_0_code_account_1_no_code(code: Bytecode) -> impl FnOnce([&mut MockAccount; 2]) {
+        let wasm_binary = code.wasm_binary();
         |accs| {
             accs[0]
                 .address(MOCK_ACCOUNTS[0])

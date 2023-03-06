@@ -201,6 +201,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
 #[cfg(test)]
 mod test {
+    use ethers_core::k256::elliptic_curve::weierstrass::add;
     use crate::evm_circuit::test::rand_bytes;
     use crate::test_util::CircuitTestBuilder;
     use eth_types::geth_types::Account;
@@ -281,11 +282,8 @@ mod test {
             BALANCE
         });
 
-        let wasm_binary_vec = code.wasm_binary(Some(vec![WasmDataSectionDescriptor {
-            memory_index: 0,
-            mem_offset: account_mem_address as u32,
-            data: address.0.to_vec(),
-        }]));
+        code.with_global_data(0, account_mem_address as u32, address.0.to_vec());
+        let wasm_binary_vec = code.wasm_binary();
         let ctx = TestContext::<3, 1>::new(
             None,
             |accs| {

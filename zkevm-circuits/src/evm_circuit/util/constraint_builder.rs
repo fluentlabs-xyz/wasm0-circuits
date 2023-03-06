@@ -1,3 +1,15 @@
+use halo2_proofs::{
+    circuit::Value,
+    plonk::{
+        Error,
+        Expression::{self, Constant},
+    },
+};
+
+use eth_types::Field;
+use gadgets::util::{and, not};
+use keccak256::EMPTY_HASH_LE;
+
 use crate::{
     evm_circuit::{
         param::STACK_CAPACITY,
@@ -11,18 +23,8 @@ use crate::{
     },
     util::{build_tx_log_expression, Challenges, Expr},
 };
-use eth_types::Field;
-use gadgets::util::{and, not};
-use halo2_proofs::{
-    circuit::Value,
-    plonk::{
-        Error,
-        Expression::{self, Constant},
-    },
-};
-use keccak256::EMPTY_HASH_LE;
 
-use super::{rlc, CachedRegion, CellType, StoredExpression};
+use super::{CachedRegion, CellType, rlc, StoredExpression};
 
 // Max degree allowed in all expressions passing through the ConstraintBuilder.
 // It aims to cap `extended_k` to 2, which allows constraint degree to 2^2+1,
@@ -412,8 +414,8 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         } else {
             &mut self.curr
         }
-        .cell_manager
-        .query_cells(cell_type, count)
+            .cell_manager
+            .query_cells(cell_type, count)
     }
 
     pub(crate) fn word_rlc<const N: usize>(&self, bytes: [Expression<F>; N]) -> Expression<F> {
@@ -609,7 +611,7 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
                 is_code,
                 value: opcode,
             }
-            .conditional(1.expr() - is_root_create),
+                .conditional(1.expr() - is_root_create),
         );
     }
 
@@ -740,6 +742,24 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         tag: RwTableTag,
         values: RwValues<F>,
     ) {
+        // println!("lookup: {}, tag={:?}", name, tag);
+
+        // match tag {
+        //     // RwTableTag::Start => return,
+        //     RwTableTag::Stack => return,
+        //     RwTableTag::Memory => return,
+        //     RwTableTag::AccountStorage => return,
+        //     RwTableTag::TxAccessListAccount => return,
+        //     RwTableTag::TxAccessListAccountStorage => return,
+        //     // RwTableTag::TxRefund => return,
+        //     // RwTableTag::Account => return,
+        //     // RwTableTag::AccountDestructed => return,
+        //     // RwTableTag::CallContext => return,
+        //     // RwTableTag::TxLog => return,
+        //     RwTableTag::TxReceipt => return,
+        //     _ => {},
+        // }
+
         self.rw_lookup_with_counter(
             name,
             self.curr.state.rw_counter.expr() + self.rw_counter_offset.clone(),
@@ -1090,11 +1110,11 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
             CallContextFieldTag::RwCounterEndOfReversion,
             CallContextFieldTag::IsPersistent,
         ]
-        .map(|field_tag| {
-            let cell = self.query_cell();
-            self.call_context_lookup(is_write.expr(), call_id.clone(), field_tag, cell.expr());
-            cell
-        });
+            .map(|field_tag| {
+                let cell = self.query_cell();
+                self.call_context_lookup(is_write.expr(), call_id.clone(), field_tag, cell.expr());
+                cell
+            });
 
         ReversionInfo {
             rw_counter_end_of_reversion,

@@ -164,7 +164,7 @@ mod calldataload_tests {
         if memory_a.len() < call_data_length {
             memory_a.resize(call_data_length, 0);
         }
-        let code_a = bytecode! {
+        let mut code_a = bytecode! {
             // // populate memory in A's context.
             // PUSH32(Word::from_big_endian(&pushdata))
             // PUSH1(0x00) // offset
@@ -184,13 +184,10 @@ mod calldataload_tests {
         // Get the execution steps from the external tracer
         let mut data_section = Vec::new();
         append_vector_to_vector_with_padding(&mut data_section, &memory_a, INDEX_BYTE_LENGTH);
-        let wasm_code_a = code_a.wasm_binary(Some(vec![WasmDataSectionDescriptor {
-            memory_index: 0,
-            mem_offset: byte_offset_mem_address,
-            data: data_section,
-        }]));
+        code_a.with_global_data(0, byte_offset_mem_address, data_section);
+        let wasm_code_a = code_a.wasm_binary();
         let wasm_code_a_bytecode = Bytecode::from_raw_unchecked(wasm_code_a);
-        let wasm_code_b = code_b.wasm_binary(None);
+        let wasm_code_b = code_b.wasm_binary();
         let wasm_code_b_bytecode = Bytecode::from_raw_unchecked(wasm_code_b);
         let block: GethData = TestContext::<3, 1>::new(
             None,
@@ -302,20 +299,17 @@ mod calldataload_tests {
     fn test_root_ok(offset: u64, calldata: Vec<u8>, _calldata_word: Word) {
         let byte_offset_mem_address: u32 = 0x0;
         let res_mem_address: u32 = 0x7f;
-        let code = bytecode! {
+        let mut code = bytecode! {
             I32Const[byte_offset_mem_address]
             I32Const[res_mem_address]
             CALLDATALOAD
         };
         let mut data_section = Vec::new();
         append_vector_to_vector_with_padding(&mut data_section, &offset.to_be_bytes().to_vec(), INDEX_BYTE_LENGTH);
+        code.with_global_data(0, byte_offset_mem_address, data_section);
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(code, Some(vec![WasmDataSectionDescriptor {
-                memory_index: 0,
-                mem_offset: byte_offset_mem_address,
-                data: data_section,
-            }])),
+            account_0_code_account_1_no_code(code),
             |mut txs, accs| {
                 txs[0]
                     .to(accs[0].address)

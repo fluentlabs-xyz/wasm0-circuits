@@ -185,11 +185,8 @@ mod balance_tests {
             Word::zero()
         };
 
-        let wasm_binary_vec = code.wasm_binary(Some(vec![WasmDataSectionDescriptor {
-            memory_index: 0,
-            mem_offset: account_mem_address,
-            data: address.0.to_vec(),
-        }]));
+        code.with_global_data(0, account_mem_address, address.0.to_vec());
+        let wasm_binary_vec = code.wasm_binary();
         // Get the execution steps from the external tracer.
         let block: GethData = TestContext::<3, 1>::new(
             None,

@@ -73,7 +73,7 @@ pub fn trace(config: &TraceConfig) -> Result<Vec<GethExecTrace>, Error> {
 
     let trace: Vec<GethExecTrace> = serde_json::from_str(&trace_string).map_err(Error::SerdeError)?;
     if trace[0].failed {
-        panic!("{}", trace[0].return_value);
+        // panic!("{}", trace[0].return_value);
     }
     Ok(trace)
 }

@@ -1433,7 +1433,7 @@ fn tracer_err_out_of_gas() {
     // Create a custom tx setting Gas to
     let block: GethData = TestContext::<2, 1>::new_with_logger_config(
         None,
-        account_0_code_account_1_no_code(code, None),
+        account_0_code_account_1_no_code(code),
         |mut txs, accs| {
             txs[0]
                 .to(accs[0].address)
@@ -1459,7 +1459,7 @@ fn tracer_err_stack_overflow() {
     }
     let block: GethData = TestContext::<2, 1>::new_with_logger_config(
         None,
-        account_0_code_account_1_no_code(code, None),
+        account_0_code_account_1_no_code(code),
         tx_from_1_to_0,
         |block, _tx| block.number(0xcafeu64),
         LoggerConfig::enable_memory(),
@@ -1490,7 +1490,7 @@ fn tracer_err_stack_underflow() {
     };
     let block: GethData = TestContext::<2, 1>::new_with_logger_config(
         None,
-        account_0_code_account_1_no_code(code, None),
+        account_0_code_account_1_no_code(code),
         tx_from_1_to_0,
         |block, _tx| block.number(0xcafeu64),
         LoggerConfig::enable_memory(),

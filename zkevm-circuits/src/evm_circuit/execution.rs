@@ -99,6 +99,7 @@ use begin_tx::BeginTxGadget;
 use end_block::EndBlockGadget;
 use end_tx::EndTxGadget;
 use wasm_drop::WasmDropGadget;
+use crate::evm_circuit::execution::address::AddressGadget;
 use crate::evm_circuit::execution::balance::BalanceGadget;
 use crate::evm_circuit::execution::caller::CallerGadget;
 use crate::evm_circuit::execution::callvalue::CallValueGadget;
@@ -107,6 +108,7 @@ use crate::evm_circuit::execution::codesize::CodesizeGadget;
 use crate::evm_circuit::execution::end::WasmEndGadget;
 use crate::evm_circuit::execution::gasprice::GasPriceGadget;
 use crate::evm_circuit::execution::origin::OriginGadget;
+use crate::evm_circuit::execution::return_revert::ReturnRevertGadget;
 use crate::evm_circuit::execution::selfbalance::SelfbalanceGadget;
 use crate::evm_circuit::execution::wasm_bin::WasmBinGadget;
 use crate::evm_circuit::execution::wasm_const::WasmConstGadget;
@@ -161,7 +163,7 @@ pub(crate) struct ExecutionConfig<F> {
     end_tx_gadget: EndTxGadget<F>,
     // opcode gadgets
     // addmod_gadget: AddModGadget<F>,
-    // address_gadget: AddressGadget<F>,
+    address_gadget: AddressGadget<F>,
     balance_gadget: BalanceGadget<F>,
     // bitwise_gadget: BitwiseGadget<F>,
     // byte_gadget: ByteGadget<F>,
@@ -194,7 +196,7 @@ pub(crate) struct ExecutionConfig<F> {
     // not_gadget: NotGadget<F>,
     origin_gadget: OriginGadget<F>,
     // pc_gadget: PcGadget<F>,
-    // return_revert_gadget: ReturnRevertGadget<F>,
+    return_revert_gadget: ReturnRevertGadget<F>,
     // sar_gadget: SarGadget<F>,
     // sdiv_smod_gadget: SignedDivModGadget<F>,
     selfbalance_gadget: SelfbalanceGadget<F>,
@@ -451,11 +453,11 @@ impl<F: Field> ExecutionConfig<F> {
             // not_gadget: configure_gadget!(),
             origin_gadget: configure_gadget!(),
             // pc_gadget: configure_gadget!(),
-            // return_revert_gadget: configure_gadget!(),
+            return_revert_gadget: configure_gadget!(),
             // sdiv_smod_gadget: configure_gadget!(),
             selfbalance_gadget: configure_gadget!(),
             // sha3_gadget: configure_gadget!(),
-            // address_gadget: configure_gadget!(),
+            address_gadget: configure_gadget!(),
             balance_gadget: configure_gadget!(),
             // blockhash_gadget: configure_gadget!(),
             // exp_gadget: configure_gadget!(),
@@ -1037,7 +1039,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::WASM_END => assign_exec_step!(self.wasm_end_gadget),
             // opcode
             // ExecutionState::ADDMOD => assign_exec_step!(self.addmod_gadget),
-            // ExecutionState::ADDRESS => assign_exec_step!(self.address_gadget),
+            ExecutionState::ADDRESS => assign_exec_step!(self.address_gadget),
             ExecutionState::BALANCE => assign_exec_step!(self.balance_gadget),
             // ExecutionState::BITWISE => assign_exec_step!(self.bitwise_gadget),
             // ExecutionState::BYTE => assign_exec_step!(self.byte_gadget),
@@ -1069,7 +1071,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::NOT => assign_exec_step!(self.not_gadget),
             ExecutionState::ORIGIN => assign_exec_step!(self.origin_gadget),
             // ExecutionState::PC => assign_exec_step!(self.pc_gadget),
-            // ExecutionState::RETURN_REVERT => assign_exec_step!(self.return_revert_gadget),
+            ExecutionState::RETURN_REVERT => assign_exec_step!(self.return_revert_gadget),
             // ExecutionState::RETURNDATASIZE => assign_exec_step!(self.returndatasize_gadget),
             // ExecutionState::RETURNDATACOPY => assign_exec_step!(self.returndatacopy_gadget),
             // ExecutionState::SAR => assign_exec_step!(self.sar_gadget),
@@ -1275,13 +1277,15 @@ impl<F: Field> ExecutionConfig<F> {
             let rlc = table_assignments.rlc(lookup_randomness);
             if rlc != assigned_rw_value.1 {
                 log::error!(
-                    "incorrect rw witness. lookup input name: \"{}\"\n{:?}\nrw: {:?}, rw index: {:?}, {}th rw of step {:?}",
+                    "incorrect rw witness. lookup input name: \"{}\"\n{:?}\nrw: {:?}, rw index: {:?}, {}th rw of step {:?}, raw_table {:?}",
                     assigned_rw_value.0,
                     assigned_rw_value.1,
                     rw,
                     rw_idx,
                     idx,
-                    step.execution_state);
+                    step.execution_state,
+                    table_assignments,
+                );
             }
         }
     }

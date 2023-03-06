@@ -332,22 +332,10 @@ pub fn gen_associated_ops(
     let fn_gen_associated_ops = fn_gen_associated_ops(opcode_id);
 
     let memory_enabled = !geth_steps.iter().all(|s| s.memory.is_empty());
-
     if memory_enabled {
         let steps_memory = &geth_steps[0].memory;
         global_memory.extends_with(steps_memory);
     }
-
-    // let state_memory = &state.call_ctx()?.memory;
-    // let steps_memory = &geth_steps[0].memory;
-    // if memory_enabled {
-    //     assert_eq!(
-    //         state_memory,
-    //         steps_memory,
-    //         "last step of {:?} goes wrong",
-    //         opcode_id
-    //     );
-    // }
 
     // check if have error
     let geth_step = &geth_steps[0];

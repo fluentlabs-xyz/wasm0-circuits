@@ -47,7 +47,7 @@ impl<F: Field> ExecutionGadget<F> for AddressGadget<F> {
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(22.expr()),
             program_counter: Delta(1.expr()),
-            stack_pointer: Delta((-1).expr()),
+            stack_pointer: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::ADDRESS.constant_gas_cost().expr()),
             ..Default::default()
         };
@@ -99,7 +99,6 @@ mod test {
         let bytecode = bytecode! {
             I32Const[0]
             ADDRESS
-            STOP
         };
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),

@@ -35,6 +35,7 @@ pub struct BytecodeElement {
 pub struct Bytecode {
     /// Vector for bytecode elements.
     pub code: Vec<BytecodeElement>,
+    pub global_data: Vec<WasmDataSectionDescriptor>,
     num_opcodes: usize,
     markers: HashMap<String, usize>,
 }
@@ -60,12 +61,21 @@ impl Bytecode {
                     is_code: true,
                 })
                 .collect(),
+            global_data: Vec::new(),
             markers: HashMap::new(),
             num_opcodes: 0,
         }
     }
 
-    pub fn wasm_binary(&self, data_section_descriptors: Option<Vec<WasmDataSectionDescriptor>>) -> Vec<u8> {
+    pub fn with_global_data(&mut self, memory_index: u32, memory_offset: u32, data: Vec<u8>) {
+        self.global_data.push(WasmDataSectionDescriptor {
+            memory_index,
+            mem_offset: memory_offset,
+            data,
+        });
+    }
+
+    pub fn wasm_binary(&self) -> Vec<u8> {
         use wasm_encoder::{
             CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
             ImportSection, MemorySection, MemoryType, Module, TypeSection, ValType,
@@ -150,20 +160,19 @@ impl Bytecode {
         f.raw(self.code());
         f.instruction(&Instruction::End);
         codes.function(&f);
-        // build sections (Custom,Type,Import,Function,Table,Memory,Global,Event,Export,Start,Elem,DataCount,Code,Data)
+        // build sections order (Custom,Type,Import,Function,Table,Memory,Global,Event,Export,Start,Elem,DataCount,Code,Data)
         module.section(&types);
         module.section(&imports);
         module.section(&functions);
         module.section(&memories);
         module.section(&exports);
         module.section(&codes);
-        if let Some(vec) = data_section_descriptors {
-            for dsd in vec {
-                let mut data_section = DataSection::new();
-                data_section.active(dsd.memory_index, &ConstExpr::i32_const(dsd.mem_offset as i32), dsd.data.clone());
-                module.section(&data_section);
-            }
-        };
+        // if we have global data section then put it into final binary
+        for data in &self.global_data {
+            let mut data_section = DataSection::new();
+            data_section.active(data.memory_index, &ConstExpr::i32_const(data.mem_offset as i32), data.data.clone());
+            module.section(&data_section);
+        }
         let wasm_bytes = module.finish();
         return wasm_bytes;
     }
