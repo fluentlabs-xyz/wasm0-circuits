@@ -17,15 +17,15 @@ use eth_types::{Field, ToScalar, ToU256};
 use halo2_proofs::plonk::Error;
 
 #[derive(Clone, Debug)]
-pub(crate) struct DropGadget<F> {
+pub(crate) struct WasmDropGadget<F> {
     same_context: SameContextGadget<F>,
     phase2_value: Cell<F>,
 }
 
-impl<F: Field> ExecutionGadget<F> for DropGadget<F> {
-    const NAME: &'static str = "DROP";
+impl<F: Field> ExecutionGadget<F> for WasmDropGadget<F> {
+    const NAME: &'static str = "WASM_DROP";
 
-    const EXECUTION_STATE: ExecutionState = ExecutionState::DROP;
+    const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_DROP;
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let phase2_value = cb.query_cell_phase2();

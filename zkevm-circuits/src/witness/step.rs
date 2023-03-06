@@ -109,15 +109,7 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
         }
         match step.exec_state {
             circuit_input_builder::ExecState::Op(op) => {
-                if op.is_dup() {
-                    return ExecutionState::DUP;
-                }
-                if op.is_push() {
-                    return ExecutionState::PUSH;
-                }
-                if op.is_swap() {
-                    return ExecutionState::SWAP;
-                }
+
                 if op.is_log() {
                     return ExecutionState::LOG;
                 }
@@ -145,9 +137,10 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::I64RemS |
                     OpcodeId::I32RemU |
                     OpcodeId::I64RemU => ExecutionState::WASM_BIN,
-
-                    OpcodeId::Drop => ExecutionState::DROP,
-                    OpcodeId::End => ExecutionState::END,
+                    OpcodeId::I32Const |
+                    OpcodeId::I64Const => ExecutionState::WASM_CONST,
+                    OpcodeId::Drop => ExecutionState::WASM_DROP,
+                    OpcodeId::End => ExecutionState::WASM_END,
 
                     // EVM opcodes
                     OpcodeId::ADDMOD => ExecutionState::ADDMOD,
@@ -166,7 +159,6 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::NOT => ExecutionState::NOT,
                     OpcodeId::EXP => ExecutionState::EXP,
                     OpcodeId::POP => ExecutionState::POP,
-                    OpcodeId::PUSH32 => ExecutionState::PUSH,
                     OpcodeId::BYTE => ExecutionState::BYTE,
                     OpcodeId::MLOAD => ExecutionState::MEMORY,
                     OpcodeId::MSTORE => ExecutionState::MEMORY,

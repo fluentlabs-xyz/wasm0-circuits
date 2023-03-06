@@ -75,8 +75,7 @@ mod opcode_not;
 mod origin;
 mod pc;
 mod pop;
-mod drop;
-mod push;
+mod wasm_drop;
 mod return_revert;
 // mod returndatacopy;
 // mod returndatasize;
@@ -93,22 +92,23 @@ mod stop;
 mod swap;
 mod end;
 mod wasm_bin;
+mod wasm_const;
 
 use begin_tx::BeginTxGadget;
 use end_block::EndBlockGadget;
 use end_tx::EndTxGadget;
-use drop::DropGadget;
-use push::PushGadget;
+use wasm_drop::WasmDropGadget;
 use crate::evm_circuit::execution::balance::BalanceGadget;
 use crate::evm_circuit::execution::caller::CallerGadget;
 use crate::evm_circuit::execution::callvalue::CallValueGadget;
 use crate::evm_circuit::execution::chainid::ChainIdGadget;
 use crate::evm_circuit::execution::codesize::CodesizeGadget;
-use crate::evm_circuit::execution::end::EndGadget;
+use crate::evm_circuit::execution::end::WasmEndGadget;
 use crate::evm_circuit::execution::gasprice::GasPriceGadget;
 use crate::evm_circuit::execution::origin::OriginGadget;
 use crate::evm_circuit::execution::selfbalance::SelfbalanceGadget;
 use crate::evm_circuit::execution::wasm_bin::WasmBinGadget;
+use crate::evm_circuit::execution::wasm_const::WasmConstGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -192,9 +192,6 @@ pub(crate) struct ExecutionConfig<F> {
     // not_gadget: NotGadget<F>,
     origin_gadget: OriginGadget<F>,
     // pc_gadget: PcGadget<F>,
-    // pop_gadget: PopGadget<F>,
-    drop_gadget: DropGadget<F>,
-    push_gadget: PushGadget<F>,
     // return_revert_gadget: ReturnRevertGadget<F>,
     // sar_gadget: SarGadget<F>,
     // sdiv_smod_gadget: SignedDivModGadget<F>,
@@ -211,7 +208,6 @@ pub(crate) struct ExecutionConfig<F> {
     // sload_gadget: SloadGadget<F>,
     // sstore_gadget: SstoreGadget<F>,
     // stop_gadget: StopGadget<F>,
-    end_gadget: EndGadget<F>,
     // wasm_gadget: WasmGadget<F>,
     // swap_gadget: SwapGadget<F>,
     // blockhash_gadget: BlockHashGadget<F>,
@@ -252,6 +248,9 @@ pub(crate) struct ExecutionConfig<F> {
     // invalid_opcode_gadget: DummyGadget<F, 0, 0, { ExecutionState::ErrorInvalidOpcode }>,
 
     wasm_bin_gadget: WasmBinGadget<F>,
+    wasm_const_gadget: WasmConstGadget<F>,
+    wasm_drop_gadget: WasmDropGadget<F>,
+    wasm_end_gadget: WasmEndGadget<F>,
 }
 
 impl<F: Field> ExecutionConfig<F> {
@@ -449,9 +448,6 @@ impl<F: Field> ExecutionConfig<F> {
             // not_gadget: configure_gadget!(),
             origin_gadget: configure_gadget!(),
             // pc_gadget: configure_gadget!(),
-            // pop_gadget: configure_gadget!(),
-            drop_gadget: configure_gadget!(),
-            push_gadget: configure_gadget!(),
             // return_revert_gadget: configure_gadget!(),
             // sdiv_smod_gadget: configure_gadget!(),
             selfbalance_gadget: configure_gadget!(),
@@ -473,7 +469,7 @@ impl<F: Field> ExecutionConfig<F> {
             // sload_gadget: configure_gadget!(),
             // sstore_gadget: configure_gadget!(),
             // stop_gadget: configure_gadget!(),
-            end_gadget: configure_gadget!(),
+            wasm_end_gadget: configure_gadget!(),
             // wasm_gadget: configure_gadget!(),
             // swap_gadget: configure_gadget!(),
             // block_ctx_u64_gadget: configure_gadget!(),
@@ -509,6 +505,8 @@ impl<F: Field> ExecutionConfig<F> {
             // invalid_opcode_gadget: configure_gadget!(),
 
             wasm_bin_gadget: configure_gadget!(),
+            wasm_const_gadget: configure_gadget!(),
+            wasm_drop_gadget: configure_gadget!(),
 
             // step and presets
             step: step_curr,
@@ -1029,6 +1027,8 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::EndBlock => assign_exec_step!(self.end_block_gadget),
             // WASM opcodes
             ExecutionState::WASM_BIN => assign_exec_step!(self.wasm_bin_gadget),
+            ExecutionState::WASM_CONST => assign_exec_step!(self.wasm_const_gadget),
+            ExecutionState::WASM_DROP => assign_exec_step!(self.wasm_drop_gadget),
             // opcode
             // ExecutionState::ADDMOD => assign_exec_step!(self.addmod_gadget),
             // ExecutionState::ADDRESS => assign_exec_step!(self.address_gadget),
@@ -1063,9 +1063,6 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::NOT => assign_exec_step!(self.not_gadget),
             ExecutionState::ORIGIN => assign_exec_step!(self.origin_gadget),
             // ExecutionState::PC => assign_exec_step!(self.pc_gadget),
-            // ExecutionState::POP => assign_exec_step!(self.pop_gadget),
-            ExecutionState::DROP => assign_exec_step!(self.drop_gadget),
-            ExecutionState::PUSH => assign_exec_step!(self.push_gadget),
             // ExecutionState::RETURN_REVERT => assign_exec_step!(self.return_revert_gadget),
             // ExecutionState::RETURNDATASIZE => assign_exec_step!(self.returndatasize_gadget),
             // ExecutionState::RETURNDATACOPY => assign_exec_step!(self.returndatacopy_gadget),
@@ -1089,7 +1086,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::SLOAD => assign_exec_step!(self.sload_gadget),
             // ExecutionState::SSTORE => assign_exec_step!(self.sstore_gadget),
             // ExecutionState::STOP => assign_exec_step!(self.stop_gadget),
-            ExecutionState::END => assign_exec_step!(self.end_gadget),
+            ExecutionState::WASM_END => assign_exec_step!(self.wasm_end_gadget),
             // ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
             // dummy errors
             // ExecutionState::ErrorOutOfGasStaticMemoryExpansion => {

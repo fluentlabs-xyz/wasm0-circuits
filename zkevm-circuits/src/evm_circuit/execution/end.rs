@@ -20,17 +20,17 @@ use eth_types::Field;
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
-pub(crate) struct EndGadget<F> {
+pub(crate) struct WasmEndGadget<F> {
     code_length: Cell<F>,
     is_out_of_range: IsZeroGadget<F>,
     opcode: Cell<F>,
     // restore_context: RestoreContextGadget<F>,
 }
 
-impl<F: Field> ExecutionGadget<F> for EndGadget<F> {
-    const NAME: &'static str = "END";
+impl<F: Field> ExecutionGadget<F> for WasmEndGadget<F> {
+    const NAME: &'static str = "WASM_END";
 
-    const EXECUTION_STATE: ExecutionState = ExecutionState::END;
+    const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_END;
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let code_length = cb.query_cell();

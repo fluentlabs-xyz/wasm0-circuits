@@ -27,9 +27,11 @@ pub enum ExecutionState {
     EndBlock,
     // WASM opcode cases
     WASM_BIN,
+    WASM_CONST,
+    WASM_DROP,
+    WASM_END,
     // Opcode successful cases
     STOP,
-    END,
     ADD_SUB,     // ADD, SUB
     MUL_DIV_MOD, // MUL, DIV, MOD
     SDIV_SMOD,   // SDIV, SMOD
@@ -78,8 +80,7 @@ pub enum ExecutionState {
     MSIZE,
     GAS,
     JUMPDEST,
-    PUSH, // PUSH1, PUSH2, ..., PUSH32
-    DROP,
+    // PUSH, // PUSH1, PUSH2, ..., PUSH32
     DUP,  // DUP1, DUP2, ..., DUP16
     SWAP, // SWAP1, SWAP2, ..., SWAP16
     LOG,  // LOG0, LOG1, ..., LOG4
@@ -192,9 +193,16 @@ impl ExecutionState {
                 OpcodeId::I32RemU,
                 OpcodeId::I64RemU,
             ],
+            Self::WASM_CONST => vec![
+                OpcodeId::I32Const,
+                OpcodeId::I64Const,
+            ],
+            Self::WASM_DROP => vec![
+                OpcodeId::Drop,
+            ],
+            Self::WASM_END => vec![OpcodeId::End],
             // EVM opcodes
             Self::STOP => vec![OpcodeId::STOP],
-            Self::END => vec![OpcodeId::End],
             Self::MUL_DIV_MOD => vec![OpcodeId::MUL, OpcodeId::DIV, OpcodeId::MOD],
             Self::SDIV_SMOD => vec![OpcodeId::SDIV, OpcodeId::SMOD],
             Self::SHL_SHR => vec![OpcodeId::SHL, OpcodeId::SHR],
@@ -244,76 +252,6 @@ impl ExecutionState {
             Self::MSIZE => vec![OpcodeId::MSIZE],
             Self::GAS => vec![OpcodeId::GAS],
             Self::JUMPDEST => vec![OpcodeId::JUMPDEST],
-            Self::PUSH => vec![
-                OpcodeId::PUSH1,
-                OpcodeId::PUSH2,
-                OpcodeId::PUSH3,
-                OpcodeId::PUSH4,
-                OpcodeId::PUSH5,
-                OpcodeId::PUSH6,
-                OpcodeId::PUSH7,
-                OpcodeId::PUSH8,
-                OpcodeId::PUSH9,
-                OpcodeId::PUSH10,
-                OpcodeId::PUSH11,
-                OpcodeId::PUSH12,
-                OpcodeId::PUSH13,
-                OpcodeId::PUSH14,
-                OpcodeId::PUSH15,
-                OpcodeId::PUSH16,
-                OpcodeId::PUSH17,
-                OpcodeId::PUSH18,
-                OpcodeId::PUSH19,
-                OpcodeId::PUSH20,
-                OpcodeId::PUSH21,
-                OpcodeId::PUSH22,
-                OpcodeId::PUSH23,
-                OpcodeId::PUSH24,
-                OpcodeId::PUSH25,
-                OpcodeId::PUSH26,
-                OpcodeId::PUSH27,
-                OpcodeId::PUSH28,
-                OpcodeId::PUSH29,
-                OpcodeId::PUSH30,
-                OpcodeId::PUSH31,
-                OpcodeId::PUSH32,
-            ],
-            Self::DUP => vec![
-                OpcodeId::DUP1,
-                OpcodeId::DUP2,
-                OpcodeId::DUP3,
-                OpcodeId::DUP4,
-                OpcodeId::DUP5,
-                OpcodeId::DUP6,
-                OpcodeId::DUP7,
-                OpcodeId::DUP8,
-                OpcodeId::DUP9,
-                OpcodeId::DUP10,
-                OpcodeId::DUP11,
-                OpcodeId::DUP12,
-                OpcodeId::DUP13,
-                OpcodeId::DUP14,
-                OpcodeId::DUP15,
-                OpcodeId::DUP16,
-            ],
-            Self::SWAP => vec![
-                OpcodeId::SWAP1,
-                OpcodeId::SWAP2,
-                OpcodeId::SWAP3,
-                OpcodeId::SWAP4,
-                OpcodeId::SWAP5,
-                OpcodeId::SWAP6,
-                OpcodeId::SWAP7,
-                OpcodeId::SWAP8,
-                OpcodeId::SWAP9,
-                OpcodeId::SWAP10,
-                OpcodeId::SWAP11,
-                OpcodeId::SWAP12,
-                OpcodeId::SWAP13,
-                OpcodeId::SWAP14,
-                OpcodeId::SWAP15,
-                OpcodeId::SWAP16,
-            ],
             Self::LOG => vec![
                 OpcodeId::LOG0,
                 OpcodeId::LOG1,
@@ -342,7 +280,6 @@ impl ExecutionState {
     pub fn get_step_height(&self) -> usize {
         let height_option = self.get_step_height_option();
         height_option.unwrap_or_else(|| panic!("Execution state unknown: {:?}", self))
-            // .unwrap_or(0usize)
     }
 }
 

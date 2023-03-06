@@ -196,8 +196,6 @@ impl Bytecode {
     pub fn write_op(&mut self, op: OpcodeId) -> &mut Self {
         let op = match op {
             // WASM opcode mapping
-            OpcodeId::I32Const(val) => Instruction::I32Const(val as i32),
-            OpcodeId::I64Const(val) => Instruction::I64Const(val as i64),
             OpcodeId::I32Add => Instruction::I32Add,
             OpcodeId::I64Add => Instruction::I64Add,
             OpcodeId::I32Sub => Instruction::I32Sub,
@@ -239,6 +237,26 @@ impl Bytecode {
             OpcodeId::EXTCODEHASH => Instruction::Call(22),
             OpcodeId::EXTCODESIZE => Instruction::Call(23),
             OpcodeId::CALLDATALOAD => Instruction::Call(24),
+            _ => {
+                unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
+            }
+        };
+        let mut buf: Vec<u8> = vec![];
+        op.encode(&mut buf);
+        for (i, b) in buf.iter().enumerate() {
+            if i == 0 {
+                self.write_op_internal(*b);
+            } else {
+                self.write(*b, false);
+            }
+        }
+        self
+    }
+
+    pub fn write_const(&mut self, op: OpcodeId, val: u64) -> &mut Self {
+        let op = match op {
+            OpcodeId::I32Const => Instruction::I32Const(val as i32),
+            OpcodeId::I64Const => Instruction::I64Const(val as i64),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }
@@ -504,10 +522,10 @@ macro_rules! bytecode {
 macro_rules! bytecode_internal {
     // Nothing left to do
     ($code:ident, ) => {};
-    // WASM opcodes
+    // WASM const opcodes
     ($code:ident, $x:ident [$v:expr] $($rest:tt)*) => {{
-        let n = $crate::evm_types::OpcodeId::$x($v).postfix().expect("opcode with postfix");
-        $code.write_op($crate::evm_types::OpcodeId::$x($v));
+        let n = $crate::evm_types::OpcodeId::$x.postfix().expect("opcode with postfix");
+        $code.write_const($crate::evm_types::OpcodeId::$x, $v as u64);
         $crate::bytecode_internal!($code, $($rest)*);
     }};
     // PUSHX opcodes

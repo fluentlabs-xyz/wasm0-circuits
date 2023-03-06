@@ -113,10 +113,10 @@ pub enum OpcodeId {
     I64Store32,
     CurrentMemory,
     GrowMemory,
-    I32Const(u32),
-    I64Const(u64),
-    F32Const(u32),
-    F64Const(u64),
+    I32Const,
+    I64Const,
+    F32Const,
+    F64Const,
     I32Eqz,
     I32Eq,
     I32Ne,
@@ -345,7 +345,7 @@ impl OpcodeId {
     /// Returns `true` if the `OpcodeId` is a `PUSHn`.
     pub fn is_push(&self) -> bool {
         match self {
-            OpcodeId::I32Const(_) | OpcodeId::I64Const(_) => true,
+            OpcodeId::I32Const | OpcodeId::I64Const => true,
             _ => {
                 self.as_u8() >= Self::PUSH1.as_u8() && self.as_u8() <= Self::PUSH32.as_u8()
             },
@@ -441,10 +441,10 @@ impl OpcodeId {
             OpcodeId::I64Store32 => 0x3e,
             OpcodeId::CurrentMemory => 0x3f,
             OpcodeId::GrowMemory => 0x40,
-            OpcodeId::I32Const(_) => 0x41,
-            OpcodeId::I64Const(_) => 0x42,
-            OpcodeId::F32Const(_) => 0x43,
-            OpcodeId::F64Const(_) => 0x44,
+            OpcodeId::I32Const => 0x41,
+            OpcodeId::I64Const => 0x42,
+            OpcodeId::F32Const => 0x43,
+            OpcodeId::F64Const => 0x44,
             OpcodeId::I32Eqz => 0x45,
             OpcodeId::I32Eq => 0x46,
             OpcodeId::I32Ne => 0x47,
@@ -688,8 +688,8 @@ impl OpcodeId {
 
             OpcodeId::I32Add => (0, 1022),
             OpcodeId::I64Add => (0, 1022),
-            OpcodeId::I32Const(_) => (1, 1024),
-            OpcodeId::I64Const(_) => (1, 1024),
+            OpcodeId::I32Const => (1, 1024),
+            OpcodeId::I64Const => (1, 1024),
 
             OpcodeId::SHA3 => (0, 1022),
             OpcodeId::ADDRESS => (1, 1024),
@@ -766,8 +766,8 @@ impl OpcodeId {
     /// If operation has postfix returns it, otherwise None.
     pub fn postfix(&self) -> Option<u8> {
         match self {
-            OpcodeId::I32Const(_) => Some(4),
-            OpcodeId::I64Const(_) => Some(8),
+            OpcodeId::I32Const => Some(4),
+            OpcodeId::I64Const => Some(8),
             _ => {
                 if self.is_push() {
                     Some(self.as_u8() - OpcodeId::PUSH1.as_u8() + 1)
@@ -788,8 +788,8 @@ impl OpcodeId {
     /// push opcodes.
     pub fn data_len(&self) -> usize {
         match self {
-            OpcodeId::I32Const(_) => 4,
-            OpcodeId::I64Const(_) => 8,
+            OpcodeId::I32Const => 4,
+            OpcodeId::I64Const => 8,
             _ => {
                 if self.is_push() {
                     (self.as_u8() - OpcodeId::PUSH1.as_u8() + 1) as usize
@@ -849,10 +849,10 @@ impl From<u8> for OpcodeId {
             0x3e => OpcodeId::I64Store32,
             0x3f => OpcodeId::CurrentMemory,
             0x40 => OpcodeId::GrowMemory,
-            0x41 => OpcodeId::I32Const(0),
-            0x42 => OpcodeId::I64Const(0),
-            0x43 => OpcodeId::F32Const(0),
-            0x44 => OpcodeId::F64Const(0),
+            0x41 => OpcodeId::I32Const,
+            0x42 => OpcodeId::I64Const,
+            0x43 => OpcodeId::F32Const,
+            0x44 => OpcodeId::F64Const,
             0x45 => OpcodeId::I32Eqz,
             0x46 => OpcodeId::I32Eq,
             0x47 => OpcodeId::I32Ne,
@@ -1082,14 +1082,10 @@ impl FromStr for OpcodeId {
             "i64_store32" => OpcodeId::I64Store32,
             "current_memory" => OpcodeId::CurrentMemory,
             "grow_memory" => OpcodeId::GrowMemory,
-            "i32_const" => {
-                OpcodeId::I32Const(items[1].parse::<u32>().map_err(|e| TracingError(e.to_string()))?)
-            }
-            "i64_const" => {
-                OpcodeId::I64Const(items[1].parse::<u64>().map_err(|e| TracingError(e.to_string()))?)
-            }
-            "f32_const" => OpcodeId::F32Const(0),
-            "f64_const" => OpcodeId::F64Const(0),
+            "i32_const" => OpcodeId::I32Const,
+            "i64_const" => OpcodeId::I64Const,
+            "f32_const" => OpcodeId::F32Const,
+            "f64_const" => OpcodeId::F64Const,
             "i32_eqz" => OpcodeId::I32Eqz,
             "i32_eq" => OpcodeId::I32Eq,
             "i32_ne" => OpcodeId::I32Ne,

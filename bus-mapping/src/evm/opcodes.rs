@@ -187,8 +187,8 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         // OpcodeId::I64Store32 => Dummy::gen_associated_ops_extended,
         // OpcodeId::CurrentMemory => Dummy::gen_associated_ops_extended,
         // OpcodeId::GrowMemory => Dummy::gen_associated_ops_extended,
-        OpcodeId::I32Const(_) |
-        OpcodeId::I64Const(_) => StackOnlyOpcode::<0, 1>::gen_associated_ops_extended,
+        OpcodeId::I32Const |
+        OpcodeId::I64Const => StackOnlyOpcode::<0, 1>::gen_associated_ops_extended,
         // WASM binary opcodes
         OpcodeId::I32Add |
         OpcodeId::I32Sub |

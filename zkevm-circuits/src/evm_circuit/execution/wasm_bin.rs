@@ -318,8 +318,6 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         );
         self.is_64bits.assign(region, offset, Value::known(F::from(is_64bit as u64)))?;
 
-        println!("{} {} {} {} aux1={} aux2={} aux3={}", opcode, lhs, rhs, res, aux1, aux2, aux3);
-
         Ok(())
     }
 }
