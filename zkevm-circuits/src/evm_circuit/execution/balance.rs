@@ -21,7 +21,7 @@ use serde::de::IntoDeserializer;
 #[derive(Clone, Debug)]
 pub(crate) struct BalanceGadget<F> {
     same_context: SameContextGadget<F>,
-    // address: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
+    address: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
     // reversion_info: ReversionInfo<F>,
     // tx_id: Cell<F>,
     is_warm: Cell<F>,
@@ -39,7 +39,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         // let address_word = cb.query_word_rlc();
-        // let address = cb.query_word_rlc();
+        let address = cb.query_word_rlc();
         let address_dest_offset = cb.query_cell();
         let balance_dest_offset = cb.query_cell();
         // cb.stack_pop(address_word.expr());
@@ -59,11 +59,11 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         // For non-existing accounts the code_hash must be 0 in the rw_table.
         // cb.account_read(address.expr(), AccountFieldTag::CodeHash, code_hash.expr());
         let not_exists = IsZeroGadget::construct(cb, code_hash.expr());
-        // let exists = not::expr(not_exists.expr());
+        let exists = not::expr(not_exists.expr());
         let balance = cb.query_word_rlc();
-        // cb.condition(exists.expr(), |cb| {
-        //     cb.account_read(address.expr(), AccountFieldTag::Balance, balance.expr());
-        // });
+        cb.condition(exists.expr(), |cb| {
+            cb.account_read(address.expr(), AccountFieldTag::Balance, balance.expr());
+        });
         cb.condition(not_exists.expr(), |cb| {
             cb.require_zero("balance is zero when non_exists", balance.expr());
         });
@@ -78,14 +78,12 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
             GasCost::WARM_ACCESS.expr(),
             GasCost::COLD_ACCOUNT_ACCESS.expr(),
         );
-        // let gas_cost = GasCost::COLD_ACCOUNT_ACCESS.expr();
-
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(39.expr() /*+ exists.expr()*/),
+            rw_counter: Delta(39.expr() + exists.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(2.expr()),
             gas_left: Delta(-gas_cost),
-            // reversible_write_counter: Delta(1.expr()),
+            reversible_write_counter: Delta(1.expr()),
             ..Default::default()
         };
 
@@ -94,7 +92,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
         Self {
             same_context,
-            // address,
+            address,
             // reversion_info,
             // tx_id,
             is_warm,
@@ -115,6 +113,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
+
         self.same_context.assign_exec_step(region, offset, step)?;
 
         // let address = block.rws[step.rw_indices[0]].stack_value();
@@ -135,7 +134,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         //     call.is_persistent,
         // )?;
 
-        // let (_, is_warm) = block.rws[step.rw_indices[4]].tx_access_list_value_pair();
+        let (_, is_warm) = block.rws[step.rw_indices[5]].tx_access_list_value_pair();
         self.is_warm
             .assign(region, offset, Value::known(F::from(false as u64)))?; // TODO temporal hardcoded 'false'
             // .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
@@ -159,6 +158,11 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
             offset,
             Some(balance.to_le_bytes()),
         )?;
+        // self.address.assign(
+        //     region,
+        //     offset,
+        //     Some(address.to_le_bytes()),
+        // )?;
         self.balance_dest_offset.assign(
             region,
             offset,
