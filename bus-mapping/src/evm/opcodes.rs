@@ -108,6 +108,10 @@ pub trait Opcode: Debug {
         unreachable!("not implemented")
     }
 
+    /// Generate the associated [`MemoryOp`](crate::operation::MemoryOp)s,
+    /// [`StackOp`](crate::operation::StackOp)s, and
+    /// [`StorageOp`](crate::operation::StorageOp)s associated to the Opcode
+    /// is implemented for.
     fn gen_associated_ops_extended(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
