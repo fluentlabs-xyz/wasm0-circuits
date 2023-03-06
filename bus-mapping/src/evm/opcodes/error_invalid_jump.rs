@@ -4,9 +4,9 @@ use crate::Error;
 use eth_types::{GethExecStep, StackWord, ToAddress, ToWord, Word};
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct ErrorInvalidJump;
+pub(crate) struct InvalidJump;
 
-impl Opcode for ErrorInvalidJump {
+impl Opcode for InvalidJump {
     fn gen_associated_ops(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
@@ -22,17 +22,16 @@ impl Opcode for ErrorInvalidJump {
         // assert op code can only be JUMP or JUMPI
         assert!(geth_step.op == OpcodeId::JUMP || geth_step.op == OpcodeId::JUMPI);
         let is_jumpi = geth_step.op == OpcodeId::JUMPI;
-        let dest = geth_steps[0].stack.last()?.to_address();
         let mut condition = StackWord::zero();
         if is_jumpi {
             condition = geth_step.stack.nth_last(1)?;
         }
         unreachable!("not supported");
-        // state.stack_read(
-        //     &mut exec_step,
-        //     geth_step.stack.last_filled(),
-        //     dest.to_word(),
-        // )?;
+        state.stack_read(
+            &mut exec_step,
+            geth_step.stack.last_filled(),
+            geth_step.stack.last()?,
+        )?;
         if is_jumpi {
             state.stack_read(
                 &mut exec_step,

@@ -44,7 +44,7 @@ impl FromStr for StackAddress {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.strip_prefix("0x").unwrap_or(s);
         let value = usize::from_str_radix(s, 16).map_err(|_| Error::StackAddressParsing)?;
-        // Stack only has 1023 slots avaliable.
+        // Stack only has 1023 slots available.
         if value >= 1024 {
             return Err(Error::InvalidStackPointer);
         };
@@ -125,7 +125,7 @@ impl<W : Clone + Sized + Serialize + ToBigEndian> Stack<W> {
         Stack(words)
     }
 
-    /// Returns the first avaliable/free `StackAddress`.
+    /// Returns the first available/free `StackAddress`.
     pub fn stack_pointer(&self) -> StackAddress {
         // Stack has 1024 slots.
         // First allocation slot for us in the stack is 1023.
@@ -137,7 +137,7 @@ impl<W : Clone + Sized + Serialize + ToBigEndian> Stack<W> {
         StackAddress::from(1024 - self.0.len())
     }
 
-    /// Returns the second last filled `StackAddress`.
+    /// Returns the n-th last filled `StackAddress`.
     pub fn nth_last_filled(&self, nth: usize) -> StackAddress {
         StackAddress::from(1024 - self.0.len() + nth)
     }
@@ -147,8 +147,11 @@ impl<W : Clone + Sized + Serialize + ToBigEndian> Stack<W> {
         self.0.last().cloned().ok_or(Error::InvalidStackPointer)
     }
 
-    /// Returns the second last [`Word`] allocated in the `Stack`.
+    /// Returns the n-th last [`Word`] allocated in the `Stack`.
     pub fn nth_last(&self, nth: usize) -> Result<W, Error> {
+        if self.0.len() < (nth + 1) {
+            return Err(Error::InvalidStackPointer);
+        }
         self.0
             .get(self.0.len() - (nth + 1))
             .cloned()

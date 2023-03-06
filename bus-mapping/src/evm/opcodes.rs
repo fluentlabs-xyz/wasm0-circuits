@@ -1,52 +1,21 @@
 //! Definition of each opcode of the EVM.
-use core::fmt::Debug;
-
-use address::Address;
-use balance::Balance;
-use calldatacopy::Calldatacopy;
-use calldataload::Calldataload;
-use calldatasize::Calldatasize;
-use caller::Caller;
-use callop::CallOpcode;
-use callvalue::Callvalue;
-use codecopy::Codecopy;
-use codesize::Codesize;
-// use create::DummyCreate;
-use error_invalid_jump::ErrorInvalidJump;
-use error_oog_call::OOGCall;
-use eth_types::{evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED}, evm_unimplemented, GethExecStep, GethExecTrace, ToAddress, ToWord, Word};
-use eth_types::evm_types::{Memory, MemoryAddress};
-// use exp::Exponentiation;
-// use extcodecopy::Extcodecopy;
-// use extcodehash::Extcodehash;
-// use extcodesize::Extcodesize;
-use gasprice::GasPrice;
-use keccak256::EMPTY_HASH;
-// use logs::Log;
-// use mload::Mload;
-// use mstore::Mstore;
-use origin::Origin;
-use return_revert::ReturnRevert;
-use returndatacopy::Returndatacopy;
-use returndatasize::Returndatasize;
-use selfbalance::Selfbalance;
-// use sload::Sload;
-// use sstore::Sstore;
-use stackonlyop::StackOnlyOpcode;
-use stop::Stop;
-
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, ExecStep},
     error::{ExecError, OogError},
     Error,
     evm::OpcodeId,
     operation::{
-        AccountField, CallContextField, RW, TxAccessListAccountOp, TxReceiptField, TxRefundOp,
+        AccountField, AccountOp, CallContextField, RW, TxAccessListAccountOp, TxReceiptField,
+        TxRefundOp,
     },
 };
-use crate::evm::opcodes::chainid::ChainId;
-use crate::evm::opcodes::number::Number;
-use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
+use core::fmt::Debug;
+use eth_types::{
+    evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED},
+    evm_unimplemented, GethExecStep, ToAddress, ToWord, Word,
+};
+use ethers_core::utils::get_contract_address;
+use keccak256::EMPTY_HASH;
 
 use self::sha3::Sha3;
 #[cfg(any(feature = "test", test))]
@@ -89,9 +58,46 @@ mod stop;
 
 mod error_invalid_jump;
 mod error_oog_call;
+mod error_oog_exp;
+mod error_oog_log;
+mod error_oog_sload_sstore;
+mod error_return_data_outofbound;
+mod error_simple;
+mod error_write_protection;
 
 #[cfg(test)]
 mod memory_expansion_test;
+
+use address::Address;
+use balance::Balance;
+use calldatacopy::Calldatacopy;
+use calldataload::Calldataload;
+use calldatasize::Calldatasize;
+use caller::Caller;
+use callop::CallOpcode;
+use callvalue::Callvalue;
+use codecopy::Codecopy;
+use codesize::Codesize;
+use error_invalid_jump::InvalidJump;
+use error_oog_call::OOGCall;
+use error_oog_exp::OOGExp;
+use error_oog_log::ErrorOOGLog;
+use error_oog_sload_sstore::OOGSloadSstore;
+use error_return_data_outofbound::ErrorReturnDataOutOfBound;
+use error_simple::ErrorSimple;
+use error_write_protection::ErrorWriteProtection;
+use eth_types::evm_types::{Memory, MemoryAddress};
+use gasprice::GasPrice;
+use origin::Origin;
+use return_revert::ReturnRevert;
+use returndatacopy::Returndatacopy;
+use returndatasize::Returndatasize;
+use selfbalance::Selfbalance;
+use stackonlyop::StackOnlyOpcode;
+use stop::Stop;
+use crate::evm::opcodes::chainid::ChainId;
+use crate::evm::opcodes::number::Number;
+use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
 
 /// Generic opcode trait which defines the logic of the
 /// [`Operation`](crate::operation::Operation) that should be generated for one
@@ -308,10 +314,19 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
 
 fn fn_gen_error_state_associated_ops(error: &ExecError) -> Option<FnGenAssociatedOps> {
     match error {
-        ExecError::InvalidJump => Some(ErrorInvalidJump::gen_associated_ops_extended),
+        ExecError::InvalidJump => Some(InvalidJump::gen_associated_ops_extended),
+        ExecError::InvalidOpcode => Some(ErrorSimple::gen_associated_ops_extended),
         ExecError::OutOfGas(OogError::Call) => Some(OOGCall::gen_associated_ops_extended),
+        ExecError::OutOfGas(OogError::Constant) => Some(ErrorSimple::gen_associated_ops_extended),
+        ExecError::OutOfGas(OogError::Exp) => Some(OOGExp::gen_associated_ops_extended),
+        ExecError::OutOfGas(OogError::Log) => Some(ErrorOOGLog::gen_associated_ops_extended),
+        ExecError::OutOfGas(OogError::SloadSstore) => Some(OOGSloadSstore::gen_associated_ops_extended),
+        ExecError::StackOverflow => Some(ErrorSimple::gen_associated_ops_extended),
+        ExecError::StackUnderflow => Some(ErrorSimple::gen_associated_ops_extended),
         // call & callcode can encounter InsufficientBalance error, Use pop-7 generic CallOpcode
         ExecError::InsufficientBalance => Some(CallOpcode::<7>::gen_associated_ops_extended),
+        ExecError::WriteProtection => Some(ErrorWriteProtection::gen_associated_ops_extended),
+        ExecError::ReturnDataOutOfBounds => Some(ErrorReturnDataOutOfBound::gen_associated_ops_extended),
         // more future errors place here
         _ => {
             evm_unimplemented!("TODO: error state {:?} not implemented", error);
@@ -329,8 +344,6 @@ pub fn gen_associated_ops(
     geth_steps: &[GethExecStep],
     global_memory: &mut Memory,
 ) -> Result<Vec<ExecStep>, Error> {
-    let fn_gen_associated_ops = fn_gen_associated_ops(opcode_id);
-
     let memory_enabled = !geth_steps.iter().all(|s| s.memory.is_empty());
     if memory_enabled {
         let steps_memory = &geth_steps[0].memory;
@@ -347,9 +360,10 @@ pub fn gen_associated_ops(
     };
     if let Some(exec_error) = state.get_step_err(geth_step, next_step).unwrap() {
         log::warn!(
-            "geth error {:?} occurred in  {:?}",
+            "geth error {:?} occurred in  {:?} at pc {:?}",
             exec_error,
-            geth_step.op
+            geth_step.op,
+            geth_step.pc,
         );
 
         exec_step.error = Some(exec_error.clone());
@@ -361,7 +375,7 @@ pub fn gen_associated_ops(
         } else {
             // For exceptions that already enter next call context, but fail immediately
             // (e.g. Depth, InsufficientBalance), we still need to parse the call.
-            if geth_step.op.is_call_or_create() && !exec_step.oog_or_stack_error() {
+            if geth_step.op.is_call_or_create() {
                 let call = state.parse_call(geth_step)?;
                 state.push_call(call);
                 // For exceptions that fail to enter next call context, we need
@@ -374,6 +388,7 @@ pub fn gen_associated_ops(
         }
     }
     // if no errors, continue as normal
+    let fn_gen_associated_ops = fn_gen_associated_ops(opcode_id);
     fn_gen_associated_ops(state, geth_steps, global_memory)
 }
 
@@ -409,13 +424,13 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
 
     // Add caller and callee into access list
     for address in [call.caller_address, call.address] {
-        state.sdb.add_account_to_access_list(address);
+        let is_warm_prev = !state.sdb.add_account_to_access_list(address);
         state.tx_accesslist_account_write(
             &mut exec_step,
             state.tx_ctx.id(),
             address,
             true,
-            false,
+            is_warm_prev,
         )?;
     }
 
@@ -438,21 +453,38 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
         call.caller_address,
         call.address,
         call.value,
-        state.tx.gas_price * state.tx.gas,
+        Some(state.tx.gas_price * state.tx.gas),
     )?;
 
     // Get code_hash of callee
-    let callee_code_hash = call.code_hash;
-    let callee_exists = !state.sdb.get_account(&call.address).1.is_empty();
-    let (callee_code_hash_word, is_empty_code_hash) = if callee_exists {
+    let (_, callee_account) = state.sdb.get_account(&call.address);
+    let callee_exists = !callee_account.is_empty();
+    let (callee_code_hash, is_empty_code_hash) = if callee_exists {
         (
-            callee_code_hash.to_word(),
-            callee_code_hash.to_fixed_bytes() == *EMPTY_HASH,
+            call.code_hash.to_word(),
+            call.code_hash.to_fixed_bytes() == *EMPTY_HASH,
         )
     } else {
         (Word::zero(), true)
     };
 
+    // In case of contract creation we wish to verify the correctness of the
+    // contract's address (callee). This address is defined as:
+    //
+    // Keccak256(RLP([tx_caller, tx_nonce]))[12:]
+    //
+    // We feed the RLP-encoded bytes to the block's SHA3 inputs, which gets assigned
+    // to the Keccak circuit, so that the BeginTxGadget can do a lookup to the
+    // Keccak table and verify the contract address.
+    if state.tx.is_create() {
+        state.block.sha3_inputs.push({
+            let mut stream = ethers_core::utils::rlp::RlpStream::new();
+            stream.begin_list(2);
+            stream.append(&caller_address);
+            stream.append(&nonce_prev);
+            stream.out().to_vec()
+        });
+    }
 
     // There are 4 branches from here.
     match (
@@ -462,13 +494,26 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
     ) {
         // 1. Creation transaction.
         (true, _, _) => {
+            state.push_op_reversible(
+                &mut exec_step,
+                RW::WRITE,
+                AccountOp {
+                    address: call.address,
+                    field: AccountField::Nonce,
+                    value: 1.into(),
+                    value_prev: 0.into(),
+                },
+            )?;
             for (field, value) in [
                 (CallContextField::Depth, call.depth.into()),
                 (
                     CallContextField::CallerAddress,
                     call.caller_address.to_word(),
                 ),
-                (CallContextField::CalleeAddress, call.address.to_word()),
+                (
+                    CallContextField::CalleeAddress,
+                    get_contract_address(caller_address, nonce_prev).to_word(),
+                ),
                 (
                     CallContextField::CallDataOffset,
                     call.call_data_offset.into(),
@@ -498,9 +543,9 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
                 &mut exec_step,
                 call.address,
                 AccountField::CodeHash,
-                callee_code_hash_word,
-                callee_code_hash_word,
-            )?;
+                callee_code_hash,
+                callee_code_hash,
+            );
 
             // 3. Call to account with empty code.
             if !is_empty_code_hash {
@@ -528,7 +573,7 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
                     (CallContextField::LastCalleeReturnDataLength, 0.into()),
                     (CallContextField::IsRoot, 1.into()),
                     (CallContextField::IsCreate, 0.into()),
-                    (CallContextField::CodeHash, callee_code_hash_word),
+                    (CallContextField::CodeHash, callee_code_hash),
                 ] {
                     state.call_context_write(&mut exec_step, call.call_id, field, value);
                 }

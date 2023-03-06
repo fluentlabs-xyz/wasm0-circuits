@@ -57,9 +57,7 @@ use crate::bytecode_circuit::circuit::{
 use crate::copy_circuit::{CopyCircuit, CopyCircuitConfig, CopyCircuitConfigArgs};
 use crate::evm_circuit::{EvmCircuit, EvmCircuitConfig, EvmCircuitConfigArgs};
 use crate::exp_circuit::{ExpCircuit, ExpCircuitConfig};
-use crate::keccak_circuit::keccak_packed_multi::{
-    KeccakCircuit, KeccakCircuitConfig, KeccakCircuitConfigArgs,
-};
+use crate::keccak_circuit::{KeccakCircuit, KeccakCircuitConfig, KeccakCircuitConfigArgs};
 use crate::pi_circuit::{PiCircuit, PiCircuitConfig, PiCircuitConfigArgs};
 use crate::state_circuit::{StateCircuit, StateCircuitConfig, StateCircuitConfigArgs};
 use crate::table::{
@@ -452,7 +450,7 @@ impl<F: Field, const MAX_TXS: usize, const MAX_CALLDATA: usize, const MOCK_RANDO
 }
 
 #[cfg(test)]
-mod super_circuit_tests {
+pub(crate) mod super_circuit_tests {
     use super::*;
     use ethers_signers::{LocalWallet, Signer};
     use halo2_proofs::dev::MockProver;
@@ -496,7 +494,7 @@ mod super_circuit_tests {
         }
     }
 
-    fn block_1tx() -> GethData {
+    pub(crate) fn block_1tx() -> GethData {
         let mut rng = ChaCha20Rng::seed_from_u64(2);
 
         let chain_id = (*MOCK_CHAIN_ID).as_u64();
@@ -597,8 +595,10 @@ mod super_circuit_tests {
             max_calldata: MAX_CALLDATA,
             max_rws: 256,
             max_copy_rows: 256,
+            max_exp_steps: 256,
             max_bytecode: 512,
-            keccak_padding: None,
+            max_evm_rows: 0,
+            max_keccak_rows: 0,
         };
         test_super_circuit::<MAX_TXS, MAX_CALLDATA, TEST_MOCK_RANDOMNESS>(block, circuits_params);
     }
@@ -613,8 +613,10 @@ mod super_circuit_tests {
             max_calldata: MAX_CALLDATA,
             max_rws: 256,
             max_copy_rows: 256,
+            max_exp_steps: 256,
             max_bytecode: 512,
-            keccak_padding: None,
+            max_evm_rows: 0,
+            max_keccak_rows: 0,
         };
         test_super_circuit::<MAX_TXS, MAX_CALLDATA, TEST_MOCK_RANDOMNESS>(block, circuits_params);
     }
@@ -629,8 +631,10 @@ mod super_circuit_tests {
             max_calldata: MAX_CALLDATA,
             max_rws: 256,
             max_copy_rows: 256,
+            max_exp_steps: 256,
             max_bytecode: 512,
-            keccak_padding: None,
+            max_evm_rows: 0,
+            max_keccak_rows: 0,
         };
         test_super_circuit::<MAX_TXS, MAX_CALLDATA, TEST_MOCK_RANDOMNESS>(block, circuits_params);
     }

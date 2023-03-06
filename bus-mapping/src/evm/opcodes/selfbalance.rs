@@ -40,7 +40,7 @@ impl Opcode for Selfbalance {
             AccountField::Balance,
             self_balance,
             self_balance,
-        )?;
+        );
 
         // Copy result to memory
         let dest_offset = geth_step.stack.nth_last(0)?;
