@@ -85,7 +85,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(2.expr()),
             gas_left: Delta(-gas_cost),
-            // reversible_write_counter: Delta(1.expr()),
+            reversible_write_counter: Delta(1.expr()),
             ..Default::default()
         };
 
@@ -115,6 +115,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
+
         self.same_context.assign_exec_step(region, offset, step)?;
 
         // let address = block.rws[step.rw_indices[0]].stack_value();
