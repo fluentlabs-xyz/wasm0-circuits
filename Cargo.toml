@@ -12,6 +12,7 @@ members = [
     "mock",
     "wasm-tracer",
     "testool",
+    "first-prover",
     "golang_utils",
 ]
 
