@@ -1,3 +1,4 @@
+use std::io::Read;
 use crate::evm_circuit::execution::ExecutionGadget;
 use crate::evm_circuit::param::N_BYTES_ACCOUNT_ADDRESS;
 use crate::evm_circuit::param::N_BYTES_WORD;
@@ -141,8 +142,8 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
         let code_hash = block.rws[step.rw_indices[6]].account_value_pair().0;
         // let code_hash = call.code_hash;
-        // self.code_hash.assign(region, offset, region.word_rlc(code_hash))?;
-        // self.not_exists.assign_value(region, offset, region.word_rlc(code_hash))?;
+        self.code_hash.assign(region, offset, region.word_rlc(code_hash))?;
+        self.not_exists.assign_value(region, offset, region.word_rlc(code_hash))?;
         let address_rw_index = 8;
         let balance_rw_index: usize = address_rw_index + N_BYTES_ACCOUNT_ADDRESS;
         let balance: U256 = if code_hash.is_zero() {
@@ -154,7 +155,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
                 .collect::<Vec<u8>>();
             let balance: eth_types::Word = balance_vec.as_slice().try_into().unwrap();
             // TODO temp solution
-            let balance = eth_types::Word::from(0u64 << 20);
+            // let balance = eth_types::Word::from(0u64 << 20);
             balance
         };
         self.balance.assign(

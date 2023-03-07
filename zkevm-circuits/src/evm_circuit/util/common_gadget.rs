@@ -7,6 +7,8 @@ use super::{
 use crate::{
     evm_circuit::{
         param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_GAS, N_BYTES_MEMORY_WORD_SIZE},
+        step::ExecutionState,
+        table::{FixedTableTag, Lookup},
         util::{
             constraint_builder::{
                 ConstraintBuilder, ReversionInfo, StepStateTransition,
@@ -334,7 +336,8 @@ impl<F: Field, const N_ADDENDS: usize, const INCREASE: bool>
 
 #[derive(Clone, Debug)]
 pub(crate) struct TransferWithGasFeeGadget<F> {
-    sender: UpdateBalanceGadget<F, 3, false>,
+    sender_sub_fee: UpdateBalanceGadget<F, 2, false>,
+    sender_sub_value: UpdateBalanceGadget<F, 2, false>,
     receiver: UpdateBalanceGadget<F, 2, true>,
 }
 
@@ -347,38 +350,53 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
         gas_fee: Word<F>,
         reversion_info: &mut ReversionInfo<F>,
     ) -> Self {
-        let sender = UpdateBalanceGadget::construct(
+        let sender_sub_fee =
+            UpdateBalanceGadget::construct(cb, sender_address.expr(), vec![gas_fee], None);
+        let sender_sub_value = UpdateBalanceGadget::construct(
             cb,
             sender_address,
-            vec![value.clone(), gas_fee],
+            vec![value.clone()],
             Some(reversion_info),
         );
         let receiver =
             UpdateBalanceGadget::construct(cb, receiver_address, vec![value], Some(reversion_info));
 
-        Self { sender, receiver }
+        Self {
+            sender_sub_fee,
+            sender_sub_value,
+            receiver,
+        }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn assign(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
-        (sender_balance, sender_balance_prev): (U256, U256),
-        (receiver_balance, receiver_balance_prev): (U256, U256),
+        (sender_balance_sub_fee, prev_sender_balance_sub_fee): (U256, U256),
+        (sender_balance_sub_value, prev_sender_balance_sub_value): (U256, U256),
+        (receiver_balance, prev_receiver_balance): (U256, U256),
         value: U256,
         gas_fee: U256,
     ) -> Result<(), Error> {
-        self.sender.assign(
+        self.sender_sub_fee.assign(
             region,
             offset,
-            sender_balance_prev,
-            vec![value, gas_fee],
-            sender_balance,
+            prev_sender_balance_sub_fee,
+            vec![gas_fee],
+            sender_balance_sub_fee,
+        )?;
+        self.sender_sub_value.assign(
+            region,
+            offset,
+            prev_sender_balance_sub_value,
+            vec![value],
+            sender_balance_sub_value,
         )?;
         self.receiver.assign(
             region,
             offset,
-            receiver_balance_prev,
+            prev_receiver_balance,
             vec![value],
             receiver_balance,
         )?;
@@ -472,7 +490,15 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
         is_call: Expression<F>,
         is_callcode: Expression<F>,
         is_delegatecall: Expression<F>,
+        is_staticcall: Expression<F>,
     ) -> Self {
+        // Constrain opcode must be one of CALL, CALLCODE, DELEGATECALL or STATICCALL.
+        cb.require_equal(
+            "Opcode should be CALL, CALLCODE, DELEGATECALL or STATICCALL",
+            is_call.expr() + is_callcode.expr() + is_delegatecall.expr() + is_staticcall.expr(),
+            1.expr(),
+        );
+
         let gas_word = cb.query_word_rlc();
         let callee_address_word = cb.query_word_rlc();
         let value = cb.query_word_rlc();
@@ -515,7 +541,7 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
         // construct common gadget
         let value_is_zero = IsZeroGadget::construct(cb, sum::expr(&value.cells));
         let has_value = select::expr(
-            is_delegatecall.expr(),
+            is_delegatecall.expr() + is_staticcall.expr(),
             0.expr(),
             1.expr() - value_is_zero.expr(),
         );
@@ -654,5 +680,251 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
         } + memory_expansion_gas_cost;
 
         Ok(gas_cost)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SloadGasGadget<F> {
+    is_warm: Expression<F>,
+    gas_cost: Expression<F>,
+}
+
+impl<F: Field> SloadGasGadget<F> {
+    pub(crate) fn construct(_cb: &mut ConstraintBuilder<F>, is_warm: Expression<F>) -> Self {
+        let gas_cost = select::expr(
+            is_warm.expr(),
+            GasCost::WARM_ACCESS.expr(),
+            GasCost::COLD_SLOAD.expr(),
+        );
+
+        Self { is_warm, gas_cost }
+    }
+
+    pub(crate) fn expr(&self) -> Expression<F> {
+        // Return the gas cost
+        self.gas_cost.clone()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SstoreGasGadget<F> {
+    value: Cell<F>,
+    value_prev: Cell<F>,
+    original_value: Cell<F>,
+    is_warm: Cell<F>,
+    gas_cost: Expression<F>,
+    value_eq_prev: IsEqualGadget<F>,
+    original_eq_prev: IsEqualGadget<F>,
+    original_is_zero: IsZeroGadget<F>,
+}
+
+impl<F: Field> SstoreGasGadget<F> {
+    pub(crate) fn construct(
+        cb: &mut ConstraintBuilder<F>,
+        value: Cell<F>,
+        value_prev: Cell<F>,
+        original_value: Cell<F>,
+        is_warm: Cell<F>,
+    ) -> Self {
+        let value_eq_prev = IsEqualGadget::construct(cb, value.expr(), value_prev.expr());
+        let original_eq_prev =
+            IsEqualGadget::construct(cb, original_value.expr(), value_prev.expr());
+        let original_is_zero = IsZeroGadget::construct(cb, original_value.expr());
+        let warm_case_gas = select::expr(
+            value_eq_prev.expr(),
+            GasCost::WARM_ACCESS.expr(),
+            select::expr(
+                original_eq_prev.expr(),
+                select::expr(
+                    original_is_zero.expr(),
+                    GasCost::SSTORE_SET.expr(),
+                    GasCost::SSTORE_RESET.expr(),
+                ),
+                GasCost::WARM_ACCESS.expr(),
+            ),
+        );
+        let gas_cost = select::expr(
+            is_warm.expr(),
+            warm_case_gas.expr(),
+            warm_case_gas + GasCost::COLD_SLOAD.expr(),
+        );
+
+        Self {
+            value,
+            value_prev,
+            original_value,
+            is_warm,
+            gas_cost,
+            value_eq_prev,
+            original_eq_prev,
+            original_is_zero,
+        }
+    }
+
+    pub(crate) fn expr(&self) -> Expression<F> {
+        // Return the gas cost
+        self.gas_cost.clone()
+    }
+    pub(crate) fn assign(
+        &self,
+        region: &mut CachedRegion<'_, '_, F>,
+        offset: usize,
+        value: eth_types::Word,
+        value_prev: eth_types::Word,
+        original_value: eth_types::Word,
+        is_warm: bool,
+    ) -> Result<(), Error> {
+        self.value.assign(region, offset, region.word_rlc(value))?;
+        self.value_prev
+            .assign(region, offset, region.word_rlc(value_prev))?;
+        self.original_value
+            .assign(region, offset, region.word_rlc(original_value))?;
+        self.is_warm
+            .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
+        self.value_eq_prev.assign_value(
+            region,
+            offset,
+            region.word_rlc(value),
+            region.word_rlc(value_prev),
+        )?;
+        self.original_eq_prev.assign_value(
+            region,
+            offset,
+            region.word_rlc(original_value),
+            region.word_rlc(value_prev),
+        )?;
+        self.original_is_zero
+            .assign_value(region, offset, region.word_rlc(original_value))?;
+        Ok(())
+    }
+}
+
+pub(crate) fn cal_sload_gas_cost_for_assignment(is_warm: bool) -> u64 {
+    let gas_cost = if is_warm {
+        GasCost::WARM_ACCESS
+    } else {
+        GasCost::COLD_SLOAD
+    };
+
+    gas_cost.0
+}
+
+pub(crate) fn cal_sstore_gas_cost_for_assignment(
+    value: U256,
+    value_prev: U256,
+    original_value: U256,
+    is_warm: bool,
+) -> u64 {
+    let warm_case_gas = if value_prev == value {
+        GasCost::WARM_ACCESS
+    } else if original_value == value_prev {
+        if original_value.is_zero() {
+            GasCost::SSTORE_SET
+        } else {
+            GasCost::SSTORE_RESET
+        }
+    } else {
+        GasCost::WARM_ACCESS
+    };
+    if is_warm {
+        warm_case_gas.0
+    } else {
+        warm_case_gas.0 + GasCost::COLD_SLOAD.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CommonErrorGadget<F> {
+    rw_counter_end_of_reversion: Cell<F>,
+    restore_context: RestoreContextGadget<F>,
+}
+
+impl<F: Field> CommonErrorGadget<F> {
+    pub(crate) fn construct(
+        cb: &mut ConstraintBuilder<F>,
+        opcode: Expression<F>,
+        rw_counter_delta: Expression<F>,
+    ) -> Self {
+        cb.opcode_lookup(opcode.expr(), 1.expr());
+
+        let rw_counter_end_of_reversion = cb.query_cell();
+
+        // current call must be failed.
+        cb.call_context_lookup(false.expr(), None, CallContextFieldTag::IsSuccess, 0.expr());
+
+        cb.call_context_lookup(
+            false.expr(),
+            None,
+            CallContextFieldTag::RwCounterEndOfReversion,
+            rw_counter_end_of_reversion.expr(),
+        );
+
+        // Go to EndTx only when is_root
+        let is_to_end_tx = cb.next.execution_state_selector([ExecutionState::EndTx]);
+        cb.require_equal(
+            "Go to EndTx only when is_root",
+            cb.curr.state.is_root.expr(),
+            is_to_end_tx,
+        );
+
+        // When it's a root call
+        cb.condition(cb.curr.state.is_root.expr(), |cb| {
+            // Do step state transition
+            cb.require_step_state_transition(StepStateTransition {
+                call_id: Same,
+                rw_counter: Delta(rw_counter_delta + cb.curr.state.reversible_write_counter.expr()),
+                ..StepStateTransition::any()
+            });
+        });
+
+        // When it's an internal call, need to restore caller's state as finishing this
+        // call. Restore caller state to next StepState
+        let restore_context = cb.condition(1.expr() - cb.curr.state.is_root.expr(), |cb| {
+            RestoreContextGadget::construct(
+                cb,
+                0.expr(),
+                0.expr(),
+                0.expr(),
+                0.expr(),
+                0.expr(),
+                0.expr(),
+            )
+        });
+
+        // constrain RwCounterEndOfReversion
+        let rw_counter_end_of_step =
+            cb.curr.state.rw_counter.expr() + cb.rw_counter_offset() - 1.expr();
+        cb.require_equal(
+            "rw_counter_end_of_reversion = rw_counter_end_of_step + reversible_counter",
+            rw_counter_end_of_reversion.expr(),
+            rw_counter_end_of_step + cb.curr.state.reversible_write_counter.expr(),
+        );
+
+        Self {
+            rw_counter_end_of_reversion,
+            restore_context,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn assign(
+        &self,
+        region: &mut CachedRegion<'_, '_, F>,
+        offset: usize,
+        block: &Block<F>,
+        call: &Call,
+        step: &ExecStep,
+        rw_offset: usize,
+    ) -> Result<u64, Error> {
+        self.rw_counter_end_of_reversion.assign(
+            region,
+            offset,
+            Value::known(F::from(call.rw_counter_end_of_reversion as u64)),
+        )?;
+        self.restore_context
+            .assign(region, offset, block, call, step, rw_offset)?;
+
+        // NOTE: return value not use for now.
+        Ok(1u64)
     }
 }

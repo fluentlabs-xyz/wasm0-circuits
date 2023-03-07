@@ -10,7 +10,7 @@ members = [
     "eth-types",
     "external-tracer",
     "mock",
-    "wasm-tracer",
+#    "wasm-tracer",
     "testool",
 #    "first-prover",
     "golang_utils",
@@ -37,4 +37,4 @@ debug-assertions = true
 overflow-checks = true
 rpath = false
 lto = "thin"
-incremental = false
+incremental = true

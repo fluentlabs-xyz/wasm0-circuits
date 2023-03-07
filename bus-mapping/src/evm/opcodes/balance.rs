@@ -21,7 +21,6 @@ impl Opcode for Balance {
         global_memory: &Memory,
     ) -> Result<Vec<ExecStep>, Error> {
         let geth_step = &geth_steps[0];
-        let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
 
         // Read account address from stack.
@@ -37,7 +36,7 @@ impl Opcode for Balance {
         // TODO zkwasm-geth reads
 
         // Get balance result from next step.
-        let balance_vec = &geth_second_step.memory.0;
+        let balance_vec = &geth_steps[1].memory.0;
         if balance_vec.len() != BALANCE_BYTE_LENGTH {
             return Err(Error::InvalidGethExecTrace("there is no balance bytes in memory for balance opcode"));
         }
@@ -73,14 +72,15 @@ impl Opcode for Balance {
             TxAccessListAccountOp {
                 tx_id: state.tx_ctx.id(),
                 address,
-                is_warm,
-                is_warm_prev: false,
+                is_warm: true,
+                is_warm_prev: is_warm,
             },
         )?;
 
         // Read account balance.
         let account = state.sdb.get_account(&address).1;
         let exists = !account.is_empty();
+        let balance = account.balance;
         let code_hash = if exists {
             account.code_hash
         } else {
@@ -92,14 +92,7 @@ impl Opcode for Balance {
             AccountField::CodeHash,
             code_hash.to_word(),
             code_hash.to_word(),
-        )?;
-        let mut exists = false;
-        for i in balance_vec {
-            if *i != 0 {
-                exists = true;
-                break;
-            }
-        }
+        );
         if exists {
             state.account_read(
                 &mut exec_step,
@@ -107,7 +100,7 @@ impl Opcode for Balance {
                 AccountField::Balance,
                 Word::from(balance_vec.as_slice()),
                 Word::from(balance_vec.as_slice()),
-            )?;
+            );
         }
 
         // Copy result to memory
@@ -154,10 +147,10 @@ mod balance_tests {
         test_ok(true, false);
     }
 
-    // #[test]
-    // fn test_balance_of_warm_address() {
-    //     test_ok(true, true);
-    // }
+    #[test]
+    fn test_balance_of_warm_address() {
+        test_ok(true, true);
+    }
 
     fn test_ok(exists: bool, is_warm: bool) {
         let account_mem_address: u32 = 0x0;

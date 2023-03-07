@@ -26,6 +26,7 @@ pub mod evm_circuit;
 pub mod exp_circuit;
 pub mod keccak_circuit;
 pub mod pi_circuit;
+pub mod root_circuit;
 pub mod state_circuit;
 pub mod super_circuit;
 pub mod table;
@@ -33,6 +34,9 @@ pub mod wasm_circuit;
 
 #[cfg(any(feature = "test", test))]
 pub mod test_util;
+
+#[cfg(any(feature = "test", test))]
+mod stats;
 
 pub mod tx_circuit;
 pub mod util;

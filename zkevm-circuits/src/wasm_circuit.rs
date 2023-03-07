@@ -189,20 +189,20 @@ impl<F: Field> SubCircuit<F> for WasmCircuit<F> {
             }
             let height = step.execution_state.get_step_height();
 
-            let compilation_tables = CompilationTable {
-                itable: Default::default(),
-                imtable: Default::default(),
-                elem_table: Default::default(),
-                configure_table: Default::default(),
-            };
-            let execution_tables = ExecutionTable {
-                etable: Default::default(),
-                mtable: Default::default(),
-                jtable: Default::default(),
-            };
-            if let Some(bytecode) = block.bytecodes.get(&transaction.callee_address.to_word()) {
-                let tables = wasm_tracer::extract_wasm_trace(&bytecode.bytes).expect("can't create wasm trace");
-            }
+            // let compilation_tables = CompilationTable {
+            //     itable: Default::default(),
+            //     imtable: Default::default(),
+            //     elem_table: Default::default(),
+            //     configure_table: Default::default(),
+            // };
+            // let execution_tables = ExecutionTable {
+            //     etable: Default::default(),
+            //     mtable: Default::default(),
+            //     jtable: Default::default(),
+            // };
+            // if let Some(bytecode) = block.bytecodes.get(&transaction.callee_address.to_word()) {
+            //     let tables = wasm_tracer::extract_wasm_trace(&bytecode.bytes).expect("can't create wasm trace");
+            // }
 
             // let rchip = RangeTableChip::new(config.rtable.clone());
             // let ichip = InstructionTableChip::new(config.itable.clone());
