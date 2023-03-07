@@ -4,9 +4,7 @@ use crate::evm_circuit::param::N_BYTES_WORD;
 use crate::evm_circuit::step::ExecutionState;
 use crate::evm_circuit::util::common_gadget::SameContextGadget;
 use crate::evm_circuit::util::constraint_builder::Transition::Delta;
-use crate::evm_circuit::util::constraint_builder::{
-    ConstraintBuilder, StepStateTransition,
-};
+use crate::evm_circuit::util::constraint_builder::{ConstraintBuilder, ReversionInfo, StepStateTransition};
 use crate::evm_circuit::util::math_gadget::IsZeroGadget;
 use crate::evm_circuit::util::{not, Word};
 use crate::evm_circuit::util::select;
@@ -14,10 +12,10 @@ use crate::evm_circuit::util::CachedRegion;
 use crate::evm_circuit::util::Cell;
 use crate::evm_circuit::util::RandomLinearCombination;
 use crate::evm_circuit::witness::{Block, Call, ExecStep, Transaction};
-use crate::table::{AccountFieldTag, RwTableTag};
+use crate::table::{AccountFieldTag, CallContextFieldTag, RwTableTag};
 use crate::util::Expr;
 use eth_types::evm_types::GasCost;
-use eth_types::Address;
+use eth_types::{Address, ToBigEndian};
 use eth_types::Field;
 use eth_types::ToLittleEndian;
 use eth_types::ToScalar;
@@ -78,8 +76,6 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
         cb.stack_pop(address_dest_offset.expr());
         cb.stack_pop(balance_dest_offset.expr());
-        // cb.memory_rlc_lookup(true.expr(), &address_dest_offset, &address);
-        // cb.memory_rlc_lookup(true.expr(), &balance_dest_offset, &balance);
 
         let gas_cost = select::expr(
             is_warm.expr(),
@@ -87,7 +83,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
             GasCost::COLD_ACCOUNT_ACCESS.expr(),
         );
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(59.expr()/* + exists.expr()*/),
+            rw_counter: Delta(59.expr() + exists.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(2.expr()),
             gas_left: Delta(-gas_cost),
@@ -127,8 +123,6 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         // let address = block.rws[step.rw_indices[0]].stack_value();
         // self.address_word
         //     .assign(region, offset, Some(address.to_le_bytes()))?;
-        // TODO
-        // let address =
         let address_dest_offset = block.rws[step.rw_indices[0]].stack_value();
         let balance_dest_offset = block.rws[step.rw_indices[1]].stack_value();
 
@@ -145,24 +139,22 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         let (_, is_warm) = block.rws[step.rw_indices[5]].tx_access_list_value_pair();
         self.is_warm
             .assign(region, offset, Value::known(F::from(is_warm as u64)))?; // TODO temporal hardcoded 'false'
-            // .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
 
         let code_hash = block.rws[step.rw_indices[6]].account_value_pair().0;
         // let code_hash = call.code_hash;
         // self.code_hash.assign(region, offset, region.word_rlc(code_hash))?;
-        // TODO fetch balance from state
         // self.not_exists.assign_value(region, offset, region.word_rlc(code_hash))?;
-        let balance_rw_index: usize = 8;
-        let address_rw_index = balance_rw_index + N_BYTES_WORD;
+        let address_rw_index = 8;
+        let balance_rw_index: usize = address_rw_index + N_BYTES_ACCOUNT_ADDRESS;
         let balance: U256 = if code_hash.is_zero() {
             eth_types::Word::zero()
         } else {
-            // TODO temp solution
             let balance_vec = step.rw_indices[balance_rw_index..(balance_rw_index+N_BYTES_WORD)]
                 .iter()
                 .map(|&b| block.rws[b].memory_value())
                 .collect::<Vec<u8>>();
             let balance: eth_types::Word = balance_vec.as_slice().try_into().unwrap();
+            // TODO temp solution
             let balance = eth_types::Word::from(0u64 << 20);
             balance
         };
@@ -171,19 +163,19 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
             offset,
             Some(balance.to_le_bytes()),
         )?;
-        // let address: [u8; N_BYTES_ACCOUNT_ADDRESS] = {
-        //     let step1: Vec<(RwTableTag, usize)> = step.rw_indices[address_rw_index..(address_rw_index+N_BYTES_ACCOUNT_ADDRESS)].to_vec();
-        //     let step2: Vec<u8> = step1
-        //         .iter()
-        //         .map(|&b| block.rws[b].memory_value())
-        //         .collect();
-        //     step2.as_slice().try_into().unwrap()
-        // };
-        // self.address.assign(
-        //     region,
-        //     offset,
-        //     Some(address),
-        // )?;
+        let address: [u8; N_BYTES_ACCOUNT_ADDRESS] = {
+            let step1: Vec<(RwTableTag, usize)> = step.rw_indices[address_rw_index..(address_rw_index+N_BYTES_ACCOUNT_ADDRESS)].to_vec();
+            let step2: Vec<u8> = step1
+                .iter()
+                .map(|&b| block.rws[b].memory_value())
+                .collect();
+            step2.as_slice().try_into().unwrap()
+        };
+        self.address.assign(
+            region,
+            offset,
+            Some(address),
+        )?;
         self.balance_dest_offset.assign(
             region,
             offset,

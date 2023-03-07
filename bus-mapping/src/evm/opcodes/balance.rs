@@ -347,25 +347,6 @@ mod balance_tests {
             );
         }
 
-        for idx in 0..BALANCE_BYTE_LENGTH {
-            indices_index += 1;
-            assert_eq!(
-                {
-                    let operation =
-                        &container.memory[indices[indices_index].as_usize()];
-                    (operation.rw(), operation.op())
-                },
-                (
-                    RW::WRITE,
-                    &MemoryOp::new(
-                        1,
-                        MemoryAddress::from(balance_mem_address + idx as u32),
-                        address_balance_bytes[idx]
-                    )
-                )
-            );
-        }
-
         for idx in 0..ADDRESS_BYTE_LENGTH {
             indices_index += 1;
             assert_eq!(
@@ -380,6 +361,25 @@ mod balance_tests {
                         1,
                         MemoryAddress::from(account_mem_address + idx as u32),
                         address[idx]
+                    )
+                )
+            );
+        }
+
+        for idx in 0..BALANCE_BYTE_LENGTH {
+            indices_index += 1;
+            assert_eq!(
+                {
+                    let operation =
+                        &container.memory[indices[indices_index].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::WRITE,
+                    &MemoryOp::new(
+                        1,
+                        MemoryAddress::from(balance_mem_address + idx as u32),
+                        address_balance_bytes[idx]
                     )
                 )
             );

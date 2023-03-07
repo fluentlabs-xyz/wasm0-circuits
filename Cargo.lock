@@ -32,17 +32,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ahash"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c99f64d1e06488f620f932677e24bc6e2897582980441ae90a671415bd7ec2f"
-dependencies = [
- "cfg-if 1.0.0",
- "once_cell",
- "version_check",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -138,7 +127,7 @@ version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
 dependencies = [
- "hermit-abi 0.1.19",
+ "hermit-abi",
  "libc",
  "winapi 0.3.9",
 ]
@@ -420,18 +409,18 @@ checksum = "8f1e260c3a9040a7c19a12468758f4c16f31a81a1fe087482be9570ec864bb6c"
 name = "bus-mapping"
 version = "0.1.0"
 dependencies = [
- "eth-types 0.1.0",
+ "eth-types",
  "ethers-core",
  "ethers-providers",
- "gadgets 0.1.0",
- "golang_utils 0.1.0",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
+ "gadgets",
+ "golang_utils",
+ "halo2_proofs 0.2.0",
  "hex",
  "itertools",
- "keccak256 0.1.0",
+ "keccak256",
  "lazy_static",
  "log",
- "mock 0.1.0",
+ "mock",
  "pretty_assertions",
  "rand",
  "serde",
@@ -440,27 +429,6 @@ dependencies = [
  "strum_macros",
  "tokio",
  "url",
-]
-
-[[package]]
-name = "bus-mapping"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
- "eth-types 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "ethers-core",
- "ethers-providers",
- "gadgets 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "golang_utils 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
- "itertools",
- "keccak256 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "lazy_static",
- "log",
- "serde",
- "serde_json",
- "strum",
- "strum_macros",
 ]
 
 [[package]]
@@ -582,18 +550,18 @@ name = "circuit-benchmarks"
 version = "0.1.0"
 dependencies = [
  "ark-std",
- "bus-mapping 0.1.0",
+ "bus-mapping",
  "env_logger",
- "eth-types 0.1.0",
+ "eth-types",
  "ethers-signers",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
+ "halo2_proofs 0.2.0",
  "itertools",
- "keccak256 0.1.0",
- "mock 0.1.0",
+ "keccak256",
+ "mock",
  "rand",
  "rand_chacha",
  "rand_xorshift",
- "zkevm-circuits 0.1.0",
+ "zkevm-circuits",
 ]
 
 [[package]]
@@ -615,28 +583,13 @@ checksum = "71655c45cb9845d3270c9d6df84ebe72b4dad3c2ba3f7023ad47c144e4e473a5"
 dependencies = [
  "atty",
  "bitflags",
- "clap_derive 3.2.18",
- "clap_lex 0.2.4",
+ "clap_derive",
+ "clap_lex",
  "indexmap",
  "once_cell",
  "strsim 0.10.0",
  "termcolor",
  "textwrap 0.16.0",
-]
-
-[[package]]
-name = "clap"
-version = "4.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3d7ae14b20b94cb02149ed21a86c423859cbe18dc7ed69845cace50e52b40a5"
-dependencies = [
- "bitflags",
- "clap_derive 4.1.8",
- "clap_lex 0.3.2",
- "is-terminal",
- "once_cell",
- "strsim 0.10.0",
- "termcolor",
 ]
 
 [[package]]
@@ -653,32 +606,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "clap_derive"
-version = "4.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44bec8e5c9d09e439c4335b1af0abaab56dcf3b94999a936e1bb47b9134288f0"
-dependencies = [
- "heck",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "clap_lex"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2850f2f5a82cbf437dd5af4d49848fbdfc27c157c3d010345776f952765261c5"
-dependencies = [
- "os_str_bytes",
-]
-
-[[package]]
-name = "clap_lex"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "350b9cf31731f9957399229e9b2adc51eeabdfbe9d71d9a0552275fd12710d09"
 dependencies = [
  "os_str_bytes",
 ]
@@ -1458,27 +1389,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "errno"
-version = "0.2.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f639046355ee4f37944e44f60642c6f3a7efa3cf6b78c78a0d989a8ce6c396a1"
-dependencies = [
- "errno-dragonfly",
- "libc",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "errno-dragonfly"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
-dependencies = [
- "cc",
- "libc",
-]
-
-[[package]]
 name = "eth-keystore"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1506,83 +1416,7 @@ version = "0.1.0"
 dependencies = [
  "ethers-core",
  "ethers-signers",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
- "hex",
- "itertools",
- "lazy_static",
- "libsecp256k1",
- "num",
- "num-bigint",
- "regex",
- "serde",
- "serde_json",
- "serde_with",
- "sha3 0.10.6",
- "strum",
- "strum_macros",
- "subtle",
- "uint",
- "wasm-encoder",
-]
-
-[[package]]
-name = "eth-types"
-version = "0.1.0"
-source = "git+https://github.com/privacy-scaling-explorations/zkevm-circuits.git?branch=main#61e3193de362dc1d0b47825fe1861105e1a7e2df"
-dependencies = [
- "ethers-core",
- "ethers-signers",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
- "hex",
- "itertools",
- "lazy_static",
- "libsecp256k1",
- "num",
- "num-bigint",
- "regex",
- "serde",
- "serde_json",
- "serde_with",
- "sha3 0.10.6",
- "strum",
- "strum_macros",
- "subtle",
- "uint",
-]
-
-[[package]]
-name = "eth-types"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=main#fadb11b9643fd66a730db95a6561a0482991ce9e"
-dependencies = [
- "ethers-core",
- "ethers-signers",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
- "hex",
- "itertools",
- "lazy_static",
- "libsecp256k1",
- "num",
- "num-bigint",
- "regex",
- "serde",
- "serde_json",
- "serde_with",
- "sha3 0.10.6",
- "strum",
- "strum_macros",
- "subtle",
- "uint",
-]
-
-[[package]]
-name = "eth-types"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
- "ethers-core",
- "ethers-signers",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
+ "halo2_proofs 0.2.0",
  "hex",
  "itertools",
  "lazy_static",
@@ -1625,7 +1459,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11da94e443c60508eb62cf256243a64da87304c2802ac2528847f79d750007ef"
 dependencies = [
  "crunchy",
- "fixed-hash 0.7.0",
+ "fixed-hash",
  "impl-rlp",
  "impl-serde",
  "tiny-keccak",
@@ -1638,10 +1472,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2827b94c556145446fcce834ca86b7abf0c39a805883fe20e72c5bfdb5a0dc6"
 dependencies = [
  "ethbloom",
- "fixed-hash 0.7.0",
+ "fixed-hash",
  "impl-rlp",
  "impl-serde",
- "primitive-types 0.11.1",
+ "primitive-types",
  "uint",
 ]
 
@@ -1889,30 +1723,8 @@ checksum = "8ba569491c70ec8471e34aa7e9c0b9e82bb5d2464c0398442d17d3c4af814e5a"
 name = "external-tracer"
 version = "0.1.0"
 dependencies = [
- "eth-types 0.1.0",
- "geth-utils 0.1.0",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "external-tracer"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=main#fadb11b9643fd66a730db95a6561a0482991ce9e"
-dependencies = [
- "eth-types 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=main)",
- "geth-utils 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=main)",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "external-tracer"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
- "eth-types 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "geth-utils 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
+ "eth-types",
+ "geth-utils",
  "serde",
  "serde_json",
 ]
@@ -1972,49 +1784,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "first-prover"
-version = "0.1.0"
-dependencies = [
- "bus-mapping 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "clap 4.1.8",
- "env_logger",
- "eth-types 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "ethers-providers",
- "ethers-signers",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_01_20)",
- "hyper",
- "itertools",
- "log",
- "mock 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=main)",
- "rand",
- "rand_xorshift",
- "serde",
- "serde_json",
- "snark-verifier",
- "strum",
- "tokio",
- "zkevm-circuits 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "zkevm_common",
- "zkevm_dev",
-]
-
-[[package]]
 name = "fixed-hash"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcf0ed7fe52a17a03854ec54a9f76d6d84508d1c0e66bc1793301c73fc8493c"
-dependencies = [
- "byteorder",
- "rand",
- "rustc-hex",
- "static_assertions",
-]
-
-[[package]]
-name = "fixed-hash"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "835c052cb0c08c1acf6ffd71c022172e18723949c8282f2b9f27efbc51e64534"
 dependencies = [
  "byteorder",
  "rand",
@@ -2255,22 +2028,10 @@ name = "gadgets"
 version = "0.1.0"
 dependencies = [
  "digest 0.7.6",
- "eth-types 0.1.0",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
+ "eth-types",
+ "halo2_proofs 0.2.0",
  "rand",
  "rand_xorshift",
- "sha3 0.7.3",
- "strum",
-]
-
-[[package]]
-name = "gadgets"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
- "digest 0.7.6",
- "eth-types 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
  "sha3 0.7.3",
  "strum",
 ]
@@ -2309,28 +2070,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "gobuild",
- "golang_utils 0.1.0",
- "log",
-]
-
-[[package]]
-name = "geth-utils"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=main#fadb11b9643fd66a730db95a6561a0482991ce9e"
-dependencies = [
- "env_logger",
- "gobuild",
- "log",
-]
-
-[[package]]
-name = "geth-utils"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
- "env_logger",
- "gobuild",
- "golang_utils 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
+ "golang_utils",
  "log",
 ]
 
@@ -2381,11 +2121,6 @@ dependencies = [
 [[package]]
 name = "golang_utils"
 version = "0.1.0"
-
-[[package]]
-name = "golang_utils"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
 
 [[package]]
 name = "group"
@@ -2465,48 +2200,16 @@ dependencies = [
 [[package]]
 name = "halo2_proofs"
 version = "0.2.0"
-source = "git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_01_20#c7e42e41f8141745ba0b90213438f240d55cb347"
-dependencies = [
- "blake2b_simd",
- "ff",
- "group",
- "halo2curves 0.3.1",
- "rand_core",
- "rayon",
- "sha3 0.9.1",
- "tracing",
-]
-
-[[package]]
-name = "halo2_proofs"
-version = "0.2.0"
 source = "git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02#0a8646b78286a13d320759b1c585262d6536dce4"
 dependencies = [
  "blake2b_simd",
  "ff",
  "group",
- "halo2curves 0.3.1",
+ "halo2curves",
  "rand_core",
  "rayon",
  "sha3 0.9.1",
  "tracing",
-]
-
-[[package]]
-name = "halo2curves"
-version = "0.2.1"
-source = "git+https://github.com/privacy-scaling-explorations/halo2curves?tag=0.3.0#83c72d49762343ffc9576ca11a2aa615efe1029b"
-dependencies = [
- "ff",
- "group",
- "lazy_static",
- "num-bigint",
- "num-traits",
- "pasta_curves",
- "rand",
- "rand_core",
- "static_assertions",
- "subtle",
 ]
 
 [[package]]
@@ -2532,7 +2235,7 @@ version = "0.1.0"
 source = "git+https://github.com/privacy-scaling-explorations/halo2wrong?tag=v2023_02_02#5905a20b62fcd9f6c269416a39c80de7ced8fb02"
 dependencies = [
  "group",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
+ "halo2_proofs 0.2.0",
  "num-bigint",
  "num-integer",
  "num-traits",
@@ -2558,7 +2261,7 @@ version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
 dependencies = [
- "ahash 0.7.6",
+ "ahash",
 ]
 
 [[package]]
@@ -2567,16 +2270,7 @@ version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 dependencies = [
- "ahash 0.7.6",
-]
-
-[[package]]
-name = "hashbrown"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
-dependencies = [
- "ahash 0.8.3",
+ "ahash",
 ]
 
 [[package]]
@@ -2599,15 +2293,6 @@ name = "hermit-abi"
 version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "hermit-abi"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee512640fe35acbfb4bb779db6f0d80704c2cacfa2e39b601ef3e3f47d1ae4c7"
 dependencies = [
  "libc",
 ]
@@ -2873,14 +2558,14 @@ dependencies = [
 name = "integration-tests"
 version = "0.1.0"
 dependencies = [
- "bus-mapping 0.1.0",
+ "bus-mapping",
  "env_logger",
- "eth-types 0.1.0",
+ "eth-types",
  "ethers",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
+ "halo2_proofs 0.2.0",
  "lazy_static",
  "log",
- "mock 0.1.0",
+ "mock",
  "paste",
  "pretty_assertions",
  "rand_chacha",
@@ -2890,17 +2575,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "url",
- "zkevm-circuits 0.1.0",
-]
-
-[[package]]
-name = "io-lifetimes"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7d6c6f8c91b4b9ed43484ad1a938e393caf35960fce7f82a040497207bd8e9e"
-dependencies = [
- "libc",
- "windows-sys",
+ "zkevm-circuits",
 ]
 
 [[package]]
@@ -2908,18 +2583,6 @@ name = "ipnet"
 version = "2.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f88c5561171189e69df9d98bcf18fd5f9558300f7ea7b801eb8a0fd748bd8745"
-
-[[package]]
-name = "is-terminal"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28dfb6c8100ccc63462345b67d1bbc3679177c75ee4bf59bf29c8b1d110b8189"
-dependencies = [
- "hermit-abi 0.2.6",
- "io-lifetimes",
- "rustix",
- "windows-sys",
-]
 
 [[package]]
 name = "itertools"
@@ -2984,7 +2647,7 @@ name = "keccak256"
 version = "0.1.0"
 dependencies = [
  "env_logger",
- "eth-types 0.1.0",
+ "eth-types",
  "halo2_proofs 0.1.0",
  "itertools",
  "lazy_static",
@@ -2994,21 +2657,6 @@ dependencies = [
  "plotters",
  "pretty_assertions",
  "rand",
-]
-
-[[package]]
-name = "keccak256"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
- "env_logger",
- "eth-types 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "halo2_proofs 0.1.0",
- "itertools",
- "lazy_static",
- "log",
- "num-bigint",
- "num-traits",
 ]
 
 [[package]]
@@ -3058,9 +2706,6 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
-dependencies = [
- "spin 0.5.2",
-]
 
 [[package]]
 name = "leb128"
@@ -3152,12 +2797,6 @@ name = "linked-hash-map"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
-
-[[package]]
-name = "linux-raw-sys"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f051f77a7c8e6957c0696eac88f26b0117e54f52d3fc682ab19397a8812846a4"
 
 [[package]]
 name = "lock_api"
@@ -3262,40 +2901,10 @@ dependencies = [
 name = "mock"
 version = "0.1.0"
 dependencies = [
- "eth-types 0.1.0",
+ "eth-types",
  "ethers-core",
  "ethers-signers",
- "external-tracer 0.1.0",
- "itertools",
- "lazy_static",
- "rand",
- "rand_chacha",
-]
-
-[[package]]
-name = "mock"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=main#fadb11b9643fd66a730db95a6561a0482991ce9e"
-dependencies = [
- "eth-types 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=main)",
- "ethers-core",
- "ethers-signers",
- "external-tracer 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=main)",
- "itertools",
- "lazy_static",
- "rand",
- "rand_chacha",
-]
-
-[[package]]
-name = "mock"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
- "eth-types 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "ethers-core",
- "ethers-signers",
- "external-tracer 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
+ "external-tracer",
  "itertools",
  "lazy_static",
  "rand",
@@ -3400,29 +3009,8 @@ version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6058e64324c71e02bc2b150e4f3bc8286db6c83092132ffa3f6b1eab0f9def5"
 dependencies = [
- "hermit-abi 0.1.19",
+ "hermit-abi",
  "libc",
-]
-
-[[package]]
-name = "num_enum"
-version = "0.5.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f646caf906c20226733ed5b1374287eb97e3c2a5c227ce668c1f2ce20ae57c9"
-dependencies = [
- "num_enum_derive",
-]
-
-[[package]]
-name = "num_enum_derive"
-version = "0.5.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcbff9bc912032c62bf65ef1d5aea88983b420f4f839db1e9b0c281a25c9c799"
-dependencies = [
- "proc-macro-crate 1.2.1",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -3890,16 +3478,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "poseidon"
-version = "0.2.0"
-source = "git+https://github.com/privacy-scaling-explorations/poseidon.git?tag=v2022_10_22#5d29df01a95e3df6334080d28e983407f56b5da3"
-dependencies = [
- "group",
- "halo2curves 0.2.1",
- "subtle",
-]
-
-[[package]]
 name = "ppv-lite86"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3943,22 +3521,10 @@ version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e28720988bff275df1f51b171e1b2a18c30d194c4d2b61defdacecd625a5d94a"
 dependencies = [
- "fixed-hash 0.7.0",
+ "fixed-hash",
  "impl-codec",
  "impl-rlp",
  "impl-serde",
- "uint",
-]
-
-[[package]]
-name = "primitive-types"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f3486ccba82358b11a77516035647c34ba167dfa53312630de83b12bd4f3d66"
-dependencies = [
- "fixed-hash 0.8.0",
- "impl-codec",
- "impl-rlp",
  "uint",
 ]
 
@@ -4228,41 +3794,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "revm"
-version = "2.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73d84c8f9836efb0f5f5f8de4700a953c4e1f3119e5cfcb0aad8e5be73daf991"
-dependencies = [
- "arrayref",
- "auto_impl",
- "bytes",
- "hashbrown 0.13.2",
- "num_enum",
- "primitive-types 0.12.1",
- "revm_precompiles",
- "rlp",
- "sha3 0.10.6",
-]
-
-[[package]]
-name = "revm_precompiles"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0353d456ef3e989dc9190f42c6020f09bc2025930c37895826029304413204b5"
-dependencies = [
- "bytes",
- "hashbrown 0.13.2",
- "num",
- "once_cell",
- "primitive-types 0.12.1",
- "ripemd",
- "secp256k1",
- "sha2 0.10.6",
- "sha3 0.10.6",
- "substrate-bn",
-]
-
-[[package]]
 name = "rfc6979"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4420,20 +3951,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustix"
-version = "0.36.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4fdebc4b395b7fbb9ab11e462e20ed9051e7b16e42d24042c776eca0ac81b03"
-dependencies = [
- "bitflags",
- "errno",
- "io-lifetimes",
- "libc",
- "linux-raw-sys",
- "windows-sys",
-]
-
-[[package]]
 name = "rustls"
 version = "0.20.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4540,24 +4057,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "secp256k1"
-version = "0.24.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b1629c9c557ef9b293568b338dddfc8208c98a18c59d722a9d53f859d9c9b62"
-dependencies = [
- "secp256k1-sys",
-]
-
-[[package]]
-name = "secp256k1-sys"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83080e2c2fc1006e625be82e5d1eb6a43b7fd9578b617fcc55814daf286bba4b"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "semver"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4636,7 +4135,6 @@ version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cad406b69c91885b5107daf2c29572f6c8cdb3c66826821e286c533490c0bc76"
 dependencies = [
- "indexmap",
  "itoa 1.0.4",
  "ryu",
  "serde",
@@ -4800,29 +4298,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a507befe795404456341dfab10cef66ead4c041f62b8b11bbb92bffe5d0953e0"
 
 [[package]]
-name = "snark-verifier"
-version = "0.1.0"
-source = "git+https://github.com/privacy-scaling-explorations/snark-verifier.git?tag=v2023_02_02#df03d898b841f71cbc36c2fb9fa07b8196f9623e"
-dependencies = [
- "bytes",
- "ecc",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
- "halo2curves 0.3.1",
- "hex",
- "itertools",
- "lazy_static",
- "num-bigint",
- "num-integer",
- "num-traits",
- "poseidon",
- "primitive-types 0.12.1",
- "rand",
- "revm",
- "rlp",
- "sha3 0.10.6",
-]
-
-[[package]]
 name = "socket2"
 version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4848,21 +4323,6 @@ dependencies = [
 [[package]]
 name = "specs"
 version = "0.1.0"
-dependencies = [
- "halo2_proofs 0.1.0-beta.1",
- "lazy_static",
- "num-bigint",
- "parity-wasm 0.42.2",
- "serde",
- "serde_json",
- "strum",
- "strum_macros",
-]
-
-[[package]]
-name = "specs"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
 dependencies = [
  "halo2_proofs 0.1.0-beta.1",
  "lazy_static",
@@ -4953,19 +4413,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "substrate-bn"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b5bbfa79abbae15dd642ea8176a21a635ff3c00059961d1ea27ad04e5b441c"
-dependencies = [
- "byteorder",
- "crunchy",
- "lazy_static",
- "rand",
- "rustc-hex",
-]
-
-[[package]]
 name = "subtle"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5033,20 +4480,20 @@ name = "testool"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bus-mapping 0.1.0",
+ "bus-mapping",
  "clap 3.2.23",
  "env_logger",
- "eth-types 0.1.0",
+ "eth-types",
  "ethers-core",
  "ethers-signers",
- "external-tracer 0.1.0",
+ "external-tracer",
  "glob 0.3.0",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
+ "halo2_proofs 0.2.0",
  "handlebars",
  "hex",
- "keccak256 0.1.0",
+ "keccak256",
  "log",
- "mock 0.1.0",
+ "mock",
  "once_cell",
  "prettytable-rs",
  "rand",
@@ -5061,7 +4508,7 @@ dependencies = [
  "toml",
  "urlencoding",
  "yaml-rust",
- "zkevm-circuits 0.1.0",
+ "zkevm-circuits",
 ]
 
 [[package]]
@@ -5580,27 +5027,12 @@ name = "wasm-tracer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bus-mapping 0.1.0",
+ "bus-mapping",
  "downcast-rs",
- "eth-types 0.1.0",
+ "eth-types",
  "nano-leb128",
- "specs 0.1.0",
- "wasmi 0.11.0",
- "wasmparser-nostd 0.99.0",
-]
-
-[[package]]
-name = "wasm-tracer"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
- "anyhow",
- "bus-mapping 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "downcast-rs",
- "eth-types 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "nano-leb128",
- "specs 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "wasmi 0.11.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
+ "specs",
+ "wasmi",
  "wasmparser-nostd 0.99.0",
 ]
 
@@ -5612,24 +5044,13 @@ dependencies = [
  "assert_matches",
  "criterion",
  "parity-wasm 0.42.2",
- "specs 0.1.0",
+ "specs",
  "wabt 0.9.1",
- "wasmi-validation 0.4.1",
- "wasmi_core 0.1.0",
+ "wasmi-validation",
+ "wasmi_core",
  "wasmi_v1",
  "wast 39.0.0",
  "wat",
-]
-
-[[package]]
-name = "wasmi"
-version = "0.11.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
- "parity-wasm 0.42.2",
- "specs 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "wasmi-validation 0.4.1 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "wasmi_core 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
 ]
 
 [[package]]
@@ -5637,14 +5058,6 @@ name = "wasmi-validation"
 version = "0.4.1"
 dependencies = [
  "assert_matches",
- "parity-wasm 0.42.2",
-]
-
-[[package]]
-name = "wasmi-validation"
-version = "0.4.1"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
  "parity-wasm 0.42.2",
 ]
 
@@ -5663,24 +5076,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasmi_core"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
- "downcast-rs",
- "libm",
- "memory_units",
- "num-rational",
- "num-traits",
- "parity-wasm 0.42.2",
-]
-
-[[package]]
 name = "wasmi_v1"
 version = "0.11.0"
 dependencies = [
  "spin 0.9.5",
- "wasmi_core 0.1.0",
+ "wasmi_core",
  "wasmparser-nostd 0.83.0",
  "wat",
 ]
@@ -5960,26 +5360,26 @@ name = "zkevm-circuits"
 version = "0.1.0"
 dependencies = [
  "array-init",
- "bus-mapping 0.1.0",
+ "bus-mapping",
  "criterion",
  "ctor",
  "ecc",
  "ecdsa 0.1.0",
  "env_logger",
- "eth-types 0.1.0",
+ "eth-types",
  "ethers-core",
  "ethers-signers",
- "gadgets 0.1.0",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
+ "gadgets",
+ "halo2_proofs 0.2.0",
  "hex",
  "integer",
  "itertools",
- "keccak256 0.1.0",
+ "keccak256",
  "lazy_static",
  "libsecp256k1",
  "log",
  "maingate",
- "mock 0.1.0",
+ "mock",
  "num",
  "num-bigint",
  "num-traits",
@@ -5991,74 +5391,11 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3 0.10.6",
- "specs 0.1.0",
+ "specs",
  "strum",
  "strum_macros",
  "subtle",
  "wabt 0.10.0",
- "wasm-tracer 0.1.0",
+ "wasm-tracer",
  "wasmparser-nostd 0.99.0",
-]
-
-[[package]]
-name = "zkevm-circuits"
-version = "0.1.0"
-source = "git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working#49c7713676b5897fc663932dfa8797a5c1da5b6f"
-dependencies = [
- "array-init",
- "bus-mapping 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "ecc",
- "ecdsa 0.1.0",
- "env_logger",
- "eth-types 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "ethers-core",
- "ethers-signers",
- "gadgets 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "halo2_proofs 0.2.0 (git+https://github.com/privacy-scaling-explorations/halo2.git?tag=v2023_02_02)",
- "integer",
- "itertools",
- "keccak256 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "lazy_static",
- "libsecp256k1",
- "log",
- "maingate",
- "mock 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "num",
- "num-bigint",
- "num-traits",
- "parity-wasm 0.45.0",
- "rand",
- "rand_chacha",
- "rand_xorshift",
- "serde",
- "serde_json",
- "sha3 0.10.6",
- "specs 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "strum",
- "strum_macros",
- "subtle",
- "wabt 0.10.0",
- "wasm-tracer 0.1.0 (git+https://github.com/wasm0/zkwasm-circuits.git?branch=wasm-not-working)",
- "wasmparser-nostd 0.99.0",
-]
-
-[[package]]
-name = "zkevm_common"
-version = "0.1.0"
-dependencies = [
- "eth-types 0.1.0 (git+https://github.com/privacy-scaling-explorations/zkevm-circuits.git?branch=main)",
- "hyper",
- "log",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "zkevm_dev"
-version = "0.1.0"
-dependencies = [
- "eth-types 0.1.0 (git+https://github.com/privacy-scaling-explorations/zkevm-circuits.git?branch=main)",
- "serde",
- "serde_json",
 ]
