@@ -219,12 +219,15 @@ impl<C: SubCircuit<Fr> + Circuit<Fr>> IntegrationTest<C> {
         }
 
         let general_params = get_general_params(self.degree);
+        // println!("general params: {:?}", general_params);
         let verifier_params: ParamsVerifierKZG<Bn256> = general_params.verifier_params().clone();
+        // println!("verifier params: {:?}", verifier_params);
 
         let transcript = Blake2bWrite::<_, G1Affine, Challenge255<_>>::init(vec![]);
 
         // change instace to slice
         let instance: Vec<&[Fr]> = instance.iter().map(|v| v.as_slice()).collect();
+        println!("instance: {:?}", instance);
 
         let proof = test_gen_proof(
             RNG.clone(),
@@ -234,6 +237,7 @@ impl<C: SubCircuit<Fr> + Circuit<Fr>> IntegrationTest<C> {
             transcript,
             &instance,
         );
+        println!("proof: {:?}", proof);
 
         let verifying_key = proving_key.get_vk();
         test_verify(
@@ -243,6 +247,7 @@ impl<C: SubCircuit<Fr> + Circuit<Fr>> IntegrationTest<C> {
             &proof,
             &instance,
         );
+        println!("proof verified");
     }
 
     fn test_mock(&mut self, circuit: &C, instance: Vec<Vec<Fr>>) {
@@ -284,6 +289,27 @@ impl<C: SubCircuit<Fr> + Circuit<Fr>> IntegrationTest<C> {
             self.name,
             block_num,
             block_tag
+        );
+        let mut block = block_convert(&builder.block, &builder.code_db).unwrap();
+        block.randomness = Fr::from(TEST_MOCK_RANDOMNESS);
+        let circuit = C::new_from_block(&block);
+        let instance = circuit.instance();
+
+        if actual {
+            let key = self.get_key();
+            self.test_actual(circuit, instance, key);
+        } else {
+            self.test_mock(&circuit, instance);
+        }
+    }
+
+    ///
+    pub async fn test_at_block_num(&mut self, block_num: u64, actual: bool) {
+        let (builder, _) = gen_inputs(block_num).await;
+        log::info!(
+            "test {} circuit, block: #{}",
+            self.name,
+            block_num
         );
         let mut block = block_convert(&builder.block, &builder.code_db).unwrap();
         block.randomness = Fr::from(TEST_MOCK_RANDOMNESS);

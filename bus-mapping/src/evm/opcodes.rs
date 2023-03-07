@@ -583,7 +583,9 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
 
     // Initialize WASM global memory section
     for (i, byte) in global_memory.0.iter().enumerate() {
-        state.memory_write(&mut exec_step, MemoryAddress::from(i), *byte)?;
+        if *byte != 0 {
+            state.memory_write(&mut exec_step, MemoryAddress::from(i), *byte)?;
+        }
     }
 
     Ok(exec_step)

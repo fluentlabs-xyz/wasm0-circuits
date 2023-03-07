@@ -500,7 +500,8 @@ pub(crate) mod super_circuit_tests {
         let chain_id = (*MOCK_CHAIN_ID).as_u64();
 
         let bytecode = bytecode! {
-            GAS
+            I32Const[1]
+            Drop
             STOP
         };
 
@@ -541,7 +542,8 @@ pub(crate) mod super_circuit_tests {
         let chain_id = (*MOCK_CHAIN_ID).as_u64();
 
         let bytecode = bytecode! {
-            GAS
+            I32Const[1]
+            Drop
             STOP
         };
 
