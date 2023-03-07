@@ -48,7 +48,6 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         let address = cb.query_word_rlc();
         let address_dest_offset = cb.query_cell();
         let balance_dest_offset = cb.query_cell();
-        // cb.stack_pop(address_word.expr());
 
         // let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         // let mut reversion_info = cb.reversion_info_read(None);
@@ -74,8 +73,8 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
             cb.require_zero("balance is zero when non_exists", balance.expr());
         });
 
-        cb.stack_pop(address_dest_offset.expr());
         cb.stack_pop(balance_dest_offset.expr());
+        cb.stack_pop(address_dest_offset.expr());
 
         let gas_cost = select::expr(
             is_warm.expr(),
@@ -123,8 +122,8 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         // let address = block.rws[step.rw_indices[0]].stack_value();
         // self.address_word
         //     .assign(region, offset, Some(address.to_le_bytes()))?;
-        let address_dest_offset = block.rws[step.rw_indices[0]].stack_value();
-        let balance_dest_offset = block.rws[step.rw_indices[1]].stack_value();
+        let balance_dest_offset = block.rws[step.rw_indices[0]].stack_value();
+        let address_dest_offset = block.rws[step.rw_indices[1]].stack_value();
 
         // self.tx_id
         //     .assign(region, offset, Value::known(F::from(tx.id as u64)))?;
@@ -193,13 +192,11 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use ethers_core::k256::elliptic_curve::weierstrass::add;
     use crate::evm_circuit::test::rand_bytes;
     use crate::test_util::CircuitTestBuilder;
     use eth_types::geth_types::Account;
     use eth_types::{address, bytecode, Address, Bytecode, ToWord, Word, U256};
     use lazy_static::lazy_static;
-    use eth_types::bytecode::WasmDataSectionDescriptor;
     use mock::TestContext;
 
     lazy_static! {
@@ -250,7 +247,7 @@ mod test {
 
     fn test_root_ok(account: &Option<Account>, is_warm: bool) {
         let account_mem_address: u32 = 0x0;
-        let res_mem_address: u32 = 0x7f;
+        let balance_mem_address: u32 = 0x7f;
         let address = account.as_ref().map(|a| a.address).unwrap_or(*TEST_ADDRESS);
 
         let mut code = Bytecode::default();
@@ -261,7 +258,7 @@ mod test {
                 // POP
 
                 I32Const[account_mem_address]
-                I32Const[res_mem_address]
+                I32Const[balance_mem_address]
                 BALANCE
             });
         }
@@ -270,7 +267,7 @@ mod test {
             // BALANCE
             // STOP
             I32Const[account_mem_address]
-            I32Const[res_mem_address]
+            I32Const[balance_mem_address]
             BALANCE
         });
 
