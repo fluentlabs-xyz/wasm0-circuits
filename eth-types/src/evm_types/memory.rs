@@ -223,7 +223,7 @@ impl Memory {
             self.0.extend(vec![0].repeat((offset + length) as usize));
         }
         let from = memory.0.as_slice();
-        let mut ptr = self.0.as_mut_ptr();
+        let ptr = self.0.as_mut_ptr();
         unsafe {
             std::ptr::copy(from.as_ptr(), ptr.add(offset), length);
         }

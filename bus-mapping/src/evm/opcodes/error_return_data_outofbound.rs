@@ -3,7 +3,7 @@ use crate::error::ExecError;
 use crate::evm::Opcode;
 use crate::operation::CallContextField;
 use crate::Error;
-use eth_types::{GethExecStep, StackWord, Word};
+use eth_types::{GethExecStep, StackWord};
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct ErrorReturnDataOutOfBound;

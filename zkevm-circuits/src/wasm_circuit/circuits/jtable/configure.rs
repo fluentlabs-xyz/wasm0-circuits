@@ -2,7 +2,7 @@ use super::JumpTableConfig;
 use crate::wasm_circuit::{
     circuits::{rtable::RangeTableConfig, Lookup},
 };
-use crate::{constant, constant_from, fixed_curr};
+use crate::{constant_from, fixed_curr};
 use halo2_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Expression, VirtualCells},
 };

@@ -12,7 +12,7 @@ use crate::{
     util::Expr,
 };
 use array_init::array_init;
-use eth_types::{evm_types::GasCost, Field, StackWord, ToLittleEndian, U256, U64};
+use eth_types::{evm_types::GasCost, Field, ToLittleEndian, U256, U64};
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},

@@ -395,32 +395,6 @@ impl<F: Field> EventTableConfig<F> {
     })
         ];
 
-        macro_rules! configure_foreign [
-            ($op:expr, $x:ident, $call_info:ident) => ({
-                let op = OpcodeClassPlain(OpcodeClass::ForeignPluginStart as usize + $op as usize);
-
-                if opcode_set.contains(&op) {
-                    let (op_lvl1, op_lvl2) = opclass_to_two_level(op);
-                    let mut allocator = EventTableCellAllocator::new(&common_config);
-                    let mut constraint_builder = ConstraintBuilder::new(meta);
-
-                    let config = $x::configure(
-                        &mut allocator,
-                        &mut constraint_builder,
-                        &$call_info{},
-                    );
-
-                    constraint_builder.finalize(foreign_tables, |meta|
-                        fixed_curr!(meta, common_config.block_first_line_sel) *
-                            common_config.op_enabled(meta, op_lvl1 as i32, op_lvl2 as i32)
-                    );
-
-                    op_bitmaps.insert(op, (op_lvl1 as i32, op_lvl2 as i32));
-                    op_configs.insert(op, Rc::new(config));
-                }
-            })
-        ];
-
         configure!(OpcodeClass::Return, ReturnConfigBuilder);
         configure!(OpcodeClass::Br, BrConfigBuilder);
         configure!(OpcodeClass::BrIfEqz, BrIfEqzConfigBuilder);

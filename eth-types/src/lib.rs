@@ -574,15 +574,6 @@ impl<'de> Deserialize<'de> for GethExecStep {
             s.memory
         };
         let memory = hex::decode(memory).map_err(de::Error::custom)?;
-        // let global_memory = s.global_memory.iter().map(|(offset, mem)| {
-        //     let mem = if mem.starts_with("0x") {
-        //         mem[2..].to_string()
-        //     } else {
-        //         mem.clone()
-        //     };
-        //     let mem = hex::decode(mem).unwrap();
-        //     Memory(mem, *offset)
-        // }).collect::<Vec<_>>();
         Ok(Self {
             pc: s.pc,
             op_family: s.op_family.map(|f| GethExecStepFamily::from_string(&f)),
@@ -595,7 +586,6 @@ impl<'de> Deserialize<'de> for GethExecStep {
             error: s.error,
             stack: Stack(s.stack.iter().map(|dw| dw.to_stack_word()).collect::<Vec<_>>()),
             memory: Memory::from_bytes_with_offset(memory, s.memory_offset),
-            // global_memory,
             storage: Storage(
                 s.storage
                     .iter()

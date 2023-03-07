@@ -1,7 +1,7 @@
 //! Utility functions to help calculate gas
 
 use super::GasCost;
-use crate::{StackWord, Word};
+use crate::{StackWord};
 
 /// Calculate memory expansion gas cost by current and next memory word size.
 pub fn memory_expansion_gas_cost(curr_memory_word_size: u64, next_memory_word_size: u64) -> u64 {

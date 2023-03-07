@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 
 use bus_mapping::operation::{self, AccountField, CallContextField, TxLogField, TxReceiptField};
-use eth_types::{Address, Field, ToAddress, ToLittleEndian, ToScalar, Word, U256, StackWord, ToU256};
+use eth_types::{Address, Field, ToAddress, ToLittleEndian, ToScalar, Word, U256, StackWord};
 use halo2_proofs::circuit::Value;
 use halo2_proofs::halo2curves::bn256::Fr;
 use itertools::Itertools;

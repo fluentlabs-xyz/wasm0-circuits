@@ -661,15 +661,15 @@ impl<'a> CircuitInputStateRef<'a> {
     }
 
     /// Parse [`Call`] from a *CALL*/CREATE* step.
-    pub fn parse_call(&mut self, step: &GethExecStep) -> Result<Call, Error> {
-        let is_success = *self
-            .tx_ctx
-            .call_is_success
-            .get(self.tx.calls().len())
-            .unwrap();
-        let kind = CallKind::try_from(step.op)?;
-        let caller = self.call()?;
-        let caller_ctx = self.call_ctx()?;
+    pub fn parse_call(&mut self, _step: &GethExecStep) -> Result<Call, Error> {
+        // let is_success = *self
+        //     .tx_ctx
+        //     .call_is_success
+        //     .get(self.tx.calls().len())
+        //     .unwrap();
+        // let kind = CallKind::try_from(step.op)?;
+        // let caller = self.call()?;
+        // let caller_ctx = self.call_ctx()?;
 
         unreachable!("calls are not supported yet");
 
@@ -1203,32 +1203,32 @@ impl<'a> CircuitInputStateRef<'a> {
             }
 
             let sender = self.call()?.address;
-            let (found, account) = self.sdb.get_account(&sender);
+            let (found, _account) = self.sdb.get_account(&sender);
             if !found {
                 return Err(Error::AccountNotFound(sender));
             }
             unreachable!("value refers to memory, its not value");
-            if account.balance < value.to_u256() {
-                return Ok(Some(ExecError::InsufficientBalance));
-            }
-
-            // Address collision
-            if matches!(step.op, OpcodeId::CREATE | OpcodeId::CREATE2) {
-                let address = match step.op {
-                    OpcodeId::CREATE => self.create_address()?,
-                    OpcodeId::CREATE2 => self.create2_address(step)?,
-                    _ => unreachable!(),
-                };
-                let (found, _) = self.sdb.get_account(&address);
-                if found {
-                    return Ok(Some(ExecError::ContractAddressCollision));
-                }
-            }
-
-            return Err(Error::UnexpectedExecStepError(
-                "*CALL*/CREATE* code not executed",
-                step.clone(),
-            ));
+            // if account.balance < value.to_u256() {
+            //     return Ok(Some(ExecError::InsufficientBalance));
+            // }
+            //
+            // // Address collision
+            // if matches!(step.op, OpcodeId::CREATE | OpcodeId::CREATE2) {
+            //     let address = match step.op {
+            //         OpcodeId::CREATE => self.create_address()?,
+            //         OpcodeId::CREATE2 => self.create2_address(step)?,
+            //         _ => unreachable!(),
+            //     };
+            //     let (found, _) = self.sdb.get_account(&address);
+            //     if found {
+            //         return Ok(Some(ExecError::ContractAddressCollision));
+            //     }
+            // }
+            //
+            // return Err(Error::UnexpectedExecStepError(
+            //     "*CALL*/CREATE* code not executed",
+            //     step.clone(),
+            // ));
         }
 
         Ok(None)

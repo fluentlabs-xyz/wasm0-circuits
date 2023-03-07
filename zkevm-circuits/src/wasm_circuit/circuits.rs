@@ -16,11 +16,9 @@ use crate::wasm_circuit::{
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner},
     plonk::{
-        create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ConstraintSystem, Error,
-        Expression, ProvingKey, VerifyingKey, VirtualCells,
+        Circuit, ConstraintSystem, Error,
+        Expression, VirtualCells,
     },
-    poly::commitment::{Params, ParamsVerifier},
-    transcript::{Blake2bRead, Blake2bWrite, Challenge255},
 };
 use num_bigint::BigUint;
 use crate::wasm_circuit::specs::{itable::OpcodeClassPlain, ExecutionTable, Tables};

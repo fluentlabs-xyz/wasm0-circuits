@@ -25,10 +25,8 @@ mod rlp;
 #[cfg(test)]
 mod test_util;
 
-pub(crate) use abs_word::AbsWordGadget;
 pub(crate) use add_words::AddWordsGadget;
 pub(crate) use byte_size::ByteSizeGadget;
-pub(crate) use cmp_words::CmpWordsGadget;
 pub(crate) use comparison::ComparisonGadget;
 pub(crate) use constant_division::ConstantDivisionGadget;
 pub(crate) use is_equal::IsEqualGadget;
@@ -36,9 +34,7 @@ pub(crate) use is_zero::IsZeroGadget;
 pub(crate) use lt::LtGadget;
 pub(crate) use lt_word::LtWordGadget;
 pub(crate) use min_max::MinMaxGadget;
-pub(crate) use modulo::ModGadget;
 pub(crate) use mul_add_words::MulAddWordsGadget;
-pub(crate) use mul_add_words512::MulAddWords512Gadget;
 pub(crate) use mul_word_u64::MulWordByU64Gadget;
 pub(crate) use pair_select::PairSelectGadget;
 pub(crate) use range_check::RangeCheckGadget;

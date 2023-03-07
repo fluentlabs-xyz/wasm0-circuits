@@ -2,7 +2,7 @@ use halo2_proofs::circuit::Value;
 use halo2_proofs::plonk::{Error, Expression};
 
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToScalar, ToU256, U64};
+use eth_types::{Field, ToScalar};
 
 use crate::{
     evm_circuit::{
@@ -12,7 +12,6 @@ use crate::{
             CachedRegion,
             common_gadget::SameContextGadget,
             constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
-            math_gadget::{AddWordsGadget, PairSelectGadget}, select,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -257,7 +256,7 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         };
         selector.assign(region, offset, Value::known(F::one()))?;
 
-        let mut aux1 = 0u64;
+        let aux1;
         let mut aux2 = 0u64;
         let mut aux3 = 0u64;
 
@@ -281,7 +280,7 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
             OpcodeId::I32Mul => {
                 let (res2, overflow) = (lhs.as_u64()).overflowing_mul(rhs.as_u64());
                 debug_assert!(!overflow, "overflow here is not possible");
-                aux1 = (res2 >> 32);
+                aux1 = res2 >> 32;
             }
             OpcodeId::I64Mul => {
                 let (res2, overflow) = (lhs.as_u64() as u128).overflowing_mul(rhs.as_u64() as u128);

@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use halo2_proofs::circuit::Value;
 use halo2_proofs::plonk::{Error, Expression};
 
@@ -9,20 +7,17 @@ use eth_types::{Field, ToScalar};
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::N_BYTES_ACCOUNT_ADDRESS,
         step::ExecutionState,
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta}, from_bytes, RandomLinearCombination,
+            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    table::CallContextFieldTag,
     util::Expr,
 };
 use crate::evm_circuit::util::Cell;
-use crate::evm_circuit::util::host_return_gadget::HostReturnGadget;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmUnaryGadget<F> {
@@ -68,7 +63,7 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
 
         cb.require_zero(
             "op_unary: selector",
-            (is_ctz.expr() + is_clz.expr() + is_popcnt.expr() - 1.expr()),
+            is_ctz.expr() + is_clz.expr() + is_popcnt.expr() - 1.expr(),
         );
 
         cb.require_zeros(
@@ -148,7 +143,7 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
         offset: usize,
         block: &Block<F>,
         _: &Transaction,
-        call: &Call,
+        _call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
@@ -220,10 +215,9 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use eth_types::{bytecode, Bytecode, ToWord, Word};
+    use eth_types::{bytecode, Bytecode};
     use mock::test_ctx::TestContext;
 
-    use crate::evm_circuit::test::rand_word;
     use crate::test_util::CircuitTestBuilder;
 
     fn run_test(bytecode: Bytecode) {

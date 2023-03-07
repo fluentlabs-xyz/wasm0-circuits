@@ -257,7 +257,6 @@ pub fn gen_geth_traces(
 /// Collection of helper functions which contribute to specific rutines on the
 /// builder pattern used to construct [`TestContext`]s.
 pub mod helpers {
-    use eth_types::bytecode::WasmDataSectionDescriptor;
     use super::*;
     use crate::MOCK_ACCOUNTS;
 

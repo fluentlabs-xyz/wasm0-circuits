@@ -2,7 +2,7 @@ use super::Opcode;
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::operation::CallContextField;
 use crate::Error;
-use eth_types::{GethExecStep, ToAddress, U256};
+use eth_types::{GethExecStep, ToAddress, ToU256, Word};
 use eth_types::evm_types::MemoryAddress;
 
 pub const CALLER_BYTE_LENGTH: usize = 20;
@@ -22,16 +22,14 @@ impl Opcode for Caller {
         let mut exec_step = state.new_step(geth_step)?;
 
         let address = &geth_second_step.memory.0;
-        let address = U256::from_big_endian(address);
+        let address = Word::from_big_endian(address).to_address();
 
         state.call_context_read(
             &mut exec_step,
             state.call()?.call_id,
             CallContextField::CallerAddress,
-            address,
+            address.to_u256(),
         );
-
-        let address = address.to_address();
 
         // Read dest offset as the last stack element
         let dest_offset = geth_step.stack.nth_last(0)?;
@@ -68,7 +66,6 @@ mod caller_tests {
         let code = bytecode! {
             I32Const[res_mem_address]
             CALLER
-            STOP
         };
 
         // Get the execution steps from the external tracer

@@ -45,8 +45,6 @@ impl<F: Field> EventTableOpcodeConfigBuilder<F> for BrConfigBuilder {
     }
 }
 
-use crate::wasm_circuit::specs::encode;
-
 impl<F: Field> EventTableOpcodeConfig<F> for BrConfig {
     fn opcode(&self, meta: &mut VirtualCells<'_, F>) -> Expression<F> {
         encode_br(

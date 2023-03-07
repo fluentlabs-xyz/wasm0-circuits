@@ -1,11 +1,10 @@
 use crate::{
     circuit_input_builder::{
-        CircuitInputStateRef, CopyDataType, CopyEvent, ExecStep, NumberOrHash,
+        CircuitInputStateRef, ExecStep,
     },
     Error,
 };
-use eth_types::{GethExecStep, Word, U256, StackWord};
-use ethers_core::utils::keccak256;
+use eth_types::{GethExecStep};
 
 use super::Opcode;
 
@@ -14,11 +13,11 @@ pub(crate) struct Sha3;
 
 impl Opcode for Sha3 {
     fn gen_associated_ops(
-        state: &mut CircuitInputStateRef,
-        geth_steps: &[GethExecStep],
+        _state: &mut CircuitInputStateRef,
+        _geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let geth_step = &geth_steps[0];
-        let mut exec_step = state.new_step(geth_step)?;
+        // let geth_step = &geth_steps[0];
+        // let mut exec_step = state.new_step(geth_step)?;
 
         unreachable!("sha3 is not supported yet");
         // let expected_sha3 = geth_steps[1].stack.last()?;
@@ -178,7 +177,7 @@ pub mod sha3_tests {
             .take(size)
             .collect::<Vec<u8>>();
         memory_view.resize(size, 0);
-        let expected_sha3_value = keccak256(&memory_view);
+        let _expected_sha3_value = keccak256(&memory_view);
 
         let block: GethData = TestContext::<2, 1>::new(
             None,

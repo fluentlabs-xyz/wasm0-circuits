@@ -26,7 +26,6 @@ use ethers_core::utils::{get_contract_address, keccak256};
 use gadgets::util::expr_from_bytes;
 use halo2_proofs::circuit::Value;
 use halo2_proofs::plonk::Error;
-use crate::evm_circuit::util::constraint_builder::Transition::Any;
 
 #[derive(Clone, Debug)]
 pub(crate) struct BeginTxGadget<F> {

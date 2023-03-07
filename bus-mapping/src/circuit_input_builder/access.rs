@@ -116,7 +116,7 @@ pub fn gen_state_access_trace<TX>(
     tx: &eth_types::Transaction,
     geth_trace: &GethExecTrace,
 ) -> Result<Vec<Access>, Error> {
-    use AccessValue::{Account, Code, Storage};
+    use AccessValue::{Account, Code};
     use RW::{READ, WRITE};
 
     let mut call_stack: Vec<(Address, CodeSource)> = Vec::new();

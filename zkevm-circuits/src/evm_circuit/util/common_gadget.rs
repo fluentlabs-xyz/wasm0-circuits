@@ -8,7 +8,6 @@ use crate::{
     evm_circuit::{
         param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_GAS, N_BYTES_MEMORY_WORD_SIZE},
         step::ExecutionState,
-        table::{FixedTableTag, Lookup},
         util::{
             constraint_builder::{
                 ConstraintBuilder, ReversionInfo, StepStateTransition,

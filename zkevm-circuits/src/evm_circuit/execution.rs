@@ -35,7 +35,6 @@ use std::{
     collections::{BTreeSet, HashMap},
     iter,
 };
-use ethers_core::types::NameOrAddress::Name;
 
 mod address;
 mod balance;
@@ -121,33 +120,7 @@ use error_oog_sload_sstore::ErrorOOGSloadSstoreGadget;
 use error_return_data_oo_bound::ErrorReturnDataOutOfBoundGadget;
 use error_stack::ErrorStackGadget;
 use error_write_protection::ErrorWriteProtectionGadget;
-use extcodecopy::ExtcodecopyGadget;
-use extcodehash::ExtcodehashGadget;
-use extcodesize::ExtcodesizeGadget;
-use gas::GasGadget;
 use gasprice::GasPriceGadget;
-use is_zero::IsZeroGadget;
-use jump::JumpGadget;
-use jumpdest::JumpdestGadget;
-use jumpi::JumpiGadget;
-use logs::LogGadget;
-use memory::MemoryGadget;
-use msize::MsizeGadget;
-use mul_div_mod::MulDivModGadget;
-use opcode_not::NotGadget;
-use pc::PcGadget;
-use pop::PopGadget;
-// use returndatacopy::ReturnDataCopyGadget;
-// use returndatasize::ReturnDataSizeGadget;
-use sar::SarGadget;
-// use sdiv_smod::SignedDivModGadget;
-// use shl_shr::ShlShrGadget;
-use signed_comparator::SignedComparatorGadget;
-use signextend::SignextendGadget;
-use sload::SloadGadget;
-use sstore::SstoreGadget;
-use stop::StopGadget;
-use swap::SwapGadget;
 use wasm_drop::WasmDropGadget;
 use address::AddressGadget;
 use balance::BalanceGadget;
@@ -658,8 +631,8 @@ impl<F: Field> ExecutionConfig<F> {
         num_rows_until_next_step: Column<Advice>,
         q_step_first: Selector,
         q_step_last: Selector,
-        step_curr: &Step<F>,
-        step_next: &Step<F>,
+        _step_curr: &Step<F>,
+        _step_next: &Step<F>,
         height_map: &mut HashMap<ExecutionState, usize>,
         stored_expressions_map: &mut HashMap<ExecutionState, Vec<StoredExpression<F>>>,
         instrument: &mut Instrument,

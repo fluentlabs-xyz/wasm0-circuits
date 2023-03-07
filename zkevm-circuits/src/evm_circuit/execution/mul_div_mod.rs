@@ -14,7 +14,7 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, StackWord, ToLittleEndian, ToU256, U256};
+use eth_types::{Field, StackWord, ToLittleEndian, ToU256};
 use halo2_proofs::plonk::Error;
 
 /// MulGadget verifies opcode MUL, DIV, and MOD.

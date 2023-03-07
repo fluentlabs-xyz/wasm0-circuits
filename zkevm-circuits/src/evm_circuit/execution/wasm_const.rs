@@ -1,7 +1,7 @@
 use halo2_proofs::circuit::Value;
 use halo2_proofs::plonk::Error;
 
-use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian, ToScalar, ToU256};
+use eth_types::{evm_types::OpcodeId, Field, ToScalar};
 
 use crate::{
     evm_circuit::{
@@ -10,13 +10,13 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta}, Word,
+            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
-use crate::evm_circuit::util::{Cell, StackWord};
+use crate::evm_circuit::util::{Cell};
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmConstGadget<F> {

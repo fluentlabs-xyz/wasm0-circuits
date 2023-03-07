@@ -13,7 +13,7 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToScalar, ToU256};
+use eth_types::{Field, ToScalar};
 use halo2_proofs::plonk::Error;
 
 #[derive(Clone, Debug)]

@@ -10,7 +10,6 @@ use std::{fmt, matches};
 use strum_macros::EnumIter;
 
 use crate::{error::Error, evm_types::GasCost};
-use crate::error::Error::TracingError;
 
 /// Opcode enum. One-to-one corresponding to an `u8` value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Hash, EnumIter)]

@@ -7,7 +7,7 @@ use eth_types::{Field, ToScalar, U256};
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::{N_BYTES_MEMORY_ADDRESS, N_BYTES_MEMORY_WORD_SIZE, STACK_CAPACITY},
+        param::{N_BYTES_MEMORY_ADDRESS, STACK_CAPACITY},
         step::ExecutionState,
         util::{
             CachedRegion,
@@ -17,7 +17,7 @@ use crate::{
                 ConstraintBuilder, ReversionInfo, StepStateTransition,
                 Transition::{Delta, To},
             },
-            math_gadget::{IsZeroGadget, MinMaxGadget}, memory_gadget::{MemoryAddressGadget, MemoryExpansionGadget}, not,
+            math_gadget::{IsZeroGadget, MinMaxGadget}, memory_gadget::{MemoryAddressGadget}, not,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -342,7 +342,7 @@ mod test {
     use itertools::Itertools;
 
     use eth_types::{
-        address, Address, bytecode, Bytecode, bytecode_internal, evm_types::OpcodeId, geth_types::Account, ToWord,
+        address, Address, bytecode, Bytecode, bytecode_internal, evm_types::OpcodeId, geth_types::Account,
         Word,
     };
     use mock::{eth, MOCK_ACCOUNTS, TestContext};
@@ -365,7 +365,7 @@ mod test {
         code
     }
 
-    fn caller_bytecode(return_data_offset: u64, return_data_length: u64) -> Bytecode {
+    fn caller_bytecode(_return_data_offset: u64, return_data_length: u64) -> Bytecode {
         let mut code = Bytecode::default();
         code.with_global_data(0, 0x7f, CALLER_ADDRESS.to_fixed_bytes().to_vec().unwrap());
         bytecode_internal!(code,

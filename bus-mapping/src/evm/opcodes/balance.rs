@@ -1,12 +1,12 @@
+use eth_types::{GethExecStep, H256, ToAddress, ToLittleEndian, ToWord, Word};
 use eth_types::evm_types::{Memory, MemoryAddress};
-use eth_types::{Address, GethExecStep, GethExecTrace, H256, ToWord, Word};
 use eth_types::U256;
 
 use crate::circuit_input_builder::CircuitInputStateRef;
 use crate::circuit_input_builder::ExecStep;
 use crate::Error;
 use crate::evm::Opcode;
-use crate::evm::opcodes::address::{ADDRESS_BYTE_LENGTH};
+use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
 use crate::operation::{AccountField, CallContextField, RW, TxAccessListAccountOp};
 
 pub const BALANCE_BYTE_LENGTH: usize = 32;
@@ -24,22 +24,15 @@ impl Opcode for Balance {
         let mut exec_step = state.new_step(geth_step)?;
 
         // Read account address from stack.
-        let res_mem_address = geth_step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), res_mem_address)?;
+        let result_mem_address = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), result_mem_address)?;
         let account_mem_address = geth_step.stack.nth_last(1)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), account_mem_address)?;
 
-        let account = &global_memory.0[account_mem_address.as_usize()..ADDRESS_BYTE_LENGTH];
-        let account_fixed_bytes: [u8; ADDRESS_BYTE_LENGTH] = account.try_into().unwrap();
-        let address: Address = Address::from(account_fixed_bytes);
-
-        // TODO zkwasm-geth reads
-
-        // Get balance result from next step.
-        let balance_vec = &geth_steps[1].memory.0;
-        if balance_vec.len() != BALANCE_BYTE_LENGTH {
-            return Err(Error::InvalidGethExecTrace("there is no balance bytes in memory for balance opcode"));
-        }
+        // Read account & balance from memory
+        let address = &global_memory.0[account_mem_address.as_usize()..ADDRESS_BYTE_LENGTH];
+        let address = Word::from_big_endian(address).to_address();
+        let balance = Word::from_big_endian(&geth_steps[1].memory.0);
 
         // Read transaction ID, rw_counter_end_of_reversion, and is_persistent
         // from call context.
@@ -61,8 +54,6 @@ impl Opcode for Balance {
             CallContextField::IsPersistent,
             U256::from(state.call()?.is_persistent as u64),
         );
-
-        // TODO do we need to integrate with all commented stuff below
 
         // Update transaction access list for account address.
         let is_warm = state.sdb.check_account_in_access_list(&address);
@@ -97,19 +88,18 @@ impl Opcode for Balance {
                 &mut exec_step,
                 address,
                 AccountField::Balance,
-                Word::from(balance_vec.as_slice()),
-                Word::from(balance_vec.as_slice()),
+                balance,
+                balance,
             );
         }
 
         // Copy result to memory
         let account_offset_addr = MemoryAddress::try_from(account_mem_address)?;
-        let address_bytes = address.as_bytes();
         for i in 0..ADDRESS_BYTE_LENGTH {
-            state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), address_bytes[i])?;
+            state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), address[i])?;
         }
-        let balance_offset_addr = MemoryAddress::try_from(res_mem_address)?;
-        let balance_bytes = balance_vec.as_slice();
+        let balance_offset_addr = MemoryAddress::try_from(result_mem_address)?;
+        let balance_bytes = balance.to_le_bytes();
         for i in 0..BALANCE_BYTE_LENGTH {
             state.memory_write(&mut exec_step, balance_offset_addr.map(|a| a + i), balance_bytes[i])?;
         }
@@ -205,8 +195,8 @@ mod balance_tests {
                 block.number(0xcafeu64)
             },
         )
-        .unwrap()
-        .into();
+            .unwrap()
+            .into();
 
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
         builder
@@ -245,7 +235,7 @@ mod balance_tests {
             &StackOp {
                 call_id,
                 address: StackAddress::from(1022u32),
-                value: StackWord::from(balance_mem_address)
+                value: StackWord::from(balance_mem_address),
             }
         );
 
@@ -257,7 +247,7 @@ mod balance_tests {
             &StackOp {
                 call_id,
                 address: StackAddress::from(1023u32),
-                value: StackWord::from(account_mem_address)
+                value: StackWord::from(account_mem_address),
             }
         );
 
@@ -269,7 +259,7 @@ mod balance_tests {
             &CallContextOp {
                 call_id,
                 field: CallContextField::TxId,
-                value: U256::one()
+                value: U256::one(),
             }
         );
 
@@ -281,7 +271,7 @@ mod balance_tests {
             &CallContextOp {
                 call_id,
                 field: CallContextField::RwCounterEndOfReversion,
-                value: U256::zero()
+                value: U256::zero(),
             }
         );
 
@@ -293,7 +283,7 @@ mod balance_tests {
             &CallContextOp {
                 call_id,
                 field: CallContextField::IsPersistent,
-                value: U256::one()
+                value: U256::one(),
             }
         );
 
@@ -351,7 +341,7 @@ mod balance_tests {
                     &MemoryOp::new(
                         1,
                         MemoryAddress::from(account_mem_address + idx as u32),
-                        address[idx]
+                        address[idx],
                     )
                 )
             );
@@ -370,7 +360,7 @@ mod balance_tests {
                     &MemoryOp::new(
                         1,
                         MemoryAddress::from(balance_mem_address + idx as u32),
-                        address_balance_bytes[idx]
+                        address_balance_bytes[idx],
                     )
                 )
             );

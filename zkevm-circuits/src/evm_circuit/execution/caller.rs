@@ -50,15 +50,7 @@ impl<F: Field> ExecutionGadget<F> for CallerGadget<F> {
 
         // Push the value to the stack
         cb.stack_pop(dest_offset.expr());
-
-        for idx in 0..20 {
-            cb.memory_lookup(
-                true.expr(),
-                dest_offset.expr() + idx.expr(),
-                caller_address.cells[20 - idx - 1].expr(),
-                None,
-            );
-        }
+        cb.memory_rlc_lookup(1.expr(), &dest_offset, &caller_address);
 
         // State transition
         let opcode = cb.query_cell();
@@ -95,11 +87,7 @@ impl<F: Field> ExecutionGadget<F> for CallerGadget<F> {
         self.caller_address.assign(
             region,
             offset,
-            Some(
-                caller_address.to_le_bytes()[0..N_BYTES_ACCOUNT_ADDRESS]
-                    .try_into()
-                    .unwrap(),
-            ),
+            Some(caller_address.to_le_bytes()[0..N_BYTES_ACCOUNT_ADDRESS].try_into().unwrap()),
         )?;
         self.dest_offset.assign(
             region,

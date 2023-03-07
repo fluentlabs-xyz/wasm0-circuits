@@ -17,7 +17,6 @@ use eth_types::{
 use ethers_core::utils::get_contract_address;
 use keccak256::EMPTY_HASH;
 
-use self::sha3::Sha3;
 #[cfg(any(feature = "test", test))]
 pub use self::sha3::sha3_tests::{gen_sha3_code, MemoryKind};
 
@@ -122,7 +121,7 @@ pub trait Opcode: Debug {
     fn gen_associated_ops_extended(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
-        global_memory: &Memory,
+        _global_memory: &Memory,
     ) -> Result<Vec<ExecStep>, Error> {
         Self::gen_associated_ops(state, geth_steps)
     }

@@ -2,7 +2,7 @@ use halo2_proofs::circuit::Value;
 use halo2_proofs::plonk::Error;
 use halo2_proofs::plonk::Error::Synthesis;
 
-use eth_types::{Field, StackWord, ToScalar, U64, Word};
+use eth_types::{Field, ToScalar, U64};
 use gadgets::util::Expr;
 
 use crate::evm_circuit::util::{CachedRegion, Cell, RandomLinearCombination};
