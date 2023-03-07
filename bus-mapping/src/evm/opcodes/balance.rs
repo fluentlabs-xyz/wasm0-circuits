@@ -80,7 +80,6 @@ impl Opcode for Balance {
         // Read account balance.
         let account = state.sdb.get_account(&address).1;
         let exists = !account.is_empty();
-        let balance = account.balance;
         let code_hash = if exists {
             account.code_hash
         } else {
@@ -125,8 +124,7 @@ impl Opcode for Balance {
 mod balance_tests {
     use pretty_assertions::assert_eq;
 
-    use eth_types::{address, bytecode, Bytecode, StackWord, ToBigEndian, ToU256, U256, Word};
-    use eth_types::bytecode::WasmDataSectionDescriptor;
+    use eth_types::{address, bytecode, Bytecode, StackWord, ToBigEndian, U256, Word};
     use eth_types::evm_types::{OpcodeId, StackAddress};
     use eth_types::geth_types::GethData;
     use mock::TestContext;
@@ -139,12 +137,12 @@ mod balance_tests {
 
     #[test]
     fn test_balance_of_non_existing_address() {
-        test_ok(false, false);
+        test_ok(false, true);
     }
 
     #[test]
     fn test_balance_of_cold_address() {
-        test_ok(true, false);
+        test_ok(true, true);
     }
 
     #[test]
@@ -308,7 +306,7 @@ mod balance_tests {
                 tx_id,
                 address,
                 is_warm,
-                is_warm_prev: false,
+                is_warm_prev: is_warm,
             }
         );
 
@@ -340,25 +338,6 @@ mod balance_tests {
             );
         }
 
-        for idx in 0..BALANCE_BYTE_LENGTH {
-            indices_index += 1;
-            assert_eq!(
-                {
-                    let operation =
-                        &container.memory[indices[indices_index].as_usize()];
-                    (operation.rw(), operation.op())
-                },
-                (
-                    RW::WRITE,
-                    &MemoryOp::new(
-                        1,
-                        MemoryAddress::from(balance_mem_address + idx as u32),
-                        address_balance_bytes[idx]
-                    )
-                )
-            );
-        }
-
         for idx in 0..ADDRESS_BYTE_LENGTH {
             indices_index += 1;
             assert_eq!(
@@ -373,6 +352,25 @@ mod balance_tests {
                         1,
                         MemoryAddress::from(account_mem_address + idx as u32),
                         address[idx]
+                    )
+                )
+            );
+        }
+
+        for idx in 0..BALANCE_BYTE_LENGTH {
+            indices_index += 1;
+            assert_eq!(
+                {
+                    let operation =
+                        &container.memory[indices[indices_index].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::WRITE,
+                    &MemoryOp::new(
+                        1,
+                        MemoryAddress::from(balance_mem_address + idx as u32),
+                        address_balance_bytes[idx]
                     )
                 )
             );

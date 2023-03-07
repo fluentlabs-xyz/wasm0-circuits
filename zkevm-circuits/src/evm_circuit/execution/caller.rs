@@ -1,10 +1,9 @@
 use halo2_proofs::circuit::Value;
 use halo2_proofs::plonk::Error;
 use halo2_proofs::plonk::Error::Synthesis;
-use num_traits::real::Real;
 
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToBigEndian, ToLittleEndian, ToScalar};
+use eth_types::{Field, ToLittleEndian, ToScalar};
 
 use crate::{
     evm_circuit::{

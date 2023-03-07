@@ -45,7 +45,7 @@ mod stacktomemoryop_tests {
     use itertools::Itertools;
     use pretty_assertions::assert_eq;
 
-    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToBigEndian, Word};
+    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToBigEndian, ToLittleEndian, Word};
     use mock::{MOCK_BASEFEE, MOCK_DIFFICULTY, MOCK_GASLIMIT};
     use mock::test_ctx::{helpers::*, TestContext};
 

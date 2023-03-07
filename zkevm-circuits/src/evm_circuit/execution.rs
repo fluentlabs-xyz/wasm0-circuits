@@ -1395,13 +1395,13 @@ impl<F: Field> ExecutionConfig<F> {
             if rlc != assigned_rw_value.1 {
                 log::error!(
                     "incorrect rw witness. lookup input name: \"{}\"\n{:?}\nrw: {:?}, rw index: {:?}, {}th rw of step {:?}, raw_table {:?}",
-                    assigned_rw_value.0,
-                    assigned_rw_value.1,
-                    rw,
-                    rw_idx,
-                    idx,
-                    step.execution_state,
-                    table_assignments,
+                    assigned_rw_value.0, // 1
+                    assigned_rw_value.1, // 2
+                    rw, // 3
+                    rw_idx, // 4
+                    idx, // 5
+                    step.execution_state, // 6
+                    table_assignments, // 7
                 );
             }
         }

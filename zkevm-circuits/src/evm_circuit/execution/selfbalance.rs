@@ -90,11 +90,7 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
         self.self_balance.assign(
             region,
             offset,
-            Some(
-                self_balance.to_le_bytes()
-                    .try_into()
-                    .unwrap(),
-            ),
+            Some(self_balance.to_le_bytes()),
         )?;
         self.dest_offset.assign(
             region,
