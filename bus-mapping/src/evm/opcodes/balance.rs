@@ -139,12 +139,12 @@ mod balance_tests {
 
     #[test]
     fn test_balance_of_non_existing_address() {
-        test_ok(false, false);
+        test_ok(false, true);
     }
 
     #[test]
     fn test_balance_of_cold_address() {
-        test_ok(true, false);
+        test_ok(true, true);
     }
 
     #[test]
@@ -308,7 +308,7 @@ mod balance_tests {
                 tx_id,
                 address,
                 is_warm,
-                is_warm_prev: false,
+                is_warm_prev: is_warm,
             }
         );
 
