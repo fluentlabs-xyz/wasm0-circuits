@@ -1,4 +1,4 @@
-use eth_types::{GethExecStep, H256, ToAddress, ToLittleEndian, ToWord, Word};
+use eth_types::{GethExecStep, H256, ToAddress, ToBigEndian, ToLittleEndian, ToWord, Word};
 use eth_types::evm_types::{Memory, MemoryAddress};
 use eth_types::U256;
 
@@ -99,7 +99,7 @@ impl Opcode for Balance {
             state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), address[i])?;
         }
         let balance_offset_addr = MemoryAddress::try_from(result_mem_address)?;
-        let balance_bytes = balance.to_le_bytes();
+        let balance_bytes = balance.to_be_bytes();
         for i in 0..BALANCE_BYTE_LENGTH {
             state.memory_write(&mut exec_step, balance_offset_addr.map(|a| a + i), balance_bytes[i])?;
         }

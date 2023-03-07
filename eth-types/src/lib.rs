@@ -103,7 +103,7 @@ pub trait ToLittleEndian {
     fn to_le_bytes(&self) -> [u8; 32];
 }
 
-pub const N_BYTES_WORD: usize = 8;
+pub const N_BYTES_WORD: usize = 32;
 
 /// Trait used to convert a scalar value to a 32 byte array in little endian.
 pub trait ToWordBytes {
