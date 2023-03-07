@@ -175,7 +175,7 @@ impl ToBigEndian for DebugU64 {
     /// Encode the value as byte array in big endian.
     fn to_be_bytes(&self) -> [u8; 32] {
         let mut bytes = [0u8; 32];
-        self.to_big_endian(&mut bytes);
+        self.to_big_endian(&mut bytes[0..8]);
         bytes
     }
 }
@@ -250,7 +250,7 @@ impl ToBigEndian for U64 {
     /// Encode the value as byte array in big endian.
     fn to_be_bytes(&self) -> [u8; 32] {
         let mut bytes = [0u8; 32];
-        self.to_big_endian(&mut bytes);
+        self.to_big_endian(&mut bytes[0..8]);
         bytes
     }
 }
