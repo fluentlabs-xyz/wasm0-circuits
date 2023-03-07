@@ -52,7 +52,7 @@ mod number_tests {
         operation::{StackOp, RW},
         Error,
     };
-    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, StackWord, Word};
+    use eth_types::{bytecode, evm_types::StackAddress, geth_types::GethData, StackWord};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
     use eth_types::evm_types::MemoryAddress;
