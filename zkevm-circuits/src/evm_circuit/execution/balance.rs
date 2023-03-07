@@ -1,23 +1,21 @@
-use std::io::Read;
 use crate::evm_circuit::execution::ExecutionGadget;
 use crate::evm_circuit::param::N_BYTES_ACCOUNT_ADDRESS;
 use crate::evm_circuit::param::N_BYTES_WORD;
 use crate::evm_circuit::step::ExecutionState;
 use crate::evm_circuit::util::common_gadget::SameContextGadget;
 use crate::evm_circuit::util::constraint_builder::Transition::Delta;
-use crate::evm_circuit::util::constraint_builder::{ConstraintBuilder, ReversionInfo, StepStateTransition};
+use crate::evm_circuit::util::constraint_builder::{ConstraintBuilder, StepStateTransition};
 use crate::evm_circuit::util::math_gadget::IsZeroGadget;
-use crate::evm_circuit::util::{not, Word};
+use crate::evm_circuit::util::{not};
 use crate::evm_circuit::util::select;
 use crate::evm_circuit::util::CachedRegion;
 use crate::evm_circuit::util::Cell;
 use crate::evm_circuit::util::RandomLinearCombination;
 use crate::evm_circuit::witness::{Block, Call, ExecStep, Transaction};
-use crate::table::{AccountFieldTag, CallContextFieldTag, RwTableTag};
+use crate::table::{AccountFieldTag, RwTableTag};
 use crate::util::Expr;
 use eth_types::evm_types::GasCost;
-use eth_types::{Address, ToBigEndian};
-use eth_types::Field;
+use eth_types::{Field, ToBigEndian, ToWord};
 use eth_types::ToLittleEndian;
 use eth_types::ToScalar;
 use eth_types::U256;
@@ -67,15 +65,17 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         let not_exists = IsZeroGadget::construct(cb, code_hash.expr());
         let exists = not::expr(not_exists.expr());
         let balance = cb.query_word_rlc();
-        cb.condition(exists.expr(), |cb| {
-            cb.account_read(address.expr(), AccountFieldTag::Balance, balance.expr());
-        });
+        // cb.condition(exists.expr(), |cb| {
+        //     cb.account_read(address.expr(), AccountFieldTag::Balance, balance.expr());
+        // });
         cb.condition(not_exists.expr(), |cb| {
             cb.require_zero("balance is zero when non_exists", balance.expr());
         });
 
         cb.stack_pop(balance_dest_offset.expr());
+        // cb.memory_rlc_lookup(true.expr(), &balance_dest_offset, &balance);
         cb.stack_pop(address_dest_offset.expr());
+        // cb.memory_rlc_lookup(true.expr(), &address_dest_offset, &address);
 
         let gas_cost = select::expr(
             is_warm.expr(),
@@ -117,7 +117,6 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-
         self.same_context.assign_exec_step(region, offset, step)?;
 
         // let address = block.rws[step.rw_indices[0]].stack_value();
@@ -141,7 +140,6 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
             .assign(region, offset, Value::known(F::from(is_warm as u64)))?; // TODO temporal hardcoded 'false'
 
         let code_hash = block.rws[step.rw_indices[6]].account_value_pair().0;
-        // let code_hash = call.code_hash;
         self.code_hash.assign(region, offset, region.word_rlc(code_hash))?;
         self.not_exists.assign_value(region, offset, region.word_rlc(code_hash))?;
         let address_rw_index = 8;
@@ -154,22 +152,21 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
                 .map(|&b| block.rws[b].memory_value())
                 .collect::<Vec<u8>>();
             let balance: eth_types::Word = balance_vec.as_slice().try_into().unwrap();
-            // TODO temp solution
-            // let balance = eth_types::Word::from(0u64 << 20);
             balance
         };
+        let balance_bytes = balance.to_le_bytes();
         self.balance.assign(
             region,
             offset,
-            Some(balance.to_le_bytes()),
+            Some(balance_bytes),
         )?;
         let address: [u8; N_BYTES_ACCOUNT_ADDRESS] = {
-            let step1: Vec<(RwTableTag, usize)> = step.rw_indices[address_rw_index..(address_rw_index+N_BYTES_ACCOUNT_ADDRESS)].to_vec();
-            let step2: Vec<u8> = step1
+            let address_rw_tup_vec: Vec<(RwTableTag, usize)> = step.rw_indices[address_rw_index..(address_rw_index+N_BYTES_ACCOUNT_ADDRESS)].to_vec();
+            let address_bytes_vec: Vec<u8> = address_rw_tup_vec
                 .iter()
                 .map(|&b| block.rws[b].memory_value())
                 .collect();
-            step2.as_slice().try_into().unwrap()
+            address_bytes_vec.as_slice().try_into().unwrap()
         };
         self.address.assign(
             region,
@@ -199,7 +196,6 @@ mod test {
     use eth_types::{address, bytecode, Address, Bytecode, ToWord, Word, U256};
     use lazy_static::lazy_static;
     use mock::TestContext;
-
     lazy_static! {
         static ref TEST_ADDRESS: Address = address!("0xaabbccddee000000000000000000000000000000");
     }
