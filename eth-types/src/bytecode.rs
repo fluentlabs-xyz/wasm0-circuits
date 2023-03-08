@@ -50,32 +50,27 @@ impl From<Bytecode> for Bytes {
     }
 }
 
-impl Bytecode {
-    /// Build not checked bytecode
-    pub fn from_raw_unchecked(input: Vec<u8>) -> Self {
-        Self {
-            code: input
-                .iter()
-                .map(|b| BytecodeElement {
-                    value: *b,
-                    is_code: true,
-                })
-                .collect(),
-            global_data: Vec::new(),
-            markers: HashMap::new(),
-            num_opcodes: 0,
-        }
-    }
+pub trait WasmBinaryBytecode {
+    fn wasm_binary(&self) -> Vec<u8>;
+}
 
-    pub fn with_global_data(&mut self, memory_index: u32, memory_offset: u32, data: Vec<u8>) {
-        self.global_data.push(WasmDataSectionDescriptor {
-            memory_index,
-            mem_offset: memory_offset,
-            data,
-        });
-    }
+pub struct UncheckedWasmBinary(Vec<u8>);
 
-    pub fn wasm_binary(&self) -> Vec<u8> {
+impl UncheckedWasmBinary {
+    pub fn from(data: Vec<u8>) -> Self {
+        Self(data)
+    }
+}
+
+impl WasmBinaryBytecode for UncheckedWasmBinary {
+    fn wasm_binary(&self) -> Vec<u8> {
+        self.0.clone()
+    }
+}
+
+impl WasmBinaryBytecode for Bytecode {
+
+    fn wasm_binary(&self) -> Vec<u8> {
         use wasm_encoder::{
             CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
             ImportSection, MemorySection, MemoryType, Module, TypeSection, ValType,
@@ -175,6 +170,32 @@ impl Bytecode {
         }
         let wasm_bytes = module.finish();
         return wasm_bytes;
+    }
+}
+
+impl Bytecode {
+    /// Build not checked bytecode
+    pub fn from_raw_unchecked(input: Vec<u8>) -> Self {
+        Self {
+            code: input
+                .iter()
+                .map(|b| BytecodeElement {
+                    value: *b,
+                    is_code: true,
+                })
+                .collect(),
+            global_data: Vec::new(),
+            markers: HashMap::new(),
+            num_opcodes: 0,
+        }
+    }
+
+    pub fn with_global_data(&mut self, memory_index: u32, memory_offset: u32, data: Vec<u8>) {
+        self.global_data.push(WasmDataSectionDescriptor {
+            memory_index,
+            mem_offset: memory_offset,
+            data,
+        });
     }
 
     /// Get the code

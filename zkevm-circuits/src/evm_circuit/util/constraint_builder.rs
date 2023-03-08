@@ -713,6 +713,23 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         tag: RwTableTag,
         values: RwValues<F>,
     ) {
+        // println!("lookup: {}, tag={:?}", name, tag);
+
+        match tag {
+            // RwTableTag::Start => return,
+            // RwTableTag::Stack => return,
+            // RwTableTag::Memory => return,
+            // RwTableTag::AccountStorage => return,
+            // RwTableTag::TxAccessListAccount => return,
+            // RwTableTag::TxAccessListAccountStorage => return,
+            // RwTableTag::TxRefund => return,
+            // RwTableTag::Account => return,
+            // RwTableTag::CallContext => return,
+            // RwTableTag::TxLog => return,
+            // RwTableTag::TxReceipt => return,
+            _ => {},
+        }
+
         // TODO figure out what's going on with this lookup types
         let name = format!("rw lookup '{}'", name);
         self.add_lookup(
@@ -735,24 +752,6 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         tag: RwTableTag,
         values: RwValues<F>,
     ) {
-        // println!("lookup: {}, tag={:?}", name, tag);
-
-        // match tag {
-        //     // RwTableTag::Start => return,
-        //     RwTableTag::Stack => return,
-        //     RwTableTag::Memory => return,
-        //     RwTableTag::AccountStorage => return,
-        //     RwTableTag::TxAccessListAccount => return,
-        //     RwTableTag::TxAccessListAccountStorage => return,
-        //     // RwTableTag::TxRefund => return,
-        //     // RwTableTag::Account => return,
-        //     // RwTableTag::AccountDestructed => return,
-        //     // RwTableTag::CallContext => return,
-        //     // RwTableTag::TxLog => return,
-        //     RwTableTag::TxReceipt => return,
-        //     _ => {},
-        // }
-
         self.rw_lookup_with_counter(
             name,
             self.curr.state.rw_counter.expr() + self.rw_counter_offset.clone(),

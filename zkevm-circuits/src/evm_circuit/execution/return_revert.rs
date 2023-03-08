@@ -29,7 +29,9 @@ use crate::{
 pub(crate) struct ReturnRevertGadget<F> {
     opcode: Cell<F>,
 
-    range: MemoryAddressGadget<F>,
+    length: Cell<F>,
+    offset: Cell<F>,
+    // range: MemoryAddressGadget<F>,
 
     is_success: Cell<F>,
     restore_context: RestoreContextGadget<F>,
@@ -56,13 +58,13 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
         // TODO need a fix
-        // cb.opcode_lookup(opcode.expr(), 1.expr());
+        // cb.opcode_lookup(opcode.expr(), 0.expr());
 
-        let offset = cb.query_cell_phase2();
-        let length = cb.query_word_rlc();
-        cb.stack_pop(offset.expr());
+        let length = cb.query_cell();
+        let offset = cb.query_cell();
         cb.stack_pop(length.expr());
-        let range = MemoryAddressGadget::construct(cb, offset, length);
+        cb.stack_pop(offset.expr());
+        // let range = MemoryAddressGadget::construct(cb, offset, length);
 
         let is_success = cb.call_context(None, CallContextFieldTag::IsSuccess);
         cb.require_boolean("is_success is boolean", is_success.expr());
@@ -89,7 +91,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             cb.require_equal(
                 "increase rw counter once for each memory to bytecode byte copied",
                 copy_rw_increase.expr(),
-                range.length(),
+                length.expr(),
             );
         });
 
@@ -105,10 +107,10 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                     CopyDataType::Memory.expr(),
                     code_hash.expr(),
                     CopyDataType::Bytecode.expr(),
-                    range.offset(),
-                    range.address(),
+                    offset.expr(),
+                    offset.expr() + length.expr(),
                     0.expr(),
-                    range.length(),
+                    length.expr(),
                     0.expr(),
                     copy_rw_increase.expr(),
                 );
@@ -161,8 +163,8 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                 cb,
                 is_success.expr(),
                 not::expr(is_create.clone()) * (5.expr() + copy_rw_increase.expr()),
-                range.offset(),
-                range.length(),
+                offset.expr(),
+                length.expr(),
                 0.expr(),
                 is_contract_deployment, // There is one reversible write in this case.
             )
@@ -178,7 +180,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                 ]
                     .map(|field_tag| cb.call_context(None, field_tag));
                 let copy_length =
-                    MinMaxGadget::construct(cb, return_data_length.expr(), range.length());
+                    MinMaxGadget::construct(cb, return_data_length.expr(), length.expr());
                 cb.require_equal(
                     "increase rw counter twice for each memory to memory byte copied",
                     copy_length.min() + copy_length.min(),
@@ -197,8 +199,8 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                     CopyDataType::Memory.expr(),
                     cb.next.state.call_id.expr(),
                     CopyDataType::Memory.expr(),
-                    range.offset(),
-                    range.address(),
+                    offset.expr(),
+                    offset.expr() + length.expr(),
                     return_data_offset.expr(),
                     copy_length.min(),
                     0.expr(),
@@ -218,7 +220,9 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
 
         Self {
             opcode,
-            range,
+            // range,
+            length,
+            offset,
             is_success,
             copy_length,
             copy_rw_increase,
@@ -249,8 +253,11 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             Value::known(F::from(step.opcode.unwrap().as_u64())),
         )?;
 
-        let [memory_offset, length] = [0, 1].map(|i| block.rws[step.rw_indices[i]].stack_value());
-        self.range.assign(region, offset, memory_offset, length)?;
+        let [length, memory_offset] = [0, 1].map(|i| block.rws[step.rw_indices[i]].stack_value());
+        self.length.assign(region, offset, Value::<F>::known(length.to_scalar().unwrap()))?;
+        self.offset.assign(region, offset, Value::<F>::known(memory_offset.to_scalar().unwrap()))?;
+
+        // self.range.assign(region, offset, memory_offset, length)?;
 
         self.is_success
             .assign(region, offset, Value::known(call.is_success.into()))?;
@@ -338,6 +345,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
 
 #[cfg(test)]
 mod test {
+    use std::fs;
     use ethers_core::k256::pkcs8::der::Encode;
     use itertools::Itertools;
 
@@ -345,6 +353,7 @@ mod test {
         address, Address, bytecode, Bytecode, bytecode_internal, evm_types::OpcodeId, geth_types::Account,
         Word,
     };
+    use eth_types::bytecode::UncheckedWasmBinary;
     use mock::{eth, MOCK_ACCOUNTS, TestContext};
 
     use crate::test_util::CircuitTestBuilder;
@@ -354,8 +363,8 @@ mod test {
 
     fn callee_bytecode(is_return: bool, offset: u32, length: u32) -> Bytecode {
         let mut code = bytecode! {
-            I32Const[offset]
             I32Const[length]
+            I32Const[offset]
         };
         code.write_op(if is_return {
             OpcodeId::RETURN
@@ -390,6 +399,15 @@ mod test {
             I32Const[12]
             RETURN
         );
+        CircuitTestBuilder::new_from_test_ctx(
+            TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
+        ).run();
+    }
+
+    #[test]
+    fn test_hello_world_deploy() {
+        let wasm_bin = fs::read("./deploy.wasm").unwrap();
+        let code = UncheckedWasmBinary::from(wasm_bin);
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
         ).run();

@@ -177,6 +177,7 @@ mod test {
     use lazy_static::lazy_static;
 
     use eth_types::{address, Address, bytecode, Bytecode, ToWord, U256, Word};
+    use eth_types::bytecode::WasmBinaryBytecode;
     use eth_types::geth_types::Account;
     use mock::TestContext;
 

@@ -885,8 +885,8 @@ impl<'a> CircuitInputStateRef<'a> {
             if !self.call()?.is_root {
                 let (offset, length) = match step.op {
                     OpcodeId::RETURN | OpcodeId::REVERT => {
-                        let offset = step.stack.nth_last(0)?.as_usize();
-                        let length = step.stack.nth_last(1)?.as_usize();
+                        let length = step.stack.nth_last(0)?.as_usize();
+                        let offset = step.stack.nth_last(1)?.as_usize();
 
                         // At the moment it conflicts with `call_ctx` and `caller_ctx`.
                         let callee_memory = self.call_ctx()?.memory.clone();
@@ -916,8 +916,8 @@ impl<'a> CircuitInputStateRef<'a> {
 
         // Store deployed code if it's a successful create
         if call.is_create() && call.is_success && step.op == OpcodeId::RETURN {
-            let offset = step.stack.nth_last(0)?;
-            let length = step.stack.nth_last(1)?;
+            let length = step.stack.nth_last(0)?;
+            let offset = step.stack.nth_last(1)?;
             let code = call_ctx
                 .memory
                 .read_chunk(offset.low_u64().into(), length.low_u64().into());

@@ -8,6 +8,7 @@ use eth_types::{
 use external_tracer::{trace, TraceConfig};
 use helpers::*;
 use itertools::Itertools;
+use eth_types::bytecode::WasmBinaryBytecode;
 
 pub use external_tracer::LoggerConfig;
 
@@ -216,7 +217,7 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
     /// addresses are the ones used in [`TestContext::
     /// account_0_code_account_1_no_code`]. Extra accounts, txs and/or block
     /// configs are set as [`Default`].
-    pub fn simple_ctx_with_bytecode(bytecode: Bytecode) -> Result<TestContext<2, 1>, Error> {
+    pub fn simple_ctx_with_bytecode<T: WasmBinaryBytecode>(bytecode: T) -> Result<TestContext<2, 1>, Error> {
         TestContext::new(
             None,
             account_0_code_account_1_no_code(bytecode),
@@ -257,6 +258,7 @@ pub fn gen_geth_traces(
 /// Collection of helper functions which contribute to specific rutines on the
 /// builder pattern used to construct [`TestContext`]s.
 pub mod helpers {
+    use eth_types::bytecode::WasmBinaryBytecode;
     use super::*;
     use crate::MOCK_ACCOUNTS;
 
@@ -265,7 +267,7 @@ pub mod helpers {
     /// - 0x000000000000000000000000000000000cafe111
     /// - 0x000000000000000000000000000000000cafe222
     /// And injects the provided bytecode into the first one.
-    pub fn account_0_code_account_1_no_code(code: Bytecode) -> impl FnOnce([&mut MockAccount; 2]) {
+    pub fn account_0_code_account_1_no_code<T: WasmBinaryBytecode>(code: T) -> impl FnOnce([&mut MockAccount; 2]) {
         let wasm_binary = code.wasm_binary();
         |accs| {
             accs[0]
