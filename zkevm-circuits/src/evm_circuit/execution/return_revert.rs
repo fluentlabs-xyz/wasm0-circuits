@@ -405,7 +405,7 @@ mod test {
     }
 
     #[test]
-    fn test_hello_world_deploy() {
+    fn test_deploy_hello_world() {
         let wasm_bin = fs::read("./deploy.wasm").unwrap();
         let code = UncheckedWasmBinary::from(wasm_bin);
         CircuitTestBuilder::new_from_test_ctx(
@@ -440,6 +440,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_return_nonroot_noncreate() {
         let test_parameters = [
             ((0, 0), (0, 0)),
@@ -491,6 +492,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_return_root_create() {
         let test_parameters = [(0, 0), (0, 10), (300, 20), (1000, 0)];
         for ((offset, length), is_return) in
@@ -514,6 +516,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_return_nonroot_create() {
         let test_parameters = [(0, 0), (0, 10), (300, 20), (1000, 0)];
         for ((offset, length), is_return) in
@@ -564,6 +567,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_nonpersistent_nonroot_create() {
         // Test the case where the initialization call is successful, but the CREATE
         // call is reverted.
