@@ -231,19 +231,21 @@ mod test {
 
     fn test_root_ok(account: &Option<Account>, is_warm: bool) {
         let address = account.as_ref().map(|a| a.address).unwrap_or(*TEST_ADDRESS);
+        let address_mem_offset = 20;
+        let result_mem_offset = 20;
 
         let mut code = Bytecode::default();
         code.with_global_data(0, 0, address.to_fixed_bytes().to_vec());
         if is_warm {
             code.append(&bytecode! {
-                I32Const[0]
-                I32Const[20]
+                I32Const[address_mem_offset]
+                I32Const[result_mem_offset]
                 BALANCE
             });
         }
         code.append(&bytecode! {
-            I32Const[0]
-            I32Const[20]
+            I32Const[address_mem_offset]
+            I32Const[result_mem_offset]
             BALANCE
         });
 

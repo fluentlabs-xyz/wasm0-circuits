@@ -116,10 +116,9 @@ mod extcodesize_tests {
     use crate::operation::StackOp;
     use eth_types::evm_types::{MemoryAddress, OpcodeId, StackAddress};
     use eth_types::geth_types::{Account, GethData};
-    use eth_types::{bytecode, Bytecode, Word, U256};
+    use eth_types::{bytecode, Bytecode, Word, U256, StackWord};
     use mock::{TestContext, MOCK_1_ETH, MOCK_ACCOUNTS, MOCK_CODES};
     use pretty_assertions::assert_eq;
-    use eth_types::bytecode::DataSectionDescriptor;
 
     #[test]
     fn test_extcodesize_opcode_empty_acc() {
@@ -183,18 +182,14 @@ mod extcodesize_tests {
         });
 
         // Get the execution steps from the external tracer.
-        let wasm_binary_vec = code.wasm_binary(Some(vec![DataSectionDescriptor {
-            memory_index: 0,
-            mem_offset: account_mem_address,
-            data: account.address.0.to_vec(),
-        }]));
+        code.with_global_data(0, account_mem_address, account.address.0.to_vec());
         let block: GethData = TestContext::<3, 1>::new(
             None,
             |accs| {
                 accs[0]
                     .address(MOCK_ACCOUNTS[0])
                     .balance(*MOCK_1_ETH)
-                    .code(wasm_binary_vec);
+                    .code(code);
                 if exists {
                     accs[1].address(account.address).code(account.code.clone());
                 } else {
@@ -245,7 +240,7 @@ mod extcodesize_tests {
             &StackOp {
                 call_id,
                 address: StackAddress::from(1021u32),
-                value: Word::from(res_mem_address)
+                value: StackWord::from(res_mem_address)
             }
         );
 

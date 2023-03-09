@@ -51,6 +51,7 @@ mod stackonlyop_tests {
     use mock::{MOCK_BASEFEE, MOCK_DIFFICULTY, MOCK_GASLIMIT};
     use pretty_assertions::assert_eq;
     use std::ops::{BitOr, BitXor};
+    use eth_types::bytecode::WasmBinaryBytecode;
 
     fn stack_only_opcode_impl<const N_POP: usize, const N_PUSH: usize>(
         opcode: OpcodeId,

@@ -124,7 +124,7 @@ mod calldataload_tests {
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToWord, Word};
     use mock::{test_ctx::helpers::account_0_code_account_1_no_code, TestContext};
     use rand::random;
-    use eth_types::bytecode::WasmDataSectionDescriptor;
+    use eth_types::bytecode::{WasmBinaryBytecode, WasmDataSectionDescriptor};
 
     use crate::{circuit_input_builder::ExecState, mocks::BlockData, operation::StackOp};
     use crate::evm::opcodes::append_vector_to_vector_with_padding;

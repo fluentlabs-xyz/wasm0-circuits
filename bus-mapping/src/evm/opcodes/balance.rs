@@ -115,6 +115,7 @@ mod balance_tests {
     use pretty_assertions::assert_eq;
 
     use eth_types::{address, bytecode, Bytecode, StackWord, ToBigEndian, U256, Word};
+    use eth_types::bytecode::WasmBinaryBytecode;
     use eth_types::evm_types::{OpcodeId, StackAddress};
     use eth_types::geth_types::GethData;
     use mock::TestContext;

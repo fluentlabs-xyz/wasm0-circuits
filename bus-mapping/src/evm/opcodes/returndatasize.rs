@@ -63,11 +63,14 @@ mod returndatasize_tests {
     use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, Word};
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
+    use eth_types::evm_types::MemoryAddress;
+    use crate::operation::MemoryOp;
 
     #[test]
     fn test_ok() {
-        let res_mem_address = 0x7f;
-        let return_data_size = 0x20;
+        let address_mem_offset = 0x00;
+        let res_mem_offset = 0x7f;
+        let return_data_size = [0u8; 4];
 
         // // // deployed contract
         // // PUSH1 0x20
@@ -117,10 +120,10 @@ mod returndatasize_tests {
             // I32Const[10]
             // I32Const[20]
             // ADDRESS
-            I32Const[res_mem_address]
-            SELFBALANCE
+            I32Const[res_mem_offset]
+            BALANCE
 
-            I32Const[res_mem_address]
+            I32Const[res_mem_offset]
             RETURNDATASIZE
         };
         // Get the execution steps from the external tracer
@@ -151,11 +154,14 @@ mod returndatasize_tests {
             .find(|step| step.exec_state == ExecState::Op(OpcodeId::RETURNDATASIZE))
             .unwrap();
 
+        let container = &builder.block.container;
+        let bm = &step.bus_mapping_instance;
+
         let call_id = builder.block.txs()[0].calls()[0].call_id;
         assert_eq!(
             {
                 let operation =
-                    &builder.block.container.call_context[step.bus_mapping_instance[0].as_usize()];
+                    &container.call_context[bm[0].as_usize()];
                 (operation.rw(), operation.op())
             },
             (
@@ -163,24 +169,40 @@ mod returndatasize_tests {
                 &CallContextOp {
                     call_id,
                     field: CallContextField::LastCalleeReturnDataLength,
-                    value: Word::from(return_data_size),
+                    value: Word::from(0),
                 }
             )
         );
         assert_eq!(
             {
                 let operation =
-                    &builder.block.container.stack[step.bus_mapping_instance[1].as_usize()];
+                    &container.stack[bm[1].as_usize()];
                 (operation.rw(), operation.op())
             },
             (
-                RW::WRITE,
+                RW::READ,
                 &StackOp::new(
                     call_id,
-                    StackAddress::from(1021),
-                    StackWord::from(return_data_size)
+                    StackAddress::from(1023),
+                    StackWord::from(res_mem_offset)
                 )
             )
         );
+        for idx in 0..4 {
+            assert_eq!(
+                {
+                    let operation = &container.memory[bm[2 + idx].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::WRITE,
+                    &MemoryOp::new(
+                        call_id,
+                        MemoryAddress(res_mem_offset + idx),
+                        return_data_size[idx]
+                    )
+                )
+            );
+        }
     }
 }

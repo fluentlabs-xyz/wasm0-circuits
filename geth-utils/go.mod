@@ -38,7 +38,7 @@ require (
 
 replace github.com/tetratelabs/wazero v1.0.0-pre.7 => github.com/wasm0/zkwasm-wazero v0.0.0-20230303153605-38f0c1c2f405
 
-replace github.com/ethereum/go-ethereum v1.10.18 => github.com/wasm0/zkwasm-geth v1.10.23-zkevm.0.20230303161331-ae90b01397ba
+replace github.com/ethereum/go-ethereum v1.10.18 => ../../zkwasm-geth
 
 // Uncomment for debugging
 //replace github.com/tetratelabs/wazero v1.0.0-pre.7 => ../../zkwasm-wazero

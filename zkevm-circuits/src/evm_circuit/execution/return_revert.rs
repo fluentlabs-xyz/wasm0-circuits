@@ -17,7 +17,7 @@ use crate::{
                 ConstraintBuilder, ReversionInfo, StepStateTransition,
                 Transition::{Delta, To},
             },
-            math_gadget::{IsZeroGadget, MinMaxGadget}, memory_gadget::{MemoryAddressGadget}, not,
+            math_gadget::{IsZeroGadget, MinMaxGadget}, not,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },

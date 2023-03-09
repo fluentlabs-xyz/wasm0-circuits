@@ -104,19 +104,19 @@ impl WasmBinaryBytecode for Bytecode {
             ("_evm_sstore", 2), // 15
             ("_evm_create", 4), // 16 TODO
             ("_evm_create2", 5), // 17 TODO
-            ("_evm_return", 2), // 18 TODO
-            ("_evm_revert", 2), // 19 TODO
+            ("_evm_return", 2), // 18
+            ("_evm_revert", 2), // 19
             ("_evm_codesize", 0), // 20
             ("_evm_selfbalance", 0), // 21
             ("_evm_extcodehash", 2), // 22
             ("_evm_extcodesize", 2), // 23
             ("_evm_calldataload", 2), // 24 TODO
+            ("_evm_codecopy", 3), // 25
 
             // TODO
             // ("_evm_calldatacopy", 3),
             // ("_evm_calldataload", 0),
             // ("_evm_callcode", 0),
-            // ("_evm_codecopy", 0),
             // ("_evm_extcodecopy", 0),
             // ("_evm_gasprice", 0),
             // ("_evm_log0", 0),
@@ -222,7 +222,6 @@ impl Bytecode {
         self.num_opcodes += other.num_opcodes;
     }
 
-    /// Write op
     pub fn write_op(&mut self, op: OpcodeId) -> &mut Self {
         let op = match op {
             // WASM opcode mapping
@@ -271,6 +270,7 @@ impl Bytecode {
             OpcodeId::EXTCODEHASH => Instruction::Call(22),
             OpcodeId::EXTCODESIZE => Instruction::Call(23),
             OpcodeId::CALLDATALOAD => Instruction::Call(24),
+            OpcodeId::CODECOPY => Instruction::Call(25),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }

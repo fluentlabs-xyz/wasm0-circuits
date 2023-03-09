@@ -19,9 +19,11 @@ impl Opcode for Codecopy {
         let geth_step = &geth_steps[0];
         let exec_steps = vec![gen_codecopy_step(state, geth_step)?];
 
-        let length = geth_step.stack.nth_last(0)?.as_u64();
+        // reconstruction
+
+        let dest_offset = geth_step.stack.nth_last(0)?.as_u64();
         let code_offset = geth_step.stack.nth_last(1)?.as_u64();
-        let dest_offset = geth_step.stack.nth_last(2)?.as_u64();
+        let length = geth_step.stack.nth_last(2)?.as_u64();
 
         let code_hash = state.call()?.code_hash;
         let code = state.code(code_hash)?;
@@ -43,9 +45,9 @@ fn gen_codecopy_step(
 ) -> Result<ExecStep, Error> {
     let mut exec_step = state.new_step(geth_step)?;
 
-    let length = geth_step.stack.nth_last(0)?;
+    let dest_offset = geth_step.stack.nth_last(0)?;
     let code_offset = geth_step.stack.nth_last(1)?;
-    let dest_offset = geth_step.stack.nth_last(2)?;
+    let length = geth_step.stack.nth_last(2)?;
 
     // stack reads
     state.stack_read(
@@ -87,14 +89,12 @@ fn gen_copy_event(
 ) -> Result<CopyEvent, Error> {
     let rw_counter_start = state.block_ctx.rwc;
 
-    let length = geth_step.stack.nth_last(0)?.as_u64();
+    let dst_offset = geth_step.stack.nth_last(0)?.as_u64();
     let code_offset = geth_step.stack.nth_last(1)?.as_u64();
-    let dst_offset = geth_step.stack.nth_last(2)?.as_u64();
+    let length = geth_step.stack.nth_last(2)?.as_u64();
 
     let code_hash = state.call()?.code_hash;
-    let bytecode_bytes = state.code(code_hash)?;
-    // TODO check if replacement of [Bytecode::from] -> [Bytecode::from_raw_unchecked] is correct
-    let bytecode= Bytecode::from_raw_unchecked(bytecode_bytes);
+    let bytecode: Bytecode = state.code(code_hash)?.into();
     let src_addr_end = bytecode.to_vec().len() as u64;
 
     let mut exec_step = state.new_step(geth_step)?;
@@ -123,9 +123,8 @@ fn gen_copy_event(
 
 #[cfg(test)]
 mod codecopy_tests {
-    use eth_types::{bytecode, Bytecode, evm_types::{MemoryAddress, OpcodeId, StackAddress}, geth_types::GethData, H256, StackWord};
+    use eth_types::{bytecode, evm_types::{MemoryAddress, OpcodeId, StackAddress}, geth_types::GethData, Word, H256, StackWord};
     use ethers_core::utils::keccak256;
-    use eth_types::bytecode::WasmBinaryBytecode;
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
         TestContext,
@@ -138,25 +137,20 @@ mod codecopy_tests {
     };
 
     #[test]
-    fn codecopy_opcode_impl1() {
+    fn codecopy_opcode_impl() {
         test_ok(0x00, 0x00, 0x40);
-    }
-
-    #[test]
-    fn codecopy_opcode_impl2() {
         test_ok(0x20, 0x40, 0xA0);
     }
 
     fn test_ok(dst_offset: usize, code_offset: usize, size: usize) {
         let code = bytecode! {
-            I32Const[dst_offset]
-            I32Const[code_offset]
-            I32Const[size]
+            PUSH32(size)
+            PUSH32(code_offset)
+            PUSH32(dst_offset)
             CODECOPY
+            STOP
         };
 
-        // TODO do we need data section for 'code' ?
-        let wasm_binary_vec = code.wasm_binary();
         let block: GethData = TestContext::<2, 1>::new(
             None,
             account_0_code_account_1_no_code(code.clone()),
@@ -165,8 +159,6 @@ mod codecopy_tests {
         )
         .unwrap()
         .into();
-
-        let code = Bytecode::from_raw_unchecked(wasm_binary_vec);
 
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
         builder

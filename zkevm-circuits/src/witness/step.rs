@@ -13,6 +13,7 @@ use crate::{
     },
     table::RwTableTag,
 };
+use crate::evm_circuit::param::N_BYTES_U64;
 
 /// Step executed in a transaction
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -54,8 +55,8 @@ impl ExecStep {
         // self.memory_size / N_BYTES_WORD as u64
         // TODO wasm0: what about word size and number below if `self.memory_size / N_BYTES_WORD * N_BYTES_WORD < self.memory_size`
         // temporal fix
-        let mut word_count = self.memory_size / N_BYTES_WORD as u64;
-        if word_count * (N_BYTES_WORD as u64) < self.memory_size { word_count += 1 }
+        let mut word_count = self.memory_size / N_BYTES_U64 as u64;
+        if word_count * (N_BYTES_U64 as u64) < self.memory_size { word_count += 1 }
         word_count
     }
 }

@@ -107,6 +107,7 @@ impl Opcode for Extcodehash {
 
 #[cfg(test)]
 mod extcodehash_tests {
+    use std::io::Read;
     use super::*;
     use crate::circuit_input_builder::ExecState;
     use crate::mocks::BlockData;
@@ -114,11 +115,10 @@ mod extcodehash_tests {
     use crate::operation::AccountField;
     use crate::operation::CallContextOp;
     use crate::operation::StackOp;
-    use eth_types::{address, bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Bytecode, Bytes, Word, U256, ToWord};
+    use eth_types::{address, bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Bytecode, Bytes, Word, U256, ToWord, ToStackWord, StackWord, ToU256};
     use ethers_core::utils::keccak256;
     use mock::TestContext;
     use pretty_assertions::assert_eq;
-    use eth_types::bytecode::DataSectionDescriptor;
 
     #[test]
     fn cold_empty_account() -> Result<(), Error> {
@@ -177,18 +177,14 @@ mod extcodehash_tests {
         }
 
         // Get the execution steps from the external tracer
-        let wasm_binary = code.wasm_binary(Some(vec![DataSectionDescriptor {
-            memory_index: 0,
-            mem_offset: external_address_mem_address,
-            data: external_address.0.to_vec(),
-        }]));
+        code.with_global_data(0, external_address_mem_address, external_address.0.to_vec());
         let block: GethData = TestContext::<3, 1>::new(
             None,
             |accs| {
                 accs[0]
                     .address(address!("0x0000000000000000000000000000000000000010"))
                     .balance(Word::from(1u64 << 20))
-                    .code(wasm_binary.clone());
+                    .code(code.clone());
 
                 accs[1]
                     .address(external_address)
@@ -208,7 +204,7 @@ mod extcodehash_tests {
         .unwrap()
         .into();
 
-        let code_hash = Word::from(keccak256(code_ext));
+        let code_hash = StackWord::from(keccak256(code_ext.bytes()));
 
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
         builder
@@ -241,7 +237,7 @@ mod extcodehash_tests {
                 &StackOp {
                     call_id,
                     address: StackAddress::from(1023u32),
-                    value: external_address.to_word()
+                    value: external_address.to_stack_word()
                 }
             )
         );
@@ -312,8 +308,8 @@ mod extcodehash_tests {
                 &AccountOp {
                     address: external_address,
                     field: AccountField::CodeHash,
-                    value: if exists { code_hash } else { U256::zero() },
-                    value_prev: if exists { code_hash } else { U256::zero() },
+                    value: if exists { code_hash.to_u256() } else { U256::zero() },
+                    value_prev: if exists { code_hash.to_u256() } else { U256::zero() },
                 }
             )
         );
@@ -327,7 +323,7 @@ mod extcodehash_tests {
                 &StackOp {
                     call_id,
                     address: 1023u32.into(),
-                    value: if exists { code_hash } else { U256::zero() }
+                    value: if exists { code_hash } else { StackWord::zero() }
                 }
             )
         );
