@@ -1,16 +1,17 @@
 //! Mock types and functions to generate Test enviroments for ZKEVM tests
 
-use crate::{eth, MockAccount, MockBlock, MockTransaction};
-use eth_types::{
-    geth_types::{Account, BlockConstants, GethData},
-    Block, Bytecode, Error, GethExecTrace, Transaction, Word,
-};
-use external_tracer::{trace, TraceConfig};
-use helpers::*;
 use itertools::Itertools;
-use eth_types::bytecode::WasmBinaryBytecode;
 
+use eth_types::{
+    Block,
+    Error, geth_types::{Account, BlockConstants, GethData}, GethExecTrace, Transaction, Word,
+};
+use eth_types::bytecode::WasmBinaryBytecode;
+use external_tracer::{trace, TraceConfig};
 pub use external_tracer::LoggerConfig;
+use helpers::*;
+
+use crate::{eth, MockAccount, MockBlock, MockTransaction};
 
 /// TestContext is a type that contains all the information from a block
 /// required to build the circuit inputs.
@@ -112,10 +113,10 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
         func_block: Fb,
         logger_config: LoggerConfig,
     ) -> Result<Self, Error>
-    where
-        FTx: FnOnce(Vec<&mut MockTransaction>, [MockAccount; NACC]),
-        Fb: FnOnce(&mut MockBlock, Vec<MockTransaction>) -> &mut MockBlock,
-        FAcc: FnOnce([&mut MockAccount; NACC]),
+        where
+            FTx: FnOnce(Vec<&mut MockTransaction>, [MockAccount; NACC]),
+            Fb: FnOnce(&mut MockBlock, Vec<MockTransaction>) -> &mut MockBlock,
+            FAcc: FnOnce([&mut MockAccount; NACC]),
     {
         let mut accounts: Vec<MockAccount> = vec![MockAccount::default(); NACC];
         // Build Accounts modifiers
@@ -198,10 +199,10 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
         func_tx: FTx,
         func_block: Fb,
     ) -> Result<Self, Error>
-    where
-        FTx: FnOnce(Vec<&mut MockTransaction>, [MockAccount; NACC]),
-        Fb: FnOnce(&mut MockBlock, Vec<MockTransaction>) -> &mut MockBlock,
-        FAcc: FnOnce([&mut MockAccount; NACC]),
+        where
+            FTx: FnOnce(Vec<&mut MockTransaction>, [MockAccount; NACC]),
+            Fb: FnOnce(&mut MockBlock, Vec<MockTransaction>) -> &mut MockBlock,
+            FAcc: FnOnce([&mut MockAccount; NACC]),
     {
         Self::new_with_logger_config(
             history_hashes,
@@ -212,6 +213,28 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
         )
     }
 
+    ///
+    pub fn new_revertible<FAcc, FTx, Fb>(
+        history_hashes: Option<Vec<Word>>,
+        acc_fns: FAcc,
+        func_tx: FTx,
+        func_block: Fb,
+    ) -> Result<Self, Error>
+        where
+            FTx: FnOnce(Vec<&mut MockTransaction>, [MockAccount; NACC]),
+            Fb: FnOnce(&mut MockBlock, Vec<MockTransaction>) -> &mut MockBlock,
+            FAcc: FnOnce([&mut MockAccount; NACC]),
+    {
+        Self::new_with_logger_config(
+            history_hashes,
+            acc_fns,
+            func_tx,
+            func_block,
+            LoggerConfig { panic_on_revert: false, ..LoggerConfig::default() },
+        )
+    }
+
+
     /// Returns a simple TestContext setup with a single tx executing the
     /// bytecode passed as parameters. The balances of the 2 accounts and
     /// addresses are the ones used in [`TestContext::
@@ -219,6 +242,16 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
     /// configs are set as [`Default`].
     pub fn simple_ctx_with_bytecode<T: WasmBinaryBytecode>(bytecode: T) -> Result<TestContext<2, 1>, Error> {
         TestContext::new(
+            None,
+            account_0_code_account_1_no_code(bytecode),
+            tx_from_1_to_0,
+            |block, _txs| block,
+        )
+    }
+
+    ///
+    pub fn simple_ctx_with_bytecode_revertible<T: WasmBinaryBytecode>(bytecode: T) -> Result<TestContext<2, 1>, Error> {
+        TestContext::new_revertible(
             None,
             account_0_code_account_1_no_code(bytecode),
             tx_from_1_to_0,
@@ -236,6 +269,7 @@ pub fn gen_geth_traces(
     history_hashes: Option<Vec<Word>>,
     logger_config: LoggerConfig,
 ) -> Result<Vec<GethExecTrace>, Error> {
+    let panic_on_revert = logger_config.panic_on_revert;
     let trace_config = TraceConfig {
         chain_id,
         history_hashes: history_hashes.unwrap_or_default(),
@@ -251,7 +285,7 @@ pub fn gen_geth_traces(
             .collect(),
         logger_config,
     };
-    let traces = trace(&trace_config)?;
+    let traces = trace(&trace_config, panic_on_revert)?;
     Ok(traces)
 }
 
@@ -259,8 +293,10 @@ pub fn gen_geth_traces(
 /// builder pattern used to construct [`TestContext`]s.
 pub mod helpers {
     use eth_types::bytecode::WasmBinaryBytecode;
-    use super::*;
+
     use crate::MOCK_ACCOUNTS;
+
+    use super::*;
 
     /// Generate a simple setup which adds balance to two default accounts from
     /// [`static@MOCK_ACCOUNTS`]:

@@ -351,6 +351,24 @@ impl OpcodeId {
         }
     }
 
+    pub fn is_evm_call(&self) -> bool {
+        match self {
+            OpcodeId::STOP | OpcodeId::RETURN | OpcodeId::SHA3 | OpcodeId::ADDRESS | OpcodeId::BALANCE |
+            OpcodeId::ORIGIN | OpcodeId::CALLER | OpcodeId::CALLVALUE | OpcodeId::CALLDATALOAD |
+            OpcodeId::CALLDATASIZE | OpcodeId::CALLDATACOPY | OpcodeId::CODESIZE | OpcodeId::CODECOPY |
+            OpcodeId::GASPRICE | OpcodeId::EXTCODESIZE | OpcodeId::EXTCODECOPY | OpcodeId::EXTCODEHASH |
+            OpcodeId::RETURNDATASIZE | OpcodeId::RETURNDATACOPY | OpcodeId::BLOCKHASH | OpcodeId::COINBASE |
+            OpcodeId::TIMESTAMP | OpcodeId::NUMBER | OpcodeId::DIFFICULTY | OpcodeId::GASLIMIT |
+            OpcodeId::CHAINID | OpcodeId::BASEFEE | OpcodeId::SLOAD | OpcodeId::SSTORE | OpcodeId::LOG0 |
+            OpcodeId::LOG1 | OpcodeId::LOG2 | OpcodeId::LOG3 | OpcodeId::LOG4 | OpcodeId::CREATE |
+            OpcodeId::CALL | OpcodeId::CALLCODE | OpcodeId::DELEGATECALL | OpcodeId::CREATE2 |
+            OpcodeId::STATICCALL | OpcodeId::REVERT | OpcodeId::SELFBALANCE => {
+                true
+            },
+            _ => false
+        }
+    }
+
     /// Returns `true` if the `OpcodeId` is a `DUPn`.
     pub fn is_dup(&self) -> bool {
         false

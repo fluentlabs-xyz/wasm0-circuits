@@ -1,11 +1,13 @@
 //! This module generates traces by connecting to an external tracer
 
-use eth_types::{
-    geth_types::{Account, BlockConstants, Transaction},
-    Address, Error, GethExecTrace, Word,
-};
-use serde::Serialize;
 use std::collections::HashMap;
+
+use serde::Serialize;
+
+use eth_types::{
+    Address,
+    Error, geth_types::{Account, BlockConstants, Transaction}, GethExecTrace, Word,
+};
 
 /// Configuration structure for `geth_utlis::trace`
 #[derive(Debug, Default, Clone, Serialize)]
@@ -40,6 +42,9 @@ pub struct LoggerConfig {
     /// enable return data capture
     #[serde(rename = "EnableReturnData")]
     pub enable_return_data: bool,
+    /// panic if node returns error
+    #[serde(rename = "PanicOnRevert")]
+    pub panic_on_revert: bool,
 }
 
 impl Default for LoggerConfig {
@@ -49,6 +54,7 @@ impl Default for LoggerConfig {
             disable_stack: false,
             disable_storage: false,
             enable_return_data: true,
+            panic_on_revert: true,
         }
     }
 }
@@ -63,7 +69,7 @@ impl LoggerConfig {
 }
 
 /// Creates a trace for the specified config
-pub fn trace(config: &TraceConfig) -> Result<Vec<GethExecTrace>, Error> {
+pub fn trace(config: &TraceConfig, panic_on_revert: bool) -> Result<Vec<GethExecTrace>, Error> {
     // Get the trace
     let trace_string = geth_utils::trace(&serde_json::to_string(&config).unwrap()).map_err(
         |error| match error {
@@ -72,8 +78,10 @@ pub fn trace(config: &TraceConfig) -> Result<Vec<GethExecTrace>, Error> {
     )?;
 
     let trace: Vec<GethExecTrace> = serde_json::from_str(&trace_string).map_err(Error::SerdeError)?;
-    // if trace.len() > 0 && trace[0].failed {
-    //     panic!("{}", trace[0].return_value);
-    // }
+    if panic_on_revert {
+        trace.iter()
+            .filter(|v| v.failed)
+            .for_each(|v| panic!("{}", v.return_value));
+    }
     Ok(trace)
 }

@@ -1,6 +1,8 @@
 //! EVM byte code generator
 
 use std::{collections::HashMap, str::FromStr};
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
 
 use wasm_encoder::{ConstExpr, DataSection, Encode, Instruction};
 
@@ -14,11 +16,33 @@ pub enum Error {
 }
 
 /// Helper struct that represents a single data section in wasm binary
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct WasmDataSectionDescriptor {
-    pub memory_index: u32,
-    pub mem_offset: u32,
-    pub data: Vec<u8>,
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd)]
+pub enum SectionDescriptor {
+    Data {
+        index: u32,
+        offset: u32,
+        data: Vec<u8>,
+    }
+}
+
+impl SectionDescriptor {
+    fn order(&self) -> usize {
+        match self {
+            SectionDescriptor::Data { .. } => 1usize,
+        }
+    }
+}
+
+impl Ord for SectionDescriptor {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.order().cmp(&other.order())
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EvmCall {
+    fn_name: &'static str,
+    args_num: usize,
 }
 
 /// Helper struct that represents a single element in a bytecode.
@@ -34,8 +58,9 @@ pub struct BytecodeElement {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Bytecode {
     /// Vector for bytecode elements.
-    pub code: Vec<BytecodeElement>,
-    pub global_data: Vec<WasmDataSectionDescriptor>,
+    code: Vec<BytecodeElement>,
+    section_descriptors: Vec<SectionDescriptor>,
+    evm_table: HashMap<EvmCall, usize>,
     num_opcodes: usize,
     markers: HashMap<String, usize>,
 }
@@ -69,7 +94,6 @@ impl WasmBinaryBytecode for UncheckedWasmBinary {
 }
 
 impl WasmBinaryBytecode for Bytecode {
-
     fn wasm_binary(&self) -> Vec<u8> {
         use wasm_encoder::{
             CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
@@ -78,64 +102,23 @@ impl WasmBinaryBytecode for Bytecode {
         let mut module = Module::new();
         // Encode the type & imports section.
         let mut types = TypeSection::new();
-        types.function(vec![ValType::I32; 1], vec![]); // 0
-        types.function(vec![], vec![]); // 1
+        types.function(vec![ValType::I32; 0], vec![]); // 0
+        types.function(vec![ValType::I32; 1], vec![]); // 1
         types.function(vec![ValType::I32; 2], vec![]); // 2
         types.function(vec![ValType::I32; 3], vec![]); // 3
         types.function(vec![ValType::I32; 4], vec![]); // 4
         types.function(vec![ValType::I32; 5], vec![]); // 5
         let mut imports = ImportSection::new();
-        let evm_functions: Vec<(&str, u32)> = vec![
-            ("_evm_stop", 1), // 0
-            ("_evm_address", 0), // 1
-            ("_evm_caller", 0), // 2
-            ("_evm_gaslimit", 0), // 3
-            ("_evm_basefee", 0), // 4
-            ("_evm_difficulty", 0), // 5
-            ("_evm_origin", 0), // 6
-            ("_evm_calldatasize", 0), // 7
-            ("_evm_callvalue", 0), // 8
-            ("_evm_gasprice", 0), // 9
-            ("_evm_returndatasize", 0), // 10 TODO some problems
-            ("_evm_balance", 2), // 11
-            ("_evm_number", 0), // 12
-            ("_evm_chainid", 0), // 13
-            ("_evm_sload", 2), // 14 TODO
-            ("_evm_sstore", 2), // 15
-            ("_evm_create", 4), // 16 TODO
-            ("_evm_create2", 5), // 17 TODO
-            ("_evm_return", 2), // 18
-            ("_evm_revert", 2), // 19
-            ("_evm_codesize", 0), // 20
-            ("_evm_selfbalance", 0), // 21
-            ("_evm_extcodehash", 2), // 22
-            ("_evm_extcodesize", 2), // 23
-            ("_evm_calldataload", 2), // 24 TODO
-            ("_evm_codecopy", 3), // 25
-
-            // TODO
-            // ("_evm_calldatacopy", 3),
-            // ("_evm_calldataload", 0),
-            // ("_evm_callcode", 0),
-            // ("_evm_extcodecopy", 0),
-            // ("_evm_gasprice", 0),
-            // ("_evm_log0", 0),
-            // ("_evm_log1", 0),
-            // ("_evm_log2", 0),
-            // ("_evm_log3", 0),
-            // ("_evm_log4", 0),
-            // ("_evm_revert", 0),
-            // ("_evm_returndatacopy", 0),
-            // ("_evm_returndatasize", 0),
-            // ("_evm_sload", 0),
-            // ("_evm_stop", 0),
-        ];
-        for (func_name, params) in &evm_functions {
-            imports.import("env", func_name, EntityType::Function(*params));
+        let ordered_evm_table = self.evm_table.clone()
+            .into_iter()
+            .map(|(k, v)| (v, k))
+            .collect::<BTreeMap<_, _>>();
+        for (_, evm_call) in ordered_evm_table {
+            imports.import("env", evm_call.fn_name, EntityType::Function(evm_call.args_num as u32));
         }
         // Encode the function section
         let mut functions = FunctionSection::new();
-        functions.function(1);
+        functions.function(0);
         // Create memory section
         let mut memories = MemorySection::new();
         memories.memory(MemoryType {
@@ -146,7 +129,7 @@ impl WasmBinaryBytecode for Bytecode {
         });
         // Encode the export section.
         let mut exports = ExportSection::new();
-        exports.export("main", ExportKind::Func, evm_functions.len() as u32);
+        exports.export("main", ExportKind::Func, self.evm_table.len() as u32);
         exports.export("memory", ExportKind::Memory, 0);
         // Encode the code section.
         let mut codes = CodeSection::new();
@@ -163,10 +146,17 @@ impl WasmBinaryBytecode for Bytecode {
         module.section(&exports);
         module.section(&codes);
         // if we have global data section then put it into final binary
-        for data in &self.global_data {
-            let mut data_section = DataSection::new();
-            data_section.active(data.memory_index, &ConstExpr::i32_const(data.mem_offset as i32), data.data.clone());
-            module.section(&data_section);
+        let mut sections = self.section_descriptors.clone();
+        sections.sort();
+        for section in &sections {
+            match section {
+                SectionDescriptor::Data { index, offset, data } => {
+                    let mut data_section = DataSection::new();
+                    data_section.active(*index, &ConstExpr::i32_const(*offset as i32), data.clone());
+                    module.section(&data_section);
+                }
+                _ => unreachable!("unknown section: {:?}", section)
+            }
         }
         let wasm_bytes = module.finish();
         return wasm_bytes;
@@ -184,18 +174,25 @@ impl Bytecode {
                     is_code: true,
                 })
                 .collect(),
-            global_data: Vec::new(),
+            section_descriptors: Vec::new(),
+            evm_table: HashMap::new(),
             markers: HashMap::new(),
             num_opcodes: 0,
         }
     }
 
-    pub fn with_global_data(&mut self, memory_index: u32, memory_offset: u32, data: Vec<u8>) {
-        self.global_data.push(WasmDataSectionDescriptor {
-            memory_index,
-            mem_offset: memory_offset,
+    pub fn with_global_data(&mut self, memory_index: u32, memory_offset: u32, data: Vec<u8>) -> &mut Self {
+        self.section_descriptors.push(SectionDescriptor::Data {
+            index: memory_index,
+            offset: memory_offset,
             data,
         });
+        self
+    }
+
+    /// Get the raw code
+    pub fn raw_code(&self) -> Vec<BytecodeElement> {
+        self.code.clone()
     }
 
     /// Get the code
@@ -219,10 +216,85 @@ impl Bytecode {
         for (key, val) in other.markers.iter() {
             self.insert_marker(key, self.num_opcodes + val);
         }
+        if self.section_descriptors.len() > 0 && other.section_descriptors.len() > 0 {
+            panic!("section collision might happen, not implemented");
+        }
+        for section in other.section_descriptors.iter() {
+            self.section_descriptors.push(section.clone());
+        }
+        if self.evm_table.len() > 0 && other.section_descriptors.len() > 0 {
+            panic!("EVM table collision might happen, not implemented");
+        }
+        for (evm_call, call_index) in other.evm_table.iter() {
+            self.evm_table.insert(*evm_call, *call_index);
+        }
         self.num_opcodes += other.num_opcodes;
     }
 
+    pub fn evm_call(&mut self, op: OpcodeId) -> &mut Self {
+        let (fn_name, args_num) = match op {
+            OpcodeId::STOP => ("_evm_stop", 0),
+            OpcodeId::RETURN => ("_evm_return", 2),
+            OpcodeId::SHA3 => ("_evm_keccak", 2),
+            OpcodeId::ADDRESS => ("_evm_address", 1),
+            OpcodeId::BALANCE => ("_evm_balance", 2),
+            OpcodeId::ORIGIN => ("_evm_origin", 1),
+            OpcodeId::CALLER => ("_evm_caller", 1),
+            OpcodeId::CALLVALUE => ("_evm_callvalue", 1),
+            OpcodeId::CALLDATALOAD => ("_evm_calldataload", 2),
+            OpcodeId::CALLDATASIZE => ("_evm_calldatasize", 1),
+            OpcodeId::CALLDATACOPY => ("_evm_calldatacopy", 3),
+            OpcodeId::CODESIZE => ("_evm_codesize", 1),
+            OpcodeId::CODECOPY => ("_evm_codecopy", 3),
+            OpcodeId::GASPRICE => ("_evm_gasprice", 1),
+            OpcodeId::EXTCODESIZE => ("_evm_extcodesize", 2),
+            OpcodeId::EXTCODECOPY => ("_evm_extcodecopy", 3),
+            OpcodeId::EXTCODEHASH => ("_evm_extcodehash", 2),
+            OpcodeId::RETURNDATASIZE => ("_evm_returndatasize", 1),
+            OpcodeId::RETURNDATACOPY => ("_evm_returndatacopy", 3),
+            OpcodeId::BLOCKHASH => ("_evm_blockhash", 1),
+            OpcodeId::COINBASE => ("_evm_coinbase", 1),
+            OpcodeId::TIMESTAMP => ("_evm_timestamp", 1),
+            OpcodeId::NUMBER => ("_evm_number", 1),
+            OpcodeId::DIFFICULTY => ("_evm_difficulty", 1),
+            OpcodeId::GASLIMIT => ("_evm_gaslimit", 1),
+            OpcodeId::CHAINID => ("_evm_chainid", 1),
+            OpcodeId::BASEFEE => ("_evm_basefee", 1),
+            OpcodeId::SLOAD => ("_evm_sload", 2),
+            OpcodeId::SSTORE => ("_evm_sstore", 2),
+            OpcodeId::LOG0 => ("_evm_log0", 2),
+            OpcodeId::LOG1 => ("_evm_log1", 3),
+            OpcodeId::LOG2 => ("_evm_log2", 4),
+            OpcodeId::LOG3 => ("_evm_log3", 5),
+            OpcodeId::LOG4 => ("_evm_log4", 6),
+            OpcodeId::CREATE => ("_evm_create", 3),
+            OpcodeId::CALL => ("_evm_call", 8),
+            OpcodeId::CALLCODE => ("_evm_callcode", 8),
+            OpcodeId::DELEGATECALL => ("_evm_delegatecall", 8),
+            OpcodeId::CREATE2 => ("_evm_create2", 5),
+            OpcodeId::STATICCALL => ("_evm_staticcall", 8),
+            OpcodeId::REVERT => ("_evm_revert", 2),
+            OpcodeId::SELFBALANCE => ("_evm_selfbalance", 1),
+            _ => unreachable!("not supported EVM opcode: {op}")
+        };
+        let evm_call = EvmCall {
+            fn_name, args_num,
+        };
+
+        let call_index = if let Some(call_index) = self.evm_table.get(&evm_call) {
+            *call_index
+        } else {
+            let call_index = self.evm_table.len();
+            self.evm_table.insert(evm_call, call_index);
+            call_index
+        };
+        self.write_call(call_index as u32)
+    }
+
     pub fn write_op(&mut self, op: OpcodeId) -> &mut Self {
+        if op.is_evm_call() {
+            return self.evm_call(op);
+        }
         let op = match op {
             // WASM opcode mapping
             OpcodeId::I32Add => Instruction::I32Add,
@@ -244,39 +316,25 @@ impl Bytecode {
             OpcodeId::End => Instruction::End,
             OpcodeId::Unreachable => Instruction::Unreachable,
             OpcodeId::Drop => Instruction::Drop,
-            // EVM opcode mapping
-            OpcodeId::STOP => Instruction::Call(0),
-            OpcodeId::ADDRESS => Instruction::Call(1),
-            OpcodeId::CALLER => Instruction::Call(2),
-            OpcodeId::GASLIMIT => Instruction::Call(3),
-            OpcodeId::BASEFEE => Instruction::Call(4),
-            OpcodeId::DIFFICULTY => Instruction::Call(5),
-            OpcodeId::ORIGIN => Instruction::Call(6),
-            OpcodeId::CALLDATASIZE => Instruction::Call(7),
-            OpcodeId::CALLVALUE => Instruction::Call(8),
-            OpcodeId::GASPRICE => Instruction::Call(9),
-            OpcodeId::RETURNDATASIZE => Instruction::Call(10),
-            OpcodeId::BALANCE => Instruction::Call(11),
-            OpcodeId::NUMBER => Instruction::Call(12),
-            OpcodeId::CHAINID => Instruction::Call(13),
-            OpcodeId::SLOAD => Instruction::Call(14),
-            OpcodeId::SSTORE => Instruction::Call(15),
-            OpcodeId::CREATE => Instruction::Call(16),
-            OpcodeId::CREATE2 => Instruction::Call(17),
-            OpcodeId::RETURN => Instruction::Call(18),
-            OpcodeId::REVERT => Instruction::Call(19),
-            OpcodeId::CODESIZE => Instruction::Call(20),
-            OpcodeId::SELFBALANCE => Instruction::Call(21),
-            OpcodeId::EXTCODEHASH => Instruction::Call(22),
-            OpcodeId::EXTCODESIZE => Instruction::Call(23),
-            OpcodeId::CALLDATALOAD => Instruction::Call(24),
-            OpcodeId::CODECOPY => Instruction::Call(25),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }
         };
         let mut buf: Vec<u8> = vec![];
         op.encode(&mut buf);
+        for (i, b) in buf.iter().enumerate() {
+            if i == 0 {
+                self.write_op_internal(*b);
+            } else {
+                self.write(*b, false);
+            }
+        }
+        self
+    }
+
+    pub fn write_call(&mut self, index: u32) -> &mut Self {
+        let mut buf: Vec<u8> = vec![];
+        Instruction::Call(index).encode(&mut buf);
         for (i, b) in buf.iter().enumerate() {
             if i == 0 {
                 self.write_op_internal(*b);

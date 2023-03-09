@@ -225,7 +225,7 @@ fn handle_create(
     let code_hash = H256(keccak256(&values));
     let dst_id = NumberOrHash::Hash(code_hash);
     let bytes: Vec<_> = Bytecode::from(values)
-        .code
+        .raw_code()
         .iter()
         .map(|element| (element.value, element.is_code))
         .collect();

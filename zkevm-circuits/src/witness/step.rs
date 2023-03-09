@@ -8,7 +8,7 @@ use eth_types::evm_unimplemented;
 
 use crate::{
     evm_circuit::{
-        param::{N_BYTES_WORD, STACK_CAPACITY},
+        param::{STACK_CAPACITY},
         step::ExecutionState,
     },
     table::RwTableTag,

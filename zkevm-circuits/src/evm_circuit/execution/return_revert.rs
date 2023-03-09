@@ -31,7 +31,6 @@ pub(crate) struct ReturnRevertGadget<F> {
 
     length: Cell<F>,
     offset: Cell<F>,
-    // range: MemoryAddressGadget<F>,
 
     is_success: Cell<F>,
     restore_context: RestoreContextGadget<F>,
@@ -64,7 +63,6 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
         let offset = cb.query_cell();
         cb.stack_pop(length.expr());
         cb.stack_pop(offset.expr());
-        // let range = MemoryAddressGadget::construct(cb, offset, length);
 
         let is_success = cb.call_context(None, CallContextFieldTag::IsSuccess);
         cb.require_boolean("is_success is boolean", is_success.expr());
@@ -220,7 +218,6 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
 
         Self {
             opcode,
-            // range,
             length,
             offset,
             is_success,
@@ -230,7 +227,6 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             return_data_offset,
             return_data_length,
             restore_context,
-            // memory_expansion,
             code_hash,
             address,
             caller_id,
@@ -256,8 +252,6 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
         let [length, memory_offset] = [0, 1].map(|i| block.rws[step.rw_indices[i]].stack_value());
         self.length.assign(region, offset, Value::<F>::known(length.to_scalar().unwrap()))?;
         self.offset.assign(region, offset, Value::<F>::known(memory_offset.to_scalar().unwrap()))?;
-
-        // self.range.assign(region, offset, memory_offset, length)?;
 
         self.is_success
             .assign(region, offset, Value::known(call.is_success.into()))?;
@@ -353,7 +347,7 @@ mod test {
         address, Address, bytecode, Bytecode, bytecode_internal, evm_types::OpcodeId, geth_types::Account,
         Word,
     };
-    use eth_types::bytecode::UncheckedWasmBinary;
+    use eth_types::bytecode::{UncheckedWasmBinary, WasmBinaryBytecode};
     use mock::{eth, MOCK_ACCOUNTS, TestContext};
 
     use crate::test_util::CircuitTestBuilder;
@@ -423,7 +417,7 @@ mod test {
             REVERT
         );
         CircuitTestBuilder::new_from_test_ctx(
-            TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
+            TestContext::<2, 1>::simple_ctx_with_bytecode_revertible(code).unwrap(),
         ).run();
     }
 
@@ -492,13 +486,11 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn test_return_root_create() {
         let test_parameters = [(0, 0), (0, 10), (300, 20), (1000, 0)];
-        for ((offset, length), is_return) in
-        test_parameters.iter().cartesian_product(&[true, false])
+        for ((offset, length), is_return) in test_parameters.iter().cartesian_product(&[true, false])
         {
-            let tx_input = callee_bytecode(*is_return, *offset, *length).code();
+            let tx_input = callee_bytecode(*is_return, *offset, *length).wasm_binary();
             let ctx = TestContext::<1, 1>::new(
                 None,
                 |accs| {
@@ -508,8 +500,7 @@ mod test {
                     txs[0].from(accs[0].address).input(tx_input.into());
                 },
                 |block, _| block,
-            )
-                .unwrap();
+            ).unwrap();
 
             CircuitTestBuilder::new_from_test_ctx(ctx).run();
         }
@@ -522,7 +513,7 @@ mod test {
         for ((offset, length), is_return) in
         test_parameters.iter().cartesian_product(&[true, false])
         {
-            let initializer = callee_bytecode(*is_return, *offset, *length).code();
+            let initializer = callee_bytecode(*is_return, *offset, *length).wasm_binary();
 
             let root_code = bytecode! {
                 PUSH32(Word::from_big_endian(&initializer))
@@ -571,7 +562,7 @@ mod test {
     fn test_nonpersistent_nonroot_create() {
         // Test the case where the initialization call is successful, but the CREATE
         // call is reverted.
-        let initializer = callee_bytecode(true, 0, 10).code();
+        let initializer = callee_bytecode(true, 0, 10).wasm_binary();
 
         let root_code = bytecode! {
             PUSH32(Word::from_big_endian(&initializer))
