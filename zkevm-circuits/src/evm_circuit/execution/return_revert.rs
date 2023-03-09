@@ -417,7 +417,7 @@ mod test {
             REVERT
         );
         CircuitTestBuilder::new_from_test_ctx(
-            TestContext::<2, 1>::simple_ctx_with_bytecode_revertible(code).unwrap(),
+            TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
         ).run();
     }
 
@@ -433,7 +433,7 @@ mod test {
                 ).run();
             } else {
                 CircuitTestBuilder::new_from_test_ctx(
-                    TestContext::<2, 1>::simple_ctx_with_bytecode_revertible(code).unwrap(),
+                    TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
                 ).run();
             }
         }
@@ -509,7 +509,7 @@ mod test {
                     |block, _| block,
                 ).unwrap()
             } else {
-                TestContext::<1, 1>::new_revertible(
+                TestContext::<1, 1>::new(
                     None,
                     |accs| {
                         accs[0].address(MOCK_ACCOUNTS[0]).balance(eth(10));

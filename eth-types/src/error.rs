@@ -33,6 +33,8 @@ pub enum Error {
     WordToMemAddr,
     /// Signature parsing error.
     Signature(libsecp256k1::Error),
+    /// Out of memory error.
+    OutOfMemory,
 }
 
 impl From<libsecp256k1::Error> for Error {

@@ -163,7 +163,7 @@ fn into_traceconfig(st: StateTest) -> (String, TraceConfig, StateTestResult) {
 pub fn geth_trace(st: StateTest) -> Result<GethExecTrace, StateTestError> {
     let (_, trace_config, _) = into_traceconfig(st);
 
-    let mut geth_traces = external_tracer::trace(&trace_config, false)
+    let mut geth_traces = external_tracer::trace(&trace_config)
         .map_err(|err| StateTestError::CircuitInput(err.to_string()))?;
 
     Ok(geth_traces.remove(0))
@@ -178,7 +178,7 @@ pub fn run_test(
 
     let (_, trace_config, post) = into_traceconfig(st.clone());
 
-    let geth_traces = external_tracer::trace(&trace_config, false);
+    let geth_traces = external_tracer::trace(&trace_config);
 
     let geth_traces = match (geth_traces, st.exception) {
         (Ok(res), false) => res,

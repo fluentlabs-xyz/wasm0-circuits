@@ -1,5 +1,5 @@
 //! Doc this
-use crate::{Error, StackWord};
+use crate::{Address, Error, StackWord, U256};
 use crate::{DebugByte, ToBigEndian, Word};
 use core::ops::{Add, AddAssign, Index, IndexMut, Mul, MulAssign, Range, Sub, SubAssign};
 use core::str::FromStr;
@@ -214,6 +214,34 @@ impl fmt::Debug for Memory {
 impl Memory {
     pub fn from_bytes_with_offset(bytes: Vec<u8>, offset: u32) -> Self {
         Self(bytes, offset)
+    }
+
+    fn read_buffer<'a>(&self, offset: u64, dst: *mut u8, length: u32) -> Result<(), Error> {
+        if offset + length as u64 > self.0.len() as u64 {
+            return Err(Error::OutOfMemory);
+        }
+        unsafe {
+            std::ptr::copy(self.0.as_ptr().add(offset as usize), dst, length as usize);
+        }
+        Ok(())
+    }
+
+    pub fn read_address(&self, offset: StackWord) -> Result<Address, Error> {
+        let mut res = Address::zero();
+        self.read_buffer(offset.as_u64(), res.as_mut_ptr(), 20)?;
+        Ok(res)
+    }
+
+    pub fn read_u8(&self, offset: StackWord) -> Result<u8, Error> {
+        let mut res = 0u8;
+        self.read_buffer(offset.as_u64(), &mut res as *mut u8, 1)?;
+        Ok(res)
+    }
+
+    pub fn read_u256(&self, offset: StackWord) -> Result<Word, Error> {
+        let mut res = [0u8; 32];
+        self.read_buffer(offset.as_u64(), res.as_mut_ptr(), 32)?;
+        Ok(U256::from_big_endian(&res))
     }
 
     pub fn extends_with(&mut self, memory: &Memory) {

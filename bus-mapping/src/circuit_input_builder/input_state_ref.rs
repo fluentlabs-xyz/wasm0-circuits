@@ -1094,15 +1094,24 @@ impl<'a> CircuitInputStateRef<'a> {
 
         let next_depth = next_step.map(|s| s.depth).unwrap_or(0);
         let next_result = next_step
-            .map(|s| s.stack.last().unwrap_or_else(|_| StackWord::zero()))
+            .map(|s| {
+                let result_offset = step.stack.last().unwrap_or_else(|_| StackWord::zero());
+                StackWord::from(s.global_memory.read_u8(result_offset).unwrap_or_default())
+            })
             .unwrap_or_else(StackWord::zero);
 
         let call_ctx = self.call_ctx()?;
         // get value first if call/create
         let value = match step.op {
-            OpcodeId::CALL | OpcodeId::CALLCODE => step.stack.nth_last(2)?,
-            OpcodeId::CREATE | OpcodeId::CREATE2 => step.stack.nth_last(0)?,
-            _ => StackWord::zero(),
+            OpcodeId::CALL | OpcodeId::CALLCODE => {
+                let value_offset = step.stack.nth_last(5)?;
+                step.global_memory.read_u256(value_offset)?
+            },
+            OpcodeId::CREATE | OpcodeId::CREATE2 => {
+                let value_offset = step.stack.nth_last(2)?;
+                step.global_memory.read_u256(value_offset)?
+            },
+            _ => Word::zero(),
         };
 
         // Return from a call with a failure
@@ -1203,32 +1212,32 @@ impl<'a> CircuitInputStateRef<'a> {
             }
 
             let sender = self.call()?.address;
-            let (found, _account) = self.sdb.get_account(&sender);
+            let (found, account) = self.sdb.get_account(&sender);
             if !found {
                 return Err(Error::AccountNotFound(sender));
             }
-            unreachable!("value refers to memory, its not value");
-            // if account.balance < value.to_u256() {
-            //     return Ok(Some(ExecError::InsufficientBalance));
-            // }
-            //
-            // // Address collision
-            // if matches!(step.op, OpcodeId::CREATE | OpcodeId::CREATE2) {
-            //     let address = match step.op {
-            //         OpcodeId::CREATE => self.create_address()?,
-            //         OpcodeId::CREATE2 => self.create2_address(step)?,
-            //         _ => unreachable!(),
-            //     };
-            //     let (found, _) = self.sdb.get_account(&address);
-            //     if found {
-            //         return Ok(Some(ExecError::ContractAddressCollision));
-            //     }
-            // }
-            //
-            // return Err(Error::UnexpectedExecStepError(
-            //     "*CALL*/CREATE* code not executed",
-            //     step.clone(),
-            // ));
+
+            if account.balance < value {
+                return Ok(Some(ExecError::InsufficientBalance));
+            }
+
+            // Address collision
+            if matches!(step.op, OpcodeId::CREATE | OpcodeId::CREATE2) {
+                let address = match step.op {
+                    OpcodeId::CREATE => self.create_address()?,
+                    OpcodeId::CREATE2 => self.create2_address(step)?,
+                    _ => unreachable!(),
+                };
+                let (found, _) = self.sdb.get_account(&address);
+                if found {
+                    return Ok(Some(ExecError::ContractAddressCollision));
+                }
+            }
+
+            return Err(Error::UnexpectedExecStepError(
+                "*CALL*/CREATE* code not executed",
+                step.clone(),
+            ));
         }
 
         Ok(None)

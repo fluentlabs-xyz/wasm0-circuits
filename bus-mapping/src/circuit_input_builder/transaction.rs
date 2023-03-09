@@ -58,7 +58,8 @@ impl TransactionContext {
                         call_is_success_map.insert(call_indices.pop().unwrap(), is_success);
                     // Callee with empty code
                     } else if CallKind::try_from(geth_step.op).is_ok() {
-                        let is_success = !geth_next_step.stack.last()?.is_zero();
+                        let result_offset = geth_step.stack.last()?;
+                        let is_success = geth_next_step.global_memory.read_u8(result_offset)? != 0u8;
                         call_is_success_map.insert(index, is_success);
                     }
                 }

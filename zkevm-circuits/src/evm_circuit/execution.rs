@@ -47,7 +47,7 @@ mod calldatacopy;
 mod calldataload;
 mod calldatasize;
 mod caller;
-// mod callop;
+mod callop;
 mod callvalue;
 mod chainid;
 mod codecopy;
@@ -136,6 +136,7 @@ use selfbalance::SelfbalanceGadget;
 use wasm_bin::WasmBinGadget;
 use wasm_const::WasmConstGadget;
 use wasm_unary::WasmUnaryGadget;
+use crate::evm_circuit::execution::callop::CallOpGadget;
 use crate::evm_circuit::execution::codecopy::CodeCopyGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
@@ -192,7 +193,7 @@ pub(crate) struct ExecutionConfig<F> {
     balance_gadget: BalanceGadget<F>,
     // bitwise_gadget: BitwiseGadget<F>,
     // byte_gadget: ByteGadget<F>,
-    // call_op_gadget: CallOpGadget<F>,
+    call_op_gadget: CallOpGadget<F>,
     call_value_gadget: CallValueGadget<F>,
     // calldatacopy_gadget: CallDataCopyGadget<F>,
     // calldataload_gadget: CallDataLoadGadget<F>,
@@ -449,7 +450,7 @@ impl<F: Field> ExecutionConfig<F> {
             // addmod_gadget: configure_gadget!(),
             // bitwise_gadget: configure_gadget!(),
             // byte_gadget: configure_gadget!(),
-            // call_op_gadget: configure_gadget!(),
+            call_op_gadget: configure_gadget!(),
             // call_value_gadget: configure_gadget!(),
             // calldatacopy_gadget: configure_gadget!(),
             // calldataload_gadget: configure_gadget!(),
@@ -1145,7 +1146,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::BALANCE => assign_exec_step!(self.balance_gadget),
             // ExecutionState::BITWISE => assign_exec_step!(self.bitwise_gadget),
             // ExecutionState::BYTE => assign_exec_step!(self.byte_gadget),
-            // ExecutionState::CALL_OP => assign_exec_step!(self.call_op_gadget),
+            ExecutionState::CALL_OP => assign_exec_step!(self.call_op_gadget),
             // ExecutionState::CALLDATACOPY => assign_exec_step!(self.calldatacopy_gadget),
             // ExecutionState::CALLDATALOAD => assign_exec_step!(self.calldataload_gadget),
             // ExecutionState::CALLDATASIZE => assign_exec_step!(self.calldatasize_gadget),

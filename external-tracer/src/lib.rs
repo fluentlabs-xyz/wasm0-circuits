@@ -42,9 +42,6 @@ pub struct LoggerConfig {
     /// enable return data capture
     #[serde(rename = "EnableReturnData")]
     pub enable_return_data: bool,
-    /// panic if node returns error
-    #[serde(rename = "PanicOnRevert")]
-    pub panic_on_revert: bool,
 }
 
 impl Default for LoggerConfig {
@@ -54,7 +51,6 @@ impl Default for LoggerConfig {
             disable_stack: false,
             disable_storage: false,
             enable_return_data: true,
-            panic_on_revert: true,
         }
     }
 }
@@ -69,7 +65,7 @@ impl LoggerConfig {
 }
 
 /// Creates a trace for the specified config
-pub fn trace(config: &TraceConfig, panic_on_revert: bool) -> Result<Vec<GethExecTrace>, Error> {
+pub fn trace(config: &TraceConfig) -> Result<Vec<GethExecTrace>, Error> {
     // Get the trace
     let trace_string = geth_utils::trace(&serde_json::to_string(&config).unwrap()).map_err(
         |error| match error {
@@ -78,10 +74,8 @@ pub fn trace(config: &TraceConfig, panic_on_revert: bool) -> Result<Vec<GethExec
     )?;
 
     let trace: Vec<GethExecTrace> = serde_json::from_str(&trace_string).map_err(Error::SerdeError)?;
-    if panic_on_revert {
-        trace.iter()
-            .filter(|v| v.failed)
-            .for_each(|v| panic!("{}", v.return_value));
-    }
+    trace.iter()
+        .filter(|v| v.internal_error != "")
+        .for_each(|v| panic!("{}", v.internal_error));
     Ok(trace)
 }

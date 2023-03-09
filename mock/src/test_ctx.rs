@@ -213,28 +213,6 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
         )
     }
 
-    ///
-    pub fn new_revertible<FAcc, FTx, Fb>(
-        history_hashes: Option<Vec<Word>>,
-        acc_fns: FAcc,
-        func_tx: FTx,
-        func_block: Fb,
-    ) -> Result<Self, Error>
-        where
-            FTx: FnOnce(Vec<&mut MockTransaction>, [MockAccount; NACC]),
-            Fb: FnOnce(&mut MockBlock, Vec<MockTransaction>) -> &mut MockBlock,
-            FAcc: FnOnce([&mut MockAccount; NACC]),
-    {
-        Self::new_with_logger_config(
-            history_hashes,
-            acc_fns,
-            func_tx,
-            func_block,
-            LoggerConfig { panic_on_revert: false, ..LoggerConfig::default() },
-        )
-    }
-
-
     /// Returns a simple TestContext setup with a single tx executing the
     /// bytecode passed as parameters. The balances of the 2 accounts and
     /// addresses are the ones used in [`TestContext::
@@ -242,16 +220,6 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
     /// configs are set as [`Default`].
     pub fn simple_ctx_with_bytecode<T: WasmBinaryBytecode>(bytecode: T) -> Result<TestContext<2, 1>, Error> {
         TestContext::new(
-            None,
-            account_0_code_account_1_no_code(bytecode),
-            tx_from_1_to_0,
-            |block, _txs| block,
-        )
-    }
-
-    ///
-    pub fn simple_ctx_with_bytecode_revertible<T: WasmBinaryBytecode>(bytecode: T) -> Result<TestContext<2, 1>, Error> {
-        TestContext::new_revertible(
             None,
             account_0_code_account_1_no_code(bytecode),
             tx_from_1_to_0,
@@ -269,7 +237,6 @@ pub fn gen_geth_traces(
     history_hashes: Option<Vec<Word>>,
     logger_config: LoggerConfig,
 ) -> Result<Vec<GethExecTrace>, Error> {
-    let panic_on_revert = logger_config.panic_on_revert;
     let trace_config = TraceConfig {
         chain_id,
         history_hashes: history_hashes.unwrap_or_default(),
@@ -285,7 +252,7 @@ pub fn gen_geth_traces(
             .collect(),
         logger_config,
     };
-    let traces = trace(&trace_config, panic_on_revert)?;
+    let traces = trace(&trace_config)?;
     Ok(traces)
 }
 

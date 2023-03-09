@@ -143,9 +143,9 @@ func Trace(config TraceConfig) ([]*logger.WasmExecutionResult, error) {
 		for key, value := range account.Storage {
 			stateDB.SetState(address, key, value)
 		}
-		// 		if len(account.Code) > 0 {
-		// 			_ = os.WriteFile(fmt.Sprintf("%s.wasm", address.Hex()), account.Code, os.ModePerm)
-		// 		}
+		//if len(account.Code) > 0 {
+		//	_ = os.WriteFile(fmt.Sprintf("%s.wasm", address.Hex()), account.Code, os.ModePerm)
+		//}
 	}
 	stateDB.Finalise(true)
 
@@ -155,7 +155,7 @@ func Trace(config TraceConfig) ([]*logger.WasmExecutionResult, error) {
 		tracer := logger.NewWebAssemblyLogger(config.LoggerConfig)
 		evm := vm.NewEVM(blockCtx, core.NewEVMTxContext(message), stateDB, &chainConfig, vm.Config{Debug: true, Tracer: tracer, NoBaseFee: true})
 
-		_, err := core.ApplyMessage(evm, message, new(core.GasPool).AddGas(message.Gas()))
+		exec, err := core.ApplyMessage(evm, message, new(core.GasPool).AddGas(message.Gas()))
 		if err != nil {
 			return nil, fmt.Errorf("Failed to apply config.Transactions[%d]: %w", i, err)
 		}
@@ -168,6 +168,9 @@ func Trace(config TraceConfig) ([]*logger.WasmExecutionResult, error) {
 		res := &logger.WasmExecutionResult{}
 		if err := json.Unmarshal(rawTrace, res); err != nil {
 			return nil, err
+		}
+		if exec.Err != nil && !vm.IsEvmError(exec.Err) {
+			res.InternalError = exec.Err.Error()
 		}
 		executionResults[i] = res
 	}

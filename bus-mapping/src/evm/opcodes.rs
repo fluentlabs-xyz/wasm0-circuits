@@ -341,13 +341,7 @@ pub fn gen_associated_ops(
     opcode_id: &OpcodeId,
     state: &mut CircuitInputStateRef,
     geth_steps: &[GethExecStep],
-    global_memory: &mut Memory,
 ) -> Result<Vec<ExecStep>, Error> {
-    let memory_enabled = !geth_steps.iter().all(|s| s.memory.is_empty());
-    if memory_enabled {
-        let steps_memory = &geth_steps[0].memory;
-        global_memory.extends_with(steps_memory);
-    }
 
     // check if have error
     let geth_step = &geth_steps[0];
@@ -370,7 +364,7 @@ pub fn gen_associated_ops(
         // fn_gen_error_state_associated_ops method
         // For exceptions that have been implemented
         if let Some(fn_gen_error_ops) = fn_gen_error_state_associated_ops(&exec_error) {
-            return fn_gen_error_ops(state, geth_steps, global_memory);
+            return fn_gen_error_ops(state, geth_steps, &geth_step.global_memory);
         } else {
             // For exceptions that already enter next call context, but fail immediately
             // (e.g. Depth, InsufficientBalance), we still need to parse the call.
@@ -388,7 +382,7 @@ pub fn gen_associated_ops(
     }
     // if no errors, continue as normal
     let fn_gen_associated_ops = fn_gen_associated_ops(opcode_id);
-    fn_gen_associated_ops(state, geth_steps, global_memory)
+    fn_gen_associated_ops(state, geth_steps, &geth_step.global_memory)
 }
 
 pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory) -> Result<ExecStep, Error> {

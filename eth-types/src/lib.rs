@@ -461,17 +461,12 @@ struct GethExecStepInternal {
     // stack is in hex 0x prefixed
     stack: Vec<DebugU64>,
     // memory is in chunks of 32 bytes, in hex
+    #[serde(rename = "memoryChanges")]
     #[serde(default)]
-    memory: String,
-    #[serde(rename = "memoryOffset")]
-    #[serde(default)]
-    memory_offset: u32,
+    memory_changes: HashMap<u32, String>,
     // storage is hex -> hex
     #[serde(default)]
     storage: HashMap<DebugU256, DebugU256>,
-    // #[serde(rename = "globalMemory")]
-    // #[serde(default)]
-    // global_memory: HashMap<u32, String>,
 }
 
 #[derive(Clone, Eq, PartialEq, Serialize, Debug)]
@@ -513,6 +508,7 @@ pub struct GethExecStep
     pub stack: Stack<StackWord>,
     // memory is in chunks of 32 bytes, in hex
     pub memory: Memory,
+    pub global_memory: Memory,
     // storage is hex -> hex
     pub storage: Storage,
 }
@@ -568,12 +564,16 @@ impl<'de> Deserialize<'de> for GethExecStep {
             D: serde::Deserializer<'de>,
     {
         let s = GethExecStepInternal::deserialize(deserializer)?;
-        let memory = if s.memory.starts_with("0x") {
-            s.memory[2..].to_string()
-        } else {
-            s.memory
-        };
-        let memory = hex::decode(memory).map_err(de::Error::custom)?;
+        let mut memory = Memory::new();
+        s.memory_changes.iter().for_each(|(offset, mem)| {
+            let mem = if mem.starts_with("0x") {
+                mem[2..].to_string()
+            } else {
+                mem.clone()
+            };
+            let mem = Memory(hex::decode(mem).unwrap(), *offset);
+            memory.extends_with(&mem);
+        });
         Ok(Self {
             pc: s.pc,
             op_family: s.op_family.map(|f| GethExecStepFamily::from_string(&f)),
@@ -585,7 +585,8 @@ impl<'de> Deserialize<'de> for GethExecStep {
             depth: s.depth,
             error: s.error,
             stack: Stack(s.stack.iter().map(|dw| dw.to_stack_word()).collect::<Vec<_>>()),
-            memory: Memory::from_bytes_with_offset(memory, s.memory_offset),
+            memory,
+            global_memory: Memory::new(),
             storage: Storage(
                 s.storage
                     .iter()
@@ -621,12 +622,16 @@ pub struct ResultGethExecTrace {
 pub struct GethExecTrace {
     /// Used gas
     pub gas: Gas,
+    /// Internal error message
+    #[serde(rename = "internalError")]
+    #[serde(default)]
+    pub internal_error: String,
     /// True when the transaction has failed.
     pub failed: bool,
     /// Global memory
     #[serde(rename = "globalMemory")]
     #[serde(default)]
-    pub global_memory: Vec<Memory>,
+    pub global_memory: Memory,
     /// Return value of execution which is a hex encoded byte array
     #[serde(rename = "returnValue")]
     pub return_value: String,
@@ -640,6 +645,10 @@ pub struct GethExecTrace {
 pub struct GethExecTraceInternal {
     /// Used gas
     pub gas: Gas,
+    /// Internal error message
+    #[serde(rename = "internalError")]
+    #[serde(default)]
+    pub internal_error: String,
     /// True when the transaction has failed.
     pub failed: bool,
     /// Global memory
@@ -659,18 +668,25 @@ impl<'de> Deserialize<'de> for GethExecTrace {
         where
             D: serde::Deserializer<'de>,
     {
-        let s = GethExecTraceInternal::deserialize(deserializer)?;
-        let global_memory = s.global_memory.iter().map(|(offset, mem)| {
+        let mut s = GethExecTraceInternal::deserialize(deserializer)?;
+        let mut global_memory = Memory::from_bytes_with_offset(vec![], 0);
+        s.global_memory.iter().for_each(|(offset, mem)| {
             let mem = if mem.starts_with("0x") {
                 mem[2..].to_string()
             } else {
                 mem.clone()
             };
-            let mem = hex::decode(mem).unwrap();
-            Memory(mem, *offset)
-        }).collect::<Vec<_>>();
+            let mem = Memory(hex::decode(mem).unwrap(), *offset);
+            global_memory.extends_with(&mem);
+        });
+        // TODO: "create dump of each global memory state and copy to the state (temp solution)"
+        for mut step in s.struct_logs.iter_mut() {
+            global_memory.extends_with(&step.memory);
+            step.global_memory = global_memory.clone();
+        }
         Ok(Self {
             gas: s.gas,
+            internal_error: s.internal_error,
             failed: s.failed,
             global_memory,
             return_value: s.return_value,
@@ -795,8 +811,10 @@ mod tests {
             trace,
             GethExecTrace {
                 gas: Gas(26809),
+                internal_error: "".to_owned(),
                 failed: false,
                 return_value: "".to_owned(),
+                global_memory: Memory::new(),
                 struct_logs: vec![
                     GethExecStep {
                         pc: ProgramCounter(0),
@@ -811,6 +829,7 @@ mod tests {
                         stack: Stack::<StackWord>::new(),
                         storage: Storage(word_map!()),
                         memory: Memory::new(),
+                        global_memory: Memory::new(),
                     },
                     GethExecStep {
                         pc: ProgramCounter(163),
@@ -825,6 +844,7 @@ mod tests {
                         stack: Stack(vec![stack_word!("0x1003e2d2"), stack_word!("0x2a"), stack_word!("0x0")]),
                         storage: Storage(word_map!("0x0" => "0x6f")),
                         memory: Memory::from(vec![word!("0x0"), word!("0x0"), word!("0x080")]),
+                        global_memory: Memory::new(),
                     },
                     GethExecStep {
                         pc: ProgramCounter(189),
@@ -862,6 +882,7 @@ mod tests {
                                 "00000000000000000000000000000000000000000000003635c9adc5dea00000"
                             ),
                         ]),
+                        global_memory: Memory::new(),
                     },
                 ],
             }

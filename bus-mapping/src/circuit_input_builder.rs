@@ -271,16 +271,11 @@ impl<'a> CircuitInputBuilder {
         let mut tx = self.new_tx(eth_tx, !geth_trace.failed)?;
         let mut tx_ctx = TransactionContext::new(eth_tx, geth_trace, is_last_tx)?;
 
-        let mut global_memory = Memory::from_bytes_with_offset(Vec::new(), 0);
-        for memory in &geth_trace.global_memory {
-            global_memory.extends_with(memory);
-        }
-
         // TODO: Move into gen_associated_steps with
         // - execution_state: BeginTx
         // - op: None
         // Generate BeginTx step
-        let begin_tx_step = gen_begin_tx_ops(&mut self.state_ref(&mut tx, &mut tx_ctx), &global_memory)?;
+        let begin_tx_step = gen_begin_tx_ops(&mut self.state_ref(&mut tx, &mut tx_ctx), &geth_trace.global_memory)?;
         tx.steps_mut().push(begin_tx_step);
 
         for (index, geth_step) in geth_trace.struct_logs.iter().enumerate() {
@@ -290,7 +285,6 @@ impl<'a> CircuitInputBuilder {
                 &geth_step.op,
                 &mut state_ref,
                 &geth_trace.struct_logs[index..],
-                &mut global_memory,
             )?;
             tx.steps_mut().extend(exec_steps);
         }

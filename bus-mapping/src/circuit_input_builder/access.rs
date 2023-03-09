@@ -2,6 +2,7 @@ use crate::{operation::RW, Error};
 use eth_types::{evm_types::OpcodeId, Address, GethExecStep, GethExecTrace, ToAddress, Word, StackWord};
 use ethers_core::utils::get_contract_address;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
+use eth_types::evm_types::Memory;
 
 /// State and Code Access with "keys/index" used in the access operation.
 #[derive(Debug, PartialEq, Eq)]
@@ -133,6 +134,8 @@ pub fn gen_state_access_trace<TX>(
         accs.push(Access::new(None, WRITE, Code { address }));
     }
 
+    let mut global_memory = geth_trace.global_memory.clone();
+
     for (index, step) in geth_trace.struct_logs.iter().enumerate() {
         let next_step = geth_trace.struct_logs.get(index + 1);
         let i = Some(index);
@@ -144,6 +147,8 @@ pub fn gen_state_access_trace<TX>(
             push_call_stack = step.depth + 1 == next_step.depth;
             pop_call_stack = step.depth - 1 == next_step.depth;
         }
+
+        global_memory.extends_with(&step.memory);
 
         match step.op {
             OpcodeId::SSTORE => {
@@ -220,22 +225,13 @@ pub fn gen_state_access_trace<TX>(
                     call_stack.push((address, CodeSource::Address(address)));
                 }
             }
-            OpcodeId::CALL => {
+            OpcodeId::CALL | OpcodeId::CALLCODE => {
                 let address = contract_address;
                 accs.push(Access::new(i, WRITE, Account { address }));
 
-                let address = step.stack.nth_last(1)?.to_address();
-                accs.push(Access::new(i, WRITE, Account { address }));
-                accs.push(Access::new(i, READ, Code { address }));
-                if push_call_stack {
-                    call_stack.push((address, CodeSource::Address(address)));
-                }
-            }
-            OpcodeId::CALLCODE => {
-                let address = contract_address;
-                accs.push(Access::new(i, WRITE, Account { address }));
+                let address_offset = step.stack.nth_last(6)?;
+                let address = global_memory.read_address(address_offset)?;
 
-                let address = step.stack.nth_last(1)?.to_address();
                 accs.push(Access::new(i, WRITE, Account { address }));
                 accs.push(Access::new(i, READ, Code { address }));
                 if push_call_stack {
@@ -243,14 +239,14 @@ pub fn gen_state_access_trace<TX>(
                 }
             }
             OpcodeId::DELEGATECALL => {
-                let address = step.stack.nth_last(1)?.to_address();
+                let address = step.stack.nth_last(5)?.to_address();
                 accs.push(Access::new(i, READ, Code { address }));
                 if push_call_stack {
                     call_stack.push((contract_address, CodeSource::Address(address)));
                 }
             }
             OpcodeId::STATICCALL => {
-                let address = step.stack.nth_last(1)?.to_address();
+                let address = step.stack.nth_last(5)?.to_address();
                 accs.push(Access::new(i, READ, Code { address }));
                 if push_call_stack {
                     call_stack.push((address, CodeSource::Address(address)));

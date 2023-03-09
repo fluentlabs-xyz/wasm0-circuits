@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use wasm_encoder::{ConstExpr, DataSection, Encode, Instruction};
 
-use crate::{Bytes, evm_types::OpcodeId, Word};
+use crate::{Address, Bytes, evm_types::OpcodeId, ToLittleEndian, U256, Word};
 
 /// Error type for Bytecode related failures
 #[derive(Debug)]
@@ -58,7 +58,8 @@ pub struct BytecodeElement {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Bytecode {
     /// Vector for bytecode elements.
-    code: Vec<BytecodeElement>,
+    bytecode_items: Vec<BytecodeElement>,
+    global_data: (u32, Vec<u8>),
     section_descriptors: Vec<SectionDescriptor>,
     evm_table: HashMap<EvmCall, usize>,
     num_opcodes: usize,
@@ -67,7 +68,7 @@ pub struct Bytecode {
 
 impl From<Bytecode> for Bytes {
     fn from(code: Bytecode) -> Self {
-        code.code
+        code.bytecode_items
             .iter()
             .map(|e| e.value)
             .collect::<Vec<u8>>()
@@ -102,12 +103,10 @@ impl WasmBinaryBytecode for Bytecode {
         let mut module = Module::new();
         // Encode the type & imports section.
         let mut types = TypeSection::new();
-        types.function(vec![ValType::I32; 0], vec![]); // 0
-        types.function(vec![ValType::I32; 1], vec![]); // 1
-        types.function(vec![ValType::I32; 2], vec![]); // 2
-        types.function(vec![ValType::I32; 3], vec![]); // 3
-        types.function(vec![ValType::I32; 4], vec![]); // 4
-        types.function(vec![ValType::I32; 5], vec![]); // 5
+        let max_evm_args = self.evm_table.keys().map(|v| { v.args_num }).max().unwrap_or(0) + 1;
+        (0..max_evm_args).for_each(|args_num| {
+            types.function(vec![ValType::I32; args_num], vec![]);
+        });
         let mut imports = ImportSection::new();
         let ordered_evm_table = self.evm_table.clone()
             .into_iter()
@@ -158,6 +157,11 @@ impl WasmBinaryBytecode for Bytecode {
                 _ => unreachable!("unknown section: {:?}", section)
             }
         }
+        if self.global_data.1.len() > 0 {
+            let mut data_section = DataSection::new();
+            data_section.active(0, &ConstExpr::i32_const(self.global_data.0 as i32), self.global_data.1.clone());
+            module.section(&data_section);
+        }
         let wasm_bytes = module.finish();
         return wasm_bytes;
     }
@@ -167,18 +171,29 @@ impl Bytecode {
     /// Build not checked bytecode
     pub fn from_raw_unchecked(input: Vec<u8>) -> Self {
         Self {
-            code: input
+            bytecode_items: input
                 .iter()
                 .map(|b| BytecodeElement {
                     value: *b,
                     is_code: true,
                 })
                 .collect(),
+            global_data: (0, Vec::new()),
             section_descriptors: Vec::new(),
             evm_table: HashMap::new(),
             markers: HashMap::new(),
             num_opcodes: 0,
         }
+    }
+
+    pub fn alloc_default_global_data(&mut self, size: u32) -> u32 {
+        self.fill_default_global_data(vec![0].repeat(size as usize))
+    }
+
+    pub fn fill_default_global_data(&mut self, data: Vec<u8>) -> u32 {
+        let current_offset = self.global_data.1.len();
+        self.global_data.1.extend(&data);
+        current_offset as u32
     }
 
     pub fn with_global_data(&mut self, memory_index: u32, memory_offset: u32, data: Vec<u8>) -> &mut Self {
@@ -192,27 +207,27 @@ impl Bytecode {
 
     /// Get the raw code
     pub fn raw_code(&self) -> Vec<BytecodeElement> {
-        self.code.clone()
+        self.bytecode_items.clone()
     }
 
     /// Get the code
     pub fn code(&self) -> Vec<u8> {
-        self.code.iter().map(|b| b.value).collect()
+        self.bytecode_items.iter().map(|b| b.value).collect()
     }
 
     /// Get the bytecode element at an index.
     pub fn get(&self, index: usize) -> Option<BytecodeElement> {
-        self.code.get(index).cloned()
+        self.bytecode_items.get(index).cloned()
     }
 
     /// Get the generated code
     pub fn to_vec(&self) -> Vec<u8> {
-        self.code.iter().map(|e| e.value).collect()
+        self.wasm_binary()
     }
 
     /// Append
     pub fn append(&mut self, other: &Bytecode) {
-        self.code.extend_from_slice(&other.code);
+        self.bytecode_items.extend_from_slice(&other.bytecode_items);
         for (key, val) in other.markers.iter() {
             self.insert_marker(key, self.num_opcodes + val);
         }
@@ -270,15 +285,16 @@ impl Bytecode {
             OpcodeId::CREATE => ("_evm_create", 3),
             OpcodeId::CALL => ("_evm_call", 8),
             OpcodeId::CALLCODE => ("_evm_callcode", 8),
-            OpcodeId::DELEGATECALL => ("_evm_delegatecall", 8),
+            OpcodeId::DELEGATECALL => ("_evm_delegatecall", 7),
             OpcodeId::CREATE2 => ("_evm_create2", 5),
-            OpcodeId::STATICCALL => ("_evm_staticcall", 8),
+            OpcodeId::STATICCALL => ("_evm_staticcall", 7),
             OpcodeId::REVERT => ("_evm_revert", 2),
             OpcodeId::SELFBALANCE => ("_evm_selfbalance", 1),
             _ => unreachable!("not supported EVM opcode: {op}")
         };
         let evm_call = EvmCall {
-            fn_name, args_num,
+            fn_name,
+            args_num,
         };
 
         let call_index = if let Some(call_index) = self.evm_table.get(&evm_call) {
@@ -372,7 +388,7 @@ impl Bytecode {
 
     /// Write byte
     pub fn write(&mut self, value: u8, is_code: bool) -> &mut Self {
-        self.code.push(BytecodeElement { value, is_code });
+        self.bytecode_items.push(BytecodeElement { value, is_code });
         self
     }
 
@@ -430,30 +446,48 @@ impl Bytecode {
         self
     }
 
-    // /// Call a contract
-    // #[allow(clippy::too_many_arguments)]
-    // pub fn call(
-    //     &mut self,
-    //     gas: Word,
-    //     address: Word,
-    //     value: Word,
-    //     mem_in: Word,
-    //     mem_in_size: Word,
-    //     mem_out: Word,
-    //     mem_out_size: Word,
-    // ) -> &mut Self {
-    //     self.append(&crate::bytecode! {
-    //         PUSH32(mem_out_size)
-    //         PUSH32(mem_out)
-    //         PUSH32(mem_in_size)
-    //         PUSH32(mem_in)
-    //         PUSH32(value)
-    //         PUSH32(address)
-    //         PUSH32(gas)
-    //         CALL
-    //     });
-    //     self
-    // }
+    /// Call a contract
+    #[allow(clippy::too_many_arguments)]
+    pub fn emit_evm_call(
+        &mut self,
+        opcode: OpcodeId,
+        gas: u64,
+        address: Address,
+        value: U256,
+        input_offset: u64,
+        input_length: u64,
+        return_offset: u64,
+        return_length: u64,
+    ) -> &mut Self {
+        if opcode == OpcodeId::CALL || opcode == OpcodeId::CALLCODE {
+            let address_offset = self.fill_default_global_data(address.to_fixed_bytes().to_vec());
+            let value_offset = self.fill_default_global_data(value.to_le_bytes().to_vec());
+            let status_offset = self.alloc_default_global_data(1);
+            crate::bytecode_internal!(self,
+                I32Const[gas]
+                I32Const[address_offset as u64]
+                I32Const[value_offset as u64]
+                I32Const[input_offset]
+                I32Const[input_length]
+                I32Const[return_offset]
+                I32Const[return_length]
+                I32Const[status_offset]
+            );
+        } else {
+            let address_offset = self.fill_default_global_data(address.to_fixed_bytes().to_vec());
+            let status_offset = self.alloc_default_global_data(1);
+            crate::bytecode_internal!(self,
+                I32Const[gas]
+                I32Const[address_offset as u64]
+                I32Const[input_offset]
+                I32Const[input_length]
+                I32Const[return_offset]
+                I32Const[return_length]
+                I32Const[status_offset]
+            );
+        }
+        self.write_op(opcode)
+    }
 
     /// Generate the diassembly
     pub fn disasm(&self) -> String {
@@ -489,7 +523,7 @@ impl Bytecode {
 
     /// create iterator
     pub fn iter(&self) -> BytecodeIterator<'_> {
-        BytecodeIterator(self.code.iter())
+        BytecodeIterator(self.bytecode_items.iter())
     }
 }
 
@@ -616,7 +650,7 @@ macro_rules! bytecode_internal {
     ($code:ident, ) => {};
     // WASM const opcodes
     ($code:ident, $x:ident [$v:expr] $($rest:tt)*) => {{
-        let n = $crate::evm_types::OpcodeId::$x.postfix().expect("opcode with postfix");
+        let _n = $crate::evm_types::OpcodeId::$x.postfix().expect("opcode with postfix");
         $code.write_const($crate::evm_types::OpcodeId::$x, $v as u64);
         $crate::bytecode_internal!($code, $($rest)*);
     }};
@@ -686,6 +720,6 @@ mod tests {
                 code2.append_op(op);
             });
 
-        assert_eq!(code.code, code2.code);
+        assert_eq!(code.bytecode_items, code2.bytecode_items);
     }
 }
