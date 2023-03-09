@@ -3,7 +3,7 @@ use crate::circuit_input_builder::{CallKind, CircuitInputStateRef, CodeSource, E
 use crate::operation::{AccountField, CallContextField, TxAccessListAccountOp, RW};
 use crate::Error;
 use eth_types::evm_types::gas_utils::{eip150_gas, memory_expansion_gas_cost};
-use eth_types::evm_types::GasCost;
+use eth_types::evm_types::{GasCost, MemoryAddress};
 use eth_types::{evm_unimplemented, GethExecStep, ToWord, Word};
 use keccak256::EMPTY_HASH;
 
@@ -23,13 +23,14 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
         let geth_step = &geth_steps[0];
         let mut exec_step = state.new_step(geth_step)?;
 
-        let args_offset = geth_step.stack.nth_last(N_ARGS - 4)?.as_usize();
-        let args_length = geth_step.stack.nth_last(N_ARGS - 3)?.as_usize();
-        let ret_offset = geth_step.stack.nth_last(N_ARGS - 2)?.as_usize();
-        let ret_length = geth_step.stack.nth_last(N_ARGS - 1)?.as_usize();
+        let dest_offset = geth_step.stack.nth_last(0)?.as_usize();
+        let return_length = geth_step.stack.nth_last(1)?.as_usize();
+        let return_offset = geth_step.stack.nth_last(2)?.as_usize();
+        let input_length = geth_step.stack.nth_last(3)?.as_usize();
+        let input_offset = geth_step.stack.nth_last(4)?.as_usize();
 
         // we need to keep the memory until parse_call complete
-        state.call_expand_memory(args_offset, args_length, ret_offset, ret_length)?;
+        state.call_expand_memory(input_offset, input_length, return_offset, return_length)?;
 
         let tx_id = state.tx_ctx.id();
         let call = state.parse_call(geth_step)?;
@@ -83,11 +84,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
             )?;
         }
 
-        state.stack_write(
-            &mut exec_step,
-            geth_step.stack.nth_last_filled(N_ARGS - 1),
-            (call.is_success as u64).into(),
-        )?;
+        state.memory_write(&mut exec_step, MemoryAddress(dest_offset), call.is_success as u8)?;
 
         let callee_code_hash = call.code_hash;
         let callee_exists = !state.sdb.get_account(&callee_address).1.is_empty();

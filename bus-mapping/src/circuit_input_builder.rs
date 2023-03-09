@@ -378,7 +378,7 @@ pub fn get_create_init_code<'a, 'b>(
 /// Retrieve the memory offset and length of call.
 pub fn get_call_memory_offset_length(step: &GethExecStep, nth: usize) -> Result<(u64, u64), Error> {
     let offset = step.stack.nth_last(nth)?;
-    let length = step.stack.nth_last(nth + 1)?;
+    let length = step.stack.nth_last(nth - 1)?;
     if length.is_zero() {
         Ok((0, 0))
     } else {

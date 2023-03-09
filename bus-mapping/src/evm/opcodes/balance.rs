@@ -1,5 +1,5 @@
-use eth_types::{GethExecStep, H256, ToAddress, ToBigEndian, ToWord, Word};
-use eth_types::evm_types::{Memory, MemoryAddress};
+use eth_types::{GethExecStep, H256, ToBigEndian, ToWord, Word};
+use eth_types::evm_types::{MemoryAddress};
 use eth_types::U256;
 
 use crate::circuit_input_builder::CircuitInputStateRef;

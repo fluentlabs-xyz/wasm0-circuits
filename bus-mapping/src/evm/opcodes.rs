@@ -110,9 +110,7 @@ pub trait Opcode: Debug {
     fn gen_associated_ops(
         _state: &mut CircuitInputStateRef,
         _geth_steps: &[GethExecStep],
-    ) -> Result<Vec<ExecStep>, Error> {
-        unreachable!("not implemented")
-    }
+    ) -> Result<Vec<ExecStep>, Error>;
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -276,8 +274,8 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         // OpcodeId::LOG2 => Log::gen_associated_ops,
         // OpcodeId::LOG3 => Log::gen_associated_ops,
         // OpcodeId::LOG4 => Log::gen_associated_ops,
-        OpcodeId::CALL | OpcodeId::CALLCODE => CallOpcode::<7>::gen_associated_ops,
-        OpcodeId::DELEGATECALL | OpcodeId::STATICCALL => CallOpcode::<6>::gen_associated_ops,
+        OpcodeId::CALL | OpcodeId::CALLCODE => CallOpcode::<8>::gen_associated_ops,
+        OpcodeId::DELEGATECALL | OpcodeId::STATICCALL => CallOpcode::<7>::gen_associated_ops,
         OpcodeId::RETURN | OpcodeId::REVERT => ReturnRevert::gen_associated_ops,
         OpcodeId::SELFDESTRUCT => {
             evm_unimplemented!("Using dummy gen_selfdestruct_ops for opcode SELFDESTRUCT");

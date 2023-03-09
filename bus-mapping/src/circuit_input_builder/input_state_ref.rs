@@ -1,26 +1,31 @@
 //! CircuitInput builder tooling module.
 
-use super::{
-    get_create_init_code, Block, BlockContext, Call, CallContext,
-    CallKind, CopyEvent, ExecState, ExecStep, ExpEvent, Transaction,
-    TransactionContext,
-};
+use std::cmp::max;
+
+use ethers_core::utils::{get_contract_address, get_create2_address};
+
+use eth_types::{Address, evm_types::{
+    Gas, gas_utils::memory_expansion_gas_cost, GasCost, MemoryAddress, OpcodeId, StackAddress,
+}, GethExecStep, H256, StackWord, ToAddress, ToBigEndian, ToU256, ToWord, Word};
+
 use crate::{
-    error::{get_step_reported_error, ExecError},
+    error::{ExecError, get_step_reported_error},
+    Error,
     exec_trace::OperationRef,
     operation::{
         AccountField, AccountOp, CallContextField, CallContextOp, MemoryOp, Op, OpEnum, Operation,
-        StackOp, Target, TxAccessListAccountOp, TxLogField, TxLogOp, TxReceiptField, TxReceiptOp,
-        RW,
+        RW, StackOp, Target, TxAccessListAccountOp, TxLogField, TxLogOp, TxReceiptField,
+        TxReceiptOp,
     },
     state_db::{CodeDB, StateDB},
-    Error,
 };
-use eth_types::{evm_types::{
-    gas_utils::memory_expansion_gas_cost, Gas, GasCost, MemoryAddress, OpcodeId, StackAddress,
-},  Address, GethExecStep, ToBigEndian, ToWord, Word, H256, StackWord, ToU256};
-use ethers_core::utils::{get_contract_address, get_create2_address};
-use std::cmp::max;
+use crate::circuit_input_builder::{CodeSource, get_call_memory_offset_length};
+
+use super::{
+    Block, BlockContext, Call, CallContext, CallKind,
+    CopyEvent, ExecState, ExecStep, ExpEvent, get_create_init_code, Transaction,
+    TransactionContext,
+};
 
 /// Reference to the internal state of the CircuitInputBuilder in a particular
 /// [`ExecStep`].
@@ -289,10 +294,10 @@ impl<'a> CircuitInputStateRef<'a> {
         // Verify that the previous value matches the account field value in the StateDB
         if op.value_prev != account_value_prev {
             panic!("RWTable Account field {:?} lookup doesn't match account value account: {:?}, rwc: {}, op: {:?}",
-                rw,
-                account,
-                self.block_ctx.rwc.0,
-                op
+                   rw,
+                   account,
+                   self.block_ctx.rwc.0,
+                   op
             );
         }
         // Verify that no read is done to a field other than CodeHash to a non-existing
@@ -661,101 +666,106 @@ impl<'a> CircuitInputStateRef<'a> {
     }
 
     /// Parse [`Call`] from a *CALL*/CREATE* step.
-    pub fn parse_call(&mut self, _step: &GethExecStep) -> Result<Call, Error> {
-        // let is_success = *self
-        //     .tx_ctx
-        //     .call_is_success
-        //     .get(self.tx.calls().len())
-        //     .unwrap();
-        // let kind = CallKind::try_from(step.op)?;
-        // let caller = self.call()?;
-        // let caller_ctx = self.call_ctx()?;
+    pub fn parse_call(&mut self, step: &GethExecStep) -> Result<Call, Error> {
+        let is_success = *self
+            .tx_ctx
+            .call_is_success
+            .get(self.tx.calls().len())
+            .unwrap();
+        let kind = CallKind::try_from(step.op)?;
+        let caller = self.call()?;
+        let caller_ctx = self.call_ctx()?;
 
-        unreachable!("calls are not supported yet");
+        let (caller_address, address, value) = match kind {
+            CallKind::Call => {
+                let address_offset = step.stack.nth_last(6)?;
+                let address = step.global_memory.read_address(address_offset)?;
+                let value_offset = step.stack.nth_last(5)?;
+                let value = step.global_memory.read_u256(value_offset)?;
+                (caller.address, address, value)
+            }
+            CallKind::CallCode => {
+                let value_offset = step.stack.nth_last(7)?;
+                let value = step.global_memory.read_u256(value_offset)?;
+                (caller.address, caller.address, value)
+            },
+            CallKind::DelegateCall => (caller.caller_address, caller.address, caller.value),
+            CallKind::StaticCall => {
+                let address_offset = step.stack.nth_last(6)?;
+                let address = step.global_memory.read_address(address_offset)?;
+                (caller.address, address, Word::zero())
+            },
+            CallKind::Create => {
+                let value_offset = step.stack.nth_last(2)?;
+                let value = step.global_memory.read_u256(value_offset)?;
+                (caller.address, self.create_address()?, value)
+            },
+            CallKind::Create2 => {
+                let value_offset = step.stack.nth_last(4)?;
+                let value = step.global_memory.read_u256(value_offset)?;
+                (caller.address, self.create2_address(step)?, value)
+            },
+        };
 
-        // let (caller_address, address, value) = match kind {
-        //     CallKind::Call => (
-        //         caller.address,
-        //         step.stack.nth_last(1)?.to_address(),
-        //         step.stack.nth_last(2)?,
-        //     ),
-        //     CallKind::CallCode => (caller.address, caller.address, step.stack.nth_last(2)?),
-        //     CallKind::DelegateCall => (caller.caller_address, caller.address, caller.value),
-        //     CallKind::StaticCall => (
-        //         caller.address,
-        //         step.stack.nth_last(1)?.to_address(),
-        //         Word::zero(),
-        //     ),
-        //     CallKind::Create => (caller.address, self.create_address()?, step.stack.last()?),
-        //     CallKind::Create2 => (
-        //         caller.address,
-        //         self.create2_address(step)?,
-        //         step.stack.last()?,
-        //     ),
-        // };
-        //
-        // let (code_source, code_hash) = match kind {
-        //     CallKind::Create | CallKind::Create2 => {
-        //         let init_code = get_create_init_code(caller_ctx, step)?.to_vec();
-        //         let code_hash = self.code_db.insert(init_code);
-        //         (CodeSource::Memory, code_hash)
-        //     }
-        //     _ => {
-        //         let code_address = match kind {
-        //             CallKind::CallCode | CallKind::DelegateCall => {
-        //                 step.stack.nth_last(1)?.to_address()
-        //             }
-        //             _ => address,
-        //         };
-        //         let (found, account) = self.sdb.get_account(&code_address);
-        //         if !found {
-        //             return Err(Error::AccountNotFound(code_address));
-        //         }
-        //         (CodeSource::Address(code_address), account.code_hash)
-        //     }
-        // };
-        //
-        // let (call_data_offset, call_data_length, return_data_offset, return_data_length) =
-        //     match kind {
-        //         CallKind::Call | CallKind::CallCode => {
-        //             let call_data = get_call_memory_offset_length(step, 3)?;
-        //             let return_data = get_call_memory_offset_length(step, 5)?;
-        //             (call_data.0, call_data.1, return_data.0, return_data.1)
-        //         }
-        //         CallKind::DelegateCall | CallKind::StaticCall => {
-        //             let call_data = get_call_memory_offset_length(step, 2)?;
-        //             let return_data = get_call_memory_offset_length(step, 4)?;
-        //             (call_data.0, call_data.1, return_data.0, return_data.1)
-        //         }
-        //         CallKind::Create | CallKind::Create2 => (0, 0, 0, 0),
-        //     };
-        //
-        // let caller = self.call()?;
-        // let call = Call {
-        //     call_id: self.block_ctx.rwc.0,
-        //     caller_id: caller.call_id,
-        //     last_callee_id: 0,
-        //     kind,
-        //     is_static: kind == CallKind::StaticCall || caller.is_static,
-        //     is_root: false,
-        //     is_persistent: caller.is_persistent && is_success,
-        //     is_success,
-        //     rw_counter_end_of_reversion: 0,
-        //     caller_address,
-        //     address,
-        //     code_source,
-        //     code_hash,
-        //     depth: caller.depth + 1,
-        //     value,
-        //     call_data_offset,
-        //     call_data_length,
-        //     return_data_offset,
-        //     return_data_length,
-        //     last_callee_return_data_offset: 0,
-        //     last_callee_return_data_length: 0,
-        // };
-        //
-        // Ok(call)
+        let (code_source, code_hash) = match kind {
+            CallKind::Create | CallKind::Create2 => {
+                let init_code = get_create_init_code(caller_ctx, step)?.to_vec();
+                let code_hash = self.code_db.insert(init_code);
+                (CodeSource::Memory, code_hash)
+            }
+            _ => {
+                let code_address = match kind {
+                    CallKind::CallCode | CallKind::DelegateCall => {
+                        let address_offset = step.stack.nth_last(6)?;
+                        let address = step.global_memory.read_address(address_offset)?;
+                        address
+                    }
+                    _ => address,
+                };
+                let (found, account) = self.sdb.get_account(&code_address);
+                if !found {
+                    return Err(Error::AccountNotFound(code_address));
+                }
+                (CodeSource::Address(code_address), account.code_hash)
+            }
+        };
+
+        let (call_data_offset, call_data_length, return_data_offset, return_data_length) =
+            match kind {
+                CallKind::Call | CallKind::CallCode | CallKind::DelegateCall | CallKind::StaticCall => {
+                    let call_data = get_call_memory_offset_length(step, 4)?;
+                    let return_data = get_call_memory_offset_length(step, 2)?;
+                    (call_data.0, call_data.1, return_data.0, return_data.1)
+                }
+                CallKind::Create | CallKind::Create2 => (0, 0, 0, 0),
+            };
+
+        let caller = self.call()?;
+        let call = Call {
+            call_id: self.block_ctx.rwc.0,
+            caller_id: caller.call_id,
+            last_callee_id: 0,
+            kind,
+            is_static: kind == CallKind::StaticCall || caller.is_static,
+            is_root: false,
+            is_persistent: caller.is_persistent && is_success,
+            is_success,
+            rw_counter_end_of_reversion: 0,
+            caller_address,
+            address,
+            code_source,
+            code_hash,
+            depth: caller.depth + 1,
+            value,
+            call_data_offset,
+            call_data_length,
+            return_data_offset,
+            return_data_length,
+            last_callee_return_data_offset: 0,
+            last_callee_return_data_length: 0,
+        };
+
+        Ok(call)
     }
 
     /// Return the reverted version of an op by op_ref only if the original op
@@ -1106,11 +1116,11 @@ impl<'a> CircuitInputStateRef<'a> {
             OpcodeId::CALL | OpcodeId::CALLCODE => {
                 let value_offset = step.stack.nth_last(5)?;
                 step.global_memory.read_u256(value_offset)?
-            },
+            }
             OpcodeId::CREATE | OpcodeId::CREATE2 => {
                 let value_offset = step.stack.nth_last(2)?;
                 step.global_memory.read_u256(value_offset)?
-            },
+            }
             _ => Word::zero(),
         };
 
@@ -1131,10 +1141,10 @@ impl<'a> CircuitInputStateRef<'a> {
                     | OpcodeId::LOG2
                     | OpcodeId::LOG3
                     | OpcodeId::LOG4
-                        if call.is_static =>
-                    {
-                        Some(ExecError::WriteProtection)
-                    }
+                    if call.is_static =>
+                        {
+                            Some(ExecError::WriteProtection)
+                        }
                     OpcodeId::CALL if call.is_static && !value.is_zero() => {
                         Some(ExecError::WriteProtection)
                     }
