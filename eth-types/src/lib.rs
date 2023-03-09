@@ -507,7 +507,7 @@ pub struct GethExecStep
     // stack is in hex 0x prefixed
     pub stack: Stack<StackWord>,
     // memory is in chunks of 32 bytes, in hex
-    pub memory: Memory,
+    pub memory: Vec<Memory>,
     pub global_memory: Memory,
     // storage is hex -> hex
     pub storage: Storage,
@@ -564,16 +564,14 @@ impl<'de> Deserialize<'de> for GethExecStep {
             D: serde::Deserializer<'de>,
     {
         let s = GethExecStepInternal::deserialize(deserializer)?;
-        let mut memory = Memory::new();
-        s.memory_changes.iter().for_each(|(offset, mem)| {
+        let mut memory: Vec<Memory> = s.memory_changes.iter().map(|(offset, mem)| {
             let mem = if mem.starts_with("0x") {
                 mem[2..].to_string()
             } else {
                 mem.clone()
             };
-            let mem = Memory(hex::decode(mem).unwrap(), *offset);
-            memory.extends_with(&mem);
-        });
+            Memory::from_bytes_with_offset(hex::decode(mem).unwrap(), *offset)
+        }).collect();
         Ok(Self {
             pc: s.pc,
             op_family: s.op_family.map(|f| GethExecStepFamily::from_string(&f)),
@@ -623,14 +621,10 @@ pub struct GethExecTrace {
     /// Used gas
     pub gas: Gas,
     /// Internal error message
-    #[serde(rename = "internalError")]
-    #[serde(default)]
     pub internal_error: String,
     /// True when the transaction has failed.
     pub failed: bool,
     /// Global memory
-    #[serde(rename = "globalMemory")]
-    #[serde(default)]
     pub global_memory: Memory,
     /// Return value of execution which is a hex encoded byte array
     #[serde(rename = "returnValue")]
@@ -679,16 +673,19 @@ impl<'de> Deserialize<'de> for GethExecTrace {
             let mem = Memory(hex::decode(mem).unwrap(), *offset);
             global_memory.extends_with(&mem);
         });
+        let init_memory = global_memory.clone();
         // TODO: "create dump of each global memory state and copy to the state (temp solution)"
         for mut step in s.struct_logs.iter_mut() {
-            global_memory.extends_with(&step.memory);
+            step.memory.iter().for_each(|v| {
+                global_memory.extends_with(v);
+            });
             step.global_memory = global_memory.clone();
         }
         Ok(Self {
             gas: s.gas,
             internal_error: s.internal_error,
             failed: s.failed,
-            global_memory,
+            global_memory: init_memory,
             return_value: s.return_value,
             struct_logs: s.struct_logs,
         })
@@ -828,7 +825,7 @@ mod tests {
                         error: None,
                         stack: Stack::<StackWord>::new(),
                         storage: Storage(word_map!()),
-                        memory: Memory::new(),
+                        memory: vec![],
                         global_memory: Memory::new(),
                     },
                     GethExecStep {
@@ -843,7 +840,7 @@ mod tests {
                         error: None,
                         stack: Stack(vec![stack_word!("0x1003e2d2"), stack_word!("0x2a"), stack_word!("0x0")]),
                         storage: Storage(word_map!("0x0" => "0x6f")),
-                        memory: Memory::from(vec![word!("0x0"), word!("0x0"), word!("0x080")]),
+                        memory: vec![Memory::from(vec![word!("0x0"), word!("0x0"), word!("0x080")])],
                         global_memory: Memory::new(),
                     },
                     GethExecStep {
@@ -862,7 +859,7 @@ mod tests {
                             stack_word!("0x0"),
                         ]),
                         storage: Storage(word_map!()),
-                        memory: Memory::from(vec![
+                        memory: vec![Memory::from(vec![
                             word!(
                                 "000000000000000000000000b8f67472dcc25589672a61905f7fd63f09e5d470"
                             ),
@@ -881,7 +878,7 @@ mod tests {
                             word!(
                                 "00000000000000000000000000000000000000000000003635c9adc5dea00000"
                             ),
-                        ]),
+                        ])],
                         global_memory: Memory::new(),
                     },
                 ],

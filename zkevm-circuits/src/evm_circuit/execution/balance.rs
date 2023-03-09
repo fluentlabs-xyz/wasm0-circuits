@@ -231,7 +231,7 @@ mod test {
 
     fn test_root_ok(account: &Option<Account>, is_warm: bool) {
         let address = account.as_ref().map(|a| a.address).unwrap_or(*TEST_ADDRESS);
-        let address_mem_offset = 20;
+        let address_mem_offset = 00;
         let result_mem_offset = 20;
 
         let mut code = Bytecode::default();

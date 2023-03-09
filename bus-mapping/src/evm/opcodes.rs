@@ -113,18 +113,6 @@ pub trait Opcode: Debug {
     ) -> Result<Vec<ExecStep>, Error> {
         unreachable!("not implemented")
     }
-
-    /// Generate the associated [`MemoryOp`](crate::operation::MemoryOp)s,
-    /// [`StackOp`](crate::operation::StackOp)s, and
-    /// [`StorageOp`](crate::operation::StorageOp)s associated to the Opcode
-    /// is implemented for.
-    fn gen_associated_ops_extended(
-        state: &mut CircuitInputStateRef,
-        geth_steps: &[GethExecStep],
-        _global_memory: &Memory,
-    ) -> Result<Vec<ExecStep>, Error> {
-        Self::gen_associated_ops(state, geth_steps)
-    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -142,59 +130,58 @@ impl Opcode for Dummy {
 type FnGenAssociatedOps = fn(
     state: &mut CircuitInputStateRef,
     geth_steps: &[GethExecStep],
-    global_memory: &Memory,
 ) -> Result<Vec<ExecStep>, Error>;
 
 fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
     match opcode_id {
         // WASM opcodes
-        OpcodeId::Unreachable => Stop::gen_associated_ops_extended,
-        // OpcodeId::Nop => Dummy::gen_associated_ops_extended,
-        // OpcodeId::Block => Dummy::gen_associated_ops_extended,
-        // OpcodeId::Loop => Dummy::gen_associated_ops_extended,
-        // OpcodeId::If => Dummy::gen_associated_ops_extended,
-        // OpcodeId::Else => Dummy::gen_associated_ops_extended,
-        OpcodeId::End => Stop::gen_associated_ops_extended,
-        // OpcodeId::Br => Dummy::gen_associated_ops_extended,
-        // OpcodeId::BrIf => Dummy::gen_associated_ops_extended,
-        // OpcodeId::BrTable => Dummy::gen_associated_ops_extended,
-        // OpcodeId::Return => Dummy::gen_associated_ops_extended,
-        // OpcodeId::Call => Dummy::gen_associated_ops_extended,
-        // OpcodeId::CallIndirect => Dummy::gen_associated_ops_extended,
-        // OpcodeId::Drop => Dummy::gen_associated_ops_extended,
-        // OpcodeId::Select => Dummy::gen_associated_ops_extended,
-        // OpcodeId::GetLocal => Dummy::gen_associated_ops_extended,
-        // OpcodeId::SetLocal => Dummy::gen_associated_ops_extended,
-        // OpcodeId::TeeLocal => Dummy::gen_associated_ops_extended,
-        // OpcodeId::GetGlobal => Dummy::gen_associated_ops_extended,
-        // OpcodeId::SetGlobal => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I32Load => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I64Load => Dummy::gen_associated_ops_extended,
-        // OpcodeId::F32Load => Dummy::gen_associated_ops_extended,
-        // OpcodeId::F64Load => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I32Load8S => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I32Load8U => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I32Load16S => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I32Load16U => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I64Load8S => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I64Load8U => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I64Load16S => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I64Load16U => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I64Load32S => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I64Load32U => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I32Store => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I64Store => Dummy::gen_associated_ops_extended,
-        // OpcodeId::F32Store => Dummy::gen_associated_ops_extended,
-        // OpcodeId::F64Store => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I32Store8 => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I32Store16 => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I64Store8 => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I64Store16 => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I64Store32 => Dummy::gen_associated_ops_extended,
-        // OpcodeId::CurrentMemory => Dummy::gen_associated_ops_extended,
-        // OpcodeId::GrowMemory => Dummy::gen_associated_ops_extended,
+        OpcodeId::Unreachable => Stop::gen_associated_ops,
+        // OpcodeId::Nop => Dummy::gen_associated_ops,
+        // OpcodeId::Block => Dummy::gen_associated_ops,
+        // OpcodeId::Loop => Dummy::gen_associated_ops,
+        // OpcodeId::If => Dummy::gen_associated_ops,
+        // OpcodeId::Else => Dummy::gen_associated_ops,
+        OpcodeId::End => Stop::gen_associated_ops,
+        // OpcodeId::Br => Dummy::gen_associated_ops,
+        // OpcodeId::BrIf => Dummy::gen_associated_ops,
+        // OpcodeId::BrTable => Dummy::gen_associated_ops,
+        // OpcodeId::Return => Dummy::gen_associated_ops,
+        // OpcodeId::Call => Dummy::gen_associated_ops,
+        // OpcodeId::CallIndirect => Dummy::gen_associated_ops,
+        // OpcodeId::Drop => Dummy::gen_associated_ops,
+        // OpcodeId::Select => Dummy::gen_associated_ops,
+        // OpcodeId::GetLocal => Dummy::gen_associated_ops,
+        // OpcodeId::SetLocal => Dummy::gen_associated_ops,
+        // OpcodeId::TeeLocal => Dummy::gen_associated_ops,
+        // OpcodeId::GetGlobal => Dummy::gen_associated_ops,
+        // OpcodeId::SetGlobal => Dummy::gen_associated_ops,
+        // OpcodeId::I32Load => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load => Dummy::gen_associated_ops,
+        // OpcodeId::F32Load => Dummy::gen_associated_ops,
+        // OpcodeId::F64Load => Dummy::gen_associated_ops,
+        // OpcodeId::I32Load8S => Dummy::gen_associated_ops,
+        // OpcodeId::I32Load8U => Dummy::gen_associated_ops,
+        // OpcodeId::I32Load16S => Dummy::gen_associated_ops,
+        // OpcodeId::I32Load16U => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load8S => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load8U => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load16S => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load16U => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load32S => Dummy::gen_associated_ops,
+        // OpcodeId::I64Load32U => Dummy::gen_associated_ops,
+        // OpcodeId::I32Store => Dummy::gen_associated_ops,
+        // OpcodeId::I64Store => Dummy::gen_associated_ops,
+        // OpcodeId::F32Store => Dummy::gen_associated_ops,
+        // OpcodeId::F64Store => Dummy::gen_associated_ops,
+        // OpcodeId::I32Store8 => Dummy::gen_associated_ops,
+        // OpcodeId::I32Store16 => Dummy::gen_associated_ops,
+        // OpcodeId::I64Store8 => Dummy::gen_associated_ops,
+        // OpcodeId::I64Store16 => Dummy::gen_associated_ops,
+        // OpcodeId::I64Store32 => Dummy::gen_associated_ops,
+        // OpcodeId::CurrentMemory => Dummy::gen_associated_ops,
+        // OpcodeId::GrowMemory => Dummy::gen_associated_ops,
         OpcodeId::I32Const |
-        OpcodeId::I64Const => StackOnlyOpcode::<0, 1>::gen_associated_ops_extended,
+        OpcodeId::I64Const => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         // WASM binary opcodes
         OpcodeId::I32Add |
         OpcodeId::I32Sub |
@@ -225,107 +212,107 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I64ShrS |
         OpcodeId::I64ShrU |
         OpcodeId::I64Rotl |
-        OpcodeId::I64Rotr => StackOnlyOpcode::<2, 1>::gen_associated_ops_extended,
+        OpcodeId::I64Rotr => StackOnlyOpcode::<2, 1>::gen_associated_ops,
         // WASM unary opcodes
         OpcodeId::I32Ctz |
         OpcodeId::I64Ctz |
         OpcodeId::I32Clz |
         OpcodeId::I64Clz |
         OpcodeId::I32Popcnt |
-        OpcodeId::I64Popcnt => StackOnlyOpcode::<1, 1>::gen_associated_ops_extended,
+        OpcodeId::I64Popcnt => StackOnlyOpcode::<1, 1>::gen_associated_ops,
 
-        OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops_extended,
-        OpcodeId::Return => Dummy::gen_associated_ops_extended,
+        OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
+        OpcodeId::Return => Dummy::gen_associated_ops,
 
         // TODO these are temporal. need a fix.
-        // OpcodeId::GetLocal => Dummy::gen_associated_ops_extended,
-        // OpcodeId::GetGlobal => Dummy::gen_associated_ops_extended,
-        // OpcodeId::SetLocal => Dummy::gen_associated_ops_extended,
-        // OpcodeId::SetGlobal => Dummy::gen_associated_ops_extended,
-        // OpcodeId::I32GtU => Dummy::gen_associated_ops_extended,
-        // OpcodeId::If => Dummy::gen_associated_ops_extended,
-        // OpcodeId::Call => Dummy::gen_associated_ops_extended,
+        // OpcodeId::GetLocal => Dummy::gen_associated_ops,
+        // OpcodeId::GetGlobal => Dummy::gen_associated_ops,
+        // OpcodeId::SetLocal => Dummy::gen_associated_ops,
+        // OpcodeId::SetGlobal => Dummy::gen_associated_ops,
+        // OpcodeId::I32GtU => Dummy::gen_associated_ops,
+        // OpcodeId::If => Dummy::gen_associated_ops,
+        // OpcodeId::Call => Dummy::gen_associated_ops,
 
         // EVM opcodes
-        OpcodeId::STOP => Stop::gen_associated_ops_extended,
-        // OpcodeId::SHA3 => Sha3::gen_associated_ops_extended,
-        OpcodeId::ADDRESS => Address::gen_associated_ops_extended,
-        OpcodeId::BALANCE => Balance::gen_associated_ops_extended,
-        OpcodeId::ORIGIN => Origin::gen_associated_ops_extended,
-        OpcodeId::CALLER => Caller::gen_associated_ops_extended,
-        OpcodeId::CALLVALUE => Callvalue::gen_associated_ops_extended,
-        OpcodeId::CALLDATASIZE => Calldatasize::gen_associated_ops_extended,
-        OpcodeId::CALLDATALOAD => Calldataload::gen_associated_ops_extended,
-        OpcodeId::CALLDATACOPY => Calldatacopy::gen_associated_ops_extended,
-        OpcodeId::GASPRICE => GasPrice::gen_associated_ops_extended,
-        OpcodeId::CODECOPY => Codecopy::gen_associated_ops_extended,
-        OpcodeId::CODESIZE => Codesize::gen_associated_ops_extended,
-        // OpcodeId::EXTCODESIZE => Extcodesize::gen_associated_ops_extended,
-        // OpcodeId::EXTCODECOPY => Extcodecopy::gen_associated_ops_extended,
-        OpcodeId::RETURNDATASIZE => Returndatasize::gen_associated_ops_extended,
-        OpcodeId::RETURNDATACOPY => Returndatacopy::gen_associated_ops_extended,
-        // OpcodeId::EXTCODEHASH => Extcodehash::gen_associated_ops_extended,
-        OpcodeId::BLOCKHASH => StackOnlyOpcode::<1, 1>::gen_associated_ops_extended,
-        OpcodeId::COINBASE => StackOnlyOpcode::<0, 1>::gen_associated_ops_extended,
-        OpcodeId::TIMESTAMP => StackOnlyOpcode::<0, 1>::gen_associated_ops_extended,
-        // OpcodeId::NUMBER => StackOnlyOpcode::<0, 1>::gen_associated_ops_extended,
-        OpcodeId::NUMBER => Number::gen_associated_ops_extended,
-        OpcodeId::DIFFICULTY => StackToMemoryOpcode::gen_associated_ops_extended,
-        OpcodeId::GASLIMIT => StackToMemoryOpcode::gen_associated_ops_extended,
-        OpcodeId::CHAINID => ChainId::gen_associated_ops_extended,
-        OpcodeId::SELFBALANCE => Selfbalance::gen_associated_ops_extended,
-        OpcodeId::BASEFEE => StackToMemoryOpcode::gen_associated_ops_extended,
-        // OpcodeId::MLOAD => Mload::gen_associated_ops_extended,
-        // OpcodeId::MSTORE => Mstore::<false>::gen_associated_ops_extended,
-        // OpcodeId::MSTORE8 => Mstore::<true>::gen_associated_ops_extended,
-        // OpcodeId::SLOAD => Sload::gen_associated_ops_extended,
-        // OpcodeId::SSTORE => Sstore::gen_associated_ops_extended,
-        OpcodeId::PC => StackOnlyOpcode::<0, 1>::gen_associated_ops_extended,
-        OpcodeId::MSIZE => StackOnlyOpcode::<0, 1>::gen_associated_ops_extended,
-        OpcodeId::GAS => StackOnlyOpcode::<0, 1>::gen_associated_ops_extended,
-        OpcodeId::JUMPDEST => Dummy::gen_associated_ops_extended,
-        // OpcodeId::LOG0 => Log::gen_associated_ops_extended,
-        // OpcodeId::LOG1 => Log::gen_associated_ops_extended,
-        // OpcodeId::LOG2 => Log::gen_associated_ops_extended,
-        // OpcodeId::LOG3 => Log::gen_associated_ops_extended,
-        // OpcodeId::LOG4 => Log::gen_associated_ops_extended,
-        OpcodeId::CALL | OpcodeId::CALLCODE => CallOpcode::<7>::gen_associated_ops_extended,
-        OpcodeId::DELEGATECALL | OpcodeId::STATICCALL => CallOpcode::<6>::gen_associated_ops_extended,
-        OpcodeId::RETURN | OpcodeId::REVERT => ReturnRevert::gen_associated_ops_extended,
+        OpcodeId::STOP => Stop::gen_associated_ops,
+        // OpcodeId::SHA3 => Sha3::gen_associated_ops,
+        OpcodeId::ADDRESS => Address::gen_associated_ops,
+        OpcodeId::BALANCE => Balance::gen_associated_ops,
+        OpcodeId::ORIGIN => Origin::gen_associated_ops,
+        OpcodeId::CALLER => Caller::gen_associated_ops,
+        OpcodeId::CALLVALUE => Callvalue::gen_associated_ops,
+        OpcodeId::CALLDATASIZE => Calldatasize::gen_associated_ops,
+        OpcodeId::CALLDATALOAD => Calldataload::gen_associated_ops,
+        OpcodeId::CALLDATACOPY => Calldatacopy::gen_associated_ops,
+        OpcodeId::GASPRICE => GasPrice::gen_associated_ops,
+        OpcodeId::CODECOPY => Codecopy::gen_associated_ops,
+        OpcodeId::CODESIZE => Codesize::gen_associated_ops,
+        // OpcodeId::EXTCODESIZE => Extcodesize::gen_associated_ops,
+        // OpcodeId::EXTCODECOPY => Extcodecopy::gen_associated_ops,
+        OpcodeId::RETURNDATASIZE => Returndatasize::gen_associated_ops,
+        OpcodeId::RETURNDATACOPY => Returndatacopy::gen_associated_ops,
+        // OpcodeId::EXTCODEHASH => Extcodehash::gen_associated_ops,
+        OpcodeId::BLOCKHASH => StackOnlyOpcode::<1, 1>::gen_associated_ops,
+        OpcodeId::COINBASE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::TIMESTAMP => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        // OpcodeId::NUMBER => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::NUMBER => Number::gen_associated_ops,
+        OpcodeId::DIFFICULTY => StackToMemoryOpcode::gen_associated_ops,
+        OpcodeId::GASLIMIT => StackToMemoryOpcode::gen_associated_ops,
+        OpcodeId::CHAINID => ChainId::gen_associated_ops,
+        OpcodeId::SELFBALANCE => Selfbalance::gen_associated_ops,
+        OpcodeId::BASEFEE => StackToMemoryOpcode::gen_associated_ops,
+        // OpcodeId::MLOAD => Mload::gen_associated_ops,
+        // OpcodeId::MSTORE => Mstore::<false>::gen_associated_ops,
+        // OpcodeId::MSTORE8 => Mstore::<true>::gen_associated_ops,
+        // OpcodeId::SLOAD => Sload::gen_associated_ops,
+        // OpcodeId::SSTORE => Sstore::gen_associated_ops,
+        OpcodeId::PC => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::MSIZE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::GAS => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::JUMPDEST => Dummy::gen_associated_ops,
+        // OpcodeId::LOG0 => Log::gen_associated_ops,
+        // OpcodeId::LOG1 => Log::gen_associated_ops,
+        // OpcodeId::LOG2 => Log::gen_associated_ops,
+        // OpcodeId::LOG3 => Log::gen_associated_ops,
+        // OpcodeId::LOG4 => Log::gen_associated_ops,
+        OpcodeId::CALL | OpcodeId::CALLCODE => CallOpcode::<7>::gen_associated_ops,
+        OpcodeId::DELEGATECALL | OpcodeId::STATICCALL => CallOpcode::<6>::gen_associated_ops,
+        OpcodeId::RETURN | OpcodeId::REVERT => ReturnRevert::gen_associated_ops,
         OpcodeId::SELFDESTRUCT => {
             evm_unimplemented!("Using dummy gen_selfdestruct_ops for opcode SELFDESTRUCT");
-            DummySelfDestruct::gen_associated_ops_extended
+            DummySelfDestruct::gen_associated_ops
         }
         // OpcodeId::CREATE => {
         //     evm_unimplemented!("Using dummy gen_create_ops for opcode {:?}", opcode_id);
-        //     DummyCreate::<false>::gen_associated_ops_extended
+        //     DummyCreate::<false>::gen_associated_ops
         // }
         // OpcodeId::CREATE2 => {
         //     evm_unimplemented!("Using dummy gen_create_ops for opcode {:?}", opcode_id);
-        //     DummyCreate::<true>::gen_associated_ops_extended
+        //     DummyCreate::<true>::gen_associated_ops
         // }
         _ => {
             evm_unimplemented!("Using dummy gen_associated_ops for opcode {:?}", opcode_id);
-            Dummy::gen_associated_ops_extended
+            Dummy::gen_associated_ops
         }
     }
 }
 
 fn fn_gen_error_state_associated_ops(error: &ExecError) -> Option<FnGenAssociatedOps> {
     match error {
-        ExecError::InvalidJump => Some(InvalidJump::gen_associated_ops_extended),
-        ExecError::InvalidOpcode => Some(ErrorSimple::gen_associated_ops_extended),
-        ExecError::OutOfGas(OogError::Call) => Some(OOGCall::gen_associated_ops_extended),
-        ExecError::OutOfGas(OogError::Constant) => Some(ErrorSimple::gen_associated_ops_extended),
-        ExecError::OutOfGas(OogError::Exp) => Some(OOGExp::gen_associated_ops_extended),
-        ExecError::OutOfGas(OogError::Log) => Some(ErrorOOGLog::gen_associated_ops_extended),
-        ExecError::OutOfGas(OogError::SloadSstore) => Some(OOGSloadSstore::gen_associated_ops_extended),
-        ExecError::StackOverflow => Some(ErrorSimple::gen_associated_ops_extended),
-        ExecError::StackUnderflow => Some(ErrorSimple::gen_associated_ops_extended),
+        ExecError::InvalidJump => Some(InvalidJump::gen_associated_ops),
+        ExecError::InvalidOpcode => Some(ErrorSimple::gen_associated_ops),
+        ExecError::OutOfGas(OogError::Call) => Some(OOGCall::gen_associated_ops),
+        ExecError::OutOfGas(OogError::Constant) => Some(ErrorSimple::gen_associated_ops),
+        ExecError::OutOfGas(OogError::Exp) => Some(OOGExp::gen_associated_ops),
+        ExecError::OutOfGas(OogError::Log) => Some(ErrorOOGLog::gen_associated_ops),
+        ExecError::OutOfGas(OogError::SloadSstore) => Some(OOGSloadSstore::gen_associated_ops),
+        ExecError::StackOverflow => Some(ErrorSimple::gen_associated_ops),
+        ExecError::StackUnderflow => Some(ErrorSimple::gen_associated_ops),
         // call & callcode can encounter InsufficientBalance error, Use pop-7 generic CallOpcode
-        ExecError::InsufficientBalance => Some(CallOpcode::<7>::gen_associated_ops_extended),
-        ExecError::WriteProtection => Some(ErrorWriteProtection::gen_associated_ops_extended),
-        ExecError::ReturnDataOutOfBounds => Some(ErrorReturnDataOutOfBound::gen_associated_ops_extended),
+        ExecError::InsufficientBalance => Some(CallOpcode::<7>::gen_associated_ops),
+        ExecError::WriteProtection => Some(ErrorWriteProtection::gen_associated_ops),
+        ExecError::ReturnDataOutOfBounds => Some(ErrorReturnDataOutOfBound::gen_associated_ops),
         // more future errors place here
         _ => {
             evm_unimplemented!("TODO: error state {:?} not implemented", error);
@@ -364,7 +351,7 @@ pub fn gen_associated_ops(
         // fn_gen_error_state_associated_ops method
         // For exceptions that have been implemented
         if let Some(fn_gen_error_ops) = fn_gen_error_state_associated_ops(&exec_error) {
-            return fn_gen_error_ops(state, geth_steps, &geth_step.global_memory);
+            return fn_gen_error_ops(state, geth_steps);
         } else {
             // For exceptions that already enter next call context, but fail immediately
             // (e.g. Depth, InsufficientBalance), we still need to parse the call.
@@ -382,7 +369,7 @@ pub fn gen_associated_ops(
     }
     // if no errors, continue as normal
     let fn_gen_associated_ops = fn_gen_associated_ops(opcode_id);
-    fn_gen_associated_ops(state, geth_steps, &geth_step.global_memory)
+    fn_gen_associated_ops(state, geth_steps)
 }
 
 pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory) -> Result<ExecStep, Error> {

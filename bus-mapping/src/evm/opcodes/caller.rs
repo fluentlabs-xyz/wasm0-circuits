@@ -21,7 +21,7 @@ impl Opcode for Caller {
         let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
 
-        let address = &geth_second_step.memory.0;
+        let address = &geth_second_step.memory[0].0;
         let address = Word::from_big_endian(address).to_address();
 
         state.call_context_read(
@@ -41,7 +41,7 @@ impl Opcode for Caller {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), address[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_second_step.memory.clone();
+        call_ctx.memory = geth_second_step.global_memory.clone();
 
         Ok(vec![exec_step])
     }

@@ -21,7 +21,7 @@ impl Opcode for Calldatasize {
         let geth_step = &geth_steps[0];
         let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
-        let value = &geth_second_step.memory.0;
+        let value = &geth_second_step.memory[0].0;
         state.call_context_read(
             &mut exec_step,
             state.call()?.call_id,
@@ -39,7 +39,7 @@ impl Opcode for Calldatasize {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_second_step.memory.clone();
+        call_ctx.memory = geth_second_step.global_memory.clone();
 
         Ok(vec![exec_step])
     }

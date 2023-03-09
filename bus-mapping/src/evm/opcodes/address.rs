@@ -22,7 +22,7 @@ impl Opcode for Address {
         let mut exec_step = state.new_step(geth_step)?;
 
         // Get address result from next step.
-        let address = &geth_second_step.memory.0;
+        let address = &geth_second_step.memory[0].0;
         if address.len() != ADDRESS_BYTE_LENGTH {
             return Err(Error::InvalidGethExecTrace("there is no address bytes in memory for address opcode"));
         }
@@ -45,7 +45,7 @@ impl Opcode for Address {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), address[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_second_step.memory.clone();
+        call_ctx.memory = geth_second_step.global_memory.clone();
 
         Ok(vec![exec_step])
     }

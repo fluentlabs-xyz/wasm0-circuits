@@ -37,7 +37,7 @@ impl Opcode for Codesize {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), codesize_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_second_step.memory.clone();
+        call_ctx.memory = geth_second_step.global_memory.clone();
 
         Ok(vec![exec_step])
     }

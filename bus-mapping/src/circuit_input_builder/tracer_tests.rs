@@ -37,8 +37,9 @@ impl CircuitInputBuilderTx {
             &block.eth_block.transactions[0],
             &GethExecTrace {
                 gas: Gas(0),
+                internal_error: "".to_owned(),
                 failed: false,
-                global_memory: vec![],
+                global_memory: Memory::new(),
                 return_value: "".to_owned(),
                 struct_logs: vec![geth_step.clone()],
             },

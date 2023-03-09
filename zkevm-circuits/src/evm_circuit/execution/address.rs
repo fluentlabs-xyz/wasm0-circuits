@@ -90,7 +90,7 @@ impl<F: Field> ExecutionGadget<F> for AddressGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use eth_types::{bytecode, ToWord, Word};
+    use eth_types::{bytecode, Bytecode, ToWord, Word};
     use mock::test_ctx::TestContext;
     use crate::evm_circuit::test::rand_word;
     use crate::test_util::CircuitTestBuilder;

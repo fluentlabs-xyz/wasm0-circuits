@@ -29,12 +29,12 @@ impl Opcode for StackToMemoryOpcode {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        let value = &geth_steps[1].memory.0;
+        let value = &geth_steps[1].memory[0].0;
         for (i, b) in value.iter().enumerate() {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), *b)?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_steps[1].memory.clone();
+        call_ctx.memory = geth_steps[1].global_memory.clone();
 
         Ok(vec![exec_step])
     }

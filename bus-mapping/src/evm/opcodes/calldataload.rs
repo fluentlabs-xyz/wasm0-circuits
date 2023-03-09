@@ -23,7 +23,7 @@ impl Opcode for Calldataload {
         let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
 
-        let call_data_chunk_vec = &geth_second_step.memory.0;
+        let call_data_chunk_vec = &geth_second_step.memory[0].0;
         if call_data_chunk_vec.len() != CALLDATA_CHUNK_BYTE_LENGTH {
             return Err(Error::InvalidGethExecTrace("there is no calldata bytes in memory for calldataload opcode"));
         }
@@ -112,7 +112,7 @@ impl Opcode for Calldataload {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), call_data_chunk_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_second_step.memory.clone();
+        call_ctx.memory = geth_second_step.global_memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -124,7 +124,7 @@ mod calldataload_tests {
     use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToWord, Word};
     use mock::{test_ctx::helpers::account_0_code_account_1_no_code, TestContext};
     use rand::random;
-    use eth_types::bytecode::{WasmBinaryBytecode, WasmDataSectionDescriptor};
+    use eth_types::bytecode::{WasmBinaryBytecode};
 
     use crate::{circuit_input_builder::ExecState, mocks::BlockData, operation::StackOp};
     use crate::evm::opcodes::append_vector_to_vector_with_padding;

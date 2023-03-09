@@ -18,7 +18,7 @@ impl Opcode for Number {
         let step = &geth_steps[0];
         let second_step = &geth_steps[1];
         let mut exec_step = state.new_step(step)?;
-        let value = &second_step.memory.0;
+        let value = &second_step.memory[0].0;
 
         state.call_context_read(
             &mut exec_step,
@@ -37,7 +37,7 @@ impl Opcode for Number {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), value[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = second_step.memory.clone();
+        call_ctx.memory = second_step.global_memory.clone();
 
         Ok(vec![exec_step])
     }

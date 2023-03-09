@@ -15,10 +15,9 @@ pub const BALANCE_BYTE_LENGTH: usize = 32;
 pub(crate) struct Balance;
 
 impl Opcode for Balance {
-    fn gen_associated_ops_extended(
+    fn gen_associated_ops(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
-        global_memory: &Memory,
     ) -> Result<Vec<ExecStep>, Error> {
         let geth_step = &geth_steps[0];
         let mut exec_step = state.new_step(geth_step)?;
@@ -30,9 +29,9 @@ impl Opcode for Balance {
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), account_mem_address)?;
 
         // Read account & balance from memory
-        let address = &global_memory.0[account_mem_address.as_usize()..ADDRESS_BYTE_LENGTH];
-        let address = Word::from_big_endian(address).to_address();
-        let balance = Word::from_big_endian(&geth_steps[1].memory.0);
+        let address = geth_steps[0].global_memory.read_address(account_mem_address)?;
+        let balance = geth_steps[1].global_memory.read_u256(result_mem_address)?;
+        // let balance = Word::from_big_endian(&geth_steps[1].memory.0);
 
         // Read transaction ID, rw_counter_end_of_reversion, and is_persistent
         // from call context.
@@ -104,7 +103,7 @@ impl Opcode for Balance {
             state.memory_write(&mut exec_step, balance_offset_addr.map(|a| a + i), balance_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = global_memory.clone();
+        call_ctx.memory = geth_step.global_memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -142,7 +141,7 @@ mod balance_tests {
     }
 
     fn test_ok(exists: bool, is_warm: bool) {
-        let account_mem_address: u32 = 0x0;
+        let account_mem_address: u32 = 0x00;
         let balance_mem_address: u32 = 0x7f;
         let address = address!("0xaabbccddee000000000000000000000000000000");
 

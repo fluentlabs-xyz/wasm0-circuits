@@ -19,7 +19,7 @@ impl Opcode for Origin {
         let second_step = &geth_steps[1];
         let mut exec_step = state.new_step(step)?;
         // Get origin result from next step
-        let origin = &second_step.memory.0;
+        let origin = &second_step.memory[0].0;
         let origin = U256::from_big_endian(origin);
         let origin_as_address = origin.to_address();
         let tx_id = state.tx_ctx.id();
@@ -42,7 +42,7 @@ impl Opcode for Origin {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), origin_as_address[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = second_step.memory.clone();
+        call_ctx.memory = second_step.global_memory.clone();
 
         Ok(vec![exec_step])
     }
