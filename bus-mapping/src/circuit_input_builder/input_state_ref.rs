@@ -6,7 +6,7 @@ use ethers_core::utils::{get_contract_address, get_create2_address};
 
 use eth_types::{Address, evm_types::{
     Gas, gas_utils::memory_expansion_gas_cost, GasCost, MemoryAddress, OpcodeId, StackAddress,
-}, GethExecStep, H256, StackWord, ToAddress, ToBigEndian, ToU256, ToWord, Word};
+}, GethExecStep, H256, StackWord, ToBigEndian, ToU256, ToWord, Word};
 
 use crate::{
     error::{ExecError, get_step_reported_error},
@@ -1084,10 +1084,7 @@ impl<'a> CircuitInputStateRef<'a> {
         if matches!(next_step, None) {
             // enumerating call scope successful cases
             // case 1: call with normal halt opcode termination
-            if matches!(
-                step.op,
-                OpcodeId::Return | OpcodeId::End | OpcodeId::STOP | OpcodeId::REVERT | OpcodeId::SELFDESTRUCT
-            ) {
+            if step.op.is_termination() {
                 return Ok(None);
             }
             // case 2: call is NOT Create (Create represented by empty tx.to) and halt by
@@ -1105,9 +1102,8 @@ impl<'a> CircuitInputStateRef<'a> {
         let next_depth = next_step.map(|s| s.depth).unwrap_or(0);
         let next_result = next_step
             .map(|s| {
-                // let result_offset = step.stack.last().unwrap_or_else(|_| StackWord::zero());
-                // StackWord::from(s.global_memory.read_u8(result_offset).unwrap_or_default())
-                StackWord::zero()
+                let result_offset = step.stack.last().unwrap_or_else(|_| StackWord::zero());
+                StackWord::from(s.global_memory.read_u8(result_offset).unwrap_or_default())
             })
             .unwrap_or_else(StackWord::zero);
 

@@ -564,7 +564,7 @@ impl<'de> Deserialize<'de> for GethExecStep {
             D: serde::Deserializer<'de>,
     {
         let s = GethExecStepInternal::deserialize(deserializer)?;
-        let mut memory: Vec<Memory> = s.memory_changes.iter().map(|(offset, mem)| {
+        let memory: Vec<Memory> = s.memory_changes.iter().map(|(offset, mem)| {
             let mem = if mem.starts_with("0x") {
                 mem[2..].to_string()
             } else {

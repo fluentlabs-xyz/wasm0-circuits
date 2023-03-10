@@ -1,12 +1,12 @@
 //! Doc this
 use core::fmt::Debug;
+use std::{fmt, matches};
+use std::str::FromStr;
 
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{de, Deserialize, Serialize};
-use std::str::FromStr;
-use std::{fmt, matches};
 use strum_macros::EnumIter;
 
 use crate::{error::Error, evm_types::GasCost};
@@ -347,7 +347,7 @@ impl OpcodeId {
             OpcodeId::I32Const | OpcodeId::I64Const => true,
             _ => {
                 self.as_u8() >= Self::PUSH1.as_u8() && self.as_u8() <= Self::PUSH32.as_u8()
-            },
+            }
         }
     }
 
@@ -364,7 +364,20 @@ impl OpcodeId {
             OpcodeId::CALL | OpcodeId::CALLCODE | OpcodeId::DELEGATECALL | OpcodeId::CREATE2 |
             OpcodeId::STATICCALL | OpcodeId::REVERT | OpcodeId::SELFBALANCE => {
                 true
-            },
+            }
+            _ => false
+        }
+    }
+
+    pub fn is_termination(&self) -> bool {
+        match self {
+            // WASM termination codes
+            OpcodeId::End => true,
+            // EVM termination codes
+            OpcodeId::RETURN |
+            OpcodeId::STOP |
+            OpcodeId::REVERT |
+            OpcodeId::SELFDESTRUCT => true,
             _ => false
         }
     }
@@ -820,7 +833,7 @@ impl OpcodeId {
                 } else {
                     0
                 }
-            },
+            }
         }
     }
 

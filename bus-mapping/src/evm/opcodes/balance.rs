@@ -1,4 +1,4 @@
-use eth_types::{GethExecStep, H256, ToBigEndian, ToWord, Word};
+use eth_types::{GethExecStep, H256, ToBigEndian, ToWord};
 use eth_types::evm_types::{MemoryAddress};
 use eth_types::U256;
 

@@ -2,7 +2,6 @@ use crate::{operation::RW, Error};
 use eth_types::{evm_types::OpcodeId, Address, GethExecStep, GethExecTrace, ToAddress, Word, StackWord};
 use ethers_core::utils::get_contract_address;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
-use eth_types::evm_types::Memory;
 
 /// State and Code Access with "keys/index" used in the access operation.
 #[derive(Debug, PartialEq, Eq)]

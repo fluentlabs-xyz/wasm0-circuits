@@ -12,7 +12,6 @@ pub use access::{Access, AccessSet, AccessValue, CodeSource};
 pub use block::{Block, BlockContext};
 pub use call::{Call, CallContext, CallKind};
 use eth_types::{self, Address, geth_types, GethExecStep, GethExecTrace, Word};
-use eth_types::evm_types::Memory;
 use eth_types::sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData};
 use eth_types::ToWord;
 pub use execution::{
