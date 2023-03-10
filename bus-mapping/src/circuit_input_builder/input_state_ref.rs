@@ -1105,8 +1105,9 @@ impl<'a> CircuitInputStateRef<'a> {
         let next_depth = next_step.map(|s| s.depth).unwrap_or(0);
         let next_result = next_step
             .map(|s| {
-                let result_offset = step.stack.last().unwrap_or_else(|_| StackWord::zero());
-                StackWord::from(s.global_memory.read_u8(result_offset).unwrap_or_default())
+                // let result_offset = step.stack.last().unwrap_or_else(|_| StackWord::zero());
+                // StackWord::from(s.global_memory.read_u8(result_offset).unwrap_or_default())
+                StackWord::zero()
             })
             .unwrap_or_else(StackWord::zero);
 
