@@ -155,8 +155,6 @@ mod codecopy_tests {
             CODECOPY
         };
 
-        // TODO do we need data section for 'code' ?
-        let wasm_binary_vec = code.wasm_binary();
         let block: GethData = TestContext::<2, 1>::new(
             None,
             account_0_code_account_1_no_code(code.clone()),
@@ -166,7 +164,8 @@ mod codecopy_tests {
         .unwrap()
         .into();
 
-        let code = Bytecode::from_raw_unchecked(wasm_binary_vec);
+        let wasm_binary_vec = code.wasm_binary();
+        let code = Bytecode::from_raw_unchecked(code.wasm_binary());
 
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
         builder
@@ -188,49 +187,43 @@ mod codecopy_tests {
             [
                 (
                     RW::READ,
-                    &StackOp::new(1, StackAddress::from(1021), StackWord::from(dst_offset)),
+                    &StackOp::new(expected_call_id, StackAddress::from(1021), StackWord::from(dst_offset)),
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(1, StackAddress::from(1022), StackWord::from(code_offset)),
+                    &StackOp::new(expected_call_id, StackAddress::from(1022), StackWord::from(code_offset)),
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(1, StackAddress::from(1023), StackWord::from(size)),
+                    &StackOp::new(expected_call_id, StackAddress::from(1023), StackWord::from(size)),
                 ),
             ]
         );
 
         // RW table memory writes.
-        assert_eq!(
-            (0..size)
-                .map(|idx| &builder.block.container.memory[idx])
-                .map(|op| (op.rw(), op.op().clone()))
-                .collect::<Vec<(RW, MemoryOp)>>(),
-            (0..size)
-                .map(|idx| {
-                    (
-                        RW::WRITE,
-                        MemoryOp::new(
-                            1,
-                            MemoryAddress::from(dst_offset + idx),
-                            if code_offset + idx < code.to_vec().len() {
-                                code.to_vec()[code_offset + idx]
-                            } else {
-                                0
-                            },
-                        ),
-                    )
-                })
-                .collect::<Vec<(RW, MemoryOp)>>(),
-        );
+        for idx in 0..size {
+            let op = &builder.block.container.memory[idx];
+
+            let op_rw_expected = RW::WRITE;
+            let op_expected = MemoryOp::new(
+                expected_call_id,
+                MemoryAddress::from(dst_offset + idx),
+                if code_offset + idx < code.to_vec().len() {
+                    wasm_binary_vec[code_offset + idx]
+                } else {
+                    0
+                },
+            );
+            assert_eq!(op.rw(), op_rw_expected, "op.rw() at idx {}", idx);
+            assert_eq!(op.op().clone(), op_expected, "op.op() at idx {}", idx);
+        }
 
         let copy_events = builder.block.copy_events.clone();
         assert_eq!(copy_events.len(), 1);
         assert_eq!(copy_events[0].bytes.len(), size);
         assert_eq!(
             copy_events[0].src_id,
-            NumberOrHash::Hash(H256(keccak256(&code.to_vec())))
+            NumberOrHash::Hash(H256(keccak256(&wasm_binary_vec)))
         );
         assert_eq!(copy_events[0].src_addr as usize, code_offset);
         assert_eq!(copy_events[0].src_addr_end as usize, code.to_vec().len());

@@ -7,7 +7,7 @@ use crate::geth_errors::{
 };
 use crate::operation::RWCounter;
 use crate::state_db::Account;
-use eth_types::evm_types::{stack::Stack, Gas, OpcodeId};
+use eth_types::evm_types::{stack::Stack, Gas, OpcodeId, Memory};
 use eth_types::{address, bytecode, geth_types::GethData, word, Bytecode, Hash, ToAddress, ToWord, Word, StackWord, ToStackWord};
 use lazy_static::lazy_static;
 use mock::test_ctx::{helpers::*, LoggerConfig, TestContext};
@@ -457,7 +457,7 @@ fn tracer_err_address_collision() {
     // Set up call context at CREATE2
     builder.tx_ctx.call_is_success.push(false);
     builder.state_ref().push_call(mock_internal_create());
-    builder.state_ref().call_ctx_mut().unwrap().memory = memory;
+    builder.state_ref().call_ctx_mut().unwrap().memory = memory[0].clone();
     // Set up account and contract that exist during the second CREATE2
     builder.builder.sdb.set_account(
         &ADDR_B,
@@ -652,7 +652,7 @@ fn check_err_invalid_code(step: &GethExecStep, next_step: Option<&GethExecStep>)
         && result(next_step).is_zero()
         && length > StackWord::zero()
         && !step.memory.is_empty()
-        && step.memory.0.get(offset.low_u64() as usize) == Some(&0xef)
+        && step.memory[0].0.get(offset.low_u64() as usize) == Some(&0xef)
 }
 
 #[test]
@@ -745,7 +745,7 @@ fn tracer_err_invalid_code() {
     // Set up call context at RETURN
     builder.tx_ctx.call_is_success.push(false);
     builder.state_ref().push_call(mock_internal_create());
-    builder.state_ref().call_ctx_mut().unwrap().memory = step.memory.clone();
+    builder.state_ref().call_ctx_mut().unwrap().memory = step.memory[0].clone();
     assert_eq!(
         builder.state_ref().get_step_err(step, next_step).unwrap(),
         Some(ExecError::InvalidCreationCode)
@@ -1750,7 +1750,7 @@ fn create2_address() {
     // Set up call context at CREATE2
     builder.tx_ctx.call_is_success.push(false);
     builder.state_ref().push_call(mock_internal_create());
-    builder.state_ref().call_ctx_mut().unwrap().memory = memory;
+    builder.state_ref().call_ctx_mut().unwrap().memory = memory[0].clone();
     let addr = builder.state_ref().create2_address(step_create2).unwrap();
 
     assert_eq!(addr.to_stack_word(), addr_expect);
