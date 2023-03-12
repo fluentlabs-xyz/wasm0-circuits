@@ -54,8 +54,10 @@ impl TransactionContext {
                         call_indices.push(index);
                     // Emerge from call
                     } else if geth_step.depth - 1 == geth_next_step.depth {
-                        let is_success = !geth_next_step.stack.last()?.is_zero();
-                        call_is_success_map.insert(call_indices.pop().unwrap(), is_success);
+                        let last_call_index = call_indices.pop().unwrap();
+                        let result_offset = geth_trace.struct_logs[last_call_index].stack.last()?;
+                        let is_success = geth_next_step.global_memory.read_u8(result_offset)? != 0u8;
+                        call_is_success_map.insert(last_call_index, is_success);
                     // Callee with empty code
                     } else if CallKind::try_from(geth_step.op).is_ok() {
                         let result_offset = geth_step.stack.last()?;
