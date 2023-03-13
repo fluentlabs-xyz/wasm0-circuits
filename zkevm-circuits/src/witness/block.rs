@@ -1,8 +1,5 @@
 use std::collections::HashMap;
 
-#[cfg(any(feature = "test", test))]
-use crate::evm_circuit::{detect_fixed_table_tags, EvmCircuit};
-
 use crate::{evm_circuit::util::rlc, table::BlockContextFieldTag};
 use bus_mapping::{
     circuit_input_builder::{self, CircuitsParams, CopyEvent, ExpEvent},
@@ -10,6 +7,7 @@ use bus_mapping::{
 };
 use eth_types::{Address, Field, ToLittleEndian, ToScalar, Word};
 use halo2_proofs::circuit::Value;
+use crate::evm_circuit::{detect_fixed_table_tags, EvmCircuit};
 
 use super::{step::step_convert, tx::tx_convert, Bytecode, ExecStep, RwMap, Transaction};
 

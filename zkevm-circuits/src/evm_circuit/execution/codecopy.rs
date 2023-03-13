@@ -32,7 +32,7 @@ pub(crate) struct CodeCopyGadget<F> {
     dst_memory_addr: MemoryAddressGadget<F>,
     /// Opcode CODECOPY has a dynamic gas cost:
     /// gas_code = static_gas * minimum_word_size + memory_expansion_cost
-    memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
+    // memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
     /// Opcode CODECOPY needs to copy code bytes into memory. We account for
     /// the copying costs using the memory copier gas gadget.
     memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY }>,
@@ -59,7 +59,7 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         cb.stack_pop(code_offset.expr());
         cb.stack_pop(size.expr());
 
-        // Construct memory address in the destionation (memory) to which we copy code.
+        // Construct memory address in the destination (memory) to which we copy code.
         let dst_memory_addr = MemoryAddressGadget::construct(cb, dst_memory_offset, size);
 
         // Fetch the hash of bytecode running in current environment.
@@ -72,11 +72,12 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         // Calculate the next memory size and the gas cost for this memory
         // access. This also accounts for the dynamic gas required to copy bytes to
         // memory.
-        let memory_expansion = MemoryExpansionGadget::construct(cb, [dst_memory_addr.address()]);
+        // let memory_expansion = MemoryExpansionGadget::construct(cb, [dst_memory_addr.address()]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(
             cb,
             dst_memory_addr.length(),
-            memory_expansion.gas_cost(),
+            // memory_expansion.gas_cost(),
+            0.expr(),
         );
 
         let copy_rwc_inc = cb.query_cell();
@@ -106,9 +107,10 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
             rw_counter: Transition::Delta(cb.rw_counter_offset()),
             program_counter: Transition::Delta(1.expr()),
             stack_pointer: Transition::Delta(3.expr()),
-            memory_word_size: Transition::To(memory_expansion.next_memory_word_size()),
+            // memory_word_size: Transition::To(memory_expansion.next_memory_word_size()),
+            memory_word_size: Transition::To(0.expr()),
             gas_left: Transition::Delta(
-                -OpcodeId::CODECOPY.constant_gas_cost().expr() - memory_copier_gas.gas_cost(),
+                -OpcodeId::CODECOPY.constant_gas_cost().expr()/* - memory_copier_gas.gas_cost()*/,
             ),
             ..Default::default()
         };
@@ -119,7 +121,7 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
             code_offset,
             code_size,
             dst_memory_addr,
-            memory_expansion,
+            // memory_expansion,
             memory_copier_gas,
             copy_rwc_inc,
         }
@@ -172,14 +174,15 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
             .assign(region, offset, dest_offset, size)?;
 
         // assign to gadgets handling memory expansion cost and copying cost.
-        let (_, memory_expansion_cost) = self.memory_expansion.assign(
-            region,
-            offset,
-            step.memory_word_size(),
-            [memory_address],
-        )?;
+        // let (_, memory_expansion_cost) = self.memory_expansion.assign(
+        //     region,
+        //     offset,
+        //     step.memory_word_size(),
+        //     [memory_address],
+        // )?;
         self.memory_copier_gas
-            .assign(region, offset, size.as_u64(), memory_expansion_cost)?;
+            .assign(region, offset, size.as_u64(), 0)?;
+            // .assign(region, offset, size.as_u64(), memory_expansion_cost)?;
         // rw_counter increase from copy table lookup is number of bytes copied.
         self.copy_rwc_inc.assign(
             region,
@@ -208,11 +211,10 @@ mod tests {
             }
         }
         let tail = bytecode! {
-            PUSH32(Word::from(size))
-            PUSH32(Word::from(code_offset))
-            PUSH32(Word::from(memory_offset))
+            I32Const[memory_offset]
+            I32Const[code_offset]
+            I32Const[size]
             CODECOPY
-            STOP
         };
         code.append(&tail);
 
@@ -223,9 +225,17 @@ mod tests {
     }
 
     #[test]
-    fn codecopy_gadget_simple() {
+    fn codecopy_gadget_simple1() {
         test_ok(0x00, 0x00, 0x20, false);
+    }
+
+    #[test]
+    fn codecopy_gadget_simple2() {
         test_ok(0x20, 0x30, 0x30, false);
+    }
+
+    #[test]
+    fn codecopy_gadget_simple3() {
         test_ok(0x10, 0x20, 0x42, false);
     }
 
