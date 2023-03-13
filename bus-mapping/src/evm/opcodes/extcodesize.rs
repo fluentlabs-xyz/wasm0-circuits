@@ -2,7 +2,7 @@ use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::evm::Opcode;
 use crate::operation::{AccountField, CallContextField, RW, TxAccessListAccountOp};
 use crate::Error;
-use eth_types::{GethExecStep, H256, ToBigEndian};
+use eth_types::{GethExecStep, H256};
 use eth_types::ToWord;
 use eth_types::evm_types::MemoryAddress;
 use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
@@ -18,16 +18,13 @@ impl Opcode for Extcodesize {
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
         let geth_step = &geth_steps[0];
-        let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
 
         // Read account address from stack.
-        let codesize_offset = geth_step.stack.last()?;
-        state.stack_read(&mut exec_step, geth_step.stack.last_filled(), codesize_offset)?;
+        let codesize_offset = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), codesize_offset)?;
         let address_offset = geth_step.stack.nth_last(1)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), address_offset)?;
-
-        let address = &geth_step.global_memory.read_address(address_offset)?;
 
         // Read transaction ID, rw_counter_end_of_reversion, and is_persistent from call
         // context.
@@ -46,6 +43,7 @@ impl Opcode for Extcodesize {
         }
 
         // Update transaction access list for account address.
+        let address = &geth_step.global_memory.read_address(address_offset)?;
         let is_warm = state.sdb.check_account_in_access_list(&address);
         state.push_op_reversible(
             &mut exec_step,
@@ -86,8 +84,9 @@ impl Opcode for Extcodesize {
         }
         let codesize_offset_addr = MemoryAddress::try_from(codesize_offset)?;
         let codesize_bytes = codesize.to_be_bytes();
+        let codesize_bytes_base_idx = codesize_bytes.len() - CODESIZE_BYTE_LENGTH;
         for i in 0..CODESIZE_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, codesize_offset_addr.map(|a| a + i), codesize_bytes[i])?;
+            state.memory_write(&mut exec_step, codesize_offset_addr.map(|a| a + i), codesize_bytes[codesize_bytes_base_idx + i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
         call_ctx.memory = geth_step.global_memory.clone();
@@ -193,7 +192,7 @@ mod extcodesize_tests {
         .into();
 
         let codesize = &account.code.len();
-        let codesize_bytes = codesize.to_le_bytes();
+        let codesize_bytes = codesize.to_be_bytes();
         let codesize_vec = codesize_bytes[codesize_bytes.len()-CODESIZE_BYTE_LENGTH..codesize_bytes.len()].to_vec();
         assert_eq!(codesize_vec.len(), CODESIZE_BYTE_LENGTH);
 
