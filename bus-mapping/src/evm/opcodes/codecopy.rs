@@ -19,9 +19,9 @@ impl Opcode for Codecopy {
         let geth_step = &geth_steps[0];
         let exec_steps = vec![gen_codecopy_step(state, geth_step)?];
 
-        let length = geth_step.stack.nth_last(0)?.as_u64();
+        let dest_offset = geth_step.stack.nth_last(0)?.as_u64();
         let code_offset = geth_step.stack.nth_last(1)?.as_u64();
-        let dest_offset = geth_step.stack.nth_last(2)?.as_u64();
+        let length = geth_step.stack.nth_last(2)?.as_u64();
 
         let code_hash = state.call()?.code_hash;
         let code = state.code(code_hash)?;
@@ -43,9 +43,9 @@ fn gen_codecopy_step(
 ) -> Result<ExecStep, Error> {
     let mut exec_step = state.new_step(geth_step)?;
 
-    let length = geth_step.stack.nth_last(0)?;
+    let dest_offset = geth_step.stack.nth_last(1)?;
     let code_offset = geth_step.stack.nth_last(1)?;
-    let dest_offset = geth_step.stack.nth_last(2)?;
+    let length = geth_step.stack.nth_last(2)?;
 
     // stack reads
     state.stack_read(
@@ -87,9 +87,9 @@ fn gen_copy_event(
 ) -> Result<CopyEvent, Error> {
     let rw_counter_start = state.block_ctx.rwc;
 
-    let length = geth_step.stack.nth_last(0)?.as_u64();
+    let dst_offset = geth_step.stack.nth_last(0)?.as_u64();
     let code_offset = geth_step.stack.nth_last(1)?.as_u64();
-    let dst_offset = geth_step.stack.nth_last(2)?.as_u64();
+    let length = geth_step.stack.nth_last(2)?.as_u64();
 
     let code_hash = state.call()?.code_hash;
     let bytecode_bytes = state.code(code_hash)?;
