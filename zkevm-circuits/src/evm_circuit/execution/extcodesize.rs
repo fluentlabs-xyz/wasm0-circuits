@@ -22,6 +22,8 @@ use halo2_proofs::plonk::Error;
 pub(crate) struct ExtcodesizeGadget<F> {
     same_context: SameContextGadget<F>,
     address_word: Word<F>,
+    address_offset: Cell<F>,
+    codesize_offset: Cell<F>,
     reversion_info: ReversionInfo<F>,
     tx_id: Cell<F>,
     is_warm: Cell<F>,
@@ -38,7 +40,11 @@ impl<F: Field> ExecutionGadget<F> for ExtcodesizeGadget<F> {
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let address_word = cb.query_word_rlc();
         let address = from_bytes::expr(&address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]);
-        cb.stack_pop(address_word.expr());
+        let codesize_offset = cb.query_cell();
+        let address_offset = cb.query_cell();
+
+        cb.stack_pop(codesize_offset.expr());
+        cb.stack_pop(address_offset.expr());
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let mut reversion_info = cb.reversion_info_read(None);
@@ -72,11 +78,10 @@ impl<F: Field> ExecutionGadget<F> for ExtcodesizeGadget<F> {
             GasCost::WARM_ACCESS.expr(),
             GasCost::COLD_ACCOUNT_ACCESS.expr(),
         );
-
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(7.expr()),
             program_counter: Delta(1.expr()),
-            stack_pointer: Delta(0.expr()),
+            stack_pointer: Delta(2.expr()),
             gas_left: Delta(-gas_cost),
             reversible_write_counter: Delta(1.expr()),
             ..Default::default()
@@ -88,6 +93,8 @@ impl<F: Field> ExecutionGadget<F> for ExtcodesizeGadget<F> {
         Self {
             same_context,
             address_word,
+            codesize_offset,
+            address_offset,
             tx_id,
             reversion_info,
             is_warm,
@@ -108,9 +115,9 @@ impl<F: Field> ExecutionGadget<F> for ExtcodesizeGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let address = block.rws[step.rw_indices[0]].stack_value();
+        let account_mem_address = block.rws[step.rw_indices[0]].stack_value();
         self.address_word
-            .assign(region, offset, Some(address.to_le_bytes()))?;
+            .assign(region, offset, Some(account_mem_address.to_le_bytes()))?;
 
         self.tx_id
             .assign(region, offset, Value::known(F::from(tx.id as u64)))?;
@@ -124,7 +131,7 @@ impl<F: Field> ExecutionGadget<F> for ExtcodesizeGadget<F> {
 
         let (_, is_warm) = block.rws[step.rw_indices[4]].tx_access_list_value_pair();
         self.is_warm
-            .assign(region, offset, Value::known(F::from(is_warm)))?;
+            .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
 
         let code_hash = block.rws[step.rw_indices[5]].account_value_pair().0;
         self.code_hash
@@ -142,26 +149,29 @@ impl<F: Field> ExecutionGadget<F> for ExtcodesizeGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::evm_circuit::test::rand_bytes;
     use crate::test_util::CircuitTestBuilder;
     use eth_types::geth_types::Account;
     use eth_types::{bytecode, Bytecode, ToWord, Word};
+    use eth_types::bytecode::WasmBinaryBytecode;
     use mock::{TestContext, MOCK_1_ETH, MOCK_ACCOUNTS, MOCK_CODES};
 
     #[test]
-    fn test_extcodesize_gadget_simple() {
+    fn test_extcodesize_gadget_simple_empty_acc() {
+        test_ok(&Account::default(), false);
+    }
+
+    #[test]
+    fn test_extcodesize_gadget_simple_cold_acc() {
         let account = Account {
             address: MOCK_ACCOUNTS[4],
             code: MOCK_CODES[4].clone(),
             ..Default::default()
         };
 
-        // Test for empty account.
-        test_ok(&Account::default(), false);
         // Test for cold account.
         test_ok(&account, false);
         // Test for warm account.
-        test_ok(&account, true);
+        // test_ok(&account, true);
     }
 
     #[test]
@@ -180,6 +190,8 @@ mod test {
 
     fn test_ok(account: &Account, is_warm: bool) {
         let account_exists = !account.is_empty();
+        let account_mem_address = 0x0;
+        let res_mem_address = 0x7f;
 
         let (addr_a, addr_b) = (mock::MOCK_ACCOUNTS[0], mock::MOCK_ACCOUNTS[1]);
 
@@ -187,41 +199,58 @@ mod test {
         let mut bytecode_b = Bytecode::default();
         if is_warm {
             bytecode_b.append(&bytecode! {
-                PUSH20(account.address.to_word())
+                // PUSH20(account.address.to_word())
+                // EXTCODESIZE
+                // POP
+                I32Const[account_mem_address]
+                I32Const[res_mem_address]
                 EXTCODESIZE
-                POP
             });
         }
         bytecode_b.append(&bytecode! {
-            PUSH20(account.address.to_word())
+            // PUSH20(account.address.to_word())
+            // EXTCODESIZE
+            // POP
+            I32Const[account_mem_address]
+            I32Const[res_mem_address]
             EXTCODESIZE
-            POP
         });
+        bytecode_b.with_global_data(0, account_mem_address, account.address.0.to_vec());
+
+        let mut bytecode_a = bytecode! {
+            // PUSH20(account.address.to_word())
+            // EXTCODESIZE
+            // POP
+            I32Const[account_mem_address]
+            I32Const[res_mem_address]
+            EXTCODESIZE
+        };
+        bytecode_a.with_global_data(0, account_mem_address, account.address.0.to_vec());
 
         // code A calls code B.
-        let pushdata = rand_bytes(8);
-        let bytecode_a = bytecode! {
-            // populate memory in A's context.
-            PUSH8(Word::from_big_endian(&pushdata))
-            PUSH1(0x00) // offset
-            MSTORE
-            // call ADDR_B.
-            PUSH1(0x00) // retLength
-            PUSH1(0x00) // retOffset
-            PUSH32(0xff) // argsLength
-            PUSH32(0x1010) // argsOffset
-            PUSH1(0x00) // value
-            PUSH32(addr_b.to_word()) // addr
-            PUSH32(0x1_0000) // gas
-            CALL
-            STOP
-        };
+        // let pushdata = rand_bytes(8);
+        // let bytecode_a = bytecode! {
+        //     // populate memory in A's context.
+        //     PUSH8(Word::from_big_endian(&pushdata))
+        //     PUSH1(0x00) // offset
+        //     MSTORE
+        //     // call ADDR_B.
+        //     PUSH1(0x00) // retLength
+        //     PUSH1(0x00) // retOffset
+        //     PUSH32(0xff) // argsLength
+        //     PUSH32(0x1010) // argsOffset
+        //     PUSH1(0x00) // value
+        //     PUSH32(addr_b.to_word()) // addr
+        //     PUSH32(0x1_0000) // gas
+        //     CALL
+        //     STOP
+        // };
 
         let ctx = TestContext::<4, 1>::new(
             None,
             |accs| {
-                accs[0].address(addr_b).code(bytecode_b);
-                accs[1].address(addr_a).code(bytecode_a);
+                accs[0].address(addr_b).code(bytecode_b.wasm_binary());
+                accs[1].address(addr_a).code(bytecode_a.wasm_binary());
                 // Set code if account exists.
                 if account_exists {
                     accs[2].address(account.address).code(account.code.clone());

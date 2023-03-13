@@ -23,14 +23,14 @@ impl Opcode for Balance {
         let mut exec_step = state.new_step(geth_step)?;
 
         // Read account address from stack.
-        let result_mem_address = geth_step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), result_mem_address)?;
+        let balance_mem_address = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), balance_mem_address)?;
         let account_mem_address = geth_step.stack.nth_last(1)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), account_mem_address)?;
 
         // Read account & balance from memory
         let address = geth_steps[0].global_memory.read_address(account_mem_address)?;
-        let balance = geth_steps[1].global_memory.read_u256(result_mem_address)?;
+        let balance = geth_steps[1].global_memory.read_u256(balance_mem_address)?;
 
         // Read transaction ID, rw_counter_end_of_reversion, and is_persistent
         // from call context.
@@ -95,7 +95,7 @@ impl Opcode for Balance {
         for i in 0..ADDRESS_BYTE_LENGTH {
             state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), address[i])?;
         }
-        let balance_offset_addr = MemoryAddress::try_from(result_mem_address)?;
+        let balance_offset_addr = MemoryAddress::try_from(balance_mem_address)?;
         let balance_bytes = balance.to_be_bytes();
         for i in 0..BALANCE_BYTE_LENGTH {
             state.memory_write(&mut exec_step, balance_offset_addr.map(|a| a + i), balance_bytes[i])?;
