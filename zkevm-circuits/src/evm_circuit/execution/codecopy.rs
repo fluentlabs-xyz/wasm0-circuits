@@ -30,14 +30,13 @@ pub(crate) struct CodeCopyGadget<F> {
     /// The code from current environment is copied to memory. To verify this
     /// copy operation we need the MemoryAddressGadget.
     dst_memory_addr: MemoryAddressGadget<F>,
-    /// Opcode CODECOPY has a dynamic gas cost:
-    /// gas_code = static_gas * minimum_word_size + memory_expansion_cost
+    //// Opcode CODECOPY has a dynamic gas cost:
+    //// gas_code = static_gas * minimum_word_size + memory_expansion_cost
     // memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
-    /// Opcode CODECOPY needs to copy code bytes into memory. We account for
-    /// the copying costs using the memory copier gas gadget.
-    memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY }>,
-    /// RW inverse counter from the copy table at the start of related copy
-    /// steps.
+    //// Opcode CODECOPY needs to copy code bytes into memory. We account for
+    //// the copying costs using the memory copier gas gadget.
+    // memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY }>,
+    //// RW inverse counter from the copy table at the start of related copy steps.
     copy_rwc_inc: Cell<F>,
 }
 
@@ -73,12 +72,12 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         // access. This also accounts for the dynamic gas required to copy bytes to
         // memory.
         // let memory_expansion = MemoryExpansionGadget::construct(cb, [dst_memory_addr.address()]);
-        let memory_copier_gas = MemoryCopierGasGadget::construct(
-            cb,
-            dst_memory_addr.length(),
-            // memory_expansion.gas_cost(),
-            0.expr(),
-        );
+        // let memory_copier_gas = MemoryCopierGasGadget::construct(
+        //     cb,
+        //     dst_memory_addr.length(),
+        //     // memory_expansion.gas_cost(),
+        //     0.expr(),
+        // );
 
         let copy_rwc_inc = cb.query_cell();
         cb.condition(dst_memory_addr.has_length(), |cb| {
@@ -122,7 +121,7 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
             code_size,
             dst_memory_addr,
             // memory_expansion,
-            memory_copier_gas,
+            // memory_copier_gas,
             copy_rwc_inc,
         }
     }
@@ -180,8 +179,8 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         //     step.memory_word_size(),
         //     [memory_address],
         // )?;
-        self.memory_copier_gas
-            .assign(region, offset, size.as_u64(), 0)?;
+        // self.memory_copier_gas
+        //     .assign(region, offset, size.as_u64(), 0)?;
             // .assign(region, offset, size.as_u64(), memory_expansion_cost)?;
         // rw_counter increase from copy table lookup is number of bytes copied.
         self.copy_rwc_inc.assign(

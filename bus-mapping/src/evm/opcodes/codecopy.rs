@@ -144,7 +144,7 @@ mod codecopy_tests {
 
     #[test]
     fn codecopy_opcode_impl2() {
-        test_ok(0x20, 0x40, 0xA0);
+        test_ok(0x20, 0x40, 0x14);
     }
 
     fn test_ok(dst_offset: usize, code_offset: usize, size: usize) {
