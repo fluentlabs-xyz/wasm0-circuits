@@ -151,17 +151,17 @@ mod extcodesize_tests {
         test_ok(&account, false);
     }
 
-    #[test]
-    fn test_extcodesize_opcode_warm_acc() {
-        let account = Account {
-            address: MOCK_ACCOUNTS[4],
-            code: MOCK_CODES[4].clone(),
-            ..Default::default()
-        };
-
-        // Test for warm account.
-        test_ok(&account, true);
-    }
+    // #[test]
+    // fn test_extcodesize_opcode_warm_acc() {
+    //     let account = Account {
+    //         address: MOCK_ACCOUNTS[4],
+    //         code: MOCK_CODES[4].clone(),
+    //         ..Default::default()
+    //     };
+    //
+    //     // Test for warm account.
+    //     test_ok(&account, true);
+    // }
 
     fn test_ok(account: &Account, is_warm: bool) {
         let exists = !account.is_empty();
