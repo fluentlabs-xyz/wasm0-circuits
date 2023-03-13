@@ -2,9 +2,11 @@ use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::evm::Opcode;
 use crate::operation::CallContextField;
 use crate::Error;
-use eth_types::GethExecStep;
+use eth_types::{GethExecStep, ToBigEndian, ToLittleEndian};
 use eth_types::ToWord;
 use eth_types::evm_types::MemoryAddress;
+use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
+use crate::evm::opcodes::balance::BALANCE_BYTE_LENGTH;
 
 const CODESIZE_BYTE_LENGTH: usize = 4;
 
@@ -20,11 +22,14 @@ impl Opcode for Extcodesize {
         let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
 
-        let codesize_vec = &geth_second_step.memory.0;
-
         // Read account address from stack.
-        let address_mem_address = geth_step.stack.last()?;
-        state.stack_read(&mut exec_step, geth_step.stack.last_filled(), address_mem_address)?;
+        let codesize_mem_address = geth_step.stack.last()?;
+        state.stack_read(&mut exec_step, geth_step.stack.last_filled(), codesize_mem_address)?;
+        let account_mem_address = geth_step.stack.nth_last(1)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), account_mem_address)?;
+
+        let account = &geth_step.global_memory.read_address(account_mem_address)?;
+        let codesize = &geth_second_step.global_memory.read_u32(codesize_mem_address)?;
 
         // Read transaction ID, rw_counter_end_of_reversion, and is_persistent from call
         // context.
@@ -88,18 +93,18 @@ impl Opcode for Extcodesize {
         //
         // Ok(vec![exec_step])
 
-        // Read dest offset
-        let dest_offset = geth_step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
-        let offset_addr = MemoryAddress::try_from(dest_offset)?;
-
-        // Copy result to memory
-        let codesize_bytes = codesize_vec.as_slice();
+        let account_bytes = account.as_bytes();
+        let account_offset_addr = MemoryAddress::try_from(account_mem_address)?;
+        for i in 0..ADDRESS_BYTE_LENGTH {
+            state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), account_bytes[i])?;
+        }
+        let codesize_offset_addr = MemoryAddress::try_from(codesize_mem_address)?;
+        let codesize_bytes = codesize.to_be_bytes();
         for i in 0..CODESIZE_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), codesize_bytes[i])?;
+            state.memory_write(&mut exec_step, codesize_offset_addr.map(|a| a + i), codesize_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_second_step.memory.clone();
+        call_ctx.memory = geth_step.global_memory.clone();
 
         Ok(vec![exec_step])
     }
@@ -107,6 +112,7 @@ impl Opcode for Extcodesize {
 
 #[cfg(test)]
 mod extcodesize_tests {
+    use ethers_providers::call_raw::code;
     use super::*;
     use crate::circuit_input_builder::ExecState;
     use crate::mocks::BlockData;
@@ -119,6 +125,7 @@ mod extcodesize_tests {
     use eth_types::{bytecode, Bytecode, Word, U256, StackWord};
     use mock::{TestContext, MOCK_1_ETH, MOCK_ACCOUNTS, MOCK_CODES};
     use pretty_assertions::assert_eq;
+    use eth_types::bytecode::WasmBinaryBytecode;
 
     #[test]
     fn test_extcodesize_opcode_empty_acc() {
@@ -158,8 +165,8 @@ mod extcodesize_tests {
 
     fn test_ok(account: &Account, is_warm: bool) {
         let exists = !account.is_empty();
-        let res_mem_address = 0x7f;
         let account_mem_address = 0x0;
+        let res_mem_address = 0x7f;
 
         let mut code = Bytecode::default();
         if is_warm {
@@ -189,7 +196,7 @@ mod extcodesize_tests {
                 accs[0]
                     .address(MOCK_ACCOUNTS[0])
                     .balance(*MOCK_1_ETH)
-                    .code(code);
+                    .code(code.wasm_binary());
                 if exists {
                     accs[1].address(account.address).code(account.code.clone());
                 } else {
@@ -205,10 +212,10 @@ mod extcodesize_tests {
         .unwrap()
         .into();
 
-        let account_code_size = &account.code.len();
-        let account_code_size_bytes = account_code_size.to_be_bytes();
-        let account_code_size_vec = account_code_size_bytes[account_code_size_bytes.len()-CODESIZE_BYTE_LENGTH..account_code_size_bytes.len()].to_vec();
-        assert_eq!(account_code_size_vec.len(), CODESIZE_BYTE_LENGTH);
+        let codesize = &account.code.len();
+        let codesize_bytes = codesize.to_le_bytes();
+        let codesize_vec = codesize_bytes[codesize_bytes.len()-CODESIZE_BYTE_LENGTH..codesize_bytes.len()].to_vec();
+        assert_eq!(codesize_vec.len(), CODESIZE_BYTE_LENGTH);
 
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
         builder
@@ -239,8 +246,20 @@ mod extcodesize_tests {
             operation.op(),
             &StackOp {
                 call_id,
-                address: StackAddress::from(1021u32),
+                address: StackAddress::from(1022u32),
                 value: StackWord::from(res_mem_address)
+            }
+        );
+
+        indices_index += 1;
+        let operation = &container.stack[indices[indices_index].as_usize()];
+        assert_eq!(operation.rw(), RW::READ);
+        assert_eq!(
+            operation.op(),
+            &StackOp {
+                call_id,
+                address: StackAddress::from(1023u32),
+                value: StackWord::from(account_mem_address)
             }
         );
 
@@ -292,18 +311,6 @@ mod extcodesize_tests {
         //     }
         // );
 
-        indices_index += 1;
-        let operation = &container.stack[indices[indices_index].as_usize()];
-        assert_eq!(operation.rw(), RW::READ);
-        assert_eq!(
-            operation.op(),
-            &StackOp {
-                call_id,
-                address: 1021u32.into(),
-                value: res_mem_address.into(),
-            }
-        );
-
         // let code_hash = Word::from(keccak256(account.code.clone()));
         // let operation = &container.account[indices[5].as_usize()];
         // assert_eq!(operation.rw(), RW::READ);
@@ -328,6 +335,25 @@ mod extcodesize_tests {
         //     }
         // );
 
+        for idx in 0..ADDRESS_BYTE_LENGTH {
+            indices_index += 1;
+            assert_eq!(
+                {
+                    let operation =
+                        &container.memory[indices[indices_index].as_usize()];
+                    (operation.rw(), operation.op())
+                },
+                (
+                    RW::READ,
+                    &MemoryOp::new(
+                        1,
+                        MemoryAddress::from(account_mem_address + idx as u32),
+                        account.address[idx]
+                    )
+                )
+            );
+        }
+
         for idx in 0..CODESIZE_BYTE_LENGTH {
             indices_index += 1;
             assert_eq!(
@@ -340,8 +366,8 @@ mod extcodesize_tests {
                     RW::WRITE,
                     &MemoryOp::new(
                         1,
-                        MemoryAddress::from(res_mem_address + idx as i32),
-                        account_code_size_vec[idx]
+                        MemoryAddress::from(res_mem_address + idx as u32),
+                        codesize_vec[idx]
                     )
                 )
             );

@@ -31,7 +31,6 @@ impl Opcode for Balance {
         // Read account & balance from memory
         let address = geth_steps[0].global_memory.read_address(account_mem_address)?;
         let balance = geth_steps[1].global_memory.read_u256(result_mem_address)?;
-        // let balance = Word::from_big_endian(&geth_steps[1].memory.0);
 
         // Read transaction ID, rw_counter_end_of_reversion, and is_persistent
         // from call context.
@@ -92,7 +91,6 @@ impl Opcode for Balance {
             );
         }
 
-        // Copy result to memory
         let account_offset_addr = MemoryAddress::try_from(account_mem_address)?;
         for i in 0..ADDRESS_BYTE_LENGTH {
             state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), address[i])?;
