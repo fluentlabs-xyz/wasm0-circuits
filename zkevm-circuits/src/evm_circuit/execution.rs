@@ -138,6 +138,7 @@ use wasm_const::WasmConstGadget;
 use wasm_unary::WasmUnaryGadget;
 use crate::evm_circuit::execution::callop::CallOpGadget;
 use crate::evm_circuit::execution::codecopy::CodeCopyGadget;
+use crate::evm_circuit::execution::extcodesize::ExtcodesizeGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -206,7 +207,7 @@ pub(crate) struct ExecutionConfig<F> {
     // dup_gadget: DupGadget<F>,
     // exp_gadget: ExponentiationGadget<F>,
     // extcodehash_gadget: ExtcodehashGadget<F>,
-    // extcodesize_gadget: ExtcodesizeGadget<F>,
+    extcodesize_gadget: ExtcodesizeGadget<F>,
     // extcodecopy_gadget: ExtcodecopyGadget<F>,
     // gas_gadget: GasGadget<F>,
     gasprice_gadget: GasPriceGadget<F>,
@@ -463,7 +464,7 @@ impl<F: Field> ExecutionConfig<F> {
             // comparator_gadget: configure_gadget!(),
             // dup_gadget: configure_gadget!(),
             // extcodehash_gadget: configure_gadget!(),
-            // extcodesize_gadget: configure_gadget!(),
+            extcodesize_gadget: configure_gadget!(),
             // gas_gadget: configure_gadget!(),
             gasprice_gadget: configure_gadget!(),
             // iszero_gadget: configure_gadget!(),
@@ -1159,7 +1160,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
             // ExecutionState::EXP => assign_exec_step!(self.exp_gadget),
             // ExecutionState::EXTCODEHASH => assign_exec_step!(self.extcodehash_gadget),
-            // ExecutionState::EXTCODESIZE => assign_exec_step!(self.extcodesize_gadget),
+            ExecutionState::EXTCODESIZE => assign_exec_step!(self.extcodesize_gadget),
             // ExecutionState::GAS => assign_exec_step!(self.gas_gadget),
             ExecutionState::GASPRICE => assign_exec_step!(self.gasprice_gadget),
             // ExecutionState::ISZERO => assign_exec_step!(self.iszero_gadget),

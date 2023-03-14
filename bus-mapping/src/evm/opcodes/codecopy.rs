@@ -89,7 +89,7 @@ fn gen_copy_event(
 
     let length = geth_step.stack.nth_last(0)?.as_u64();
     let code_offset = geth_step.stack.nth_last(1)?.as_u64();
-    let dst_offset = geth_step.stack.nth_last(2)?.as_u64();
+    let dest_offset = geth_step.stack.nth_last(2)?.as_u64();
 
     let code_hash = state.call()?.code_hash;
     let bytecode_bytes = state.code(code_hash)?;
@@ -102,7 +102,7 @@ fn gen_copy_event(
         state,
         &mut exec_step,
         code_offset,
-        dst_offset,
+        dest_offset,
         length,
         &bytecode,
     )?;
@@ -114,7 +114,7 @@ fn gen_copy_event(
         src_addr_end,
         dst_type: CopyDataType::Memory,
         dst_id: NumberOrHash::Number(state.call()?.call_id),
-        dst_addr: dst_offset,
+        dst_addr: dest_offset,
         log_id: None,
         rw_counter_start,
         bytes: copy_steps,
@@ -147,9 +147,9 @@ mod codecopy_tests {
         test_ok(0x20, 0x40, 0x14);
     }
 
-    fn test_ok(dst_offset: usize, code_offset: usize, size: usize) {
+    fn test_ok(dest_offset: usize, code_offset: usize, size: usize) {
         let code = bytecode! {
-            I32Const[dst_offset]
+            I32Const[dest_offset]
             I32Const[code_offset]
             I32Const[size]
             CODECOPY
@@ -187,7 +187,7 @@ mod codecopy_tests {
             [
                 (
                     RW::READ,
-                    &StackOp::new(expected_call_id, StackAddress::from(1021), StackWord::from(dst_offset)),
+                    &StackOp::new(expected_call_id, StackAddress::from(1021), StackWord::from(dest_offset)),
                 ),
                 (
                     RW::READ,
@@ -207,7 +207,7 @@ mod codecopy_tests {
             let op_rw_expected = RW::WRITE;
             let op_expected = MemoryOp::new(
                 expected_call_id,
-                MemoryAddress::from(dst_offset + idx),
+                MemoryAddress::from(dest_offset + idx),
                 if code_offset + idx < code.to_vec().len() {
                     wasm_binary_vec[code_offset + idx]
                 } else {
@@ -232,7 +232,7 @@ mod codecopy_tests {
             copy_events[0].dst_id,
             NumberOrHash::Number(expected_call_id)
         );
-        assert_eq!(copy_events[0].dst_addr as usize, dst_offset);
+        assert_eq!(copy_events[0].dst_addr as usize, dest_offset);
         assert_eq!(copy_events[0].dst_type, CopyDataType::Memory);
         assert!(copy_events[0].log_id.is_none());
 
