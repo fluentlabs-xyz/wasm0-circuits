@@ -216,8 +216,9 @@ impl Memory {
         Self(bytes, offset)
     }
 
-    fn read_buffer<'a>(&self, offset: u64, dst: *mut u8, length: u32) -> Result<(), Error> {
-        if offset + length as u64 > self.0.len() as u64 {
+    pub fn read_buffer<'a>(&self, offset: u64, dst: *mut u8, length: u32) -> Result<(), Error> {
+        let (sum, overflow) = offset.overflowing_add(length as u64);
+        if overflow || sum > self.0.len() as u64 {
             return Err(Error::OutOfMemory);
         }
         unsafe {
