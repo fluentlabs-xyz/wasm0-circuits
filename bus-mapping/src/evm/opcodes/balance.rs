@@ -23,14 +23,14 @@ impl Opcode for Balance {
         let mut exec_step = state.new_step(geth_step)?;
 
         // Read account address from stack.
-        let balance_mem_address = geth_step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), balance_mem_address)?;
-        let account_mem_address = geth_step.stack.nth_last(1)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), account_mem_address)?;
+        let balance_offset = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), balance_offset)?;
+        let address_offset = geth_step.stack.nth_last(1)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), address_offset)?;
 
         // Read account & balance from memory
-        let address = geth_steps[0].global_memory.read_address(account_mem_address)?;
-        let balance = geth_steps[1].global_memory.read_u256(balance_mem_address)?;
+        let address = geth_steps[0].global_memory.read_address(address_offset)?;
+        let balance = geth_steps[1].global_memory.read_u256(balance_offset)?;
 
         // Read transaction ID, rw_counter_end_of_reversion, and is_persistent
         // from call context.
@@ -91,11 +91,11 @@ impl Opcode for Balance {
             );
         }
 
-        let account_offset_addr = MemoryAddress::try_from(account_mem_address)?;
+        let address_offset_addr = MemoryAddress::try_from(address_offset)?;
         for i in 0..ADDRESS_BYTE_LENGTH {
-            state.memory_read(&mut exec_step, account_offset_addr.map(|a| a + i), address[i])?;
+            state.memory_read(&mut exec_step, address_offset_addr.map(|a| a + i), address[i])?;
         }
-        let balance_offset_addr = MemoryAddress::try_from(balance_mem_address)?;
+        let balance_offset_addr = MemoryAddress::try_from(balance_offset)?;
         let balance_bytes = balance.to_be_bytes();
         for i in 0..BALANCE_BYTE_LENGTH {
             state.memory_write(&mut exec_step, balance_offset_addr.map(|a| a + i), balance_bytes[i])?;
@@ -139,22 +139,22 @@ mod balance_tests {
     }
 
     fn test_ok(exists: bool, is_warm: bool) {
-        let account_mem_address: u32 = 0x00;
-        let balance_mem_address: u32 = 0x7f;
+        let address_offset: u32 = 0x00;
+        let balance_offset: u32 = 0x7f;
         let address = address!("0xaabbccddee000000000000000000000000000000");
 
         // Pop balance first for warm account.
         let mut code = Bytecode::default();
         if is_warm {
             code.append(&bytecode! {
-                I32Const[account_mem_address]
-                I32Const[balance_mem_address]
+                I32Const[address_offset]
+                I32Const[balance_offset]
                 BALANCE
             });
         }
         code.append(&bytecode! {
-            I32Const[account_mem_address]
-            I32Const[balance_mem_address]
+            I32Const[address_offset]
+            I32Const[balance_offset]
             BALANCE
         });
 
@@ -164,7 +164,7 @@ mod balance_tests {
             Word::zero()
         };
 
-        code.with_global_data(0, account_mem_address, address.0.to_vec());
+        code.with_global_data(0, address_offset, address.0.to_vec());
         let wasm_binary_vec = code.wasm_binary();
         // Get the execution steps from the external tracer.
         let block: GethData = TestContext::<3, 1>::new(
@@ -233,7 +233,7 @@ mod balance_tests {
             &StackOp {
                 call_id,
                 address: StackAddress::from(1022u32),
-                value: StackWord::from(balance_mem_address),
+                value: StackWord::from(balance_offset),
             }
         );
 
@@ -245,7 +245,7 @@ mod balance_tests {
             &StackOp {
                 call_id,
                 address: StackAddress::from(1023u32),
-                value: StackWord::from(account_mem_address),
+                value: StackWord::from(address_offset),
             }
         );
 
@@ -338,7 +338,7 @@ mod balance_tests {
                     RW::READ,
                     &MemoryOp::new(
                         1,
-                        MemoryAddress::from(account_mem_address + idx as u32),
+                        MemoryAddress::from(address_offset + idx as u32),
                         address[idx],
                     )
                 )
@@ -357,7 +357,7 @@ mod balance_tests {
                     RW::WRITE,
                     &MemoryOp::new(
                         1,
-                        MemoryAddress::from(balance_mem_address + idx as u32),
+                        MemoryAddress::from(balance_offset + idx as u32),
                         address_balance_bytes[idx],
                     )
                 )

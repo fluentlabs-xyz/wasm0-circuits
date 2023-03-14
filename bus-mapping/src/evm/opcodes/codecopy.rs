@@ -19,7 +19,7 @@ impl Opcode for Codecopy {
         let geth_step = &geth_steps[0];
         let exec_steps = vec![gen_codecopy_step(state, geth_step)?];
 
-        let length = geth_step.stack.nth_last(0)?.as_u64();
+        let size = geth_step.stack.nth_last(0)?.as_u64();
         let code_offset = geth_step.stack.nth_last(1)?.as_u64();
         let dest_offset = geth_step.stack.nth_last(2)?.as_u64();
 
@@ -29,7 +29,7 @@ impl Opcode for Codecopy {
         let call_ctx = state.call_ctx_mut()?;
         let memory = &mut call_ctx.memory;
 
-        memory.copy_from(dest_offset, &code, code_offset, length as usize);
+        memory.copy_from(dest_offset, &code, code_offset, size as usize);
 
         let copy_event = gen_copy_event(state, geth_step)?;
         state.push_copy(copy_event);
@@ -43,22 +43,21 @@ fn gen_codecopy_step(
 ) -> Result<ExecStep, Error> {
     let mut exec_step = state.new_step(geth_step)?;
 
-    let length = geth_step.stack.nth_last(0)?;
+    let size = geth_step.stack.nth_last(0)?;
     let code_offset = geth_step.stack.nth_last(1)?;
     let dest_offset = geth_step.stack.nth_last(2)?;
 
-    // stack reads
-    state.stack_read(
-        &mut exec_step,
-        geth_step.stack.nth_last_filled(0),
-        dest_offset,
-    )?;
+    state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), size)?;
     state.stack_read(
         &mut exec_step,
         geth_step.stack.nth_last_filled(1),
         code_offset,
     )?;
-    state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(2), length)?;
+    state.stack_read(
+        &mut exec_step,
+        geth_step.stack.nth_last_filled(2),
+        dest_offset,
+    )?;
 
     Ok(exec_step)
 }
@@ -87,7 +86,7 @@ fn gen_copy_event(
 ) -> Result<CopyEvent, Error> {
     let rw_counter_start = state.block_ctx.rwc;
 
-    let length = geth_step.stack.nth_last(0)?.as_u64();
+    let size = geth_step.stack.nth_last(0)?.as_u64();
     let code_offset = geth_step.stack.nth_last(1)?.as_u64();
     let dest_offset = geth_step.stack.nth_last(2)?.as_u64();
 
@@ -103,7 +102,7 @@ fn gen_copy_event(
         &mut exec_step,
         code_offset,
         dest_offset,
-        length,
+        size,
         &bytecode,
     )?;
 
@@ -187,7 +186,7 @@ mod codecopy_tests {
             [
                 (
                     RW::READ,
-                    &StackOp::new(expected_call_id, StackAddress::from(1021), StackWord::from(dest_offset)),
+                    &StackOp::new(expected_call_id, StackAddress::from(1021), StackWord::from(size)),
                 ),
                 (
                     RW::READ,
@@ -195,7 +194,7 @@ mod codecopy_tests {
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(expected_call_id, StackAddress::from(1023), StackWord::from(size)),
+                    &StackOp::new(expected_call_id, StackAddress::from(1023), StackWord::from(dest_offset)),
                 ),
             ]
         );

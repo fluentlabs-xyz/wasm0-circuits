@@ -1,10 +1,11 @@
 use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
 use eth_types::{Field, ToLittleEndian, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use eth_types::evm_types::GasCost;
 
 use crate::{
     evm_circuit::{
-        param::N_BYTES_MEMORY_ADDRESS,
+        param::{N_BYTES_MEMORY_ADDRESS, N_BYTES_MEMORY_WORD_SIZE},
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
@@ -17,6 +18,7 @@ use crate::{
     },
     util::Expr,
 };
+use crate::evm_circuit::util::memory_gadget::{MemoryCopierGasGadget, MemoryExpansionGadget};
 
 use super::ExecutionGadget;
 
@@ -35,7 +37,7 @@ pub(crate) struct CodeCopyGadget<F> {
     // memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
     //// Opcode CODECOPY needs to copy code bytes into memory. We account for
     //// the copying costs using the memory copier gas gadget.
-    // memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY }>,
+    memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY }>,
     //// RW inverse counter from the copy table at the start of related copy steps.
     copy_rwc_inc: Cell<F>,
 }
@@ -49,17 +51,17 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         let opcode = cb.query_cell();
 
         // Query elements to be popped from the stack.
-        let dst_memory_offset = cb.query_cell_phase2();
-        let code_offset = cb.query_word_rlc();
         let size = cb.query_word_rlc();
+        let code_offset = cb.query_word_rlc();
+        let dst_memory_offset = cb.query_cell_phase2();
 
         // Pop items from stack.
-        cb.stack_pop(dst_memory_offset.expr());
-        cb.stack_pop(code_offset.expr());
         cb.stack_pop(size.expr());
+        cb.stack_pop(code_offset.expr());
+        cb.stack_pop(dst_memory_offset.expr());
 
         // Construct memory address in the destination (memory) to which we copy code.
-        let dst_memory_addr = MemoryAddressGadget::construct(cb, dst_memory_offset, size);
+        let memory_address_gadget = MemoryAddressGadget::construct(cb, dst_memory_offset, size.clone());
 
         // Fetch the hash of bytecode running in current environment.
         let code_hash = cb.curr.state.code_hash.clone();
@@ -72,30 +74,29 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         // access. This also accounts for the dynamic gas required to copy bytes to
         // memory.
         // let memory_expansion = MemoryExpansionGadget::construct(cb, [dst_memory_addr.address()]);
-        // let memory_copier_gas = MemoryCopierGasGadget::construct(
-        //     cb,
-        //     dst_memory_addr.length(),
-        //     // memory_expansion.gas_cost(),
-        //     0.expr(),
-        // );
+        let memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY }> = MemoryCopierGasGadget::construct(
+            cb,
+            memory_address_gadget.length(),
+            0.expr(), // memory_expansion.gas_cost(),
+        );
 
         let copy_rwc_inc = cb.query_cell();
-        // TODO fix problem
-        cb.condition(dst_memory_addr.has_length(), |cb| {
-            cb.copy_table_lookup(
-                code_hash.expr(),
-                CopyDataType::Bytecode.expr(),
-                cb.curr.state.call_id.expr(),
-                CopyDataType::Memory.expr(),
-                from_bytes::expr(&code_offset.cells),
-                code_size.expr(),
-                dst_memory_addr.offset(),
-                dst_memory_addr.length(),
-                0.expr(), // for CODECOPY, rlc_acc is 0
-                copy_rwc_inc.expr(),
-            );
+        // TODO fix the problem
+        cb.condition(memory_address_gadget.has_length(), |cb| {
+            // cb.copy_table_lookup(
+            //     code_hash.expr(),
+            //     CopyDataType::Bytecode.expr(),
+            //     cb.curr.state.call_id.expr(),
+            //     CopyDataType::Memory.expr(),
+            //     from_bytes::expr(&code_offset.cells),
+            //     code_size.expr(),
+            //     dst_memory_addr.offset(),
+            //     dst_memory_addr.length(),
+            //     0.expr(), // for CODECOPY, rlc_acc is 0
+            //     copy_rwc_inc.expr(),
+            // );
         });
-        cb.condition(not::expr(dst_memory_addr.has_length()), |cb| {
+        cb.condition(not::expr(memory_address_gadget.has_length()), |cb| {
             cb.require_zero(
                 "if no bytes to copy, copy table rwc inc == 0",
                 copy_rwc_inc.expr(),
@@ -108,10 +109,8 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
             program_counter: Transition::Delta(1.expr()),
             stack_pointer: Transition::Delta(3.expr()),
             // memory_word_size: Transition::To(memory_expansion.next_memory_word_size()),
-            memory_word_size: Transition::To(0.expr()),
             gas_left: Transition::Delta(
-                // TODO fix problem
-                -OpcodeId::CODECOPY.constant_gas_cost().expr()/* - memory_copier_gas.gas_cost()*/,
+                -OpcodeId::CODECOPY.constant_gas_cost().expr() - memory_copier_gas.gas_cost(),
             ),
             ..Default::default()
         };
@@ -121,9 +120,9 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
             same_context,
             code_offset,
             code_size,
-            dst_memory_addr,
+            dst_memory_addr: memory_address_gadget,
             // memory_expansion,
-            // memory_copier_gas,
+            memory_copier_gas,
             copy_rwc_inc,
         }
     }
@@ -145,7 +144,7 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         // context's code where we start to read.
         // 3. `size` is the number of
         // bytes to be read and written (0s to be copied for out of bounds).
-        let [dest_offset, code_offset, size] =
+        let [size, code_offset, dest_offset ] =
             [0, 1, 2].map(|i| block.rws[step.rw_indices[i]].stack_value());
 
         // assign the code offset memory address.
@@ -170,8 +169,8 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         )?;
 
         // assign the destination memory offset.
-        let memory_address = self
-            .dst_memory_addr
+        // let memory_address = self
+        self.dst_memory_addr
             .assign(region, offset, dest_offset, size)?;
 
         // assign to gadgets handling memory expansion cost and copying cost.
@@ -181,9 +180,8 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         //     step.memory_word_size(),
         //     [memory_address],
         // )?;
-        // self.memory_copier_gas
-        //     .assign(region, offset, size.as_u64(), 0)?;
-            // .assign(region, offset, size.as_u64(), memory_expansion_cost)?;
+        self.memory_copier_gas
+            .assign(region, offset, size.as_u64(), 0/*memory_expansion_cost*/)?;
         // rw_counter increase from copy table lookup is number of bytes copied.
         self.copy_rwc_inc.assign(
             region,
