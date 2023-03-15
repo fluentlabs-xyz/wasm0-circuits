@@ -1,16 +1,15 @@
-use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
+use bus_mapping::{evm::OpcodeId};
 use eth_types::{Field, ToLittleEndian, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
 use eth_types::evm_types::GasCost;
 
 use crate::{
     evm_circuit::{
-        param::{N_BYTES_MEMORY_ADDRESS, N_BYTES_MEMORY_WORD_SIZE},
+        param::{N_BYTES_MEMORY_ADDRESS},
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{ConstraintBuilder, StepStateTransition, Transition},
-            from_bytes,
             memory_gadget::{MemoryAddressGadget},
             not, CachedRegion, Cell, MemoryAddress,
         },
@@ -18,7 +17,7 @@ use crate::{
     },
     util::Expr,
 };
-use crate::evm_circuit::util::memory_gadget::{MemoryCopierGasGadget, MemoryExpansionGadget};
+use crate::evm_circuit::util::memory_gadget::{MemoryCopierGasGadget};
 
 use super::ExecutionGadget;
 
