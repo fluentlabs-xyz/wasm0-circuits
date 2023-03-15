@@ -275,8 +275,8 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         // OpcodeId::LOG2 => Log::gen_associated_ops,
         // OpcodeId::LOG3 => Log::gen_associated_ops,
         // OpcodeId::LOG4 => Log::gen_associated_ops,
-        OpcodeId::CALL | OpcodeId::CALLCODE => CallOpcode::<8>::gen_associated_ops,
-        OpcodeId::DELEGATECALL | OpcodeId::STATICCALL => CallOpcode::<7>::gen_associated_ops,
+        OpcodeId::CALL | OpcodeId::CALLCODE => CallOpcode::<true>::gen_associated_ops,
+        OpcodeId::DELEGATECALL | OpcodeId::STATICCALL => CallOpcode::<false>::gen_associated_ops,
         OpcodeId::RETURN | OpcodeId::REVERT => ReturnRevert::gen_associated_ops,
         OpcodeId::SELFDESTRUCT => {
             evm_unimplemented!("Using dummy gen_selfdestruct_ops for opcode SELFDESTRUCT");
@@ -309,7 +309,7 @@ fn fn_gen_error_state_associated_ops(error: &ExecError) -> Option<FnGenAssociate
         ExecError::StackOverflow => Some(ErrorSimple::gen_associated_ops),
         ExecError::StackUnderflow => Some(ErrorSimple::gen_associated_ops),
         // call & callcode can encounter InsufficientBalance error, Use pop-7 generic CallOpcode
-        ExecError::InsufficientBalance => Some(CallOpcode::<7>::gen_associated_ops),
+        ExecError::InsufficientBalance => Some(CallOpcode::<true>::gen_associated_ops),
         ExecError::WriteProtection => Some(ErrorWriteProtection::gen_associated_ops),
         ExecError::ReturnDataOutOfBounds => Some(ErrorReturnDataOutOfBound::gen_associated_ops),
         // more future errors place here

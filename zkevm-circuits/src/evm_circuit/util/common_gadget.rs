@@ -1,31 +1,34 @@
-use super::{
-    from_bytes,
-    math_gadget::{IsEqualGadget, IsZeroGadget},
-    memory_gadget::{MemoryAddressGadget, MemoryExpansionGadget},
-    CachedRegion,
+use halo2_proofs::{
+    circuit::Value,
+    plonk::{Error, Expression},
 };
+
+use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar, U256, U64};
+use gadgets::util::{select, sum};
+
 use crate::{
     evm_circuit::{
-        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_GAS, N_BYTES_MEMORY_WORD_SIZE},
+        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_GAS},
         step::ExecutionState,
         util::{
+            Cell,
+            CellType,
             constraint_builder::{
                 ConstraintBuilder, ReversionInfo, StepStateTransition,
                 Transition::{Delta, Same, To},
-            },
-            math_gadget::{AddWordsGadget, RangeCheckGadget},
-            not, Cell, CellType, Word,
+            }, math_gadget::{AddWordsGadget, RangeCheckGadget}, not, Word,
         },
     },
     table::{AccountFieldTag, CallContextFieldTag},
     util::Expr,
     witness::{Block, Call, ExecStep},
 };
-use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar, U256, U64};
-use gadgets::util::{select, sum};
-use halo2_proofs::{
-    circuit::Value,
-    plonk::{Error, Expression},
+
+use super::{
+    CachedRegion,
+    from_bytes,
+    math_gadget::{IsEqualGadget, IsZeroGadget},
+    memory_gadget::{MemoryAddressGadget},
 };
 
 /// Construction of execution state that stays in the same call context, which
@@ -127,7 +130,7 @@ impl<F: Field> RestoreContextGadget<F> {
                 CallContextFieldTag::MemorySize,
                 CallContextFieldTag::ReversibleWriteCounter,
             ]
-            .map(|field_tag| cb.call_context(Some(caller_id.expr()), field_tag));
+                .map(|field_tag| cb.call_context(Some(caller_id.expr()), field_tag));
 
         // Update caller's last callee information
         for (field_tag, value) in [
@@ -255,7 +258,7 @@ pub(crate) struct UpdateBalanceGadget<F, const N_ADDENDS: usize, const INCREASE:
 }
 
 impl<F: Field, const N_ADDENDS: usize, const INCREASE: bool>
-    UpdateBalanceGadget<F, N_ADDENDS, INCREASE>
+UpdateBalanceGadget<F, N_ADDENDS, INCREASE>
 {
     pub(crate) fn construct(
         cb: &mut ConstraintBuilder<F>,
@@ -467,15 +470,17 @@ impl<F: Field> TransferGadget<F> {
 pub(crate) struct CommonCallGadget<F, const IS_SUCCESS_CALL: bool> {
     pub is_success: Cell<F>,
 
-    pub gas: Word<F>,
+    pub gas: Cell<F>,
     pub gas_is_u64: IsZeroGadget<F>,
+    pub callee_address_offset: Cell<F>,
     pub callee_address: Word<F>,
+    pub value_offset: Cell<F>,
     pub value: Word<F>,
     pub cd_address: MemoryAddressGadget<F>,
     pub rd_address: MemoryAddressGadget<F>,
-    pub memory_expansion: MemoryExpansionGadget<F, 2, N_BYTES_MEMORY_WORD_SIZE>,
+    pub status_offset: Cell<F>,
 
-    value_is_zero: IsZeroGadget<F>,
+    pub value_is_zero: IsZeroGadget<F>,
     pub has_value: Expression<F>,
     pub phase2_callee_code_hash: Cell<F>,
     pub is_empty_code_hash: IsEqualGadget<F>,
@@ -498,13 +503,16 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
             1.expr(),
         );
 
-        let gas_word = cb.query_word_rlc();
-        let callee_address_word = cb.query_word_rlc();
+        let gas = cb.query_cell();
+        let callee_address_offset = cb.query_cell();
+        let callee_address = cb.query_word_rlc();
+        let value_offset = cb.query_cell();
         let value = cb.query_word_rlc();
         let cd_offset = cb.query_cell_phase2();
         let cd_length = cb.query_word_rlc();
         let rd_offset = cb.query_cell_phase2();
         let rd_length = cb.query_word_rlc();
+        let status_offset = cb.query_cell();
         let is_success = cb.query_bool();
 
         // Lookup values from stack
@@ -515,27 +523,33 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
         // callee address is `current_callee_address`.
         // For both CALL and STATICCALL, caller address is
         // `current_callee_address` and callee address is `callee_address`.
-        cb.stack_pop(gas_word.expr());
-        cb.stack_pop(callee_address_word.expr());
+
+        cb.stack_pop(status_offset.expr());
+        cb.stack_pop(rd_length.expr());
+        cb.stack_pop(rd_offset.expr());
+        cb.stack_pop(cd_length.expr());
+        cb.stack_pop(cd_offset.expr());
 
         // `CALL` and `CALLCODE` opcodes have an additional stack pop `value`.
-        cb.condition(is_call + is_callcode, |cb| cb.stack_pop(value.expr()));
-        cb.stack_pop(cd_offset.expr());
-        cb.stack_pop(cd_length.expr());
-        cb.stack_pop(rd_offset.expr());
-        cb.stack_pop(rd_length.expr());
-        cb.stack_push(if IS_SUCCESS_CALL {
+        cb.condition(is_call + is_callcode, |cb| {
+            cb.stack_pop(value_offset.expr());
+            // cb.memory_rlc_lookup(0.expr(), &value_offset, &value);
+        });
+
+        cb.stack_pop(callee_address_offset.expr());
+        // cb.memory_rlc_lookup(0.expr(), &callee_address_offset, &callee_address);
+        cb.stack_pop(gas.expr());
+
+        cb.memory_lookup(1.expr(), status_offset.expr(), if IS_SUCCESS_CALL {
             is_success.expr()
         } else {
             0.expr()
-        });
+        }, None);
 
         // Recomposition of random linear combination to integer
-        let gas_is_u64 = IsZeroGadget::construct(cb, sum::expr(&gas_word.cells[N_BYTES_GAS..]));
+        let gas_is_u64 = IsZeroGadget::construct(cb, gas.expr());
         let cd_address = MemoryAddressGadget::construct(cb, cd_offset, cd_length);
         let rd_address = MemoryAddressGadget::construct(cb, rd_offset, rd_length);
-        let memory_expansion =
-            MemoryExpansionGadget::construct(cb, [cd_address.address(), rd_address.address()]);
 
         // construct common gadget
         let value_is_zero = IsZeroGadget::construct(cb, sum::expr(&value.cells));
@@ -547,7 +561,7 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
 
         let phase2_callee_code_hash = cb.query_cell_with_type(CellType::StoragePhase2);
         cb.account_read(
-            from_bytes::expr(&callee_address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]),
+            from_bytes::expr(&callee_address.cells[..N_BYTES_ACCOUNT_ADDRESS]),
             AccountFieldTag::CodeHash,
             phase2_callee_code_hash.expr(),
         );
@@ -557,17 +571,21 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
 
         Self {
             is_success,
-            callee_address: callee_address_word,
-            gas: gas_word,
+            gas,
             gas_is_u64,
+            callee_address_offset,
+            callee_address,
+            value_offset,
             value,
             cd_address,
             rd_address,
-            memory_expansion,
+            status_offset,
+
             value_is_zero,
             has_value,
             phase2_callee_code_hash,
             is_empty_code_hash,
+
             callee_not_exists,
         }
     }
@@ -577,7 +595,7 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
     }
 
     pub fn gas_expr(&self) -> Expression<F> {
-        from_bytes::expr(&self.gas.cells[..N_BYTES_GAS])
+        self.gas.expr()
     }
 
     pub fn gas_cost_expr(
@@ -591,9 +609,8 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
             GasCost::COLD_ACCOUNT_ACCESS.expr(),
         ) + self.has_value.clone()
             * (GasCost::CALL_WITH_VALUE.expr()
-                // Only CALL opcode could invoke transfer to make empty account into non-empty.
-                + is_call * self.callee_not_exists.expr() * GasCost::NEW_ACCOUNT.expr())
-            + self.memory_expansion.gas_cost()
+            // Only CALL opcode could invoke transfer to make empty account into non-empty.
+            + is_call * self.callee_not_exists.expr() * GasCost::NEW_ACCOUNT.expr())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -601,18 +618,24 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
-        gas: U256,
+        gas: U64,
+        callee_address_offset: U64,
         callee_address: U256,
+        value_offset: U64,
         value: U256,
-        is_success: U256,
+        status_offset: U64,
+        is_success: U64,
         cd_offset: U64,
         cd_length: U64,
         rd_offset: U64,
         rd_length: U64,
-        memory_word_size: u64,
         phase2_callee_code_hash: Value<F>,
     ) -> Result<u64, Error> {
-        self.gas.assign(region, offset, Some(gas.to_le_bytes()))?;
+        self.callee_address_offset.assign(region, offset, Value::known(F::from(callee_address_offset.as_u64())))?;
+        self.value_offset.assign(region, offset, Value::known(F::from(value_offset.as_u64())))?;
+        self.status_offset.assign(region, offset, Value::known(F::from(status_offset.as_u64())))?;
+
+        self.gas.assign(region, offset, Value::known(F::from(gas.as_u64())))?;
         self.callee_address
             .assign(region, offset, Some(callee_address.to_le_bytes()))?;
         self.value
@@ -623,21 +646,13 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
             self.gas_is_u64.assign(
                 region,
                 offset,
-                sum::value(&gas.to_le_bytes()[N_BYTES_GAS..]),
+                F::from(gas.as_u64()),
             )?;
         }
-        let cd_address = self
-            .cd_address
+        self.cd_address
             .assign(region, offset, cd_offset, cd_length)?;
-        let rd_address = self
-            .rd_address
+        self.rd_address
             .assign(region, offset, rd_offset, rd_length)?;
-        let (_, memory_expansion_gas_cost) = self.memory_expansion.assign(
-            region,
-            offset,
-            memory_word_size,
-            [cd_address, rd_address],
-        )?;
 
         self.value_is_zero
             .assign(region, offset, sum::value(&value.to_le_bytes()))?;
@@ -651,7 +666,7 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
         )?;
         self.callee_not_exists
             .assign_value(region, offset, phase2_callee_code_hash)?;
-        Ok(memory_expansion_gas_cost)
+        Ok(0)
     }
 
     pub(crate) fn cal_gas_cost_for_assignment(
@@ -670,10 +685,10 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
             GasCost::CALL_WITH_VALUE.as_u64()
                 // Only CALL opcode could invoke transfer to make empty account into non-empty.
                 + if is_call && is_empty_account {
-                    GasCost::NEW_ACCOUNT.as_u64()
-                } else {
-                    0
-                }
+                GasCost::NEW_ACCOUNT.as_u64()
+            } else {
+                0
+            }
         } else {
             0
         } + memory_expansion_gas_cost;

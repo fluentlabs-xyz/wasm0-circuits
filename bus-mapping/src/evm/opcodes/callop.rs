@@ -1,11 +1,13 @@
-use super::Opcode;
-use crate::circuit_input_builder::{CallKind, CircuitInputStateRef, CodeSource, ExecStep};
-use crate::operation::{AccountField, CallContextField, TxAccessListAccountOp, RW};
-use crate::Error;
-use eth_types::evm_types::gas_utils::{eip150_gas, memory_expansion_gas_cost};
+use eth_types::{evm_unimplemented, GethExecStep, StackWord, ToBigEndian, ToWord, Word};
 use eth_types::evm_types::{GasCost, MemoryAddress};
-use eth_types::{evm_unimplemented, GethExecStep, ToWord, Word};
+use eth_types::evm_types::gas_utils::{eip150_gas};
 use keccak256::EMPTY_HASH;
+
+use crate::circuit_input_builder::{CallKind, CircuitInputStateRef, CodeSource, ExecStep};
+use crate::Error;
+use crate::operation::{AccountField, CallContextField, RW, TxAccessListAccountOp};
+
+use super::Opcode;
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the `OpcodeId::CALL`, `OpcodeId::CALLCODE`,
@@ -13,9 +15,9 @@ use keccak256::EMPTY_HASH;
 /// - CALL and CALLCODE: N_ARGS = 7
 /// - DELEGATECALL and STATICCALL: N_ARGS = 6
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct CallOpcode<const N_ARGS: usize>;
+pub(crate) struct CallOpcode<const WITH_VALUE: bool>;
 
-impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
+impl<const WITH_VALUE: bool> Opcode for CallOpcode<WITH_VALUE> {
     fn gen_associated_ops(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
@@ -23,7 +25,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
         let geth_step = &geth_steps[0];
         let mut exec_step = state.new_step(geth_step)?;
 
-        let dest_offset = geth_step.stack.nth_last(0)?.as_usize();
+        let status_offset = geth_step.stack.nth_last(0)?.as_usize();
         let return_length = geth_step.stack.nth_last(1)?.as_usize();
         let return_offset = geth_step.stack.nth_last(2)?.as_usize();
         let input_length = geth_step.stack.nth_last(3)?.as_usize();
@@ -76,15 +78,40 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
             state.call_context_read(&mut exec_step, current_call.call_id, field, value);
         }
 
-        for i in 0..N_ARGS {
-            state.stack_read(
-                &mut exec_step,
-                geth_step.stack.nth_last_filled(i),
-                geth_step.stack.nth_last(i)?,
-            )?;
+        let mut stack_offset = 0;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(stack_offset + 0), StackWord::from(status_offset as u64))?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(stack_offset + 1), StackWord::from(return_length as u64))?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(stack_offset + 2), StackWord::from(return_offset as u64))?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(stack_offset + 3), StackWord::from(input_length as u64))?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(stack_offset + 4), StackWord::from(input_offset as u64))?;
+        stack_offset += 5;
+
+        // if we have value then register value ops
+        if WITH_VALUE {
+            let value_offset = geth_step.stack.nth_last(stack_offset)?;
+            state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(stack_offset), value_offset)?;
+            let value_address = MemoryAddress::try_from(value_offset)?;
+            let value = geth_step.global_memory.read_u256(value_offset)?.to_be_bytes();
+            state.memory_write_n(&mut exec_step, value_address, &value)?;
+            stack_offset += 1;
+        };
+
+        // register callee ops
+        {
+            let callee_offset = geth_step.stack.nth_last(stack_offset)?;
+            state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(stack_offset), callee_offset)?;
+            let callee_address = MemoryAddress::try_from(callee_offset)?;
+            let callee = geth_step.global_memory.read_address(callee_offset)?.to_fixed_bytes();
+            state.memory_write_n(&mut exec_step, callee_address, &callee)?;
+            stack_offset += 1;
         }
 
-        state.memory_write(&mut exec_step, MemoryAddress(dest_offset), call.is_success as u8)?;
+        // read gas from stack
+        let gas = geth_step.stack.nth_last(stack_offset)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(stack_offset), gas)?;
+
+        // register status offset ops
+        state.memory_write(&mut exec_step, MemoryAddress(status_offset), call.is_success as u8)?;
 
         let callee_code_hash = call.code_hash;
         let callee_exists = !state.sdb.get_account(&callee_address).1.is_empty();
@@ -167,22 +194,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
             )?;
         }
 
-        // Calculate next_memory_word_size and callee_gas_left manually in case
-        // there isn't next geth_step (e.g. callee doesn't have code).
-        debug_assert_eq!(exec_step.memory_size % 32, 0);
-        let curr_memory_word_size = (exec_step.memory_size as u64) / 32;
-        let next_memory_word_size = [
-            curr_memory_word_size,
-            (call.call_data_offset + call.call_data_length + 31) / 32,
-            (call.return_data_offset + call.return_data_length + 31) / 32,
-        ]
-        .into_iter()
-        .max()
-        .unwrap();
-
         let has_value = !call.value.is_zero() && !call.is_delegatecall();
-        let memory_expansion_gas_cost =
-            memory_expansion_gas_cost(curr_memory_word_size, next_memory_word_size);
         let gas_cost = if is_warm {
             GasCost::WARM_ACCESS.as_u64()
         } else {
@@ -190,15 +202,15 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
         } + if has_value {
             GasCost::CALL_WITH_VALUE.as_u64()
                 + if call.kind == CallKind::Call && !callee_exists {
-                    GasCost::NEW_ACCOUNT.as_u64()
-                } else {
-                    0
-                }
+                GasCost::NEW_ACCOUNT.as_u64()
+            } else {
+                0
+            }
         } else {
             0
-        } + memory_expansion_gas_cost;
-        let gas_specified = geth_step.stack.last()?;
-        let callee_gas_left = eip150_gas(geth_step.gas.0 - gas_cost, gas_specified);
+        };
+        let callee_gas_left = eip150_gas(geth_step.gas.0 - gas_cost, gas);
+        let callee_gas_left = geth_step.gas.0 - gas_cost - callee_gas_left;
 
         // There are 4 branches from here.
         // add failure case for insufficient balance or error depth in the future.
@@ -233,13 +245,13 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                     ),
                     (
                         CallContextField::StackPointer,
-                        (geth_step.stack.stack_pointer().0 + N_ARGS - 1).into(),
+                        (geth_step.stack.stack_pointer().0 + if WITH_VALUE { 8 } else { 7 }).into(),
                     ),
                     (
                         CallContextField::GasLeft,
-                        (geth_step.gas.0 - gas_cost - callee_gas_left).into(),
+                        (callee_gas_left).into(),
                     ),
-                    (CallContextField::MemorySize, next_memory_word_size.into()),
+                    (CallContextField::MemorySize, 0.into()),
                     (
                         CallContextField::ReversibleWriteCounter,
                         (exec_step.reversible_write_counter + 1).into(),

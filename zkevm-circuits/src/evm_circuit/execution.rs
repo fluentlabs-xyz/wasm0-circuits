@@ -112,7 +112,6 @@ use end_block::EndBlockGadget;
 use end_tx::EndTxGadget;
 use error_invalid_jump::ErrorInvalidJumpGadget;
 use error_invalid_opcode::ErrorInvalidOpcodeGadget;
-use error_oog_call::ErrorOOGCallGadget;
 use error_oog_constant::ErrorOOGConstantGadget;
 use error_oog_exp::ErrorOOGExpGadget;
 use error_oog_log::ErrorOOGLogGadget;
@@ -246,7 +245,7 @@ pub(crate) struct ExecutionConfig<F> {
     // block_ctx_u160_gadget: BlockCtxU160Gadget<F>,
     // block_ctx_u256_gadget: BlockCtxU256Gadget<F>,
     // error gadgets
-    error_oog_call: ErrorOOGCallGadget<F>,
+    // error_oog_call: ErrorOOGCallGadget<F>,
     error_oog_constant: ErrorOOGConstantGadget<F>,
     error_oog_exp: ErrorOOGExpGadget<F>,
     error_oog_sload_sstore: ErrorOOGSloadSstoreGadget<F>,
@@ -513,7 +512,7 @@ impl<F: Field> ExecutionConfig<F> {
             error_oog_dynamic_memory_gadget: configure_gadget!(),
             error_oog_log: configure_gadget!(),
             error_oog_sload_sstore: configure_gadget!(),
-            error_oog_call: configure_gadget!(),
+            // error_oog_call: configure_gadget!(),
             error_oog_memory_copy: configure_gadget!(),
             error_oog_account_access: configure_gadget!(),
             error_oog_sha3: configure_gadget!(),
@@ -1207,7 +1206,7 @@ impl<F: Field> ExecutionConfig<F> {
                 assign_exec_step!(self.error_oog_constant)
             }
             ExecutionState::ErrorOutOfGasCall => {
-                assign_exec_step!(self.error_oog_call)
+                // assign_exec_step!(self.error_oog_call)
             }
             ExecutionState::ErrorOutOfGasDynamicMemoryExpansion => {
                 assign_exec_step!(self.error_oog_dynamic_memory_gadget)
@@ -1358,28 +1357,28 @@ impl<F: Field> ExecutionConfig<F> {
                 set
             });
 
-        for (name, value) in assigned_rw_values.iter() {
-            if !rlc_assignments.contains(value) {
-                log::error!("rw lookup error: name: {}, step: {:?}", *name, step);
+        for (idx, value) in assigned_rw_values.iter().enumerate() {
+            if !rlc_assignments.contains(&value.1) {
+                log::error!("rw lookup error: idx: {}, name: {}, step: {:?}", idx, value.0, step);
             }
         }
-        for (idx, assigned_rw_value) in assigned_rw_values.iter().enumerate() {
-            let rw_idx = step.rw_indices[idx];
-            let rw = block.rws[rw_idx];
-            let table_assignments = rw.table_assignment_aux(evm_randomness);
-            let rlc = table_assignments.rlc(lookup_randomness);
-            if rlc != assigned_rw_value.1 {
-                log::error!(
-                    "incorrect rw witness. lookup input name: \"{}\"\n{:?}\nrw: {:?}, rw index: {:?}, {}th rw of step {:?}, raw_table {:?}",
-                    assigned_rw_value.0, // 1
-                    assigned_rw_value.1, // 2
-                    rw, // 3
-                    rw_idx, // 4
-                    idx, // 5
-                    step.execution_state, // 6
-                    table_assignments, // 7
-                );
-            }
-        }
+        // for (idx, assigned_rw_value) in assigned_rw_values.iter().enumerate() {
+        //     let rw_idx = step.rw_indices[idx];
+        //     let rw = block.rws[rw_idx];
+        //     let table_assignments = rw.table_assignment_aux(evm_randomness);
+        //     let rlc = table_assignments.rlc(lookup_randomness);
+        //     if rlc != assigned_rw_value.1 {
+        //         log::error!(
+        //             "incorrect rw witness. lookup input name: \"{}\"\n{:?}\nrw: {:?}, rw index: {:?}, {}th rw of step {:?}, raw_table {:?}",
+        //             assigned_rw_value.0, // 1
+        //             assigned_rw_value.1, // 2
+        //             rw, // 3
+        //             rw_idx, // 4
+        //             idx, // 5
+        //             step.execution_state, // 6
+        //             table_assignments, // 7
+        //         );
+        //     }
+        // }
     }
 }

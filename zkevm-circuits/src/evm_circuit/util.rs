@@ -7,7 +7,7 @@ use crate::{
     },
     util::{query_expression, Challenges, Expr},
 };
-use eth_types::ToLittleEndian;
+use eth_types::{Field, N_BYTES_WORD, N_BYTES_ADDRESS, ToAddress, ToLittleEndian};
 use eth_types::U256;
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -28,6 +28,8 @@ pub(crate) mod memory_gadget;
 pub(crate) mod host_return_gadget;
 
 pub use gadgets::util::{and, not, or, select, sum};
+use crate::table::RwTableTag;
+use crate::witness::{Block, ExecStep};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Cell<F> {
@@ -613,4 +615,22 @@ pub(crate) fn transpose_val_ret<F, E>(value: Value<Result<F, E>>) -> Result<Valu
         ret = value.map(Value::known);
     });
     ret
+}
+
+pub(crate) fn address_from_block_rws<F: Field>(block: &Block<F>, step: &ExecStep, relative_offset: usize) -> eth_types::Address {
+    let bytes = memory_from_block_rws::<F, N_BYTES_ADDRESS>(block, step, relative_offset);
+    eth_types::Word::from_big_endian(bytes.as_slice()).to_address()
+}
+
+pub(crate) fn word_from_block_rws<F: Field>(block: &Block<F>, step: &ExecStep, relative_offset: usize) -> eth_types::Word {
+    let bytes = memory_from_block_rws::<F, N_BYTES_WORD>(block, step, relative_offset);
+    eth_types::Word::from_big_endian(bytes.as_slice())
+}
+
+pub(crate) fn memory_from_block_rws<F: Field, const N_BYTES: usize>(block: &Block<F>, step: &ExecStep, relative_offset: usize) -> Vec<u8> {
+    let address_rw_tup_vec: Vec<(RwTableTag, usize)> = step.rw_indices[relative_offset..(relative_offset + N_BYTES)].to_vec();
+    address_rw_tup_vec
+        .iter()
+        .map(|&b| block.rws[b].memory_value())
+        .collect()
 }

@@ -11,7 +11,7 @@ use crate::{
             common_gadget::SameContextGadget,
             constraint_builder::{ConstraintBuilder, StepStateTransition, Transition},
             from_bytes,
-            memory_gadget::MemoryAddressGadget,
+            memory_gadget::{MemoryAddressGadget},
             not, CachedRegion, Cell, MemoryAddress,
         },
         witness::{Block, Call, ExecStep, Transaction},
@@ -81,21 +81,20 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         );
 
         let copy_rwc_inc = cb.query_cell();
-        // TODO fix the problem
-        cb.condition(memory_address_gadget.has_length(), |cb| {
-            // cb.copy_table_lookup(
-            //     code_hash.expr(),
-            //     CopyDataType::Bytecode.expr(),
-            //     cb.curr.state.call_id.expr(),
-            //     CopyDataType::Memory.expr(),
-            //     from_bytes::expr(&code_offset.cells),
-            //     code_size.expr(),
-            //     dst_memory_addr.offset(),
-            //     dst_memory_addr.length(),
-            //     0.expr(), // for CODECOPY, rlc_acc is 0
-            //     copy_rwc_inc.expr(),
-            // );
-        });
+        // cb.condition(dst_memory_addr.has_length(), |cb| {
+        //     cb.copy_table_lookup(
+        //         code_hash.expr(),
+        //         CopyDataType::Bytecode.expr(),
+        //         cb.curr.state.call_id.expr(),
+        //         CopyDataType::Memory.expr(),
+        //         from_bytes::expr(&code_offset.cells),
+        //         code_size.expr(),
+        //         dst_memory_addr.offset(),
+        //         dst_memory_addr.length(),
+        //         0.expr(), // for CODECOPY, rlc_acc is 0
+        //         copy_rwc_inc.expr(),
+        //     );
+        // });
         cb.condition(not::expr(memory_address_gadget.has_length()), |cb| {
             cb.require_zero(
                 "if no bytes to copy, copy table rwc inc == 0",
@@ -110,7 +109,7 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
             stack_pointer: Transition::Delta(3.expr()),
             // memory_word_size: Transition::To(memory_expansion.next_memory_word_size()),
             gas_left: Transition::Delta(
-                -OpcodeId::CODECOPY.constant_gas_cost().expr() - memory_copier_gas.gas_cost(),
+                -OpcodeId::CODECOPY.constant_gas_cost().expr()/* - memory_copier_gas.gas_cost()*/,
             ),
             ..Default::default()
         };
@@ -169,8 +168,8 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         )?;
 
         // assign the destination memory offset.
-        // let memory_address = self
-        self.dst_memory_addr
+        let _memory_address = self
+            .dst_memory_addr
             .assign(region, offset, dest_offset, size)?;
 
         // assign to gadgets handling memory expansion cost and copying cost.
@@ -238,8 +237,8 @@ mod tests {
         test_ok(0x10, 0x20, 0x42, false);
     }
 
-    // #[test]
-    // fn codecopy_gadget_large() {
-    //     test_ok(0x103, 0x102, 0x101, true);
-    // }
+    #[test]
+    fn codecopy_gadget_large() {
+        test_ok(0x103, 0x102, 0x101, true);
+    }
 }
