@@ -240,6 +240,10 @@ impl ExecutionState {
             Self::WASM_DROP => vec![
                 OpcodeId::Drop,
             ],
+            Self::WASM_TEST => vec![
+                OpcodeId::I32Eqz,
+                OpcodeId::I64Eqz,
+            ],
             Self::WASM_UNARY => vec![
                 OpcodeId::I32Ctz,
                 OpcodeId::I64Ctz,

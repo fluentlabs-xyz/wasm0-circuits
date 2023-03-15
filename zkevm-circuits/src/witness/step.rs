@@ -174,7 +174,6 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::I64Ctz |
                     OpcodeId::I32Clz |
                     OpcodeId::I64Clz |
-                    OpcodeId::I64Eqz |
                     OpcodeId::I32Popcnt |
                     OpcodeId::I64Popcnt => ExecutionState::WASM_UNARY,
 
@@ -192,6 +191,9 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::Br |
                     OpcodeId::BrIf |
                     OpcodeId::BrTable => ExecutionState::WASM_BREAK,
+
+                    OpcodeId::I32Eqz |
+                    OpcodeId::I64Eqz => ExecutionState::WASM_TEST,
 
                     OpcodeId::End => ExecutionState::WASM_END,
 
