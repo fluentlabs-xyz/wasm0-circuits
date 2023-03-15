@@ -39,28 +39,13 @@ impl<F: Field> ExecutionGadget<F> for WasmTestGadget<F> {
         let is_i64 = cb.alloc_bit_value();
         let value_inv = cb.alloc_unlimited_value();
 
-        // let value = common.alloc_u64();
-        // let res = common.alloc_bit_value();
-        // let is_i64 = common.alloc_bit_value();
-        // let value_inv = common.alloc_unlimited_value();
-
         cb.stack_pop(value.expr());
         cb.stack_push(res.expr());
 
-        cb.require_zeros("testop constraints", vec![
+        cb.require_zeros("op_test: constraints", vec![
             res.expr() * value.expr(),
-            value.expr() * value_inv.expr() - crate::constant_from!(1) + res.expr(),
+            value.expr() * value_inv.expr() - 1.expr() + res.expr(),
         ]);
-
-        // constraint_builder.push(
-        //    "test op value_is_zero",
-        //    Box::new(move |meta| {
-        //        vec![
-        //            res.expr(meta) * value.expr(meta),
-        //            value.expr(meta) * value_inv.expr(meta) - constant_from!(1) + res.expr(meta),
-        //        ]
-        //    }),
-        // );
 
         let opcode = cb.query_cell();
 
@@ -69,7 +54,7 @@ impl<F: Field> ExecutionGadget<F> for WasmTestGadget<F> {
             rw_counter: Delta(2.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(0.expr()),
-            gas_left: Delta(-OpcodeId::I32Add.constant_gas_cost().expr()),
+            gas_left: Delta(-OpcodeId::I32Eqz.constant_gas_cost().expr()),
             ..StepStateTransition::default()
         };
         let same_context = SameContextGadget::construct(cb, opcode, step_state_transition);
@@ -99,15 +84,9 @@ impl<F: Field> ExecutionGadget<F> for WasmTestGadget<F> {
         let [value, res] = [step.rw_indices[0], step.rw_indices[1]]
             .map(|idx| block.rws[idx].stack_value());
 
-        self.value_inv.assign(region, offset, Value::known(F::from(value.as_u64()).invert().unwrap_or(F::zero())))?;
         self.value.assign(region, offset, Value::known(value.to_scalar().unwrap()))?;
+        self.value_inv.assign(region, offset, Value::known(F::from(value.as_u64()).invert().unwrap_or(F::zero())))?;
         self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
-
-        let selector = match opcode {
-            OpcodeId::I64Eqz => (&self.is_i64),
-            _ => unreachable!("not supported opcode for test operation: {:?}", step.opcode)
-        };
-        selector.assign(region, offset, Value::known(F::one()))?;
 
         match opcode {
             OpcodeId::I64Eqz => {
@@ -138,20 +117,6 @@ mod test {
             TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
         ).run()
     }
-
-/*
-    #[test]
-    fn test_i32_eqz() {
-        run_test(bytecode! {
-            I32Const[0]
-            I32Eqz
-            Drop
-            I32Const[1]
-            I32Eqz
-            Drop
-        });
-    }
-*/
 
     #[test]
     fn test_i64_eqz() {
