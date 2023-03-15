@@ -93,6 +93,10 @@ impl<F: Field> ExecutionGadget<F> for WasmTestGadget<F> {
                 let zero_or_one = (value.as_u64() == 0) as u64;
                 self.res.assign(region, offset, Value::known(F::from(zero_or_one)))?;
             }
+            OpcodeId::I32Eqz => {
+                let zero_or_one = (value.as_u32() == 0) as u64;
+                self.res.assign(region, offset, Value::known(F::from(zero_or_one)))?;
+            }
             _ => unreachable!("not supported opcode: {:?}", opcode),
         };
  
@@ -116,6 +120,18 @@ mod test {
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
         ).run()
+    }
+
+    #[test]
+    fn test_i32_eqz() {
+        run_test(bytecode! {
+            I32Const[0]
+            I32Eqz
+            Drop
+            I32Const[1]
+            I32Eqz
+            Drop
+        });
     }
 
     #[test]
