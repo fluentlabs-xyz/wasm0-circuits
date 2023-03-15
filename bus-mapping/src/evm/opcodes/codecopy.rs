@@ -92,9 +92,8 @@ fn gen_copy_event(
 
     let code_hash = state.call()?.code_hash;
     let bytecode_bytes = state.code(code_hash)?;
-    // TODO check if replacement of [Bytecode::from] -> [Bytecode::from_raw_unchecked] is correct
-    let bytecode= Bytecode::from_raw_unchecked(bytecode_bytes);
-    let src_addr_end = bytecode.to_vec().len() as u64;
+    let bytecode= Bytecode::from_raw_unchecked(bytecode_bytes.clone());
+    let src_addr_end = bytecode_bytes.len() as u64;
 
     let mut exec_step = state.new_step(geth_step)?;
     let copy_steps = gen_copy_steps(

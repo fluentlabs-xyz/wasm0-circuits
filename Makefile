@@ -75,9 +75,9 @@ clean_libc_targets:
 	rm -rf target/debug/build/libc-*
 	rm -rf target/release/build/libc-*
 
-clean_halo_targets:
-	rm -rf target/debug/build/halo*
-	rm -rf target/release/build/halo*
+clean_halo2_targets:
+	rm -rf target/debug/build/halo2*
+	rm -rf target/release/build/halo2*
 
 
 stats_copy_circuit: # Print a table with Copy Circuit stats by ExecState/opcode

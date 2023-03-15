@@ -5,7 +5,7 @@ use eth_types::evm_types::GasCost;
 
 use crate::{
     evm_circuit::{
-        param::{N_BYTES_MEMORY_ADDRESS, N_BYTES_MEMORY_WORD_SIZE},
+        param::{N_BYTES_MEMORY_ADDRESS},
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
@@ -18,7 +18,7 @@ use crate::{
     },
     util::Expr,
 };
-use crate::evm_circuit::util::memory_gadget::{MemoryCopierGasGadget, MemoryExpansionGadget};
+use crate::evm_circuit::util::memory_gadget::{MemoryCopierGasGadget};
 
 use super::ExecutionGadget;
 
@@ -81,20 +81,19 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         );
 
         let copy_rwc_inc = cb.query_cell();
-        // TODO fix the problem
         cb.condition(memory_address_gadget.has_length(), |cb| {
-            // cb.copy_table_lookup(
-            //     code_hash.expr(),
-            //     CopyDataType::Bytecode.expr(),
-            //     cb.curr.state.call_id.expr(),
-            //     CopyDataType::Memory.expr(),
-            //     from_bytes::expr(&code_offset.cells),
-            //     code_size.expr(),
-            //     dst_memory_addr.offset(),
-            //     dst_memory_addr.length(),
-            //     0.expr(), // for CODECOPY, rlc_acc is 0
-            //     copy_rwc_inc.expr(),
-            // );
+            cb.copy_table_lookup(
+                code_hash.expr(),
+                CopyDataType::Bytecode.expr(),
+                cb.curr.state.call_id.expr(),
+                CopyDataType::Memory.expr(),
+                from_bytes::expr(&code_offset.cells),
+                code_size.expr(),
+                memory_address_gadget.offset(),
+                memory_address_gadget.length(),
+                0.expr(), // for CODECOPY, rlc_acc is 0
+                copy_rwc_inc.expr(),
+            );
         });
         cb.condition(not::expr(memory_address_gadget.has_length()), |cb| {
             cb.require_zero(
@@ -188,7 +187,7 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
             offset,
             Value::known(
                 size.to_scalar()
-                    .expect("unexpected U256 -> Scalar conversion failure"),
+                    .expect("unexpected U64 -> Scalar conversion failure"),
             ),
         )?;
 
