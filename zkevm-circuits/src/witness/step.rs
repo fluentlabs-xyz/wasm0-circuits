@@ -174,6 +174,7 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::I64Ctz |
                     OpcodeId::I32Clz |
                     OpcodeId::I64Clz |
+                    OpcodeId::I64Eqz |
                     OpcodeId::I32Popcnt |
                     OpcodeId::I64Popcnt => ExecutionState::WASM_UNARY,
 

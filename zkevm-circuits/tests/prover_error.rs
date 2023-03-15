@@ -3,7 +3,8 @@
 // as `block` and run via `cargo test -p zkevm-circuits --features test
 // prover_error -- --nocapture --ignored`. Change any constant variables like
 // `MAX_TXS` to suit your needs.
-use bus_mapping::{circuit_input_builder::CircuitsParams};
+use bus_mapping::circuit_input_builder::CircuitsParams;
+use bus_mapping::mocks::BlockData;
 use env_logger::Env;
 use eth_types::{
     geth_types::{Account, GethData},

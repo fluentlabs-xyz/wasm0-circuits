@@ -27,6 +27,7 @@ pub enum ExecutionState {
     // WASM opcode cases
     WASM_BIN,
     WASM_BREAK,
+    WASM_TEST,
     WASM_CONST,
     WASM_CALL,
     WASM_DROP,
