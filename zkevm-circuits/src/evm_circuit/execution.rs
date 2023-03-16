@@ -87,7 +87,6 @@ mod opcode_not;
 mod origin;
 mod pc;
 mod pop;
-mod wasm_drop;
 mod return_revert;
 // mod returndatacopy;
 // mod returndatasize;
@@ -105,6 +104,8 @@ mod swap;
 mod end;
 mod wasm_bin;
 mod wasm_const;
+mod wasm_drop;
+mod wasm_global;
 mod wasm_unary;
 
 use begin_tx::BeginTxGadget;
@@ -134,10 +135,12 @@ use return_revert::ReturnRevertGadget;
 use selfbalance::SelfbalanceGadget;
 use wasm_bin::WasmBinGadget;
 use wasm_const::WasmConstGadget;
+use wasm_global::WasmGlobalGadget;
 use wasm_unary::WasmUnaryGadget;
-use crate::evm_circuit::execution::callop::CallOpGadget;
-use crate::evm_circuit::execution::codecopy::CodeCopyGadget;
-use crate::evm_circuit::execution::extcodesize::ExtcodesizeGadget;
+
+use callop::CallOpGadget;
+use codecopy::CodeCopyGadget;
+use extcodesize::ExtcodesizeGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -273,6 +276,7 @@ pub(crate) struct ExecutionConfig<F> {
     wasm_bin_gadget: WasmBinGadget<F>,
     wasm_const_gadget: WasmConstGadget<F>,
     wasm_drop_gadget: WasmDropGadget<F>,
+    wasm_global_gadget: WasmGlobalGadget<F>,
     wasm_unary_gadget: WasmUnaryGadget<F>,
     wasm_end_gadget: WasmEndGadget<F>,
 }
@@ -533,6 +537,7 @@ impl<F: Field> ExecutionConfig<F> {
             wasm_bin_gadget: configure_gadget!(),
             wasm_const_gadget: configure_gadget!(),
             wasm_drop_gadget: configure_gadget!(),
+            wasm_global_gadget: configure_gadget!(),
             wasm_unary_gadget: configure_gadget!(),
 
             // step and presets
@@ -1138,6 +1143,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::WASM_BIN => assign_exec_step!(self.wasm_bin_gadget),
             ExecutionState::WASM_CONST => assign_exec_step!(self.wasm_const_gadget),
             ExecutionState::WASM_DROP => assign_exec_step!(self.wasm_drop_gadget),
+            ExecutionState::WASM_GLOBAL => assign_exec_step!(self.wasm_global_gadget),
             ExecutionState::WASM_UNARY => assign_exec_step!(self.wasm_unary_gadget),
             ExecutionState::WASM_END => assign_exec_step!(self.wasm_end_gadget),
             // opcode

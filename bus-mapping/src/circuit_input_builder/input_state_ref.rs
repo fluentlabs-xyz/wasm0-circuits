@@ -20,6 +20,7 @@ use crate::{
     state_db::{CodeDB, StateDB},
 };
 use crate::circuit_input_builder::{CodeSource, get_call_memory_offset_length};
+use crate::operation::GlobalOp;
 
 use super::{
     Block, BlockContext, Call, CallContext, CallKind,
@@ -259,6 +260,30 @@ impl<'a> CircuitInputStateRef<'a> {
     ) -> Result<(), Error> {
         let call_id = self.call()?.call_id;
         self.push_op(step, RW::WRITE, MemoryOp::new(call_id, address, value));
+        Ok(())
+    }
+
+    ///
+    pub fn global_write(
+        &mut self,
+        step: &mut ExecStep,
+        global_index: u32,
+        value: StackWord,
+    ) -> Result<(), Error> {
+        let call_id = self.call()?.call_id;
+        self.push_op(step, RW::WRITE, GlobalOp::new(call_id, global_index, value));
+        Ok(())
+    }
+
+    ///
+    pub fn global_read(
+        &mut self,
+        step: &mut ExecStep,
+        global_index: u32,
+        value: StackWord,
+    ) -> Result<(), Error> {
+        let call_id = self.call()?.call_id;
+        self.push_op(step, RW::READ, GlobalOp::new(call_id, global_index, value));
         Ok(())
     }
 

@@ -284,6 +284,8 @@ pub enum RwTableTag {
     Start = 1,
     /// Stack operation
     Stack,
+    /// Global operation
+    Global,
     /// Memory operation
     Memory,
     /// Account Storage operation

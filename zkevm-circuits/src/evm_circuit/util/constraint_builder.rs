@@ -1140,6 +1140,34 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         self.reversion_info(call_id, true)
     }
 
+    // Global
+
+    pub(crate) fn global_write(&mut self, index: Expression<F>, value: Expression<F>) {
+        self.global_lookup(1.expr(), index, value)
+    }
+
+    pub(crate) fn global_read(&mut self, index: Expression<F>, value: Expression<F>) {
+        self.global_lookup(0.expr(), index, value)
+    }
+
+    pub(crate) fn global_lookup(&mut self, is_write: Expression<F>, index: Expression<F>, value: Expression<F>) {
+        self.rw_lookup(
+            "Global lookup",
+            is_write,
+            RwTableTag::Global,
+            RwValues::new(
+                self.curr.state.call_id.expr(),
+                index,
+                0.expr(),
+                0.expr(),
+                value,
+                0.expr(),
+                0.expr(),
+                0.expr(),
+            ),
+        );
+    }
+
     // Stack
 
     pub(crate) fn stack_pop(&mut self, value: Expression<F>) {

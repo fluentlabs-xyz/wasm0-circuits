@@ -10,10 +10,7 @@ use crate::{
     },
 };
 use core::fmt::Debug;
-use eth_types::{
-    evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED},
-    evm_unimplemented, GethExecStep, ToAddress, ToWord, Word,
-};
+use eth_types::{evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED}, evm_unimplemented, GethExecStep, GethExecTrace, StackWord, ToAddress, ToWord, Word};
 use ethers_core::utils::get_contract_address;
 use keccak256::EMPTY_HASH;
 
@@ -66,6 +63,7 @@ mod error_write_protection;
 
 #[cfg(test)]
 mod memory_expansion_test;
+mod global;
 
 use address::Address;
 use balance::Balance;
@@ -85,7 +83,7 @@ use error_oog_sload_sstore::OOGSloadSstore;
 use error_return_data_outofbound::ErrorReturnDataOutOfBound;
 use error_simple::ErrorSimple;
 use error_write_protection::ErrorWriteProtection;
-use eth_types::evm_types::{Memory, MemoryAddress};
+use eth_types::evm_types::{MemoryAddress};
 use gasprice::GasPrice;
 use origin::Origin;
 use return_revert::ReturnRevert;
@@ -96,6 +94,7 @@ use stackonlyop::StackOnlyOpcode;
 use stop::Stop;
 use crate::evm::opcodes::chainid::ChainId;
 use crate::evm::opcodes::extcodesize::Extcodesize;
+use crate::evm::opcodes::global::GlobalOpcode;
 use crate::evm::opcodes::number::Number;
 use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
 
@@ -219,15 +218,16 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I64Clz |
         OpcodeId::I32Popcnt |
         OpcodeId::I64Popcnt => StackOnlyOpcode::<1, 1>::gen_associated_ops,
+        // WASM global opcodes
+        OpcodeId::SetGlobal => GlobalOpcode::<true>::gen_associated_ops,
+        OpcodeId::GetGlobal => GlobalOpcode::<false>::gen_associated_ops,
 
         OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
         OpcodeId::Return => Dummy::gen_associated_ops,
 
         // TODO these are temporal. need a fix.
         // OpcodeId::GetLocal => Dummy::gen_associated_ops,
-        // OpcodeId::GetGlobal => Dummy::gen_associated_ops,
         // OpcodeId::SetLocal => Dummy::gen_associated_ops,
-        // OpcodeId::SetGlobal => Dummy::gen_associated_ops,
         // OpcodeId::I32GtU => Dummy::gen_associated_ops,
         // OpcodeId::If => Dummy::gen_associated_ops,
         // OpcodeId::Call => Dummy::gen_associated_ops,
@@ -371,7 +371,7 @@ pub fn gen_associated_ops(
     fn_gen_associated_ops(state, geth_steps)
 }
 
-pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory) -> Result<ExecStep, Error> {
+pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, exec_trace: &GethExecTrace) -> Result<ExecStep, Error> {
     let mut exec_step = state.new_begin_tx_step();
     let call = state.call()?.clone();
 
@@ -560,11 +560,15 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
         }
     };
 
-    // Initialize WASM global memory section
-    for (i, byte) in global_memory.0.iter().enumerate() {
+    // Initialize WASM global memory and global variables section
+    for (i, byte) in exec_trace.global_memory.0.iter().enumerate() {
         if *byte != 0 {
             state.memory_write(&mut exec_step, MemoryAddress::from(i), *byte)?;
         }
+    }
+    for global in &exec_trace.globals {
+        // TODO: "proof const evaluation"
+        state.global_write(&mut exec_step, global.index, StackWord::from(global.value))?;
     }
 
     Ok(exec_step)

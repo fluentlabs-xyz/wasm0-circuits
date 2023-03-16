@@ -274,7 +274,7 @@ impl<'a> CircuitInputBuilder {
         // - execution_state: BeginTx
         // - op: None
         // Generate BeginTx step
-        let begin_tx_step = gen_begin_tx_ops(&mut self.state_ref(&mut tx, &mut tx_ctx), &geth_trace.global_memory)?;
+        let begin_tx_step = gen_begin_tx_ops(&mut self.state_ref(&mut tx, &mut tx_ctx), &geth_trace)?;
         tx.steps_mut().push(begin_tx_step);
 
         for (index, geth_step) in geth_trace.struct_logs.iter().enumerate() {

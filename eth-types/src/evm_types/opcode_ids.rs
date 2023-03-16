@@ -802,7 +802,9 @@ impl OpcodeId {
 
     /// If operation has postfix returns it, otherwise None.
     pub fn postfix(&self) -> Option<u8> {
+        // TODO: "we can't relay on this, because we don't know exact encoding size"
         match self {
+            OpcodeId::GetGlobal => Some(1),
             OpcodeId::I32Const => Some(4),
             OpcodeId::I64Const => Some(8),
             _ => {

@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/params"
 	"math/big"
+	"os"
 )
 
 type Block struct {
@@ -143,9 +144,9 @@ func Trace(config TraceConfig) ([]*logger.WasmExecutionResult, error) {
 		for key, value := range account.Storage {
 			stateDB.SetState(address, key, value)
 		}
-		//if len(account.Code) > 0 {
-		//	_ = os.WriteFile(fmt.Sprintf("%s.wasm", address.Hex()), account.Code, os.ModePerm)
-		//}
+		if len(account.Code) > 0 {
+			_ = os.WriteFile(fmt.Sprintf("%s.wasm", address.Hex()), account.Code, os.ModePerm)
+		}
 	}
 	stateDB.Finalise(true)
 

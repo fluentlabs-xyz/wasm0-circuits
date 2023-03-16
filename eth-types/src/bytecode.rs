@@ -4,7 +4,7 @@ use std::{collections::HashMap, str::FromStr};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
-use wasm_encoder::{ConstExpr, DataSection, Encode, Instruction};
+use wasm_encoder::{ConstExpr, DataSection, Encode, GlobalSection, GlobalType, Instruction};
 
 use crate::{Address, Bytes, evm_types::OpcodeId, ToLittleEndian, U256, Word};
 
@@ -54,6 +54,44 @@ pub struct BytecodeElement {
     pub is_code: bool,
 }
 
+///
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GlobalVariable {
+    pub index: u32,
+    pub init_code: Vec<u8>,
+    pub is_64bit: bool,
+    pub readonly: bool,
+}
+
+impl GlobalVariable {
+
+    pub fn default_i32(index: u32, default_value: u32) -> Self {
+        Self::default(index, false, default_value as u64)
+    }
+
+    pub fn default_i64(index: u32, default_value: u64) -> Self {
+        Self::default(index, true, default_value)
+    }
+
+    pub fn default(index: u32, is_64bit: bool, default_value: u64) -> Self {
+        let mut init_code = Vec::new();
+        if is_64bit {
+            Instruction::I64Const(default_value as i64).encode(&mut init_code);
+        } else {
+            Instruction::I32Const(default_value as i32).encode(&mut init_code);
+        }
+        GlobalVariable { index, is_64bit, init_code, readonly: false }
+    }
+
+    pub fn zero_i32(index: u32) -> Self {
+        Self::default_i32(index, 0)
+    }
+
+    pub fn zero_i64(index: u32) -> Self {
+        Self::default_i64(index, 0)
+    }
+}
+
 /// EVM Bytecode
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Bytecode {
@@ -61,6 +99,7 @@ pub struct Bytecode {
     bytecode_items: Vec<BytecodeElement>,
     global_data: (u32, Vec<u8>),
     section_descriptors: Vec<SectionDescriptor>,
+    variables: Vec<GlobalVariable>,
     evm_table: HashMap<EvmCall, usize>,
     num_opcodes: usize,
     markers: HashMap<String, usize>,
@@ -142,6 +181,18 @@ impl WasmBinaryBytecode for Bytecode {
         module.section(&imports);
         module.section(&functions);
         module.section(&memories);
+        if self.variables.len() > 0 {
+            let mut global_section = GlobalSection::new();
+            for var in &self.variables {
+                let var_type = if var.is_64bit {
+                    GlobalType { val_type: ValType::I64, mutable: !var.readonly }
+                } else {
+                    GlobalType { val_type: ValType::I32, mutable: !var.readonly }
+                };
+                global_section.global(var_type, &ConstExpr::raw(var.init_code.clone()));
+            }
+            module.section(&global_section);
+        }
         module.section(&exports);
         module.section(&codes);
         // if we have global data section then put it into final binary
@@ -180,6 +231,7 @@ impl Bytecode {
                 .collect(),
             global_data: (0, Vec::new()),
             section_descriptors: Vec::new(),
+            variables: Vec::new(),
             evm_table: HashMap::new(),
             markers: HashMap::new(),
             num_opcodes: 0,
@@ -203,6 +255,10 @@ impl Bytecode {
             data,
         });
         self
+    }
+
+    pub fn with_global_variable(&mut self, global_variable: GlobalVariable) {
+        self.variables.push(global_variable);
     }
 
     /// Get the raw code
@@ -361,10 +417,15 @@ impl Bytecode {
         self
     }
 
-    pub fn write_const(&mut self, op: OpcodeId, val: u64) -> &mut Self {
+    pub fn write_postfix(&mut self, op: OpcodeId, val: u64) -> &mut Self {
         let op = match op {
             OpcodeId::I32Const => Instruction::I32Const(val as i32),
             OpcodeId::I64Const => Instruction::I64Const(val as i64),
+            OpcodeId::GetGlobal => Instruction::GlobalGet(val as u32),
+            OpcodeId::SetGlobal => Instruction::GlobalSet(val as u32),
+            OpcodeId::GetLocal => Instruction::LocalGet(val as u32),
+            OpcodeId::SetLocal => Instruction::LocalSet(val as u32),
+            OpcodeId::TeeLocal => Instruction::LocalTee(val as u32),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }
@@ -650,8 +711,7 @@ macro_rules! bytecode_internal {
     ($code:ident, ) => {};
     // WASM const opcodes
     ($code:ident, $x:ident [$v:expr] $($rest:tt)*) => {{
-        let _n = $crate::evm_types::OpcodeId::$x.postfix().expect("opcode with postfix");
-        $code.write_const($crate::evm_types::OpcodeId::$x, $v as u64);
+        $code.write_postfix($crate::evm_types::OpcodeId::$x, $v as u64);
         $crate::bytecode_internal!($code, $($rest)*);
     }};
     // PUSHX opcodes

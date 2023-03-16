@@ -451,7 +451,7 @@ struct GethExecStepInternal {
     #[serde(rename = "opcodeFamily")]
     op_family: Option<String>,
     #[serde(default)]
-    params: Option<Box<[u64]>>,
+    params: Option<Vec<u64>>,
     gas: Gas,
     #[serde(default)]
     refund: Gas,
@@ -498,7 +498,7 @@ pub struct GethExecStep
 {
     pub pc: ProgramCounter,
     pub op_family: Option<GethExecStepFamily>,
-    pub params: Option<Box<[u64]>>,
+    pub params: Vec<u64>,
     pub op: OpcodeId,
     pub gas: Gas,
     pub gas_cost: GasCost,
@@ -576,7 +576,7 @@ impl<'de> Deserialize<'de> for GethExecStep {
         Ok(Self {
             pc: s.pc,
             op_family: s.op_family.map(|f| GethExecStepFamily::from_string(&f)),
-            params: s.params,
+            params: s.params.unwrap_or(Vec::new()),
             op: OpcodeId::from_str(s.op.as_str()).unwrap(),
             gas: s.gas,
             refund: s.refund,
@@ -612,6 +612,15 @@ pub struct ResultGethExecTrace {
     pub result: GethExecTrace,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
+#[doc(hidden)]
+pub struct GethExecTraceGlobal {
+    pub pc: ProgramCounter,
+    pub index: u32,
+    pub op: String,
+    pub value: u64,
+}
+
 /// The execution trace type returned by geth RPC debug_trace* methods.
 /// Corresponds to `ExecutionResult` in `go-ethereum/internal/ethapi/api.go`.
 /// The deserialization truncates the memory of each step in `struct_logs` to
@@ -633,6 +642,9 @@ pub struct GethExecTrace {
     /// Vector of geth execution steps of the trace.
     #[serde(rename = "structLogs")]
     pub struct_logs: Vec<GethExecStep>,
+    /// Globals.
+    #[serde(rename = "globals")]
+    pub globals: Vec<GethExecTraceGlobal>,
 }
 
 #[derive(Deserialize)]
@@ -656,6 +668,9 @@ pub struct GethExecTraceInternal {
     /// Vector of geth execution steps of the trace.
     #[serde(rename = "structLogs")]
     pub struct_logs: Vec<GethExecStep>,
+    /// Globals.
+    #[serde(rename = "globals")]
+    pub globals: Vec<GethExecTraceGlobal>,
 }
 
 impl<'de> Deserialize<'de> for GethExecTrace {
@@ -689,6 +704,7 @@ impl<'de> Deserialize<'de> for GethExecTrace {
             global_memory: init_memory,
             return_value: s.return_value,
             struct_logs: s.struct_logs,
+            globals: s.globals,
         })
     }
 }
@@ -817,7 +833,7 @@ mod tests {
                     GethExecStep {
                         pc: ProgramCounter(0),
                         op_family: None,
-                        params: None,
+                        params: vec![],
                         op: OpcodeId::PUSH1,
                         gas: Gas(22705),
                         refund: Gas(0),
@@ -832,7 +848,7 @@ mod tests {
                     GethExecStep {
                         pc: ProgramCounter(163),
                         op_family: None,
-                        params: None,
+                        params: vec![],
                         op: OpcodeId::SLOAD,
                         gas: Gas(5217),
                         refund: Gas(0),
@@ -847,7 +863,7 @@ mod tests {
                     GethExecStep {
                         pc: ProgramCounter(189),
                         op_family: None,
-                        params: None,
+                        params: vec![],
                         op: OpcodeId::SHA3,
                         gas: Gas(178805),
                         refund: Gas(0),
@@ -951,10 +967,10 @@ mod tests {
             serde_json::from_str(trace_json).expect("json-deserialize GethExecTrace");
         assert_eq!(trace.struct_logs[0].op_family, Some(WebAssembly));
         let params = &trace.struct_logs[0].params;
-        assert_eq!((*params.clone().unwrap())[0], 1048576);
+        assert_eq!(params.clone()[0], 1048576);
         assert_eq!(trace.struct_logs[1].op_family, Some(WebAssembly));
         let params = &trace.struct_logs[1].params;
-        assert_eq!((*params.clone().unwrap())[0], 171);
+        assert_eq!(params.clone()[0], 171);
         assert_eq!(trace.struct_logs[2].op_family, Some(Evm));
     }
 }

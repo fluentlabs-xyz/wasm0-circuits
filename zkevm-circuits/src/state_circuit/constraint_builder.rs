@@ -111,6 +111,9 @@ impl<F: Field> ConstraintBuilder<F> {
         self.condition(q.tag_matches(RwTableTag::Stack), |cb| {
             cb.build_stack_constraints(q)
         });
+        self.condition(q.tag_matches(RwTableTag::Global), |cb| {
+            cb.build_memory_constraints(q)
+        });
         self.condition(q.tag_matches(RwTableTag::AccountStorage), |cb| {
             cb.build_account_storage_constraints(q)
         });

@@ -36,10 +36,10 @@ require (
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 )
 
-replace github.com/tetratelabs/wazero v1.0.0-pre.7 => github.com/wasm0/zkwasm-wazero v0.0.0-20230303153605-38f0c1c2f405
+replace github.com/tetratelabs/wazero v1.0.0-pre.7 => github.com/wasm0/zkwasm-wazero v0.0.0-20230316165021-4ae4514258bb
 
 replace github.com/ethereum/go-ethereum v1.10.18 => ../../zkwasm-geth
 
 // Uncomment for debugging
 //replace github.com/tetratelabs/wazero v1.0.0-pre.7 => ../../zkwasm-wazero
-// github.com/ethereum/go-ethereum => ../../zkwasm-geth
+//replace github.com/ethereum/go-ethereum => ../../zkwasm-geth

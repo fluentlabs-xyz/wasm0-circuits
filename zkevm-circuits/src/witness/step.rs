@@ -166,6 +166,9 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::I32Popcnt |
                     OpcodeId::I64Popcnt => ExecutionState::WASM_UNARY,
 
+                    OpcodeId::GetGlobal |
+                    OpcodeId::SetGlobal => ExecutionState::WASM_GLOBAL,
+
                     OpcodeId::End => ExecutionState::WASM_END,
 
                     // EVM opcodes
@@ -252,6 +255,7 @@ pub(super) fn step_convert(step: &circuit_input_builder::ExecStep) -> ExecStep {
                 let tag = match x.target() {
                     operation::Target::Memory => RwTableTag::Memory,
                     operation::Target::Stack => RwTableTag::Stack,
+                    operation::Target::Global => RwTableTag::Global,
                     operation::Target::Storage => RwTableTag::AccountStorage,
                     operation::Target::TxAccessListAccount => RwTableTag::TxAccessListAccount,
                     operation::Target::TxAccessListAccountStorage => {

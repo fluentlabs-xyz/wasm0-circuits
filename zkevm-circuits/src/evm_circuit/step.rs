@@ -34,6 +34,7 @@ pub enum ExecutionState {
     WASM_BIN,
     WASM_CONST,
     WASM_DROP,
+    WASM_GLOBAL,
     WASM_UNARY,
     WASM_END,
     // Opcode successful cases
@@ -238,6 +239,10 @@ impl ExecutionState {
                 OpcodeId::I64Clz,
                 OpcodeId::I32Popcnt,
                 OpcodeId::I64Popcnt,
+            ],
+            Self::WASM_GLOBAL => vec![
+                OpcodeId::GetGlobal,
+                OpcodeId::SetGlobal,
             ],
             Self::WASM_END => vec![OpcodeId::End],
             // EVM opcodes
