@@ -1,6 +1,7 @@
-use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
+use bus_mapping::{evm::OpcodeId};
 use eth_types::{Field, ToLittleEndian, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use bus_mapping::circuit_input_builder::CopyDataType;
 use eth_types::evm_types::GasCost;
 
 use crate::{
@@ -10,14 +11,14 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{ConstraintBuilder, StepStateTransition, Transition},
-            from_bytes,
-            memory_gadget::MemoryAddressGadget,
+            memory_gadget::{MemoryAddressGadget},
             not, CachedRegion, Cell, MemoryAddress,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
+use crate::evm_circuit::util::from_bytes;
 use crate::evm_circuit::util::memory_gadget::{MemoryCopierGasGadget};
 
 use super::ExecutionGadget;
@@ -168,8 +169,8 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         )?;
 
         // assign the destination memory offset.
-        // let memory_address = self
-        self.dst_memory_addr
+        let _memory_address = self
+            .dst_memory_addr
             .assign(region, offset, dest_offset, size)?;
 
         // assign to gadgets handling memory expansion cost and copying cost.
@@ -237,8 +238,8 @@ mod tests {
         test_ok(0x10, 0x20, 0x42, false);
     }
 
-    // #[test]
-    // fn codecopy_gadget_large() {
-    //     test_ok(0x103, 0x102, 0x101, true);
-    // }
+    #[test]
+    fn codecopy_gadget_large() {
+        test_ok(0x103, 0x102, 0x101, true);
+    }
 }

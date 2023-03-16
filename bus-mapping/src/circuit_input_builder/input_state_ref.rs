@@ -5,7 +5,7 @@ use std::cmp::max;
 use ethers_core::utils::{get_contract_address, get_create2_address};
 
 use eth_types::{Address, evm_types::{
-    Gas, gas_utils::memory_expansion_gas_cost, GasCost, MemoryAddress, OpcodeId, StackAddress,
+    Gas, GasCost, MemoryAddress, OpcodeId, StackAddress,
 }, GethExecStep, H256, StackWord, ToBigEndian, ToU256, ToWord, Word};
 
 use crate::{
@@ -108,7 +108,10 @@ impl<'a> CircuitInputStateRef<'a> {
         let op_ref =
             self.block
                 .container
-                .insert(Operation::new(self.block_ctx.rwc.inc_pre(), rw, op));
+                .insert(Operation::new(self.block_ctx.rwc.inc_pre(), rw, op.clone()));
+        if step.rwc.0 == 73 {
+            println!("rwc: {} {:?}", self.block_ctx.rwc.0, op);
+        }
         step.bus_mapping_instance.push(op_ref);
     }
 
@@ -213,6 +216,32 @@ impl<'a> CircuitInputStateRef<'a> {
     ) -> Result<(), Error> {
         let call_id = self.call()?.call_id;
         self.push_op(step, RW::READ, MemoryOp::new(call_id, address, value));
+        Ok(())
+    }
+
+    ///
+    pub fn memory_write_n<const N_BYTES: usize>(
+        &mut self,
+        step: &mut ExecStep,
+        address: MemoryAddress,
+        bytes: &[u8; N_BYTES],
+    ) -> Result<(), Error> {
+        for i in 0..N_BYTES {
+            self.memory_write(step, address.map(|a| a + i),  bytes[i])?;
+        }
+        Ok(())
+    }
+
+    ///
+    pub fn memory_read_n<const N_BYTES: usize>(
+        &mut self,
+        step: &mut ExecStep,
+        address: MemoryAddress,
+        bytes: &[u8; N_BYTES],
+    ) -> Result<(), Error> {
+        for i in 0..N_BYTES {
+            self.memory_read(step, address.map(|a| a + i),  bytes[i])?;
+        }
         Ok(())
     }
 
@@ -992,26 +1021,12 @@ impl<'a> CircuitInputStateRef<'a> {
             _ => unreachable!(),
         };
 
-        let curr_memory_word_size = (exec_step.memory_size as u64) / 32;
-        let next_memory_word_size = if !last_callee_return_data_length.is_zero() {
-            std::cmp::max(
-                (last_callee_return_data_offset + last_callee_return_data_length + 31).as_u64()
-                    / 32,
-                curr_memory_word_size,
-            )
-        } else {
-            curr_memory_word_size
-        };
-
-        let memory_expansion_gas_cost =
-            memory_expansion_gas_cost(curr_memory_word_size, next_memory_word_size);
         let code_deposit_cost = if call.is_create() && call.is_success {
             GasCost::CODE_DEPOSIT_BYTE_COST.as_u64() * last_callee_return_data_length.as_u64()
         } else {
             0
         };
-        let gas_refund = geth_step.gas.0 - memory_expansion_gas_cost - code_deposit_cost;
-
+        let gas_refund = geth_step.gas.0 - code_deposit_cost;
         let caller_gas_left = geth_step_next.gas.0 - gas_refund;
 
         for (field, value) in [

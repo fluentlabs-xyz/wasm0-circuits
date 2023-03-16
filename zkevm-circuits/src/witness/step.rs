@@ -1,3 +1,4 @@
+use std::fmt;
 use bus_mapping::{
     circuit_input_builder,
     error::{ExecError, OogError},
@@ -16,7 +17,7 @@ use crate::{
 use crate::evm_circuit::param::N_BYTES_U64;
 
 /// Step executed in a transaction
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct ExecStep {
     /// The index in the Transaction calls
     pub call_index: usize,
@@ -42,6 +43,25 @@ pub struct ExecStep {
     pub log_id: usize,
     /// The opcode corresponds to the step
     pub opcode: Option<OpcodeId>,
+}
+
+impl fmt::Debug for ExecStep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExecStep")
+            .field("call_index", &self.call_index)
+            // .field("rw_indices", &self.rw_indices)
+            .field("execution_state", &self.execution_state)
+            .field("rw_counter", &self.rw_counter)
+            .field("program_counter", &self.program_counter)
+            .field("stack_pointer", &self.stack_pointer)
+            .field("gas_left", &self.gas_left)
+            .field("gas_cost", &self.gas_cost)
+            .field("memory_size", &self.memory_size)
+            .field("reversible_write_counter", &self.reversible_write_counter)
+            .field("log_id", &self.log_id)
+            .field("opcode", &self.opcode)
+            .finish()
+    }
 }
 
 impl ExecStep {

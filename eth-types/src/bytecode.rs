@@ -154,7 +154,7 @@ impl WasmBinaryBytecode for Bytecode {
                     data_section.active(*index, &ConstExpr::i32_const(*offset as i32), data.clone());
                     module.section(&data_section);
                 }
-                _ => unreachable!("unknown section: {:?}", section)
+                // _ => unreachable!("unknown section: {:?}", section)
             }
         }
         if self.global_data.1.len() > 0 {

@@ -251,10 +251,13 @@ impl<C: SubCircuit<Fr> + Circuit<Fr>> IntegrationTest<C> {
     }
 
     fn test_mock(&mut self, circuit: &C, instance: Vec<Vec<Fr>>) {
+        log::info!("running mock prover");
         let mock_prover = MockProver::<Fr>::run(self.degree, circuit, instance).unwrap();
 
+        log::info!("testing variadics");
         self.test_variadic(&mock_prover);
 
+        log::info!("verifying");
         mock_prover
             .verify_par()
             .expect("mock prover verification failed");
@@ -305,6 +308,7 @@ impl<C: SubCircuit<Fr> + Circuit<Fr>> IntegrationTest<C> {
 
     ///
     pub async fn test_at_block_num(&mut self, block_num: u64, actual: bool) {
+        log::info!("building inputs for block #{}", block_num);
         let (builder, _) = gen_inputs(block_num).await;
         log::info!(
             "test {} circuit, block: #{}",

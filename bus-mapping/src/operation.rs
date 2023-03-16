@@ -114,7 +114,7 @@ pub enum Target {
 
 /// Trait used for Operation Kinds.
 
-pub trait Op: Clone + Eq + Ord {
+pub trait Op: Clone + Eq + Ord + Debug {
     /// Turn the Generic Op into an OpEnum so that we can match it into a
     /// particular Operation Kind.
     fn into_enum(self) -> OpEnum;

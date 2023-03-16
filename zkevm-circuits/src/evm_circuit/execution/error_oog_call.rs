@@ -1,3 +1,4 @@
+use ethers_core::types::U64;
 use crate::table::CallContextFieldTag;
 use crate::util::Expr;
 use crate::{
@@ -15,7 +16,7 @@ use crate::{
     witness::{Block, Call, ExecStep, Transaction},
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, StackWord, ToU256, U256};
+use eth_types::{Field, StackWord, ToU256};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 /// Gadget to implement the corresponding out of gas errors for
@@ -155,15 +156,17 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCallGadget<F> {
         let memory_expansion_gas_cost = self.call.assign(
             region,
             offset,
-            gas.to_u256(),
+            gas,
+            U64::zero(),
             callee_address.to_u256(),
+            U64::zero(),
             value.to_u256(),
-            U256::from(0),
+            U64::zero(),
+            U64::from(0),
             cd_offset,
             cd_length,
             rd_offset,
             rd_length,
-            step.memory_word_size(),
             region.word_rlc(callee_code_hash),
         )?;
 
