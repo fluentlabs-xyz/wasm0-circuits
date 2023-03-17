@@ -224,7 +224,7 @@ mod codecopy_tests {
             NumberOrHash::Hash(H256(keccak256(&wasm_binary_vec)))
         );
         assert_eq!(copy_events[0].src_addr as usize, code_offset);
-        assert_eq!(copy_events[0].src_addr_end as usize, code.to_vec().len());
+        assert_eq!(copy_events[0].src_addr_end as usize, code.code().len());
         assert_eq!(copy_events[0].src_type, CopyDataType::Bytecode);
         assert_eq!(
             copy_events[0].dst_id,

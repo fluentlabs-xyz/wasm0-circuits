@@ -263,7 +263,7 @@ impl Bytecode {
             OpcodeId::CODECOPY => ("_evm_codecopy", 3),
             OpcodeId::GASPRICE => ("_evm_gasprice", 1),
             OpcodeId::EXTCODESIZE => ("_evm_extcodesize", 2),
-            OpcodeId::EXTCODECOPY => ("_evm_extcodecopy", 3),
+            OpcodeId::EXTCODECOPY => ("_evm_extcodecopy", 4),
             OpcodeId::EXTCODEHASH => ("_evm_extcodehash", 2),
             OpcodeId::RETURNDATASIZE => ("_evm_returndatasize", 1),
             OpcodeId::RETURNDATACOPY => ("_evm_returndatacopy", 3),

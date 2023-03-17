@@ -34,7 +34,7 @@ mod codesize;
 // mod create;
 // mod dup;
 // mod exp;
-// mod extcodecopy;
+mod extcodecopy;
 // mod extcodehash;
 mod extcodesize;
 mod gasprice;
@@ -95,6 +95,7 @@ use selfbalance::Selfbalance;
 use stackonlyop::StackOnlyOpcode;
 use stop::Stop;
 use crate::evm::opcodes::chainid::ChainId;
+use crate::evm::opcodes::extcodecopy::Extcodecopy;
 use crate::evm::opcodes::extcodesize::Extcodesize;
 use crate::evm::opcodes::number::Number;
 use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
@@ -247,7 +248,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::CODECOPY => Codecopy::gen_associated_ops,
         OpcodeId::CODESIZE => Codesize::gen_associated_ops,
         OpcodeId::EXTCODESIZE => Extcodesize::gen_associated_ops,
-        // OpcodeId::EXTCODECOPY => Extcodecopy::gen_associated_ops,
+        OpcodeId::EXTCODECOPY => Extcodecopy::gen_associated_ops,
         OpcodeId::RETURNDATASIZE => Returndatasize::gen_associated_ops,
         OpcodeId::RETURNDATACOPY => Returndatacopy::gen_associated_ops,
         // OpcodeId::EXTCODEHASH => Extcodehash::gen_associated_ops,
