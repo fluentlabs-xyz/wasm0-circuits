@@ -107,6 +107,7 @@ mod wasm_const;
 mod wasm_drop;
 mod wasm_global;
 mod wasm_unary;
+mod wasm_local;
 
 use begin_tx::BeginTxGadget;
 use end_block::EndBlockGadget;
@@ -141,6 +142,7 @@ use wasm_unary::WasmUnaryGadget;
 use callop::CallOpGadget;
 use codecopy::CodeCopyGadget;
 use extcodesize::ExtcodesizeGadget;
+use crate::evm_circuit::execution::wasm_local::WasmLocalGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -277,6 +279,7 @@ pub(crate) struct ExecutionConfig<F> {
     wasm_const_gadget: WasmConstGadget<F>,
     wasm_drop_gadget: WasmDropGadget<F>,
     wasm_global_gadget: WasmGlobalGadget<F>,
+    wasm_local_gadget: WasmLocalGadget<F>,
     wasm_unary_gadget: WasmUnaryGadget<F>,
     wasm_end_gadget: WasmEndGadget<F>,
 }
@@ -538,6 +541,7 @@ impl<F: Field> ExecutionConfig<F> {
             wasm_const_gadget: configure_gadget!(),
             wasm_drop_gadget: configure_gadget!(),
             wasm_global_gadget: configure_gadget!(),
+            wasm_local_gadget: configure_gadget!(),
             wasm_unary_gadget: configure_gadget!(),
 
             // step and presets
@@ -1144,6 +1148,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::WASM_CONST => assign_exec_step!(self.wasm_const_gadget),
             ExecutionState::WASM_DROP => assign_exec_step!(self.wasm_drop_gadget),
             ExecutionState::WASM_GLOBAL => assign_exec_step!(self.wasm_global_gadget),
+            ExecutionState::WASM_LOCAL => assign_exec_step!(self.wasm_local_gadget),
             ExecutionState::WASM_UNARY => assign_exec_step!(self.wasm_unary_gadget),
             ExecutionState::WASM_END => assign_exec_step!(self.wasm_end_gadget),
             // opcode

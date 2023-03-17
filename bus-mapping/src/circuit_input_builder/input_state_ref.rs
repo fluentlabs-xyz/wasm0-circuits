@@ -287,6 +287,32 @@ impl<'a> CircuitInputStateRef<'a> {
         Ok(())
     }
 
+    ///
+    pub fn local_write(
+        &mut self,
+        step: &mut ExecStep,
+        address: StackAddress,
+        local_index: usize,
+        value: StackWord,
+    ) -> Result<(), Error> {
+        let call_id = self.call()?.call_id;
+        self.push_op(step, RW::WRITE, StackOp::new_with_local_index(call_id, address, value, local_index));
+        Ok(())
+    }
+
+    ///
+    pub fn local_read(
+        &mut self,
+        step: &mut ExecStep,
+        address: StackAddress,
+        local_index: usize,
+        value: StackWord,
+    ) -> Result<(), Error> {
+        let call_id = self.call()?.call_id;
+        self.push_op(step, RW::READ, StackOp::new_with_local_index(call_id, address, value, local_index));
+        Ok(())
+    }
+
     /// Push a write type [`StackOp`] into the
     /// [`OperationContainer`](crate::operation::OperationContainer) with the
     /// next [`RWCounter`](crate::operation::RWCounter)  and `call_id`, and then

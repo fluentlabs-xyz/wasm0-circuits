@@ -212,6 +212,8 @@ pub struct StackOp {
     pub address: StackAddress,
     /// Value
     pub value: StackWord,
+    /// Local Index
+    pub local_index: usize,
 }
 
 impl fmt::Debug for StackOp {
@@ -232,6 +234,17 @@ impl StackOp {
             call_id,
             address,
             value,
+            local_index: 0,
+        }
+    }
+
+    ///
+    pub const fn new_with_local_index(call_id: usize, address: StackAddress, value: StackWord, local_index: usize) -> StackOp {
+        StackOp {
+            call_id,
+            address,
+            value,
+            local_index,
         }
     }
 
@@ -253,6 +266,11 @@ impl StackOp {
     /// Returns the [`Word`] read or written by this operation.
     pub const fn value(&self) -> &StackWord {
         &self.value
+    }
+
+    ///
+    pub const fn local_index(&self) -> usize {
+        self.local_index
     }
 }
 

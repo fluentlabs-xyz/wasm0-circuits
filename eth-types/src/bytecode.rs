@@ -5,7 +5,6 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use ethers_core::types::H160;
 
 use wasm_encoder::{CodeSection, ConstExpr, DataSection, Encode, Function, FunctionSection, GlobalSection, GlobalType, Instruction, TypeSection, ValType};
 
@@ -452,6 +451,7 @@ impl Bytecode {
             OpcodeId::End => Instruction::End,
             OpcodeId::Unreachable => Instruction::Unreachable,
             OpcodeId::Drop => Instruction::Drop,
+            OpcodeId::Return => Instruction::Return,
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }
@@ -815,6 +815,23 @@ mod tests {
         };
         bytecode.new_function(vec![], vec![ValType::I32], bytecode! {
             I32Const[0x7f]
+        }, vec![]);
+        let wasm_binary = bytecode.wasm_binary();
+        println!("{}", hex::encode(wasm_binary));
+    }
+
+    #[test]
+    fn test_wasm_locals_encoding() {
+        let mut bytecode = bytecode! {
+            I32Const[100]
+            I32Const[20]
+            Call[0]
+            Drop
+        };
+        bytecode.new_function(vec![ValType::I32; 2], vec![ValType::I32], bytecode! {
+            GetLocal[0]
+            GetLocal[1]
+            I32Add
         }, vec![]);
         let wasm_binary = bytecode.wasm_binary();
         println!("{}", hex::encode(wasm_binary));

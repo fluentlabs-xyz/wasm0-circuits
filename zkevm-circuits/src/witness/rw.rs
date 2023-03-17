@@ -212,6 +212,7 @@ pub enum Rw {
         call_id: usize,
         stack_pointer: usize,
         value: StackWord,
+        local_index: usize,
     },
     /// Global
     Global {
@@ -367,6 +368,13 @@ impl Rw {
     pub(crate) fn stack_value(&self) -> StackWord {
         match self {
             Self::Stack { value, .. } => *value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub(crate) fn local_value(&self) -> (StackWord, usize) {
+        match self {
+            Self::Stack { value, local_index, .. } => (*value, *local_index),
             _ => unreachable!(),
         }
     }
@@ -829,6 +837,7 @@ impl From<&operation::OperationContainer> for RwMap {
                     call_id: op.op().call_id(),
                     stack_pointer: usize::from(*op.op().address()),
                     value: *op.op().value(),
+                    local_index: op.op().local_index(),
                 })
                 .collect(),
         );

@@ -293,6 +293,7 @@ fn first_access_for_stack_is_write() {
             call_id: 1,
             stack_pointer: 1022,
             value: U64::from(394500u64),
+            local_index: 0,
         },
         Rw::Stack {
             rw_counter: 25,
@@ -300,6 +301,7 @@ fn first_access_for_stack_is_write() {
             call_id: 1,
             stack_pointer: 1022,
             value: U64::from(394500u64),
+            local_index: 0,
         },
     ];
 
@@ -354,6 +356,7 @@ fn tx_log_ok() {
             call_id: 1,
             stack_pointer: 1023,
             value: U64::from(394500u64),
+            local_index: 0,
         },
         Rw::TxLog {
             rw_counter: 2,
@@ -827,6 +830,7 @@ fn stack_read_before_write() {
         call_id: 3,
         stack_pointer: 200,
         value: U64::zero(),
+        local_index: 0,
     }];
 
     assert_error_matches(verify(rows), "first access to new stack address is a write");
@@ -840,6 +844,7 @@ fn invalid_stack_address() {
         call_id: 3,
         stack_pointer: 3000,
         value: U64::from(10),
+        local_index: 0,
     }];
 
     assert_error_matches(verify(rows), "stack address fits into 10 bits");
@@ -854,6 +859,7 @@ fn invalid_stack_address_change() {
             call_id: 3,
             stack_pointer: 100,
             value: U64::from(10),
+            local_index: 0,
         },
         Rw::Stack {
             rw_counter: 13,
@@ -861,6 +867,7 @@ fn invalid_stack_address_change() {
             call_id: 3,
             stack_pointer: 102,
             value: U64::from(20),
+            local_index: 0,
         },
     ];
 
@@ -903,6 +910,7 @@ fn bad_initial_stack_value() {
         call_id: 1,
         stack_pointer: 10,
         value: U64::from(10),
+        local_index: 0,
     }];
 
     let overrides = HashMap::from([
@@ -995,6 +1003,7 @@ fn variadic_size_check() {
             call_id: 1,
             stack_pointer: 1022,
             value: StackWord::from(394500u64),
+            local_index: 0,
         },
         Rw::Stack {
             rw_counter: 25,
@@ -1002,6 +1011,7 @@ fn variadic_size_check() {
             call_id: 1,
             stack_pointer: 1022,
             value: StackWord::from(394500u64),
+            local_index: 0,
         },
     ];
 
@@ -1023,6 +1033,7 @@ fn variadic_size_check() {
             call_id: 1,
             stack_pointer: 1021,
             value: StackWord::from(394511u64),
+            local_index: 0,
         },
         Rw::Stack {
             rw_counter: 27,
@@ -1030,6 +1041,7 @@ fn variadic_size_check() {
             call_id: 1,
             stack_pointer: 1021,
             value: StackWord::from(394511u64),
+            local_index: 0,
         },
     ]);
 

@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::iter;
 
 use halo2_proofs::{
@@ -5,7 +6,6 @@ use halo2_proofs::{
     circuit::Value,
     plonk::{Advice, Column, ConstraintSystem, Error, Expression},
 };
-use std::fmt::Display;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -35,6 +35,7 @@ pub enum ExecutionState {
     WASM_CONST,
     WASM_DROP,
     WASM_GLOBAL,
+    WASM_LOCAL,
     WASM_UNARY,
     WASM_END,
     // Opcode successful cases
@@ -244,6 +245,10 @@ impl ExecutionState {
                 OpcodeId::GetGlobal,
                 OpcodeId::SetGlobal,
             ],
+            Self::WASM_LOCAL => vec![
+                OpcodeId::GetLocal,
+                OpcodeId::SetLocal,
+            ],
             Self::WASM_END => vec![OpcodeId::End],
             // EVM opcodes
             Self::STOP => vec![OpcodeId::STOP],
@@ -316,9 +321,9 @@ impl ExecutionState {
             Self::ErrorInvalidOpcode => OpcodeId::invalid_opcodes(),
             _ => vec![],
         }
-        .into_iter()
-        .map(Into::into)
-        .collect()
+            .into_iter()
+            .map(Into::into)
+            .collect()
     }
 
     pub fn get_step_height_option(&self) -> Option<usize> {

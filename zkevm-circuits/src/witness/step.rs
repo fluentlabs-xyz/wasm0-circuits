@@ -1,4 +1,5 @@
 use std::fmt;
+
 use bus_mapping::{
     circuit_input_builder,
     error::{ExecError, OogError},
@@ -9,7 +10,7 @@ use eth_types::evm_unimplemented;
 
 use crate::{
     evm_circuit::{
-        param::{STACK_CAPACITY},
+        param::STACK_CAPACITY,
         step::ExecutionState,
     },
     table::RwTableTag,
@@ -168,6 +169,9 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
 
                     OpcodeId::GetGlobal |
                     OpcodeId::SetGlobal => ExecutionState::WASM_GLOBAL,
+
+                    OpcodeId::GetLocal |
+                    OpcodeId::SetLocal => ExecutionState::WASM_LOCAL,
 
                     OpcodeId::End => ExecutionState::WASM_END,
 

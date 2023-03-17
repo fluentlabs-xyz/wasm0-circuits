@@ -64,6 +64,7 @@ mod error_write_protection;
 #[cfg(test)]
 mod memory_expansion_test;
 mod wasm_global;
+mod wasm_local;
 
 use address::Address;
 use balance::Balance;
@@ -92,11 +93,12 @@ use returndatasize::Returndatasize;
 use selfbalance::Selfbalance;
 use stackonlyop::StackOnlyOpcode;
 use stop::Stop;
-use crate::evm::opcodes::chainid::ChainId;
-use crate::evm::opcodes::extcodesize::Extcodesize;
-use crate::evm::opcodes::wasm_global::WasmGlobalOpcode;
-use crate::evm::opcodes::number::Number;
-use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
+use chainid::ChainId;
+use extcodesize::Extcodesize;
+use wasm_global::WasmGlobalOpcode;
+use number::Number;
+use stacktomemoryop::StackToMemoryOpcode;
+use crate::evm::opcodes::wasm_local::WasmLocalOpcode;
 
 /// Generic opcode trait which defines the logic of the
 /// [`Operation`](crate::operation::Operation) that should be generated for one
@@ -221,13 +223,14 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         // WASM global opcodes
         OpcodeId::SetGlobal |
         OpcodeId::GetGlobal => WasmGlobalOpcode::gen_associated_ops,
+        // WASM local opcodes
+        OpcodeId::SetLocal |
+        OpcodeId::GetLocal => WasmLocalOpcode::gen_associated_ops,
 
         OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
         OpcodeId::Return => Dummy::gen_associated_ops,
 
         // TODO these are temporal. need a fix.
-        // OpcodeId::GetLocal => Dummy::gen_associated_ops,
-        // OpcodeId::SetLocal => Dummy::gen_associated_ops,
         // OpcodeId::I32GtU => Dummy::gen_associated_ops,
         // OpcodeId::If => Dummy::gen_associated_ops,
         // OpcodeId::Call => Dummy::gen_associated_ops,
