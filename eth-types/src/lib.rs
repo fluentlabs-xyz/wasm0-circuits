@@ -670,6 +670,7 @@ pub struct GethExecTraceInternal {
     pub struct_logs: Vec<GethExecStep>,
     /// Globals.
     #[serde(rename = "globals")]
+    #[serde(default)]
     pub globals: Vec<GethExecTraceGlobal>,
 }
 

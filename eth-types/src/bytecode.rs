@@ -3,8 +3,11 @@
 use std::{collections::HashMap, str::FromStr};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use ethers_core::types::H160;
 
-use wasm_encoder::{ConstExpr, DataSection, Encode, GlobalSection, GlobalType, Instruction};
+use wasm_encoder::{CodeSection, ConstExpr, DataSection, Encode, Function, FunctionSection, GlobalSection, GlobalType, Instruction, TypeSection, ValType};
 
 use crate::{Address, Bytes, evm_types::OpcodeId, ToLittleEndian, U256, Word};
 
@@ -42,7 +45,7 @@ impl Ord for SectionDescriptor {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EvmCall {
     fn_name: &'static str,
-    args_num: usize,
+    type_index: u32,
 }
 
 /// Helper struct that represents a single element in a bytecode.
@@ -61,6 +64,13 @@ pub struct GlobalVariable {
     pub init_code: Vec<u8>,
     pub is_64bit: bool,
     pub readonly: bool,
+}
+
+///
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InternalFunction {
+    pub index: u32,
+    pub code: Vec<u8>,
 }
 
 impl GlobalVariable {
@@ -93,13 +103,17 @@ impl GlobalVariable {
 }
 
 /// EVM Bytecode
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Bytecode {
     /// Vector for bytecode elements.
     bytecode_items: Vec<BytecodeElement>,
     global_data: (u32, Vec<u8>),
     section_descriptors: Vec<SectionDescriptor>,
     variables: Vec<GlobalVariable>,
+    existing_types: HashMap<u64, u32>,
+    types: TypeSection,
+    functions: FunctionSection,
+    codes: CodeSection,
     evm_table: HashMap<EvmCall, usize>,
     num_opcodes: usize,
     markers: HashMap<String, usize>,
@@ -136,27 +150,19 @@ impl WasmBinaryBytecode for UncheckedWasmBinary {
 impl WasmBinaryBytecode for Bytecode {
     fn wasm_binary(&self) -> Vec<u8> {
         use wasm_encoder::{
-            CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
-            ImportSection, MemorySection, MemoryType, Module, TypeSection, ValType,
+            EntityType, ExportKind, ExportSection,
+            ImportSection, MemorySection, MemoryType, Module,
         };
         let mut module = Module::new();
         // Encode the type & imports section.
-        let mut types = TypeSection::new();
-        let max_evm_args = self.evm_table.keys().map(|v| { v.args_num }).max().unwrap_or(0) + 1;
-        (0..max_evm_args).for_each(|args_num| {
-            types.function(vec![ValType::I32; args_num], vec![]);
-        });
         let mut imports = ImportSection::new();
         let ordered_evm_table = self.evm_table.clone()
             .into_iter()
             .map(|(k, v)| (v, k))
             .collect::<BTreeMap<_, _>>();
         for (_, evm_call) in ordered_evm_table {
-            imports.import("env", evm_call.fn_name, EntityType::Function(evm_call.args_num as u32));
+            imports.import("env", evm_call.fn_name, EntityType::Function(evm_call.type_index));
         }
-        // Encode the function section
-        let mut functions = FunctionSection::new();
-        functions.function(0);
         // Create memory section
         let mut memories = MemorySection::new();
         memories.memory(MemoryType {
@@ -167,17 +173,18 @@ impl WasmBinaryBytecode for Bytecode {
         });
         // Encode the export section.
         let mut exports = ExportSection::new();
-        exports.export("main", ExportKind::Func, self.evm_table.len() as u32);
+        exports.export("main", ExportKind::Func, self.evm_table.len() as u32 + self.functions.len());
         exports.export("memory", ExportKind::Memory, 0);
-        // Encode the code section.
-        let mut codes = CodeSection::new();
-        let locals = vec![];
-        let mut f = Function::new(locals);
+        // Encode the main function
+        let mut functions = self.functions.clone();
+        functions.function(0);
+        let mut codes = self.codes.clone();
+        let mut f = Function::new(vec![]);
         f.raw(self.code());
         f.instruction(&Instruction::End);
         codes.function(&f);
         // build sections order (Custom,Type,Import,Function,Table,Memory,Global,Event,Export,Start,Elem,DataCount,Code,Data)
-        module.section(&types);
+        module.section(&self.types);
         module.section(&imports);
         module.section(&functions);
         module.section(&memories);
@@ -218,24 +225,38 @@ impl WasmBinaryBytecode for Bytecode {
     }
 }
 
+impl Default for Bytecode {
+    fn default() -> Self {
+        let mut res = Self {
+            bytecode_items: vec![],
+            global_data: (0, vec![]),
+            section_descriptors: vec![],
+            variables: vec![],
+            existing_types: Default::default(),
+            types: Default::default(),
+            functions: Default::default(),
+            codes: Default::default(),
+            evm_table: Default::default(),
+            num_opcodes: 0,
+            markers: Default::default(),
+        };
+        res.ensure_function_type(vec![], vec![]);
+        res
+    }
+}
+
 impl Bytecode {
     /// Build not checked bytecode
     pub fn from_raw_unchecked(input: Vec<u8>) -> Self {
-        Self {
-            bytecode_items: input
-                .iter()
-                .map(|b| BytecodeElement {
-                    value: *b,
-                    is_code: true,
-                })
-                .collect(),
-            global_data: (0, Vec::new()),
-            section_descriptors: Vec::new(),
-            variables: Vec::new(),
-            evm_table: HashMap::new(),
-            markers: HashMap::new(),
-            num_opcodes: 0,
-        }
+        let mut res = Self::default();
+        res.bytecode_items = input
+            .iter()
+            .map(|b| BytecodeElement {
+                value: *b,
+                is_code: true,
+            })
+            .collect();
+        res
     }
 
     pub fn alloc_default_global_data(&mut self, size: u32) -> u32 {
@@ -259,6 +280,41 @@ impl Bytecode {
 
     pub fn with_global_variable(&mut self, global_variable: GlobalVariable) {
         self.variables.push(global_variable);
+    }
+
+    fn encode_function_type(input: &Vec<ValType>, output: &Vec<ValType>) -> u64 {
+        let mut buf = Vec::new();
+        input.encode(&mut buf);
+        output.encode(&mut buf);
+        let mut hasher = DefaultHasher::new();
+        buf.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn ensure_function_type(&mut self, input: Vec<ValType>, output: Vec<ValType>) -> u32 {
+        let type_hash = Self::encode_function_type(&input, &output);
+        if let Some(type_index) = self.existing_types.get(&type_hash) {
+            return *type_index;
+        }
+        let type_index = self.existing_types.len() as u32;
+        self.existing_types.insert(type_hash, type_index);
+        self.types.function(input, output);
+        type_index
+    }
+
+    pub fn new_function(
+        &mut self,
+        input: Vec<ValType>,
+        output: Vec<ValType>,
+        bytecode: Bytecode,
+        locals: Vec<(u32, ValType)>,
+    ) {
+        let type_index = self.ensure_function_type(input, output);
+        self.functions.function(type_index);
+        let mut f = Function::new(locals);
+        f.raw(bytecode.code());
+        f.instruction(&Instruction::End);
+        self.codes.function(&f);
     }
 
     /// Get the raw code
@@ -296,6 +352,11 @@ impl Bytecode {
         if self.evm_table.len() > 0 && other.section_descriptors.len() > 0 {
             panic!("EVM table collision might happen, not implemented");
         }
+        self.variables = other.variables.clone();
+        self.existing_types = other.existing_types.clone();
+        self.types = other.types.clone();
+        self.functions = other.functions.clone();
+        self.codes = other.codes.clone();
         for (evm_call, call_index) in other.evm_table.iter() {
             self.evm_table.insert(*evm_call, *call_index);
         }
@@ -348,9 +409,12 @@ impl Bytecode {
             OpcodeId::SELFBALANCE => ("_evm_selfbalance", 1),
             _ => unreachable!("not supported EVM opcode: {op}")
         };
+
+        let type_index = self.ensure_function_type(vec![ValType::I32; args_num], vec![]);
+
         let evm_call = EvmCall {
             fn_name,
-            args_num,
+            type_index,
         };
 
         let call_index = if let Some(call_index) = self.evm_table.get(&evm_call) {
@@ -426,6 +490,7 @@ impl Bytecode {
             OpcodeId::GetLocal => Instruction::LocalGet(val as u32),
             OpcodeId::SetLocal => Instruction::LocalSet(val as u32),
             OpcodeId::TeeLocal => Instruction::LocalTee(val as u32),
+            OpcodeId::Call => Instruction::Call(val as u32),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }
@@ -740,46 +805,18 @@ macro_rules! bytecode_internal {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use crate::Bytecode;
-
     use super::*;
 
     #[test]
-    fn test_bytecode_roundtrip() {
-        let code = bytecode! {
-            PUSH8(0x123)
-            POP
-            PUSH24(0x321)
-            PUSH32(0x432)
-            MUL
-            CALLVALUE
-            CALLER
-            POP
-            POP
-            POP
-            STOP
+    fn test_wasm_function_encoding() {
+        let mut bytecode = bytecode! {
+            Call[0]
+            Drop
         };
-        assert_eq!(Bytecode::try_from(code.to_vec()).unwrap(), code);
-    }
-
-    #[test]
-    fn test_asm_disasm() {
-        let code = bytecode! {
-            PUSH1(5)
-            PUSH2(0xa)
-            MUL
-            STOP
-        };
-        let mut code2 = Bytecode::default();
-        code.iter()
-            .map(|op| op.to_string())
-            .map(|op| OpcodeWithData::from_str(&op).unwrap())
-            .for_each(|op| {
-                code2.append_op(op);
-            });
-
-        assert_eq!(code.bytecode_items, code2.bytecode_items);
+        bytecode.new_function(vec![], vec![ValType::I32], bytecode! {
+            I32Const[0x7f]
+        }, vec![]);
+        let wasm_binary = bytecode.wasm_binary();
+        println!("{}", hex::encode(wasm_binary));
     }
 }

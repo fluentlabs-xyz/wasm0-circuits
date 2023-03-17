@@ -219,8 +219,8 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I32Popcnt |
         OpcodeId::I64Popcnt => StackOnlyOpcode::<1, 1>::gen_associated_ops,
         // WASM global opcodes
-        OpcodeId::SetGlobal => WasmGlobalOpcode::<true>::gen_associated_ops,
-        OpcodeId::GetGlobal => WasmGlobalOpcode::<false>::gen_associated_ops,
+        OpcodeId::SetGlobal |
+        OpcodeId::GetGlobal => WasmGlobalOpcode::gen_associated_ops,
 
         OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
         OpcodeId::Return => Dummy::gen_associated_ops,
