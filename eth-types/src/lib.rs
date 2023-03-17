@@ -829,6 +829,7 @@ mod tests {
                 failed: false,
                 return_value: "".to_owned(),
                 global_memory: Memory::new(),
+                globals: Vec::new(),
                 struct_logs: vec![
                     GethExecStep {
                         pc: ProgramCounter(0),

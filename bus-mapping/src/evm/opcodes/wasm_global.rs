@@ -7,9 +7,9 @@ use super::Opcode;
 
 ///
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct GlobalOpcode<const IS_WRITE: bool>;
+pub(crate) struct WasmGlobalOpcode<const IS_WRITE: bool>;
 
-impl<const IS_WRITE: bool> Opcode for GlobalOpcode<IS_WRITE> {
+impl<const IS_WRITE: bool> Opcode for WasmGlobalOpcode<IS_WRITE> {
     fn gen_associated_ops(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],

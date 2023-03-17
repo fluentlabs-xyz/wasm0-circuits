@@ -63,7 +63,7 @@ mod error_write_protection;
 
 #[cfg(test)]
 mod memory_expansion_test;
-mod global;
+mod wasm_global;
 
 use address::Address;
 use balance::Balance;
@@ -94,7 +94,7 @@ use stackonlyop::StackOnlyOpcode;
 use stop::Stop;
 use crate::evm::opcodes::chainid::ChainId;
 use crate::evm::opcodes::extcodesize::Extcodesize;
-use crate::evm::opcodes::global::GlobalOpcode;
+use crate::evm::opcodes::wasm_global::WasmGlobalOpcode;
 use crate::evm::opcodes::number::Number;
 use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
 
@@ -219,8 +219,8 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I32Popcnt |
         OpcodeId::I64Popcnt => StackOnlyOpcode::<1, 1>::gen_associated_ops,
         // WASM global opcodes
-        OpcodeId::SetGlobal => GlobalOpcode::<true>::gen_associated_ops,
-        OpcodeId::GetGlobal => GlobalOpcode::<false>::gen_associated_ops,
+        OpcodeId::SetGlobal => WasmGlobalOpcode::<true>::gen_associated_ops,
+        OpcodeId::GetGlobal => WasmGlobalOpcode::<false>::gen_associated_ops,
 
         OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
         OpcodeId::Return => Dummy::gen_associated_ops,
