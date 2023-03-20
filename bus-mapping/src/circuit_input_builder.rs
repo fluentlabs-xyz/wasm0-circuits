@@ -1,33 +1,6 @@
 //! This module contains the CircuitInputBuilder, which is an object that takes
 //! types from geth / web3 and outputs the circuit inputs.
 
-use core::fmt::Debug;
-use std::collections::HashMap;
-
-use ethers_providers::JsonRpcClient;
-use itertools::Itertools;
-use log::warn;
-
-pub use access::{Access, AccessSet, AccessValue, CodeSource};
-pub use block::{Block, BlockContext};
-pub use call::{Call, CallContext, CallKind};
-use eth_types::{self, Address, geth_types, GethExecStep, GethExecTrace, Word};
-use eth_types::sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData};
-use eth_types::ToWord;
-pub use execution::{
-    CopyDataType, CopyEvent, CopyStep, ExecState, ExecStep, ExpEvent, ExpStep, NumberOrHash,
-};
-pub use input_state_ref::CircuitInputStateRef;
-pub use transaction::{Transaction, TransactionContext};
-
-use crate::error::Error;
-use crate::evm::opcodes::{gen_associated_ops, gen_begin_tx_ops, gen_end_tx_ops};
-use crate::operation::{CallContextField, Operation, RW, RWCounter, StartOp};
-use crate::rpc::GethClient;
-use crate::state_db::{self, CodeDB, StateDB};
-
-use self::access::gen_state_access_trace;
-
 mod access;
 mod block;
 mod call;
@@ -36,6 +9,33 @@ mod input_state_ref;
 #[cfg(test)]
 mod tracer_tests;
 mod transaction;
+
+use self::access::gen_state_access_trace;
+use crate::{
+    error::Error,
+    evm::opcodes::{gen_associated_ops, gen_begin_tx_ops, gen_end_tx_ops},
+    operation::{CallContextField, Operation, RWCounter, StartOp, RW},
+    rpc::GethClient,
+    state_db::{self, CodeDB, StateDB},
+};
+pub use access::{Access, AccessSet, AccessValue, CodeSource};
+pub use block::{Block, BlockContext};
+pub use call::{Call, CallContext, CallKind};
+use core::fmt::Debug;
+use eth_types::{
+    self, geth_types,
+    sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData},
+    Address, GethExecStep, GethExecTrace, ToWord, Word,
+};
+use ethers_providers::JsonRpcClient;
+pub use execution::{
+    CopyDataType, CopyEvent, CopyStep, ExecState, ExecStep, ExpEvent, ExpStep, NumberOrHash,
+};
+pub use input_state_ref::CircuitInputStateRef;
+use itertools::Itertools;
+use log::warn;
+use std::collections::HashMap;
+pub use transaction::{Transaction, TransactionContext};
 
 /// Circuit Setup Parameters
 #[derive(Debug, Clone, Copy)]
@@ -274,7 +274,7 @@ impl<'a> CircuitInputBuilder {
         // - execution_state: BeginTx
         // - op: None
         // Generate BeginTx step
-        let begin_tx_step = gen_begin_tx_ops(&mut self.state_ref(&mut tx, &mut tx_ctx), &geth_trace.global_memory)?;
+        let begin_tx_step = gen_begin_tx_ops(&mut self.state_ref(&mut tx, &mut tx_ctx), &geth_trace)?;
         tx.steps_mut().push(begin_tx_step);
 
         for (index, geth_step) in geth_trace.struct_logs.iter().enumerate() {

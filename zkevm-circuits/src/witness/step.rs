@@ -1,4 +1,5 @@
 use std::fmt;
+
 use bus_mapping::{
     circuit_input_builder,
     error::{ExecError, OogError},
@@ -9,7 +10,7 @@ use eth_types::evm_unimplemented;
 
 use crate::{
     evm_circuit::{
-        param::{STACK_CAPACITY},
+        param::STACK_CAPACITY,
         step::ExecutionState,
     },
     table::RwTableTag,
@@ -23,6 +24,8 @@ pub struct ExecStep {
     pub call_index: usize,
     /// The indices in the RW trace incurred in this step
     pub rw_indices: Vec<(RwTableTag, usize)>,
+    /// Number of rw operations performed via a copy event in this step.
+    pub copy_rw_counter_delta: u64,
     /// The execution state for the step
     pub execution_state: ExecutionState,
     /// The Read/Write counter before the step
@@ -37,8 +40,10 @@ pub struct ExecStep {
     pub gas_cost: u64,
     /// The memory size in bytes
     pub memory_size: u64,
-    /// The counter for reversible writes
+    /// The counter for reversible writes at the beginning of the step
     pub reversible_write_counter: usize,
+    /// The number of reversible writes from this step
+    pub reversible_write_counter_delta: usize,
     /// The counter for log index within tx
     pub log_id: usize,
     /// The opcode corresponds to the step
@@ -166,6 +171,13 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::I32Popcnt |
                     OpcodeId::I64Popcnt => ExecutionState::WASM_UNARY,
 
+                    OpcodeId::GetGlobal |
+                    OpcodeId::SetGlobal => ExecutionState::WASM_GLOBAL,
+
+                    OpcodeId::GetLocal |
+                    OpcodeId::SetLocal |
+                    OpcodeId::TeeLocal => ExecutionState::WASM_LOCAL,
+
                     OpcodeId::End => ExecutionState::WASM_END,
 
                     // EVM opcodes
@@ -252,6 +264,7 @@ pub(super) fn step_convert(step: &circuit_input_builder::ExecStep) -> ExecStep {
                 let tag = match x.target() {
                     operation::Target::Memory => RwTableTag::Memory,
                     operation::Target::Stack => RwTableTag::Stack,
+                    operation::Target::Global => RwTableTag::Global,
                     operation::Target::Storage => RwTableTag::AccountStorage,
                     operation::Target::TxAccessListAccount => RwTableTag::TxAccessListAccount,
                     operation::Target::TxAccessListAccountStorage => {
@@ -267,6 +280,7 @@ pub(super) fn step_convert(step: &circuit_input_builder::ExecStep) -> ExecStep {
                 (tag, x.as_usize())
             })
             .collect(),
+        copy_rw_counter_delta: step.copy_rw_counter_delta,
         execution_state: ExecutionState::from(step),
         rw_counter: usize::from(step.rwc),
         program_counter: usize::from(step.pc) as u64,
@@ -279,6 +293,7 @@ pub(super) fn step_convert(step: &circuit_input_builder::ExecStep) -> ExecStep {
         },
         memory_size: step.memory_size as u64,
         reversible_write_counter: step.reversible_write_counter,
+        reversible_write_counter_delta: step.reversible_write_counter_delta,
         log_id: step.log_id,
     }
 }

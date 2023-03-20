@@ -1,0 +1,27 @@
+use serde::Serialize;
+use crate::wasm_circuit::specs::types::ValueType;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Signature {
+    pub params: Vec<ValueType>,
+    pub return_type: Option<ValueType>,
+}
+
+#[derive(Debug)]
+pub enum Error {
+    DuplicateRegister,
+}
+
+#[derive(Debug, Clone)]
+pub struct HostFunctionDesc {
+    pub name: String,
+    pub op_index_in_plugin: usize,
+    pub plugin: HostPlugin,
+}
+
+#[derive(Clone, Debug, Serialize, Copy, PartialEq)]
+pub enum HostPlugin {
+    HostInput = 0,
+    Sha256,
+    Require,
+}

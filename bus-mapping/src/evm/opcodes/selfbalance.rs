@@ -1,10 +1,10 @@
 use super::Opcode;
-use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
-use crate::operation::{AccountField, CallContextField};
-use crate::Error;
-use eth_types::{GethExecStep, ToBigEndian};
-use eth_types::ToWord;
-use eth_types::U256;
+use crate::{
+    circuit_input_builder::{CircuitInputStateRef, ExecStep},
+    operation::{AccountField, CallContextField},
+    Error,
+};
+use eth_types::{GethExecStep, ToBigEndian, ToWord, U256};
 use eth_types::evm_types::MemoryAddress;
 
 const SELF_BALANCE_BYTE_LENGTH: usize = 32;
@@ -38,7 +38,6 @@ impl Opcode for Selfbalance {
             &mut exec_step,
             callee_address,
             AccountField::Balance,
-            self_balance,
             self_balance,
         );
 

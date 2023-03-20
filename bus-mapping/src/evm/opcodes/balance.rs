@@ -1,13 +1,13 @@
-use eth_types::{GethExecStep, H256, ToBigEndian, ToWord};
+use crate::{
+    circuit_input_builder::{CircuitInputStateRef, ExecStep},
+    evm::Opcode,
+    operation::{AccountField, CallContextField, TxAccessListAccountOp},
+    Error,
+};
+use eth_types::{GethExecStep, ToWord, H256, U256, ToBigEndian};
 use eth_types::evm_types::{MemoryAddress};
-use eth_types::U256;
 
-use crate::circuit_input_builder::CircuitInputStateRef;
-use crate::circuit_input_builder::ExecStep;
-use crate::Error;
-use crate::evm::Opcode;
 use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
-use crate::operation::{AccountField, CallContextField, RW, TxAccessListAccountOp};
 
 pub const BALANCE_BYTE_LENGTH: usize = 32;
 
@@ -57,7 +57,6 @@ impl Opcode for Balance {
         let is_warm = state.sdb.check_account_in_access_list(&address);
         state.push_op_reversible(
             &mut exec_step,
-            RW::WRITE,
             TxAccessListAccountOp {
                 tx_id: state.tx_ctx.id(),
                 address,
@@ -79,16 +78,9 @@ impl Opcode for Balance {
             address,
             AccountField::CodeHash,
             code_hash.to_word(),
-            code_hash.to_word(),
         );
         if exists {
-            state.account_read(
-                &mut exec_step,
-                address,
-                AccountField::Balance,
-                balance,
-                balance,
-            );
+            state.account_read(&mut exec_step, address, AccountField::Balance, balance);
         }
 
         let address_offset_addr = MemoryAddress::try_from(address_offset)?;
@@ -109,19 +101,16 @@ impl Opcode for Balance {
 
 #[cfg(test)]
 mod balance_tests {
-    use pretty_assertions::assert_eq;
-
-    use eth_types::{address, bytecode, Bytecode, StackWord, ToBigEndian, U256, Word};
-    use eth_types::bytecode::WasmBinaryBytecode;
-    use eth_types::evm_types::{OpcodeId, StackAddress};
-    use eth_types::geth_types::GethData;
-    use mock::TestContext;
-
-    use crate::circuit_input_builder::ExecState;
-    use crate::mocks::BlockData;
-    use crate::operation::{AccountOp, CallContextOp, MemoryOp, RW, StackOp};
-
     use super::*;
+    use crate::{
+        circuit_input_builder::ExecState,
+        mocks::BlockData,
+        operation::{AccountOp, CallContextOp, StackOp, RW},
+    };
+    use eth_types::{address, bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Bytecode, ToWord, Word, U256, StackWord};
+    use eth_types::bytecode::WasmBinaryBytecode;
+    use mock::TestContext;
+    use crate::operation::MemoryOp;
 
     #[test]
     fn test_balance_of_non_existing_address() {
@@ -234,6 +223,7 @@ mod balance_tests {
                 call_id,
                 address: StackAddress::from(1022u32),
                 value: StackWord::from(balance_offset),
+                local_index: 0,
             }
         );
 
@@ -246,6 +236,7 @@ mod balance_tests {
                 call_id,
                 address: StackAddress::from(1023u32),
                 value: StackWord::from(address_offset),
+                local_index: 0,
             }
         );
 

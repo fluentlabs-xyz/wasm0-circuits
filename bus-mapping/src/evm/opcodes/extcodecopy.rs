@@ -1,9 +1,11 @@
 use super::Opcode;
-use crate::circuit_input_builder::{
-    CircuitInputStateRef, CopyDataType, CopyEvent, ExecStep, NumberOrHash,
+use crate::{
+    circuit_input_builder::{
+        CircuitInputStateRef, CopyDataType, CopyEvent, ExecStep, NumberOrHash,
+    },
+    operation::{AccountField, CallContextField, TxAccessListAccountOp},
+    Error,
 };
-use crate::operation::{AccountField, CallContextField, TxAccessListAccountOp, RW};
-use crate::Error;
 use eth_types::{Bytecode, GethExecStep, ToWord, H256, U256};
 use eth_types::evm_types::MemoryAddress;
 use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
@@ -45,7 +47,7 @@ impl Opcode for Extcodecopy {
             state.memory_read(&mut exec_step, address_offset_addr.map(|a| a + i), external_address[i])?;
         }
 
-        state.push_copy(copy_event);
+        state.push_copy(&mut exec_step, copy_event);
         Ok(vec![exec_step])
     }
 }
@@ -93,7 +95,6 @@ fn gen_extcodecopy_step(
     let is_warm = state.sdb.check_account_in_access_list(&external_address);
     state.push_op_reversible(
         &mut exec_step,
-        RW::WRITE,
         TxAccessListAccountOp {
             tx_id: state.tx_ctx.id(),
             address: external_address.clone(),
@@ -114,7 +115,6 @@ fn gen_extcodecopy_step(
         &mut exec_step,
         external_address.clone(),
         AccountField::CodeHash,
-        code_hash.to_word(),
         code_hash.to_word(),
     );
     Ok(exec_step)
@@ -316,7 +316,8 @@ mod extcodecopy_tests {
                 &StackOp {
                     call_id,
                     address: StackAddress::from(1020u32),
-                    value: copy_size.into()
+                    value: copy_size.into(),
+                    local_index: 0,
                 }
             )
         );
@@ -331,7 +332,8 @@ mod extcodecopy_tests {
                 &StackOp {
                     call_id,
                     address: StackAddress::from(1021u32),
-                    value: code_offset.into()
+                    value: code_offset.into(),
+                    local_index: 0,
                 }
             )
         );
@@ -346,7 +348,8 @@ mod extcodecopy_tests {
                 &StackOp {
                     call_id,
                     address: StackAddress::from(1022u32),
-                    value: memory_offset.into()
+                    value: memory_offset.into(),
+                    local_index: 0,
                 }
             )
         );
@@ -361,7 +364,8 @@ mod extcodecopy_tests {
                 &StackOp {
                     call_id,
                     address: StackAddress::from(1023u32),
-                    value: external_address_offset.into()
+                    value: external_address_offset.into(),
+                    local_index: 0,
                 }
             )
         );

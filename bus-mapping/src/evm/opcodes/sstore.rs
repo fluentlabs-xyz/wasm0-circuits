@@ -1,8 +1,7 @@
 use super::Opcode;
-use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
-use crate::operation::{CallContextField, TxRefundOp};
 use crate::{
-    operation::{StorageOp, TxAccessListAccountStorageOp, RW},
+    circuit_input_builder::{CircuitInputStateRef, ExecStep},
+    operation::{CallContextField, StorageOp, TxAccessListAccountStorageOp, TxRefundOp},
     Error,
 };
 
@@ -80,7 +79,6 @@ impl Opcode for Sstore {
 
         state.push_op_reversible(
             &mut exec_step,
-            RW::WRITE,
             StorageOp::new(
                 state.call()?.address,
                 key,
@@ -93,7 +91,6 @@ impl Opcode for Sstore {
 
         state.push_op_reversible(
             &mut exec_step,
-            RW::WRITE,
             TxAccessListAccountStorageOp {
                 tx_id: state.tx_ctx.id(),
                 address: state.call()?.address,
@@ -105,7 +102,6 @@ impl Opcode for Sstore {
 
         state.push_op_reversible(
             &mut exec_step,
-            RW::WRITE,
             TxRefundOp {
                 tx_id: state.tx_ctx.id(),
                 value_prev: state.sdb.refund(),
@@ -120,15 +116,18 @@ impl Opcode for Sstore {
 #[cfg(test)]
 mod sstore_tests {
     use super::*;
-    use crate::circuit_input_builder::ExecState;
-    use crate::mocks::BlockData;
-    use crate::operation::{CallContextOp, StackOp};
-    use eth_types::bytecode;
-    use eth_types::evm_types::{OpcodeId, StackAddress};
-    use eth_types::geth_types::GethData;
-    use eth_types::Word;
-    use mock::test_ctx::helpers::tx_from_1_to_0;
-    use mock::{TestContext, MOCK_ACCOUNTS};
+    use crate::{
+        circuit_input_builder::ExecState,
+        mock::BlockData,
+        operation::{CallContextOp, StackOp, RW},
+    };
+    use eth_types::{
+        bytecode,
+        evm_types::{OpcodeId, StackAddress},
+        geth_types::GethData,
+        Word,
+    };
+    use mock::{test_ctx::helpers::tx_from_1_to_0, TestContext, MOCK_ACCOUNTS};
     use pretty_assertions::assert_eq;
     use eth_types::bytecode::DataSectionDescriptor;
     use crate::evm::opcodes::append_vector_to_vector_with_padding;

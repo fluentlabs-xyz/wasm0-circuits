@@ -17,7 +17,7 @@ impl Opcode for Codecopy {
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
         let geth_step = &geth_steps[0];
-        let exec_steps = vec![gen_codecopy_step(state, geth_step)?];
+        let mut exec_steps = vec![gen_codecopy_step(state, geth_step)?];
 
         let size = geth_step.stack.nth_last(0)?.as_u64();
         let code_offset = geth_step.stack.nth_last(1)?.as_u64();
@@ -32,7 +32,7 @@ impl Opcode for Codecopy {
         memory.copy_from(dest_offset, &code, code_offset, size as usize);
 
         let copy_event = gen_copy_event(state, geth_step)?;
-        state.push_copy(copy_event);
+        state.push_copy(&mut exec_steps[0], copy_event);
         Ok(exec_steps)
     }
 }

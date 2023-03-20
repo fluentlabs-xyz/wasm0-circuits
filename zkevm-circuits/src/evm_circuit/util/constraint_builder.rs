@@ -1,15 +1,3 @@
-use halo2_proofs::{
-    circuit::Value,
-    plonk::{
-        Error,
-        Expression::{self, Constant},
-    },
-};
-
-use eth_types::Field;
-use gadgets::util::{and, not};
-use keccak256::EMPTY_HASH_LE;
-
 use crate::{
     evm_circuit::{
         param::STACK_CAPACITY,
@@ -23,6 +11,16 @@ use crate::{
     },
     util::{build_tx_log_expression, Challenges, Expr},
 };
+use eth_types::Field;
+use gadgets::util::not;
+use halo2_proofs::{
+    circuit::Value,
+    plonk::{
+        Error,
+        Expression::{self, Constant},
+    },
+};
+use keccak256::EMPTY_HASH_LE;
 
 use super::{CachedRegion, CellType, rlc, StoredExpression};
 
@@ -115,11 +113,13 @@ impl<F: Field> ReversionInfo<F> {
     }
 
     /// Returns `rw_counter_end_of_reversion - reversible_write_counter` and
-    /// increases `reversible_write_counter` by `1`.
-    pub(crate) fn rw_counter_of_reversion(&mut self) -> Expression<F> {
+    /// increases `reversible_write_counter` by `1` when `inc_selector` is
+    /// enabled.
+    pub(crate) fn rw_counter_of_reversion(&mut self, inc_selector: Expression<F>) -> Expression<F> {
         let rw_counter_of_reversion =
-            self.rw_counter_end_of_reversion.expr() - self.reversible_write_counter.expr();
-        self.reversible_write_counter = self.reversible_write_counter.clone() + 1.expr();
+            self.rw_counter_end_of_reversion.expr() - self.reversible_write_counter.clone();
+        self.reversible_write_counter =
+            self.reversible_write_counter.clone() + inc_selector * 1.expr();
         rw_counter_of_reversion
     }
 
@@ -275,7 +275,7 @@ pub(crate) struct ConstraintBuilder<'a, F> {
     stack_pointer_offset: Expression<F>,
     log_id_offset: usize,
     in_next_step: bool,
-    condition: Option<Expression<F>>,
+    conditions: Vec<Expression<F>>,
     constraints_location: ConstraintLocation,
     stored_expressions: Vec<StoredExpression<F>>,
 }
@@ -304,7 +304,7 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
             stack_pointer_offset: 0.expr(),
             log_id_offset: 0,
             in_next_step: false,
-            condition: None,
+            conditions: Vec::new(),
             constraints_location: ConstraintLocation::Step,
             stored_expressions: Vec::new(),
         }
@@ -330,6 +330,15 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
             self.stored_expressions,
             self.curr.cell_manager.get_height(),
         )
+    }
+
+    fn condition_expr_opt(&self) -> Option<Expression<F>> {
+        let mut iter = self.conditions.iter();
+        let first = match iter.next() {
+            Some(e) => e,
+            None => return None,
+        };
+        Some(iter.fold(first.clone(), |acc, e| acc * e.clone()))
     }
 
     pub(crate) fn challenges(&self) -> &Challenges<Expression<F>> {
@@ -535,7 +544,7 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         constrain!(is_root);
         constrain!(is_create);
         constrain!(code_hash);
-        constrain!(program_counter);
+        // constrain!(program_counter);
         constrain!(stack_pointer);
         constrain!(gas_left);
         // constrain!(memory_word_size);
@@ -745,7 +754,7 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         // Manually constant folding is used here, since halo2 cannot do this
         // automatically. Better error message will be printed during circuit
         // debugging.
-        self.rw_counter_offset = match &self.condition {
+        self.rw_counter_offset = match self.condition_expr_opt() {
             None => {
                 if let Constant(v) = self.rw_counter_offset {
                     Constant(v + F::from(1u64))
@@ -753,7 +762,7 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
                     self.rw_counter_offset.clone() + 1i32.expr()
                 }
             }
-            Some(c) => self.rw_counter_offset.clone() + c.clone(),
+            Some(c) => self.rw_counter_offset.clone() + c,
         };
     }
 
@@ -773,31 +782,21 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
 
         // Revert if is_persistent is 0
         if let Some(reversion_info) = reversion_info {
-            // To allow conditional reversible writes, we extract the pre-existing condition
-            // here if it exists, and then reset it afterwards.
-            let condition = self.condition.clone();
-            self.condition = None;
-            self.condition(
-                and::expr(&[
-                    condition.clone().unwrap_or_else(|| 1.expr()),
-                    not::expr(reversion_info.is_persistent()),
-                ]),
-                |cb| {
-                    let name = format!("{} with reversion", name);
-                    cb.rw_lookup_with_counter(
-                        &name,
-                        reversion_info.rw_counter_of_reversion(),
-                        true.expr(),
-                        tag,
-                        RwValues {
-                            value_prev: values.value,
-                            value: values.value_prev,
-                            ..values
-                        },
-                    )
-                },
-            );
-            self.condition = condition;
+            let reversible_write_counter_inc_selector = self.condition_expr();
+            self.condition(not::expr(reversion_info.is_persistent()), |cb| {
+                let name = format!("{} with reversion", name);
+                cb.rw_lookup_with_counter(
+                    &name,
+                    reversion_info.rw_counter_of_reversion(reversible_write_counter_inc_selector),
+                    true.expr(),
+                    tag,
+                    RwValues {
+                        value_prev: values.value,
+                        value: values.value_prev,
+                        ..values
+                    },
+                )
+            });
         }
     }
 
@@ -1140,6 +1139,34 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         self.reversion_info(call_id, true)
     }
 
+    // Global
+
+    pub(crate) fn global_write(&mut self, index: Expression<F>, value: Expression<F>) {
+        self.global_lookup(1.expr(), index, value)
+    }
+
+    pub(crate) fn global_read(&mut self, index: Expression<F>, value: Expression<F>) {
+        self.global_lookup(0.expr(), index, value)
+    }
+
+    pub(crate) fn global_lookup(&mut self, is_write: Expression<F>, index: Expression<F>, value: Expression<F>) {
+        self.rw_lookup(
+            "Global lookup",
+            is_write,
+            RwTableTag::Global,
+            RwValues::new(
+                self.curr.state.call_id.expr(),
+                index,
+                0.expr(),
+                0.expr(),
+                value,
+                0.expr(),
+                0.expr(),
+                0.expr(),
+            ),
+        );
+    }
+
     // Stack
 
     pub(crate) fn stack_pop(&mut self, value: Expression<F>) {
@@ -1388,13 +1415,9 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         condition: Expression<F>,
         constraint: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        debug_assert!(
-            self.condition.is_none(),
-            "Nested condition is not supported"
-        );
-        self.condition = Some(condition);
+        self.conditions.push(condition);
         let ret = constraint(self);
-        self.condition = None;
+        self.conditions.pop();
         ret
     }
 
@@ -1483,8 +1506,8 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
     }
 
     pub(crate) fn add_lookup(&mut self, name: &str, lookup: Lookup<F>) {
-        let lookup = match &self.condition {
-            Some(condition) => lookup.conditional(condition.clone()),
+        let lookup = match self.condition_expr_opt() {
+            Some(condition) => lookup.conditional(condition),
             None => lookup,
         };
         let compressed_expr = self.split_expression(
@@ -1596,8 +1619,8 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
     }
 
     fn condition_expr(&self) -> Expression<F> {
-        match &self.condition {
-            Some(condition) => condition.clone(),
+        match self.condition_expr_opt() {
+            Some(condition) => condition,
             None => 1.expr(),
         }
     }

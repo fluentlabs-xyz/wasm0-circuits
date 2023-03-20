@@ -1,17 +1,13 @@
 //! Collection of structs and functions used to:
 //! - Define the internals of a [`MemoryOp`], [`StackOp`] and [`StorageOp`].
-//! - Define the actual operation types and a wrapper over them (the
-//!   [`Operation`] enum).
-//! - Define structures that interact with operations such as
-//!   [`OperationContainer`].
+//! - Define the actual operation types and a wrapper over them (the [`Operation`] enum).
+//! - Define structures that interact with operations such as [`OperationContainer`].
 pub(crate) mod container;
 
 pub use container::OperationContainer;
 pub use eth_types::evm_types::{MemoryAddress, StackAddress};
 
-use core::cmp::Ordering;
-use core::fmt;
-use core::fmt::Debug;
+use core::{cmp::Ordering, fmt, fmt::Debug};
 use eth_types::{Address, StackWord, Word};
 use std::mem::swap;
 
@@ -94,6 +90,8 @@ pub enum Target {
     Memory,
     /// Means the target of the operation is the Stack.
     Stack,
+    /// Means that target of the operation is the Global.
+    Global,
     /// Means the target of the operation is the Storage.
     Storage,
     /// Means the target of the operation is the TxAccessListAccount.
@@ -210,6 +208,8 @@ pub struct StackOp {
     pub address: StackAddress,
     /// Value
     pub value: StackWord,
+    /// Local Index
+    pub local_index: usize,
 }
 
 impl fmt::Debug for StackOp {
@@ -230,6 +230,17 @@ impl StackOp {
             call_id,
             address,
             value,
+            local_index: 0,
+        }
+    }
+
+    ///
+    pub const fn new_with_local_index(call_id: usize, address: StackAddress, value: StackWord, local_index: usize) -> StackOp {
+        StackOp {
+            call_id,
+            address,
+            value,
+            local_index,
         }
     }
 
@@ -252,6 +263,11 @@ impl StackOp {
     pub const fn value(&self) -> &StackWord {
         &self.value
     }
+
+    ///
+    pub const fn local_index(&self) -> usize {
+        self.local_index
+    }
 }
 
 impl Op for StackOp {
@@ -273,6 +289,83 @@ impl PartialOrd for StackOp {
 impl Ord for StackOp {
     fn cmp(&self, other: &Self) -> Ordering {
         (&self.call_id, &self.address).cmp(&(&other.call_id, &other.address))
+    }
+}
+
+/// Represents a [`READ`](RW::READ)/[`WRITE`](RW::WRITE) into the stack implied
+/// by an specific [`OpcodeId`](eth_types::evm_types::opcode_ids::OpcodeId) of
+/// the [`ExecStep`](crate::circuit_input_builder::ExecStep).
+#[derive(Clone, PartialEq, Eq)]
+pub struct GlobalOp {
+    /// Call ID
+    pub call_id: usize,
+    /// Global index
+    pub global_index: u32,
+    /// Value
+    pub value: StackWord,
+}
+
+impl Debug for GlobalOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("GlobalOp { ")?;
+        f.write_fmt(format_args!(
+            "call_id: {:?}, index: {:?}, val: 0x{:x}",
+            self.call_id, self.global_index, self.value
+        ))?;
+        f.write_str(" }")
+    }
+}
+
+impl GlobalOp {
+    /// Create a new instance of a `StackOp` from it's components.
+    pub const fn new(call_id: usize, global_index: u32, value: StackWord) -> GlobalOp {
+        GlobalOp {
+            call_id,
+            global_index,
+            value,
+        }
+    }
+
+    /// Returns the [`Target`] (operation type) of this operation.
+    pub const fn target(&self) -> Target {
+        Target::Global
+    }
+
+    /// Returns the call id associated to this Operation.
+    pub const fn call_id(&self) -> usize {
+        self.call_id
+    }
+
+    /// Returns the [`StackAddress`] associated to this Operation.
+    pub const fn address(&self) -> u32 {
+        self.global_index
+    }
+
+    /// Returns the [`Word`] read or written by this operation.
+    pub const fn value(&self) -> &StackWord {
+        &self.value
+    }
+}
+
+impl Op for GlobalOp {
+    fn into_enum(self) -> OpEnum {
+        OpEnum::Global(self)
+    }
+
+    fn reverse(&self) -> Self {
+        unreachable!("GlobalOp can't be reverted")
+    }
+}
+
+impl PartialOrd for GlobalOp {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for GlobalOp {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (&self.call_id, &self.global_index).cmp(&(&other.call_id, &other.global_index))
     }
 }
 
@@ -742,8 +835,8 @@ pub enum TxLogField {
     Topic,
     /// data of log entry
     Data,
-    /* TODO: Add `TopicLength` and `DataLength`, which will be used for the RLP encoding of the
-     * Tx Receipt */
+    // TODO: Add `TopicLength` and `DataLength`, which will be used for the RLP encoding of the
+    // Tx Receipt
 }
 
 /// Represents TxLog read/write operation.
@@ -908,6 +1001,8 @@ impl Op for TxReceiptOp {
 pub enum OpEnum {
     /// Stack
     Stack(StackOp),
+    /// Global
+    Global(GlobalOp),
     /// Memory
     Memory(MemoryOp),
     /// Storage

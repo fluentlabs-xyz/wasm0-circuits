@@ -12,33 +12,6 @@
 // better way to handle downcasting from Operation into it's variants.
 #![allow(clippy::upper_case_acronyms)] // Too pedantic
 
-use std::collections::HashMap;
-use std::fmt;
-use std::str::FromStr;
-
-pub use ethers_core::abi::ethereum_types::{BigEndianHash, U512};
-use ethers_core::types;
-pub use ethers_core::types::{
-    Address,
-    Block, Bytes, H160, H256, H64, Signature, transaction::{eip2930::AccessList, response::Transaction}, U256, U64,
-};
-use halo2_proofs::{
-    arithmetic::{Field as Halo2Field, FieldExt},
-    halo2curves::{
-        bn256::{Fq, Fr},
-        group::ff::PrimeField,
-    },
-};
-use serde::{de, Deserialize, Serialize};
-
-pub use bytecode::Bytecode;
-pub use error::Error;
-pub use uint_types::{DebugU256, DebugU64};
-
-use crate::evm_types::{memory::Memory, stack::Stack, storage::Storage};
-use crate::evm_types::{Gas, GasCost, OpcodeId, ProgramCounter};
-use crate::GethExecStepFamily::{Evm, Unknown, WebAssembly};
-
 #[macro_use]
 pub mod macros;
 #[macro_use]
@@ -48,6 +21,32 @@ pub mod bytecode;
 pub mod evm_types;
 pub mod geth_types;
 pub mod sign_types;
+
+pub use bytecode::Bytecode;
+pub use error::Error;
+use halo2_proofs::{
+    arithmetic::{Field as Halo2Field, FieldExt},
+    halo2curves::{
+        bn256::{Fq, Fr},
+        group::ff::PrimeField,
+    },
+};
+
+use crate::evm_types::{
+    memory::Memory, stack::Stack, storage::Storage, Gas, GasCost, OpcodeId, ProgramCounter,
+};
+use ethers_core::types;
+pub use ethers_core::{
+    abi::ethereum_types::{BigEndianHash, U512},
+    types::{
+        transaction::{eip2930::AccessList, response::Transaction},
+        Address, Block, Bytes, Signature, H160, H256, H64, U256, U64,
+    },
+};
+
+use serde::{de, Deserialize, Serialize};
+use std::{collections::HashMap, fmt, str::FromStr};
+use crate::uint_types::{DebugU256, DebugU64};
 
 /// Trait used to reduce verbosity with the declaration of the [`FieldExt`]
 /// trait and its repr.
@@ -451,7 +450,7 @@ struct GethExecStepInternal {
     #[serde(rename = "opcodeFamily")]
     op_family: Option<String>,
     #[serde(default)]
-    params: Option<Box<[u64]>>,
+    params: Option<Vec<u64>>,
     gas: Gas,
     #[serde(default)]
     refund: Gas,
@@ -481,11 +480,11 @@ pub enum GethExecStepFamily {
 impl GethExecStepFamily {
     fn from_string(value: &String) -> Self {
         if value.eq(&String::from("WASM")) {
-            WebAssembly
+            GethExecStepFamily::WebAssembly
         } else if value.eq(&String::from("EVM")) {
-            Evm
+            GethExecStepFamily::Evm
         } else {
-            Unknown
+            GethExecStepFamily::Unknown
         }
     }
 }
@@ -498,7 +497,7 @@ pub struct GethExecStep
 {
     pub pc: ProgramCounter,
     pub op_family: Option<GethExecStepFamily>,
-    pub params: Option<Box<[u64]>>,
+    pub params: Vec<u64>,
     pub op: OpcodeId,
     pub gas: Gas,
     pub gas_cost: GasCost,
@@ -576,7 +575,7 @@ impl<'de> Deserialize<'de> for GethExecStep {
         Ok(Self {
             pc: s.pc,
             op_family: s.op_family.map(|f| GethExecStepFamily::from_string(&f)),
-            params: s.params,
+            params: s.params.unwrap_or(Vec::new()),
             op: OpcodeId::from_str(s.op.as_str()).unwrap(),
             gas: s.gas,
             refund: s.refund,
@@ -612,6 +611,15 @@ pub struct ResultGethExecTrace {
     pub result: GethExecTrace,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
+#[doc(hidden)]
+pub struct GethExecTraceGlobal {
+    pub pc: ProgramCounter,
+    pub index: u32,
+    pub op: String,
+    pub value: u64,
+}
+
 /// The execution trace type returned by geth RPC debug_trace* methods.
 /// Corresponds to `ExecutionResult` in `go-ethereum/internal/ethapi/api.go`.
 /// The deserialization truncates the memory of each step in `struct_logs` to
@@ -633,6 +641,9 @@ pub struct GethExecTrace {
     /// Vector of geth execution steps of the trace.
     #[serde(rename = "structLogs")]
     pub struct_logs: Vec<GethExecStep>,
+    /// Globals.
+    #[serde(rename = "globals")]
+    pub globals: Vec<GethExecTraceGlobal>,
 }
 
 #[derive(Deserialize)]
@@ -656,6 +667,10 @@ pub struct GethExecTraceInternal {
     /// Vector of geth execution steps of the trace.
     #[serde(rename = "structLogs")]
     pub struct_logs: Vec<GethExecStep>,
+    /// Globals.
+    #[serde(rename = "globals")]
+    #[serde(default)]
+    pub globals: Vec<GethExecTraceGlobal>,
 }
 
 impl<'de> Deserialize<'de> for GethExecTrace {
@@ -689,6 +704,7 @@ impl<'de> Deserialize<'de> for GethExecTrace {
             global_memory: init_memory,
             return_value: s.return_value,
             struct_logs: s.struct_logs,
+            globals: s.globals,
         })
     }
 }
@@ -736,10 +752,8 @@ macro_rules! word_map {
 
 #[cfg(test)]
 mod tests {
-    use crate::evm_types::{memory::Memory, stack::Stack};
-    use crate::evm_types::opcode_ids::OpcodeId;
-
     use super::*;
+    use crate::evm_types::{memory::Memory, opcode_ids::OpcodeId, stack::Stack};
 
     #[test]
     fn deserialize_geth_exec_trace2() {
@@ -813,11 +827,12 @@ mod tests {
                 failed: false,
                 return_value: "".to_owned(),
                 global_memory: Memory::new(),
+                globals: Vec::new(),
                 struct_logs: vec![
                     GethExecStep {
                         pc: ProgramCounter(0),
                         op_family: None,
-                        params: None,
+                        params: vec![],
                         op: OpcodeId::PUSH1,
                         gas: Gas(22705),
                         refund: Gas(0),
@@ -832,7 +847,7 @@ mod tests {
                     GethExecStep {
                         pc: ProgramCounter(163),
                         op_family: None,
-                        params: None,
+                        params: vec![],
                         op: OpcodeId::SLOAD,
                         gas: Gas(5217),
                         refund: Gas(0),
@@ -847,7 +862,7 @@ mod tests {
                     GethExecStep {
                         pc: ProgramCounter(189),
                         op_family: None,
-                        params: None,
+                        params: vec![],
                         op: OpcodeId::SHA3,
                         gas: Gas(178805),
                         refund: Gas(0),
@@ -949,13 +964,13 @@ mod tests {
         "#;
         let trace: GethExecTrace =
             serde_json::from_str(trace_json).expect("json-deserialize GethExecTrace");
-        assert_eq!(trace.struct_logs[0].op_family, Some(WebAssembly));
+        assert_eq!(trace.struct_logs[0].op_family, Some(GethExecStepFamily::WebAssembly));
         let params = &trace.struct_logs[0].params;
-        assert_eq!((*params.clone().unwrap())[0], 1048576);
-        assert_eq!(trace.struct_logs[1].op_family, Some(WebAssembly));
+        assert_eq!(params.clone()[0], 1048576);
+        assert_eq!(trace.struct_logs[1].op_family, Some(GethExecStepFamily::WebAssembly));
         let params = &trace.struct_logs[1].params;
-        assert_eq!((*params.clone().unwrap())[0], 171);
-        assert_eq!(trace.struct_logs[2].op_family, Some(Evm));
+        assert_eq!(params.clone()[0], 171);
+        assert_eq!(trace.struct_logs[2].op_family, Some(GethExecStepFamily::Evm));
     }
 }
 
@@ -963,8 +978,7 @@ mod tests {
 mod eth_types_test {
     use std::str::FromStr;
 
-    use crate::Error;
-    use crate::Word;
+    use crate::{Error, Word};
 
     use super::*;
 

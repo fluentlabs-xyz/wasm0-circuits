@@ -1,27 +1,21 @@
-use std::iter;
-
-use halo2_proofs::{
-    arithmetic::FieldExt,
-    circuit::Value,
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression},
-};
-use std::fmt::Display;
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
-
-use bus_mapping::evm::OpcodeId;
-
+use super::util::{CachedRegion, CellManager, CellType};
 use crate::{
     evm_circuit::{
-        param::{MAX_STEP_HEIGHT, STEP_STATE_HEIGHT, STEP_WIDTH},
+        param::{EXECUTION_STATE_HEIGHT_MAP, MAX_STEP_HEIGHT, STEP_STATE_HEIGHT, STEP_WIDTH},
         util::Cell,
         witness::{Block, Call, ExecStep},
     },
     util::Expr,
 };
-use crate::evm_circuit::param::EXECUTION_STATE_HEIGHT_MAP;
-
-use super::util::{CachedRegion, CellManager, CellType};
+use bus_mapping::evm::OpcodeId;
+use halo2_proofs::{
+    arithmetic::FieldExt,
+    circuit::Value,
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression},
+};
+use std::{fmt::Display, iter};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumIter)]
@@ -34,6 +28,8 @@ pub enum ExecutionState {
     WASM_BIN,
     WASM_CONST,
     WASM_DROP,
+    WASM_GLOBAL,
+    WASM_LOCAL,
     WASM_UNARY,
     WASM_END,
     // Opcode successful cases
@@ -239,6 +235,15 @@ impl ExecutionState {
                 OpcodeId::I32Popcnt,
                 OpcodeId::I64Popcnt,
             ],
+            Self::WASM_GLOBAL => vec![
+                OpcodeId::GetGlobal,
+                OpcodeId::SetGlobal,
+            ],
+            Self::WASM_LOCAL => vec![
+                OpcodeId::GetLocal,
+                OpcodeId::SetLocal,
+                OpcodeId::TeeLocal,
+            ],
             Self::WASM_END => vec![OpcodeId::End],
             // EVM opcodes
             Self::STOP => vec![OpcodeId::STOP],
@@ -311,9 +316,9 @@ impl ExecutionState {
             Self::ErrorInvalidOpcode => OpcodeId::invalid_opcodes(),
             _ => vec![],
         }
-        .into_iter()
-        .map(Into::into)
-        .collect()
+            .into_iter()
+            .map(Into::into)
+            .collect()
     }
 
     pub fn get_step_height_option(&self) -> Option<usize> {

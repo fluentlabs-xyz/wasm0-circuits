@@ -3,15 +3,14 @@ use std::collections::HashMap;
 
 use bus_mapping::operation::{self, AccountField, CallContextField, TxLogField, TxReceiptField};
 use eth_types::{Address, Field, ToAddress, ToLittleEndian, ToScalar, Word, U256, StackWord};
-use halo2_proofs::circuit::Value;
-use halo2_proofs::halo2curves::bn256::Fr;
+use halo2_proofs::{circuit::Value, halo2curves::bn256::Fr};
 use itertools::Itertools;
 
-use crate::evm_circuit::util::rlc;
-use crate::table::{
-    AccountFieldTag, CallContextFieldTag, RwTableTag, TxLogFieldTag, TxReceiptFieldTag,
+use crate::{
+    evm_circuit::util::rlc,
+    table::{AccountFieldTag, CallContextFieldTag, RwTableTag, TxLogFieldTag, TxReceiptFieldTag},
+    util::build_tx_log_address,
 };
-use crate::util::build_tx_log_address;
 
 use super::MptUpdates;
 
@@ -212,6 +211,15 @@ pub enum Rw {
         call_id: usize,
         stack_pointer: usize,
         value: StackWord,
+        local_index: usize,
+    },
+    /// Global
+    Global {
+        rw_counter: usize,
+        is_write: bool,
+        call_id: usize,
+        global_index: usize,
+        value: StackWord,
     },
     /// Memory
     Memory {
@@ -363,6 +371,20 @@ impl Rw {
         }
     }
 
+    pub(crate) fn local_value(&self) -> (StackWord, usize) {
+        match self {
+            Self::Stack { value, local_index, .. } => (*value, *local_index),
+            _ => unreachable!(),
+        }
+    }
+
+    pub(crate) fn global_value(&self) -> (StackWord, usize) {
+        match self {
+            Self::Global { value, global_index, .. } => (*value, *global_index),
+            _ => unreachable!(),
+        }
+    }
+
     pub(crate) fn log_value(&self) -> Word {
         match self {
             Self::TxLog { value, .. } => *value,
@@ -438,6 +460,7 @@ impl Rw {
             Self::Start { rw_counter }
             | Self::Memory { rw_counter, .. }
             | Self::Stack { rw_counter, .. }
+            | Self::Global { rw_counter, .. }
             | Self::AccountStorage { rw_counter, .. }
             | Self::TxAccessListAccount { rw_counter, .. }
             | Self::TxAccessListAccountStorage { rw_counter, .. }
@@ -454,6 +477,7 @@ impl Rw {
             Self::Start { .. } => false,
             Self::Memory { is_write, .. }
             | Self::Stack { is_write, .. }
+            | Self::Global { is_write, .. }
             | Self::AccountStorage { is_write, .. }
             | Self::TxAccessListAccount { is_write, .. }
             | Self::TxAccessListAccountStorage { is_write, .. }
@@ -470,6 +494,7 @@ impl Rw {
             Self::Start { .. } => RwTableTag::Start,
             Self::Memory { .. } => RwTableTag::Memory,
             Self::Stack { .. } => RwTableTag::Stack,
+            Self::Global { .. } => RwTableTag::Global,
             Self::AccountStorage { .. } => RwTableTag::AccountStorage,
             Self::TxAccessListAccount { .. } => RwTableTag::TxAccessListAccount,
             Self::TxAccessListAccountStorage { .. } => RwTableTag::TxAccessListAccountStorage,
@@ -491,6 +516,7 @@ impl Rw {
             | Self::TxReceipt { tx_id, .. } => Some(*tx_id),
             Self::CallContext { call_id, .. }
             | Self::Stack { call_id, .. }
+            | Self::Global { call_id, .. }
             | Self::Memory { call_id, .. } => Some(*call_id),
             Self::Start { .. } | Self::Account { .. } => None,
         }
@@ -513,6 +539,9 @@ impl Rw {
             Self::Memory { memory_address, .. } => Some(U256::from(*memory_address).to_address()),
             Self::Stack { stack_pointer, .. } => {
                 Some(U256::from(*stack_pointer as u64).to_address())
+            }
+            Self::Global { global_index, .. } => {
+                Some(Address::from_low_u64_be(*global_index as u64))
             }
             Self::TxLog {
                 log_id,
@@ -538,6 +567,7 @@ impl Rw {
             Self::Start { .. }
             | Self::Memory { .. }
             | Self::Stack { .. }
+            | Self::Global { .. }
             | Self::AccountStorage { .. }
             | Self::TxAccessListAccount { .. }
             | Self::TxAccessListAccountStorage { .. }
@@ -553,6 +583,7 @@ impl Rw {
             Self::Start { .. }
             | Self::CallContext { .. }
             | Self::Stack { .. }
+            | Self::Global { .. }
             | Self::Memory { .. }
             | Self::TxRefund { .. }
             | Self::Account { .. }
@@ -589,6 +620,9 @@ impl Rw {
                 rlc::value(&value.to_le_bytes(), randomness)
             }
             Self::Stack { value, .. } => {
+                value.to_scalar().unwrap()
+            }
+            Self::Global { value, .. } => {
                 value.to_scalar().unwrap()
             }
 
@@ -630,6 +664,7 @@ impl Rw {
             Self::TxRefund { value_prev, .. } => Some(F::from(*value_prev)),
             Self::Start { .. }
             | Self::Stack { .. }
+            | Self::Global { .. }
             | Self::Memory { .. }
             | Self::CallContext { .. }
             | Self::TxLog { .. }
@@ -800,6 +835,21 @@ impl From<&operation::OperationContainer> for RwMap {
                     is_write: op.rw().is_write(),
                     call_id: op.op().call_id(),
                     stack_pointer: usize::from(*op.op().address()),
+                    value: *op.op().value(),
+                    local_index: op.op().local_index(),
+                })
+                .collect(),
+        );
+        rws.insert(
+            RwTableTag::Global,
+            container
+                .globals
+                .iter()
+                .map(|op| Rw::Global {
+                    rw_counter: op.rwc().into(),
+                    is_write: op.rw().is_write(),
+                    call_id: op.op().call_id(),
+                    global_index: op.op().address() as usize,
                     value: *op.op().value(),
                 })
                 .collect(),

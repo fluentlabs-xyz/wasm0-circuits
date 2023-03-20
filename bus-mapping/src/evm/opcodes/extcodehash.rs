@@ -2,7 +2,7 @@ use super::Opcode;
 use crate::{
     circuit_input_builder::CircuitInputStateRef,
     evm::opcodes::ExecStep,
-    operation::CallContextField,
+    operation::{AccountField, CallContextField, TxAccessListAccountOp},
     Error,
 };
 use eth_types::{GethExecStep, U256};
@@ -56,32 +56,30 @@ impl Opcode for Extcodehash {
         }
 
         // Update transaction access list for external_address
-        // let is_warm = state.sdb.check_account_in_access_list(&external_address);
-        // state.push_op_reversible(
-        //     &mut exec_step,
-        //     RW::WRITE,
-        //     TxAccessListAccountOp {
-        //         tx_id: state.tx_ctx.id(),
-        //         address: external_address,
-        //         is_warm: true,
-        //         is_warm_prev: is_warm,
-        //     },
-        // )?;
+        let is_warm = state.sdb.check_account_in_access_list(&external_address);
+        state.push_op_reversible(
+            &mut exec_step,
+            TxAccessListAccountOp {
+                tx_id: state.tx_ctx.id(),
+                address: external_address,
+                is_warm: true,
+                is_warm_prev: is_warm,
+            },
+        )?;
 
-        // let account = state.sdb.get_account(&external_address).1;
-        // let exists = !account.is_empty();
-        // let code_hash = if exists {
-        //     account.code_hash
-        // } else {
-        //     H256::zero()
-        // };
-        // state.account_read(
-        //     &mut exec_step,
-        //     external_address,
-        //     AccountField::CodeHash,
-        //     code_hash.to_word(),
-        //     code_hash.to_word(),
-        // );
+        let account = state.sdb.get_account(&external_address).1;
+        let exists = !account.is_empty();
+        let code_hash = if exists {
+            account.code_hash
+        } else {
+            H256::zero()
+        };
+        state.account_read(
+            &mut exec_step,
+            external_address,
+            AccountField::CodeHash,
+            code_hash.to_word(),
+        );
 
         // Stack write of the result of EXTCODEHASH.
         // state.stack_write(&mut exec_step, stack_address, steps[1].stack.last()?)?;
@@ -109,13 +107,17 @@ impl Opcode for Extcodehash {
 mod extcodehash_tests {
     use std::io::Read;
     use super::*;
-    use crate::circuit_input_builder::ExecState;
-    use crate::mocks::BlockData;
-    use crate::operation::{AccountOp, RW, TxAccessListAccountOp};
-    use crate::operation::AccountField;
-    use crate::operation::CallContextOp;
-    use crate::operation::StackOp;
-    use eth_types::{address, bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Bytecode, Bytes, Word, U256, ToWord, ToStackWord, StackWord, ToU256};
+    use crate::{
+        circuit_input_builder::ExecState,
+        mock::BlockData,
+        operation::{AccountOp, CallContextOp, StackOp, RW},
+    };
+    use eth_types::{
+        address, bytecode,
+        evm_types::{OpcodeId, StackAddress},
+        geth_types::GethData,
+        Bytecode, Bytes, Word, U256,
+    };
     use ethers_core::utils::keccak256;
     use mock::TestContext;
     use pretty_assertions::assert_eq;

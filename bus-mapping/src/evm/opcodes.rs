@@ -10,10 +10,7 @@ use crate::{
     },
 };
 use core::fmt::Debug;
-use eth_types::{
-    evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED},
-    evm_unimplemented, GethExecStep, ToAddress, ToWord, Word,
-};
+use eth_types::{evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED}, evm_unimplemented, GethExecStep, GethExecTrace, StackWord, ToAddress, ToWord, Word};
 use ethers_core::utils::get_contract_address;
 use keccak256::EMPTY_HASH;
 
@@ -66,6 +63,8 @@ mod error_write_protection;
 
 #[cfg(test)]
 mod memory_expansion_test;
+mod wasm_global;
+mod wasm_local;
 
 use address::Address;
 use balance::Balance;
@@ -85,7 +84,7 @@ use error_oog_sload_sstore::OOGSloadSstore;
 use error_return_data_outofbound::ErrorReturnDataOutOfBound;
 use error_simple::ErrorSimple;
 use error_write_protection::ErrorWriteProtection;
-use eth_types::evm_types::{Memory, MemoryAddress};
+use eth_types::evm_types::{MemoryAddress};
 use gasprice::GasPrice;
 use origin::Origin;
 use return_revert::ReturnRevert;
@@ -99,6 +98,8 @@ use crate::evm::opcodes::extcodecopy::Extcodecopy;
 use crate::evm::opcodes::extcodesize::Extcodesize;
 use crate::evm::opcodes::number::Number;
 use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
+use crate::evm::opcodes::wasm_global::WasmGlobalOpcode;
+use crate::evm::opcodes::wasm_local::WasmLocalOpcode;
 
 /// Generic opcode trait which defines the logic of the
 /// [`Operation`](crate::operation::Operation) that should be generated for one
@@ -220,15 +221,18 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I64Clz |
         OpcodeId::I32Popcnt |
         OpcodeId::I64Popcnt => StackOnlyOpcode::<1, 1>::gen_associated_ops,
+        // WASM global opcodes
+        OpcodeId::SetGlobal |
+        OpcodeId::GetGlobal => WasmGlobalOpcode::gen_associated_ops,
+        // WASM local opcodes
+        OpcodeId::SetLocal |
+        OpcodeId::GetLocal |
+        OpcodeId::TeeLocal => WasmLocalOpcode::gen_associated_ops,
 
         OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
         OpcodeId::Return => Dummy::gen_associated_ops,
 
         // TODO these are temporal. need a fix.
-        // OpcodeId::GetLocal => Dummy::gen_associated_ops,
-        // OpcodeId::GetGlobal => Dummy::gen_associated_ops,
-        // OpcodeId::SetLocal => Dummy::gen_associated_ops,
-        // OpcodeId::SetGlobal => Dummy::gen_associated_ops,
         // OpcodeId::I32GtU => Dummy::gen_associated_ops,
         // OpcodeId::If => Dummy::gen_associated_ops,
         // OpcodeId::Call => Dummy::gen_associated_ops,
@@ -372,7 +376,7 @@ pub fn gen_associated_ops(
     fn_gen_associated_ops(state, geth_steps)
 }
 
-pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory) -> Result<ExecStep, Error> {
+pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, exec_trace: &GethExecTrace) -> Result<ExecStep, Error> {
     let mut exec_step = state.new_begin_tx_step();
     let call = state.call()?.clone();
 
@@ -427,15 +431,6 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
     } + call_data_gas_cost;
     exec_step.gas_cost = GasCost(intrinsic_gas_cost);
 
-    // Transfer with fee
-    state.transfer_with_fee(
-        &mut exec_step,
-        call.caller_address,
-        call.address,
-        call.value,
-        Some(state.tx.gas_price * state.tx.gas),
-    )?;
-
     // Get code_hash of callee
     let (_, callee_account) = state.sdb.get_account(&call.address);
     let callee_exists = !callee_account.is_empty();
@@ -447,6 +442,25 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
     } else {
         (Word::zero(), true)
     };
+    if !state.is_precompiled(&call.address) && !call.is_create() {
+        state.account_read(
+            &mut exec_step,
+            call.address,
+            AccountField::CodeHash,
+            callee_code_hash,
+        );
+    }
+
+    // Transfer with fee
+    state.transfer_with_fee(
+        &mut exec_step,
+        call.caller_address,
+        call.address,
+        callee_exists,
+        call.is_create(),
+        call.value,
+        Some(state.tx.gas_price * state.tx.gas),
+    )?;
 
     // In case of contract creation we wish to verify the correctness of the
     // contract's address (callee). This address is defined as:
@@ -476,7 +490,6 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
         (true, _, _) => {
             state.push_op_reversible(
                 &mut exec_step,
-                RW::WRITE,
                 AccountOp {
                     address: call.address,
                     field: AccountField::Nonce,
@@ -519,14 +532,6 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
             evm_unimplemented!("Call to precompiled is left unimplemented");
         }
         (_, _, is_empty_code_hash) => {
-            state.account_read(
-                &mut exec_step,
-                call.address,
-                AccountField::CodeHash,
-                callee_code_hash,
-                callee_code_hash,
-            );
-
             // 3. Call to account with empty code.
             if !is_empty_code_hash {
 
@@ -561,11 +566,15 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, global_memory: &Memory
         }
     };
 
-    // Initialize WASM global memory section
-    for (i, byte) in global_memory.0.iter().enumerate() {
+    // Initialize WASM global memory and global variables section
+    for (i, byte) in exec_trace.global_memory.0.iter().enumerate() {
         // if *byte != 0 {
             state.memory_write(&mut exec_step, MemoryAddress::from(i), *byte)?;
         // }
+    }
+    for global in &exec_trace.globals {
+        // TODO: "proof const evaluation"
+        state.global_write(&mut exec_step, global.index, StackWord::from(global.value))?;
     }
 
     Ok(exec_step)
@@ -702,7 +711,6 @@ fn dummy_gen_selfdestruct_ops(
     let is_warm = state.sdb.check_account_in_access_list(&receiver);
     state.push_op_reversible(
         &mut exec_step,
-        RW::WRITE,
         TxAccessListAccountOp {
             tx_id: state.tx_ctx.id(),
             address: receiver,
@@ -720,7 +728,9 @@ fn dummy_gen_selfdestruct_ops(
         return Err(Error::AccountNotFound(sender));
     }
     let value = sender_account.balance;
-    state.transfer(&mut exec_step, sender, receiver, value)?;
+    // NOTE: In this dummy implementation we assume that the receiver already
+    // exists.
+    state.transfer(&mut exec_step, sender, receiver, true, false, value)?;
 
     if state.call()?.is_persistent {
         state.sdb.destruct_account(sender);

@@ -5,6 +5,7 @@ use super::{
 };
 use crate::exec_trace::OperationRef;
 use itertools::Itertools;
+use crate::operation::GlobalOp;
 
 /// The `OperationContainer` is meant to store all of the [`Operation`]s that an
 /// [`ExecStep`](crate::circuit_input_builder::ExecStep) performs during its
@@ -26,6 +27,8 @@ pub struct OperationContainer {
     pub memory: Vec<Operation<MemoryOp>>,
     /// Operations of StackOp
     pub stack: Vec<Operation<StackOp>>,
+    /// Operations of GlobalOp
+    pub globals: Vec<Operation<GlobalOp>>,
     /// Operations of StorageOp
     pub storage: Vec<Operation<StorageOp>>,
     /// Operations of TxAccessListAccountOp
@@ -59,6 +62,7 @@ impl OperationContainer {
         Self {
             memory: Vec::new(),
             stack: Vec::new(),
+            globals: Vec::new(),
             storage: Vec::new(),
             tx_access_list_account: Vec::new(),
             tx_access_list_account_storage: Vec::new(),
@@ -102,6 +106,10 @@ impl OperationContainer {
                 self.stack.push(Operation::new(rwc, rw, op));
                 OperationRef::from((Target::Stack, self.stack.len() - 1))
             }
+            OpEnum::Global(op) => {
+                self.globals.push(Operation::new(rwc, rw, op));
+                OperationRef::from((Target::Global, self.globals.len() - 1))
+            },
             OpEnum::Storage(op) => {
                 self.storage.push(if reversible {
                     Operation::new_reversible(rwc, rw, op)
@@ -191,8 +199,10 @@ mod container_test {
     use super::*;
 
     use crate::operation::{RWCounter, RW};
-    use eth_types::evm_types::{MemoryAddress, StackAddress};
-    use eth_types::{Address, StackWord, Word};
+    use eth_types::{
+        evm_types::{MemoryAddress, StackAddress},
+        Address, StackWord, Word,
+    };
 
     #[test]
     fn operation_container_test() {

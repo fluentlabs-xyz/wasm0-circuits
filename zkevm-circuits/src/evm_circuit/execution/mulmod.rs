@@ -164,8 +164,7 @@ impl<F: Field> ExecutionGadget<F> for MulModGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::test_util::CircuitTestBuilder;
-    use eth_types::evm_types::Stack;
-    use eth_types::{bytecode, Word, U256, StackWord};
+    use eth_types::{bytecode, evm_types::Stack, Word, U256, StackWord};
     use mock::TestContext;
 
     fn test(a: Word, b: Word, n: Word, r: Option<StackWord>, ok: bool) {

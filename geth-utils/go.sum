@@ -104,10 +104,8 @@ github.com/tklauser/numcpus v0.2.2 h1:oyhllyrScuYI6g+h/zUvNXNp1wy7x8qQy3t/piefld
 github.com/tklauser/numcpus v0.2.2/go.mod h1:x3qojaO3uyYt0i56EW/VUYs7uBvdl2fkfZFu0T9wgjM=
 github.com/wasm0/zkwasm-gas-injector v0.0.0-20230306121902-d7223199c7d8 h1:DfYA5GNWklIIy5DJKAzRjBGEb5fV6rrOtPqlU3tMJ8I=
 github.com/wasm0/zkwasm-gas-injector v0.0.0-20230306121902-d7223199c7d8/go.mod h1:ms+SgxHswYob8xR8S0n98F9hA0/+JFj33+17rpiKW1Q=
-github.com/wasm0/zkwasm-geth v1.10.23-zkevm.0.20230303161331-ae90b01397ba h1:JaIRiDQI7ohbRKjCh50ZePrT0QPoTEM5R+VLaIN1GK0=
-github.com/wasm0/zkwasm-geth v1.10.23-zkevm.0.20230303161331-ae90b01397ba/go.mod h1:XFVpA4X8bSYCJVBjoTEaDrRLT6ni/2n9OQgeFFb/V+w=
-github.com/wasm0/zkwasm-wazero v0.0.0-20230303153605-38f0c1c2f405 h1:Ql1FaCYJKXrOfXhp4n21rlhdVJoTEbknXO8jYRfAbFw=
-github.com/wasm0/zkwasm-wazero v0.0.0-20230303153605-38f0c1c2f405/go.mod h1:u8wrFmpdrykiFK0DFPiFm5a4+0RzsdmXYVtijBKqUVo=
+github.com/wasm0/zkwasm-wazero v0.0.0-20230316165021-4ae4514258bb h1:a1e5m2IytowVMxb22TsIjrlmVm66F7r36PdRnSRk1nc=
+github.com/wasm0/zkwasm-wazero v0.0.0-20230316165021-4ae4514258bb/go.mod h1:u8wrFmpdrykiFK0DFPiFm5a4+0RzsdmXYVtijBKqUVo=
 github.com/wasmerio/wasmer-go v1.0.4 h1:MnqHoOGfiQ8MMq2RF6wyCeebKOe84G88h5yv+vmxJgs=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=

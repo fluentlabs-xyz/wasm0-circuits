@@ -1,8 +1,10 @@
 use eth_types::evm_types::MemoryAddress;
 use super::Opcode;
-use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
-use crate::operation::CallContextField;
-use crate::Error;
+use crate::{
+    circuit_input_builder::{CircuitInputStateRef, ExecStep},
+    operation::CallContextField,
+    Error,
+};
 use eth_types::GethExecStep;
 
 pub const GAS_PRICE_BYTE_LENGTH: usize = 32;

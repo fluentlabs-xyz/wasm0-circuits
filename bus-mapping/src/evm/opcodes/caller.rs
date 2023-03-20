@@ -1,7 +1,9 @@
 use super::Opcode;
-use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
-use crate::operation::CallContextField;
-use crate::Error;
+use crate::{
+    circuit_input_builder::{CircuitInputStateRef, ExecStep},
+    operation::CallContextField,
+    Error,
+};
 use eth_types::{GethExecStep, ToAddress, ToU256, Word};
 use eth_types::evm_types::MemoryAddress;
 
@@ -51,8 +53,9 @@ impl Opcode for Caller {
 mod caller_tests {
     use super::*;
     use crate::{
-        circuit_input_builder::ExecState, mocks::BlockData, operation::CallContextOp,
-        operation::StackOp, operation::RW,
+        circuit_input_builder::ExecState,
+        mocks::BlockData,
+        operation::{CallContextOp, StackOp, RW},
     };
     use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToU256, Word};
 

@@ -5076,5 +5076,6 @@ dependencies = [
  "strum_macros",
  "subtle",
  "wabt",
+ "wasm-encoder",
  "wasmparser-nostd",
 ]

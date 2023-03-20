@@ -1,11 +1,11 @@
+use super::Opcode;
+use crate::{
+    circuit_input_builder::{CircuitInputStateRef, ExecStep},
+    operation::CallContextField,
+    Error,
+};
 use eth_types::{GethExecStep, U256};
 use eth_types::evm_types::MemoryAddress;
-
-use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
-use crate::Error;
-use crate::operation::CallContextField;
-
-use super::Opcode;
 
 pub const ADDRESS_BYTE_LENGTH: usize = 20;
 
