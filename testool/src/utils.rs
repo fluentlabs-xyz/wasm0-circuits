@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::{bail, Result};
-use eth_types::{bytecode::OpcodeWithData, Bytecode, GethExecTrace, U256};
+use eth_types::{bytecode::OpcodeWithData, Bytecode, GethExecTrace, U256, U64};
 use log::{error, info};
 use prettytable::Table;
 use std::process::Command;
@@ -80,6 +80,13 @@ pub fn print_trace(trace: GethExecTrace) -> Result<()> {
             u.to_string()
         }
     }
+    fn u64_to_str(u: &U64) -> String {
+        if *u > U64::from_str("0x1000000000000000").unwrap() {
+            format!("0x{:x}", u)
+        } else {
+            u.to_string()
+        }
+    }
     fn kv(storage: std::collections::HashMap<U256, U256>) -> Vec<String> {
         let mut keys: Vec<_> = storage.keys().collect();
         keys.sort();
@@ -131,8 +138,8 @@ pub fn print_trace(trace: GethExecTrace) -> Result<()> {
             format!("{}", step.gas_cost.0),
             format!("{}", step.depth),
             step.error.unwrap_or_else(|| "".to_string()),
-            split(step.stack.0.iter().map(u256_to_str).collect(), 30),
-            split(step.memory.0.iter().map(ToString::to_string).collect(), 30),
+            split(step.stack.0.iter().map(u64_to_str).collect(), 30),
+            split(step.memory.iter().map(|m| hex::encode(m.0.as_slice())).collect(), 30),
             split(kv(step.storage.0), 30)
         ]);
     }

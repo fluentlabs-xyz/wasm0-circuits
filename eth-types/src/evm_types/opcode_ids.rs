@@ -1,15 +1,12 @@
 //! Doc this
+use crate::{error::Error, evm_types::GasCost};
 use core::fmt::Debug;
-use std::{fmt, matches};
-use std::str::FromStr;
-
-use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{de, Deserialize, Serialize};
+use std::{fmt, matches, str::FromStr};
+use itertools::Itertools;
 use strum_macros::EnumIter;
-
-use crate::{error::Error, evm_types::GasCost};
 
 /// Opcode enum. One-to-one corresponding to an `u8` value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Hash, EnumIter)]
@@ -721,6 +718,32 @@ impl OpcodeId {
             OpcodeId::I32Const => (1, 1024),
             OpcodeId::I64Const => (1, 1024),
 
+            OpcodeId::STOP => (0, 1024),
+            OpcodeId::ADD => (0, 1022),
+            OpcodeId::MUL => (0, 1022),
+            OpcodeId::SUB => (0, 1022),
+            OpcodeId::DIV => (0, 1022),
+            OpcodeId::SDIV => (0, 1022),
+            OpcodeId::MOD => (0, 1022),
+            OpcodeId::SMOD => (0, 1022),
+            OpcodeId::ADDMOD => (0, 1021),
+            OpcodeId::MULMOD => (0, 1021),
+            OpcodeId::EXP => (0, 1022),
+            OpcodeId::SIGNEXTEND => (0, 1022),
+            OpcodeId::LT => (0, 1022),
+            OpcodeId::GT => (0, 1022),
+            OpcodeId::SLT => (0, 1022),
+            OpcodeId::SGT => (0, 1022),
+            OpcodeId::EQ => (0, 1022),
+            OpcodeId::ISZERO => (0, 1023),
+            OpcodeId::AND => (0, 1022),
+            OpcodeId::OR => (0, 1022),
+            OpcodeId::XOR => (0, 1022),
+            OpcodeId::NOT => (0, 1023),
+            OpcodeId::BYTE => (0, 1022),
+            OpcodeId::SHL => (0, 1022),
+            OpcodeId::SHR => (0, 1022),
+            OpcodeId::SAR => (0, 1022),
             OpcodeId::SHA3 => (0, 1022),
             OpcodeId::ADDRESS => (1, 1024),
             OpcodeId::BALANCE => (0, 1023),
@@ -737,7 +760,7 @@ impl OpcodeId {
             OpcodeId::EXTCODECOPY => (0, 1020),
             OpcodeId::RETURNDATASIZE => (1, 1024),
             OpcodeId::RETURNDATACOPY => (0, 1021),
-            OpcodeId::EXTCODEHASH => (1, 1024),
+            OpcodeId::EXTCODEHASH => (0, 1023),
             OpcodeId::BLOCKHASH => (0, 1023),
             OpcodeId::COINBASE => (1, 1024),
             OpcodeId::TIMESTAMP => (1, 1024),

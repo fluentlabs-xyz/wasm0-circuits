@@ -39,6 +39,21 @@ impl Opcode for ChainId {
 
 #[cfg(test)]
 mod chainid_tests {
+    use crate::{
+        circuit_input_builder::ExecState,
+        mock::BlockData,
+        operation::{StackOp, RW},
+    };
+    use eth_types::{
+        bytecode,
+        evm_types::{OpcodeId, StackAddress},
+        geth_types::GethData,
+    };
+
+    use mock::{
+        test_ctx::{helpers::*, TestContext},
+        MOCK_CHAIN_ID,
+    };
     use pretty_assertions::assert_eq;
 
     use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToBigEndian, Word};

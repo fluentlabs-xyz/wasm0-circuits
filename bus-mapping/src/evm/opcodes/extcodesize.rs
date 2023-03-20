@@ -1,9 +1,10 @@
-use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
-use crate::evm::Opcode;
-use crate::operation::{AccountField, CallContextField, RW, TxAccessListAccountOp};
-use crate::Error;
-use eth_types::{GethExecStep, H256};
-use eth_types::ToWord;
+use crate::{
+    circuit_input_builder::{CircuitInputStateRef, ExecStep},
+    evm::Opcode,
+    operation::{AccountField, CallContextField, TxAccessListAccountOp},
+    Error,
+};
+use eth_types::{GethExecStep, ToWord, H256};
 use eth_types::evm_types::MemoryAddress;
 use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
 
@@ -47,7 +48,6 @@ impl Opcode for Extcodesize {
         let is_warm = state.sdb.check_account_in_access_list(&address);
         state.push_op_reversible(
             &mut exec_step,
-            RW::WRITE,
             TxAccessListAccountOp {
                 tx_id: state.tx_ctx.id(),
                 address: address.clone(),
@@ -68,7 +68,6 @@ impl Opcode for Extcodesize {
             &mut exec_step,
             address.clone(),
             AccountField::CodeHash,
-            code_hash.to_word(),
             code_hash.to_word(),
         );
         let codesize = if exists {
@@ -99,18 +98,18 @@ impl Opcode for Extcodesize {
 mod extcodesize_tests {
     use ethers_core::utils::keccak256;
     use super::*;
-    use crate::circuit_input_builder::ExecState;
-    use crate::mocks::BlockData;
-    use crate::operation::{AccountOp, CallContextOp};
-    use crate::operation::MemoryOp;
-    use crate::operation::RW;
-    use crate::operation::StackOp;
-    use eth_types::evm_types::{MemoryAddress, OpcodeId, StackAddress};
-    use eth_types::geth_types::{Account, GethData};
-    use eth_types::{bytecode, Bytecode, U256, StackWord, Word};
+    use crate::{
+        circuit_input_builder::ExecState,
+        mock::BlockData,
+        operation::{AccountOp, CallContextOp, StackOp, RW},
+    };
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::{Account, GethData}, Bytecode, Word, U256, StackWord};
+    use ethers_core::utils::keccak256;
     use mock::{TestContext, MOCK_1_ETH, MOCK_ACCOUNTS, MOCK_CODES};
     use pretty_assertions::assert_eq;
     use eth_types::bytecode::WasmBinaryBytecode;
+    use crate::mocks::BlockData;
+    use crate::operation::MemoryOp;
 
     #[test]
     fn test_extcodesize_opcode_empty_acc() {
@@ -227,6 +226,7 @@ mod extcodesize_tests {
                 call_id,
                 address: StackAddress::from(1022u32),
                 value: StackWord::from(res_mem_address)
+                local_index: 0,
             }
         );
 
@@ -239,6 +239,7 @@ mod extcodesize_tests {
                 call_id,
                 address: StackAddress::from(1023u32),
                 value: StackWord::from(account_mem_address)
+                local_index: 0,
             }
         );
 

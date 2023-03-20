@@ -1,6 +1,8 @@
 use super::Opcode;
-use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
-use crate::Error;
+use crate::{
+    circuit_input_builder::{CircuitInputStateRef, ExecStep},
+    Error,
+};
 use eth_types::GethExecStep;
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
@@ -43,12 +45,16 @@ impl<const N_POP: usize, const N_PUSH: usize> Opcode for StackOnlyOpcode<N_POP, 
 
 #[cfg(test)]
 mod stackonlyop_tests {
-    use crate::operation::RW;
-    use crate::{circuit_input_builder::ExecState, mocks::BlockData, operation::StackOp};
+    use crate::{
+        circuit_input_builder::ExecState,
+        mocks::BlockData,
+        operation::{StackOp, RW},};
     use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, word, Bytecode, Word, StackWord, stack_word};
     use itertools::Itertools;
-    use mock::test_ctx::{helpers::*, TestContext};
-    use mock::{MOCK_BASEFEE, MOCK_DIFFICULTY, MOCK_GASLIMIT};
+    use mock::{
+        test_ctx::{helpers::*, TestContext},
+        MOCK_BASEFEE, MOCK_DIFFICULTY, MOCK_GASLIMIT,
+    };
     use pretty_assertions::assert_eq;
     use std::ops::{BitOr, BitXor};
     use eth_types::bytecode::WasmBinaryBytecode;

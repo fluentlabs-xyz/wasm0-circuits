@@ -9,12 +9,12 @@ use bus_mapping::operation::{
 };
 use eth_types::{address, evm_types::{MemoryAddress, StackAddress}, Address, Field, ToAddress, Word, U256, StackWord, U64};
 use gadgets::binary_number::AsBits;
-use halo2_proofs::arithmetic::Field as Halo2Field;
-use halo2_proofs::poly::kzg::commitment::ParamsKZG;
 use halo2_proofs::{
+    arithmetic::Field as Halo2Field,
     dev::{MockProver, VerifyFailure},
     halo2curves::bn256::{Bn256, Fr},
     plonk::{keygen_vk, Advice, Circuit, Column, ConstraintSystem},
+    poly::kzg::commitment::ParamsKZG,
 };
 use rand::SeedableRng;
 use std::collections::{BTreeSet, HashMap};

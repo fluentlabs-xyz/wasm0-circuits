@@ -12,33 +12,6 @@
 // better way to handle downcasting from Operation into it's variants.
 #![allow(clippy::upper_case_acronyms)] // Too pedantic
 
-use std::collections::HashMap;
-use std::fmt;
-use std::str::FromStr;
-
-pub use ethers_core::abi::ethereum_types::{BigEndianHash, U512};
-use ethers_core::types;
-pub use ethers_core::types::{
-    Address,
-    Block, Bytes, H160, H256, H64, Signature, transaction::{eip2930::AccessList, response::Transaction}, U256, U64,
-};
-use halo2_proofs::{
-    arithmetic::{Field as Halo2Field, FieldExt},
-    halo2curves::{
-        bn256::{Fq, Fr},
-        group::ff::PrimeField,
-    },
-};
-use serde::{de, Deserialize, Serialize};
-
-pub use bytecode::Bytecode;
-pub use error::Error;
-pub use uint_types::{DebugU256, DebugU64};
-
-use crate::evm_types::{memory::Memory, stack::Stack, storage::Storage};
-use crate::evm_types::{Gas, GasCost, OpcodeId, ProgramCounter};
-use crate::GethExecStepFamily::{Evm, Unknown, WebAssembly};
-
 #[macro_use]
 pub mod macros;
 #[macro_use]
@@ -48,6 +21,32 @@ pub mod bytecode;
 pub mod evm_types;
 pub mod geth_types;
 pub mod sign_types;
+
+pub use bytecode::Bytecode;
+pub use error::Error;
+use halo2_proofs::{
+    arithmetic::{Field as Halo2Field, FieldExt},
+    halo2curves::{
+        bn256::{Fq, Fr},
+        group::ff::PrimeField,
+    },
+};
+
+use crate::evm_types::{
+    memory::Memory, stack::Stack, storage::Storage, Gas, GasCost, OpcodeId, ProgramCounter,
+};
+use ethers_core::types;
+pub use ethers_core::{
+    abi::ethereum_types::{BigEndianHash, U512},
+    types::{
+        transaction::{eip2930::AccessList, response::Transaction},
+        Address, Block, Bytes, Signature, H160, H256, H64, U256, U64,
+    },
+};
+
+use serde::{de, Deserialize, Serialize};
+use std::{collections::HashMap, fmt, str::FromStr};
+use crate::uint_types::{DebugU256, DebugU64};
 
 /// Trait used to reduce verbosity with the declaration of the [`FieldExt`]
 /// trait and its repr.
@@ -481,11 +480,11 @@ pub enum GethExecStepFamily {
 impl GethExecStepFamily {
     fn from_string(value: &String) -> Self {
         if value.eq(&String::from("WASM")) {
-            WebAssembly
+            GethExecStepFamily::WebAssembly
         } else if value.eq(&String::from("EVM")) {
-            Evm
+            GethExecStepFamily::Evm
         } else {
-            Unknown
+            GethExecStepFamily::Unknown
         }
     }
 }
@@ -753,10 +752,8 @@ macro_rules! word_map {
 
 #[cfg(test)]
 mod tests {
-    use crate::evm_types::{memory::Memory, stack::Stack};
-    use crate::evm_types::opcode_ids::OpcodeId;
-
     use super::*;
+    use crate::evm_types::{memory::Memory, opcode_ids::OpcodeId, stack::Stack};
 
     #[test]
     fn deserialize_geth_exec_trace2() {
@@ -967,13 +964,13 @@ mod tests {
         "#;
         let trace: GethExecTrace =
             serde_json::from_str(trace_json).expect("json-deserialize GethExecTrace");
-        assert_eq!(trace.struct_logs[0].op_family, Some(WebAssembly));
+        assert_eq!(trace.struct_logs[0].op_family, Some(GethExecStepFamily::WebAssembly));
         let params = &trace.struct_logs[0].params;
         assert_eq!(params.clone()[0], 1048576);
-        assert_eq!(trace.struct_logs[1].op_family, Some(WebAssembly));
+        assert_eq!(trace.struct_logs[1].op_family, Some(GethExecStepFamily::WebAssembly));
         let params = &trace.struct_logs[1].params;
         assert_eq!(params.clone()[0], 171);
-        assert_eq!(trace.struct_logs[2].op_family, Some(Evm));
+        assert_eq!(trace.struct_logs[2].op_family, Some(GethExecStepFamily::Evm));
     }
 }
 
@@ -981,8 +978,7 @@ mod tests {
 mod eth_types_test {
     use std::str::FromStr;
 
-    use crate::Error;
-    use crate::Word;
+    use crate::{Error, Word};
 
     use super::*;
 

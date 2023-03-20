@@ -1,27 +1,21 @@
-use std::fmt::Display;
-use std::iter;
-
-use halo2_proofs::{
-    arithmetic::FieldExt,
-    circuit::Value,
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression},
-};
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
-
-use bus_mapping::evm::OpcodeId;
-
+use super::util::{CachedRegion, CellManager, CellType};
 use crate::{
     evm_circuit::{
-        param::{MAX_STEP_HEIGHT, STEP_STATE_HEIGHT, STEP_WIDTH},
+        param::{EXECUTION_STATE_HEIGHT_MAP, MAX_STEP_HEIGHT, STEP_STATE_HEIGHT, STEP_WIDTH},
         util::Cell,
         witness::{Block, Call, ExecStep},
     },
     util::Expr,
 };
-use crate::evm_circuit::param::EXECUTION_STATE_HEIGHT_MAP;
-
-use super::util::{CachedRegion, CellManager, CellType};
+use bus_mapping::evm::OpcodeId;
+use halo2_proofs::{
+    arithmetic::FieldExt,
+    circuit::Value,
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression},
+};
+use std::{fmt::Display, iter};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumIter)]

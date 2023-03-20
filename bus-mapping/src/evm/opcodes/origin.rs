@@ -1,11 +1,10 @@
-use eth_types::evm_types::MemoryAddress;
 use super::Opcode;
-use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
-use crate::operation::CallContextField;
-use crate::Error;
-use eth_types::{GethExecStep, ToAddress, U256};
-
-pub const ORIGIN_BYTE_LENGTH: usize = 20;
+use crate::{
+    circuit_input_builder::{CircuitInputStateRef, ExecStep},
+    operation::CallContextField,
+    Error,
+};
+use eth_types::{evm_types::MemoryAddress, GethExecStep, N_BYTES_ADDRESS, ToAddress, U256};
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Origin;
@@ -38,7 +37,7 @@ impl Opcode for Origin {
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
         // Copy result to memory
-        for i in 0..ORIGIN_BYTE_LENGTH {
+        for i in 0..N_BYTES_ADDRESS {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), origin_as_address[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;

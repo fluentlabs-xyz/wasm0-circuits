@@ -1,11 +1,11 @@
+use super::Opcode;
+use crate::{
+    circuit_input_builder::{CircuitInputStateRef, ExecStep},
+    operation::CallContextField,
+    Error,
+};
 use eth_types::{GethExecStep, U256};
 use eth_types::evm_types::MemoryAddress;
-
-use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
-use crate::Error;
-use crate::operation::CallContextField;
-
-use super::Opcode;
 
 pub const ADDRESS_BYTE_LENGTH: usize = 20;
 
@@ -65,6 +65,19 @@ mod address_tests {
     use crate::operation::MemoryOp;
 
     use super::*;
+    use crate::{
+        circuit_input_builder::ExecState,
+        mock::BlockData,
+        operation::{CallContextOp, StackOp, RW},
+    };
+    use eth_types::{
+        bytecode,
+        evm_types::{OpcodeId, StackAddress},
+        geth_types::GethData,
+        ToWord,
+    };
+    use mock::test_ctx::{helpers::*, TestContext};
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn address_opcode_impl() {
