@@ -52,17 +52,17 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         let opcode = cb.query_cell();
 
         // Query elements to be popped from the stack.
-        let size = cb.query_word_rlc();
+        let copy_size = cb.query_word_rlc();
         let code_offset = cb.query_word_rlc();
         let dst_memory_offset = cb.query_cell_phase2();
 
         // Pop items from stack.
-        cb.stack_pop(size.expr());
+        cb.stack_pop(copy_size.expr());
         cb.stack_pop(code_offset.expr());
         cb.stack_pop(dst_memory_offset.expr());
 
         // Construct memory address in the destination (memory) to which we copy code.
-        let memory_address_gadget = MemoryAddressGadget::construct(cb, dst_memory_offset, size.clone());
+        let memory_address_gadget = MemoryAddressGadget::construct(cb, dst_memory_offset, copy_size.clone());
 
         // Fetch the hash of bytecode running in current environment.
         let code_hash = cb.curr.state.code_hash.clone();

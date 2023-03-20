@@ -137,6 +137,7 @@ use wasm_const::WasmConstGadget;
 use wasm_unary::WasmUnaryGadget;
 use crate::evm_circuit::execution::callop::CallOpGadget;
 use crate::evm_circuit::execution::codecopy::CodeCopyGadget;
+use crate::evm_circuit::execution::extcodecopy::ExtcodecopyGadget;
 use crate::evm_circuit::execution::extcodesize::ExtcodesizeGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
@@ -207,7 +208,7 @@ pub(crate) struct ExecutionConfig<F> {
     // exp_gadget: ExponentiationGadget<F>,
     // extcodehash_gadget: ExtcodehashGadget<F>,
     extcodesize_gadget: ExtcodesizeGadget<F>,
-    // extcodecopy_gadget: ExtcodecopyGadget<F>,
+    extcodecopy_gadget: ExtcodecopyGadget<F>,
     // gas_gadget: GasGadget<F>,
     gasprice_gadget: GasPriceGadget<F>,
     // iszero_gadget: IsZeroGadget<F>,
@@ -487,7 +488,7 @@ impl<F: Field> ExecutionConfig<F> {
             // blockhash_gadget: configure_gadget!(),
             // exp_gadget: configure_gadget!(),
             // sar_gadget: configure_gadget!(),
-            // extcodecopy_gadget: configure_gadget!(),
+            extcodecopy_gadget: configure_gadget!(),
             // returndatasize_gadget: configure_gadget!(),
             // returndatacopy_gadget: configure_gadget!(),
             // create_gadget: configure_gadget!(),
@@ -1186,7 +1187,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::BLOCKHASH => assign_exec_step!(self.blockhash_gadget),
             ExecutionState::SELFBALANCE => assign_exec_step!(self.selfbalance_gadget),
             // dummy gadgets
-            // ExecutionState::EXTCODECOPY => assign_exec_step!(self.extcodecopy_gadget),
+            ExecutionState::EXTCODECOPY => assign_exec_step!(self.extcodecopy_gadget),
             // ExecutionState::CREATE => assign_exec_step!(self.create_gadget),
             // ExecutionState::CREATE2 => assign_exec_step!(self.create2_gadget),
             // ExecutionState::SELFDESTRUCT => assign_exec_step!(self.selfdestruct_gadget),
