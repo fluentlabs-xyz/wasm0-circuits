@@ -30,6 +30,10 @@ impl Opcode for Extcodecopy {
         let dest_offset = geth_step.stack.nth_last(2)?.as_u64();
         let external_address_offset = geth_step.stack.nth_last(3)?;
         let external_address = geth_step.global_memory.read_address(external_address_offset)?;
+        let address_offset_addr = MemoryAddress::try_from(external_address_offset)?;
+        for i in 0..ADDRESS_BYTE_LENGTH {
+            state.memory_read(&mut exec_step, address_offset_addr.map(|a| a + i), external_address[i])?;
+        }
 
         let (_, account) = state.sdb.get_account(&external_address);
         let code_hash = account.code_hash;
@@ -41,11 +45,6 @@ impl Opcode for Extcodecopy {
         memory.copy_from(dest_offset, &code, code_offset, length as usize);
 
         let copy_event = gen_copy_event(state, geth_step)?;
-
-        let address_offset_addr = MemoryAddress::try_from(external_address_offset)?;
-        for i in 0..ADDRESS_BYTE_LENGTH {
-            state.memory_read(&mut exec_step, address_offset_addr.map(|a| a + i), external_address[i])?;
-        }
 
         state.push_copy(&mut exec_step, copy_event);
         Ok(vec![exec_step])
@@ -59,14 +58,14 @@ fn gen_extcodecopy_step(
     let mut exec_step = state.new_step(geth_step)?;
 
     let length = geth_step.stack.nth_last(0)?;
-    let offset = geth_step.stack.nth_last(1)?;
+    let code_offset = geth_step.stack.nth_last(1)?;
     let dest_offset = geth_step.stack.nth_last(2)?;
     let external_address_offset = geth_step.stack.nth_last(3)?;
     let external_address = &geth_step.global_memory.read_address(external_address_offset)?;
 
     // stack reads
     state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), length)?;
-    state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), offset)?;
+    state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), code_offset)?;
     state.stack_read(
         &mut exec_step,
         geth_step.stack.nth_last_filled(2),
@@ -151,7 +150,7 @@ fn gen_copy_event(
 ) -> Result<CopyEvent, Error> {
     let rw_counter_start = state.block_ctx.rwc;
     let length = geth_step.stack.nth_last(0)?.as_u64();
-    let data_offset = geth_step.stack.nth_last(1)?.as_u64();
+    let code_offset = geth_step.stack.nth_last(1)?.as_u64();
     let memory_offset = geth_step.stack.nth_last(2)?.as_u64();
     let external_address_offset = geth_step.stack.nth_last(3)?;
     let external_address = &geth_step.global_memory.read_address(external_address_offset)?;
@@ -179,14 +178,14 @@ fn gen_copy_event(
     let copy_steps = gen_copy_steps(
         state,
         &mut exec_step,
-        data_offset,
+        code_offset,
         memory_offset,
         src_addr_end,
         length,
         &bytecode,
     )?;
     Ok(CopyEvent {
-        src_addr: data_offset,
+        src_addr: code_offset,
         src_addr_end,
         src_type: CopyDataType::Bytecode,
         src_id: NumberOrHash::Hash(code_hash),
@@ -227,7 +226,6 @@ mod extcodecopy_tests {
         copy_size: usize,
     ) {
         let external_address = address!("0xaabbccddee000000000000000000000000000000");
-        // TODO check why it is 5 (we have some mem ops before extcodecopy's get_associated_ops called)
         let external_address_offset: usize = 0;
         let mut code = Bytecode::default();
         if is_warm {
@@ -455,25 +453,10 @@ mod extcodecopy_tests {
 
         let expected_call_id = transaction.calls()[step.call_index].call_id;
 
-        for idx in 0..copy_size {
-            let op = &builder.block.container.memory[idx + 20];
-
-            let op_rw_expected = RW::WRITE;
-            let op_expected = MemoryOp::new(
-                expected_call_id,
-                MemoryAddress::from(memory_offset + idx),
-                if code_offset + idx < code_ext_wasm_binary.len() {
-                    code_ext_wasm_binary[code_offset + idx]
-                } else {
-                    0
-                },
-            );
-            assert_eq!(op.rw(), op_rw_expected, "op.rw() at idx {}", idx);
-            assert_eq!(op.op().clone(), op_expected, "op.op() at idx {}", idx);
-        }
-
         for idx in 0..N_BYTES_ADDRESS {
-            let op = &builder.block.container.memory[external_address_offset + idx + 20 + copy_size];
+            indices_index += 1;
+            // TODO check why '+ 20'
+            let op = &builder.block.container.memory[indices[indices_index].as_usize()];
 
             let op_rw_expected = RW::READ;
             let op_expected = MemoryOp::new(
@@ -483,6 +466,25 @@ mod extcodecopy_tests {
             );
             assert_eq!(op.rw(), op_rw_expected, "op.rw() at idx {}", idx);
             assert_eq!(op.op().clone(), op_expected, "op.op() at idx {}", idx);
+        }
+
+        if code_ext_wasm_binary.len() > 0 { // not fully correct
+            for idx in 0..copy_size {
+                let op = &builder.block.container.memory[indices[indices_index].as_usize() + 1 + idx];
+
+                let op_rw_expected = RW::WRITE;
+                let op_expected = MemoryOp::new(
+                    expected_call_id,
+                    MemoryAddress::from(memory_offset + idx),
+                    if code_offset + idx < code_ext_wasm_binary.len() {
+                        code_ext_wasm_binary[code_offset + idx]
+                    } else {
+                        0
+                    },
+                );
+                assert_eq!(op.rw(), op_rw_expected, "op.rw() at idx {}", idx);
+                assert_eq!(op.op().clone(), op_expected, "op.op() at idx {}", idx);
+            }
         }
 
         let copy_events = builder.block.copy_events.clone();

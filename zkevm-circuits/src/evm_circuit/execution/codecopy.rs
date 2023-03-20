@@ -144,7 +144,7 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         // context's code where we start to read.
         // 3. `size` is the number of
         // bytes to be read and written (0s to be copied for out of bounds).
-        let [size, code_offset, dest_offset ] =
+        let [copy_size, code_offset, dest_offset ] =
             [0, 1, 2].map(|i| block.rws[step.rw_indices[i]].stack_value());
 
         // assign the code offset memory address.
@@ -171,7 +171,7 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         // assign the destination memory offset.
         let _memory_address = self
             .dst_memory_addr
-            .assign(region, offset, dest_offset, size)?;
+            .assign(region, offset, dest_offset, copy_size)?;
 
         // assign to gadgets handling memory expansion cost and copying cost.
         // let (_, memory_expansion_cost) = self.memory_expansion.assign(
@@ -181,13 +181,13 @@ impl<F: Field> ExecutionGadget<F> for CodeCopyGadget<F> {
         //     [memory_address],
         // )?;
         self.memory_copier_gas
-            .assign(region, offset, size.as_u64(), 0/*memory_expansion_cost*/)?;
+            .assign(region, offset, copy_size.as_u64(), 0/*memory_expansion_cost*/)?;
         // rw_counter increase from copy table lookup is number of bytes copied.
         self.copy_rwc_inc.assign(
             region,
             offset,
             Value::known(
-                size.to_scalar()
+                copy_size.to_scalar()
                     .expect("unexpected U64 -> Scalar conversion failure"),
             ),
         )?;
