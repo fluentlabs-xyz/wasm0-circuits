@@ -175,7 +175,8 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::SetGlobal => ExecutionState::WASM_GLOBAL,
 
                     OpcodeId::GetLocal |
-                    OpcodeId::SetLocal => ExecutionState::WASM_LOCAL,
+                    OpcodeId::SetLocal |
+                    OpcodeId::TeeLocal => ExecutionState::WASM_LOCAL,
 
                     OpcodeId::End => ExecutionState::WASM_END,
 

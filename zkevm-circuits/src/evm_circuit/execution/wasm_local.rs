@@ -24,6 +24,7 @@ pub(crate) struct WasmLocalGadget<F> {
     same_context: SameContextGadget<F>,
     is_get_local: Cell<F>,
     is_set_local: Cell<F>,
+    is_tee_local: Cell<F>,
     index: Cell<F>,
     value: Cell<F>,
 }
@@ -38,13 +39,14 @@ impl<F: Field> ExecutionGadget<F> for WasmLocalGadget<F> {
 
         let is_get_local = cb.query_cell();
         let is_set_local = cb.query_cell();
+        let is_tee_local = cb.query_cell();
 
         let index = cb.query_cell();
         let value = cb.query_cell();
 
         cb.require_equal(
             "op_local: selector",
-            is_get_local.expr() + is_set_local.expr(),
+            is_get_local.expr() + is_set_local.expr() + is_tee_local.expr(),
             1.expr(),
         );
 
@@ -58,10 +60,16 @@ impl<F: Field> ExecutionGadget<F> for WasmLocalGadget<F> {
             cb.stack_push(value.expr());
         });
 
+        cb.condition(is_tee_local.expr(), |cb| {
+            cb.stack_pop(value.expr());
+            cb.stack_lookup(1.expr(), cb.stack_pointer_offset() - index.expr(), value.expr());
+            cb.stack_push(value.expr());
+        });
+
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(2.expr()),
             program_counter: Delta(1.expr()),
-            stack_pointer: Delta(1.expr()),
+            stack_pointer: Delta(is_tee_local.expr() * 2.expr() + (1.expr() - is_tee_local.expr()) * 1.expr()),
             gas_left: Delta(-OpcodeId::GetLocal.constant_gas_cost().expr()),
             ..Default::default()
         };
@@ -72,6 +80,7 @@ impl<F: Field> ExecutionGadget<F> for WasmLocalGadget<F> {
             same_context,
             is_set_local,
             is_get_local,
+            is_tee_local,
             index,
             value,
         }
@@ -94,13 +103,19 @@ impl<F: Field> ExecutionGadget<F> for WasmLocalGadget<F> {
                 let (value, index) = block.rws[step.rw_indices[1]].local_value();
                 self.value.assign(region, offset, Value::<F>::known(value.to_scalar().unwrap()))?;
                 self.index.assign(region, offset, Value::<F>::known(index.to_scalar().unwrap()))?;
-            },
+            }
             OpcodeId::GetLocal => {
                 self.is_get_local.assign(region, offset, Value::known(F::one()))?;
                 let (value, index) = block.rws[step.rw_indices[0]].local_value();
                 self.value.assign(region, offset, Value::<F>::known(value.to_scalar().unwrap()))?;
                 self.index.assign(region, offset, Value::<F>::known(index.to_scalar().unwrap()))?;
-            },
+            }
+            OpcodeId::TeeLocal => {
+                self.is_tee_local.assign(region, offset, Value::known(F::one()))?;
+                let (value, index) = block.rws[step.rw_indices[1]].local_value();
+                self.value.assign(region, offset, Value::<F>::known(value.to_scalar().unwrap()))?;
+                self.index.assign(region, offset, Value::<F>::known(index.to_scalar().unwrap()))?;
+            }
             _ => unreachable!("not supported opcode: {:?}", step.opcode),
         };
 
@@ -111,6 +126,7 @@ impl<F: Field> ExecutionGadget<F> for WasmLocalGadget<F> {
 #[cfg(test)]
 mod test {
     use wasm_encoder::ValType;
+
     use eth_types::{bytecode, Bytecode};
     use mock::TestContext;
 
@@ -128,14 +144,15 @@ mod test {
             I32Const[100]
             I32Const[20]
             Call[0]
-            Drop
         };
-        code.new_function(vec![ValType::I32; 2], vec![ValType::I32], bytecode! {
+        code.new_function(vec![ValType::I32; 2], vec![], bytecode! {
             GetLocal[0]
             GetLocal[1]
             I32Add
             SetLocal[2]
             I32Const[0]
+            TeeLocal[2]
+            Drop
         }, vec![(1, ValType::I32)]);
         run_test(code);
     }

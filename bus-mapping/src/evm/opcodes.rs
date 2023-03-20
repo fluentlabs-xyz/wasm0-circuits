@@ -225,7 +225,8 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::GetGlobal => WasmGlobalOpcode::gen_associated_ops,
         // WASM local opcodes
         OpcodeId::SetLocal |
-        OpcodeId::GetLocal => WasmLocalOpcode::gen_associated_ops,
+        OpcodeId::GetLocal |
+        OpcodeId::TeeLocal => WasmLocalOpcode::gen_associated_ops,
 
         OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
         OpcodeId::Return => Dummy::gen_associated_ops,

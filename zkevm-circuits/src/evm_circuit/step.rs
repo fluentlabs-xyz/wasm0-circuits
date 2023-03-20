@@ -242,6 +242,7 @@ impl ExecutionState {
             Self::WASM_LOCAL => vec![
                 OpcodeId::GetLocal,
                 OpcodeId::SetLocal,
+                OpcodeId::TeeLocal,
             ],
             Self::WASM_END => vec![OpcodeId::End],
             // EVM opcodes
