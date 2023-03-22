@@ -221,6 +221,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I64Rotl |
         OpcodeId::I64Rotr => StackOnlyOpcode::<2, 1>::gen_associated_ops,
         // WASM unary opcodes
+        OpcodeId::I64ExtendI32 |
         OpcodeId::I32Ctz |
         OpcodeId::I64Ctz |
         OpcodeId::I32Clz |

@@ -457,6 +457,8 @@ impl Bytecode {
             OpcodeId::I64Clz => Instruction::I64Clz,
             OpcodeId::I32Eqz => Instruction::I32Eqz,
             OpcodeId::I64Eqz => Instruction::I64Eqz,
+            OpcodeId::I32WrapI64 => Instruction::I32WrapI64,
+            OpcodeId::I64ExtendI32 => Instruction::I64ExtendI32S,
             OpcodeId::End => Instruction::End,
             OpcodeId::Unreachable => Instruction::Unreachable,
             OpcodeId::Drop => Instruction::Drop,

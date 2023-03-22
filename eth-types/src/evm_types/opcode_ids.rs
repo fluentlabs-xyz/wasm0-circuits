@@ -183,6 +183,7 @@ pub enum OpcodeId {
     I64ShrU,
     I64Rotl,
     I64Rotr,
+    I64ExtendI32,
     F32Abs,
     F32Neg,
     F32Ceil,

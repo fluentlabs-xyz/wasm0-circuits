@@ -177,6 +177,12 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::I32Popcnt |
                     OpcodeId::I64Popcnt => ExecutionState::WASM_UNARY,
 
+                    OpcodeId::I32Eqz |
+                    OpcodeId::I64Eqz => ExecutionState::WASM_TEST,
+
+                    OpcodeId::I32WrapI64 |
+                    OpcodeId::I64ExtendI32 => ExecutionState::WASM_CONVERSION,
+
                     OpcodeId::GetGlobal |
                     OpcodeId::SetGlobal => ExecutionState::WASM_GLOBAL,
 

@@ -111,6 +111,7 @@ mod wasm_global;
 mod wasm_unary;
 mod wasm_local;
 mod wasm_break;
+mod wasm_conversion;
 
 use begin_tx::BeginTxGadget;
 use end_block::EndBlockGadget;

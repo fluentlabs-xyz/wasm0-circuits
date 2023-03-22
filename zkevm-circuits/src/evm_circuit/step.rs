@@ -34,6 +34,7 @@ pub enum ExecutionState {
     WASM_GLOBAL,
     WASM_LOCAL,
     WASM_UNARY,
+    WASM_CONVERSION,
     WASM_END,
     // Opcode successful cases
     STOP,
