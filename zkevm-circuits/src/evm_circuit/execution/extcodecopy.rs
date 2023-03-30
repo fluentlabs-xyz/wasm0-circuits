@@ -1,26 +1,27 @@
+use halo2_proofs::{circuit::Value, plonk::Error};
+
+use bus_mapping::circuit_input_builder::CopyDataType;
+use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
+use gadgets::util::Expr;
+
 use crate::{
     evm_circuit::{
-        param::N_BYTES_MEMORY_ADDRESS,
         param::N_BYTES_ACCOUNT_ADDRESS,
+        param::N_BYTES_MEMORY_ADDRESS,
         step::ExecutionState,
         util::{
+            CachedRegion,
+            Cell,
             common_gadget::SameContextGadget,
             constraint_builder::{
                 ConstraintBuilder, ReversionInfo, StepStateTransition, Transition,
             },
-            from_bytes,
-            memory_gadget::{MemoryAddressGadget, MemoryCopierGasGadget},
-            not, select, CachedRegion, Cell, MemoryAddress, Word,
+            from_bytes, memory_gadget::{MemoryAddressGadget, MemoryCopierGasGadget}, MemoryAddress, not, select,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{AccountFieldTag, CallContextFieldTag},
 };
-use bus_mapping::circuit_input_builder::CopyDataType;
-use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
-use gadgets::util::Expr;
-use halo2_proofs::{circuit::Value, plonk::Error};
-use eth_types::evm_types::OpcodeId;
 use crate::evm_circuit::util::RandomLinearCombination;
 use crate::table::RwTableTag;
 
@@ -101,10 +102,10 @@ impl<F: Field> ExecutionGadget<F> for ExtcodecopyGadget<F> {
         );
         let gas_cost = memory_copier_gas.gas_cost()
             + select::expr(
-                is_warm.expr(),
-                GasCost::WARM_ACCESS.expr(),
-                GasCost::COLD_ACCOUNT_ACCESS.expr(),
-            );
+            is_warm.expr(),
+            GasCost::WARM_ACCESS.expr(),
+            GasCost::COLD_ACCOUNT_ACCESS.expr(),
+        );
 
         let copy_rwc_inc = cb.query_cell();
         cb.condition(memory_address_gadget.has_length(), |cb| {
@@ -171,10 +172,10 @@ impl<F: Field> ExecutionGadget<F> for ExtcodecopyGadget<F> {
 
         // let [external_address, memory_offset, data_offset, memory_length] =
         let [
-            copy_size,
-            code_offset,
-            dest_offset,
-            external_address_offset,
+        copy_size,
+        code_offset,
+        dest_offset,
+        external_address_offset,
         ] = [0, 1, 2, 3].map(|idx| block.rws[step.rw_indices[idx]].stack_value());
         let address_rw_index = 9;
         let external_address = {
@@ -262,13 +263,15 @@ impl<F: Field> ExecutionGadget<F> for ExtcodecopyGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::{evm_circuit::test::rand_bytes_array, test_util::CircuitTestBuilder};
-    use eth_types::{
-        address, bytecode, geth_types::Account, Address, Bytecode, Bytes, ToWord, Word,
-    };
     use lazy_static::lazy_static;
+
+    use eth_types::{
+        address, Address, bytecode, Bytecode, Bytes, geth_types::Account, Word,
+    };
     use eth_types::bytecode::WasmBinaryBytecode;
     use mock::TestContext;
+
+    use crate::{evm_circuit::test::rand_bytes_array, test_util::CircuitTestBuilder};
 
     lazy_static! {
         static ref EXTERNAL_ADDRESS: Address =
@@ -286,32 +289,26 @@ mod test {
             .as_ref()
             .map(|a| a.address)
             .unwrap_or(*EXTERNAL_ADDRESS);
-        let external_address_offset: usize = 0;
 
         let mut code = Bytecode::default();
 
+        let address_offset = code.fill_default_global_data(external_address.as_bytes().to_vec());
+
         if is_warm {
             code.append(&bytecode! {
-                PUSH20(external_address.to_word())
+                I32Const[address_offset]
+                I32Const[0xff]
                 EXTCODEHASH
-                POP
             });
         }
         code.append(&bytecode! {
-            // PUSH32(length)
-            // PUSH32(data_offset)
-            // PUSH32(memory_offset)
-            // PUSH20(external_address.to_word())
-
-            I32Const[external_address_offset]
+            I32Const[address_offset]
             I32Const[memory_offset]
             I32Const[code_offset]
             I32Const[copy_size]
             // #[start]
             EXTCODECOPY
-            // STOP
         });
-        code.with_global_data(0, external_address_offset as u32, external_address.as_bytes().to_vec());
 
         let ctx = TestContext::<3, 1>::new(
             None,
@@ -325,12 +322,10 @@ mod test {
                 accs[2].address(external_address);
                 if let Some(external_account) = external_account {
                     let external_account_code_vec = external_account.code.to_vec();
-                    let external_account_bytecode = Bytecode::from_raw_unchecked(external_account_code_vec);
-                    let external_account_wasm_binary = external_account_bytecode.wasm_binary();
                     accs[2]
                         .balance(external_account.balance)
                         .nonce(external_account.nonce)
-                        .code(external_account_wasm_binary);
+                        .code(external_account_code_vec);
                 }
             },
             |mut txs, accs| {
@@ -341,7 +336,7 @@ mod test {
             },
             |block, _tx| block.number(0x1111111),
         )
-        .unwrap();
+            .unwrap();
 
         CircuitTestBuilder::new_from_test_ctx(ctx).run();
     }
@@ -376,16 +371,12 @@ mod test {
         test_ok(
             Some(Account {
                 address: *EXTERNAL_ADDRESS,
-                // code: Bytes::from([10, 40]),
-                code: Bytes::from(bytecode! {
-                    I32Const[1]
-                    Drop
-                }),
+                code: Bytes::from([10, 40]),
                 ..Default::default()
             }),
-            0x00,
-            0x00,
-            0x36,
+            20,
+            0,
+            2,
             false,
         );
     }
