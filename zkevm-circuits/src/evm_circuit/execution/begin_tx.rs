@@ -30,6 +30,7 @@ use halo2_proofs::{circuit::Value, plonk::Error};
 #[derive(Clone, Debug)]
 pub(crate) struct BeginTxGadget<F> {
     tx_id: Cell<F>,
+    num_locals: Cell<F>,
     tx_nonce: Cell<F>,
     tx_gas: Cell<F>,
     tx_gas_price: Word<F>,
@@ -392,8 +393,19 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             },
         );
 
+        cb.call_context_lookup(
+            1.expr(),
+            Some(call_id.expr()),
+            CallContextFieldTag::InternalFunctionId,
+            0.expr(),
+        );
+
+        let num_locals = cb.query_cell();
+        cb.register_local_variables(num_locals.expr());
+
         Self {
             tx_id,
+            num_locals,
             tx_nonce,
             tx_gas,
             tx_gas_price,
@@ -490,7 +502,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         self.is_caller_callee_equal.assign(
             region,
             offset,
-            Value::known(F::from(caller_address == callee_address)),
+            Value::known(F::from((caller_address == callee_address) as u64)),
         )?;
         self.tx_is_create
             .assign(region, offset, Value::known(F::from(tx.is_create as u64)))?;
@@ -556,6 +568,8 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             Some(callee_code_hash),
             None,
         )?;
+
+        self.num_locals.assign(region, offset, Value::known(F::from(step.num_locals as u64)))?;
 
         Ok(())
     }

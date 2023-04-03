@@ -22,7 +22,7 @@ use error_oog_sload_sstore::OOGSloadSstore;
 use error_return_data_outofbound::ErrorReturnDataOutOfBound;
 use error_simple::ErrorSimple;
 use error_write_protection::ErrorWriteProtection;
-use eth_types::{evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED}, evm_unimplemented, GethExecStep, GethExecTrace, StackWord, ToAddress, ToWord, Word};
+use eth_types::{evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED}, evm_unimplemented, GethExecStep, GethExecTrace, StackWord, ToAddress, ToWord, U256, Word};
 use eth_types::evm_types::MemoryAddress;
 use extcodecopy::Extcodecopy;
 use extcodesize::Extcodesize;
@@ -584,6 +584,24 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, exec_trace: &GethExecT
         // TODO: "proof const evaluation"
         state.global_write(&mut exec_step, global.index, StackWord::from(global.value))?;
     }
+
+    let first_function_call = exec_trace.function_calls.first().unwrap();
+    state.call_context_write(
+        &mut exec_step,
+        state.call()?.call_id,
+        CallContextField::InternalFunctionId,
+        U256::from(first_function_call.fn_index),
+    );
+
+    for i in 0..first_function_call.num_locals {
+        // TODO: "function body can be empty"
+        state.stack_write(&mut exec_step, exec_trace.struct_logs[0].stack.nth_last_filled((first_function_call.num_locals - i - 1) as usize), StackWord::zero())?;
+    }
+    exec_step.function_index = first_function_call.fn_index;
+    exec_step.max_stack_height = first_function_call.max_stack_height;
+    exec_step.num_locals = first_function_call.num_locals;
+    // increase reserved stack size with num locals
+    exec_step.stack_size += first_function_call.num_locals as usize;
 
     Ok(exec_step)
 }

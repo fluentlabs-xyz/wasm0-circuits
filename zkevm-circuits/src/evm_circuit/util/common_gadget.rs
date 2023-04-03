@@ -27,6 +27,7 @@ use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
 };
+use crate::evm_circuit::table::{FixedTableTag, Lookup};
 
 /// Construction of execution state that stays in the same call context, which
 /// lookups the opcode and verifies the execution state is responsible for it,
@@ -45,17 +46,17 @@ impl<F: Field> SameContextGadget<F> {
     ) -> Self {
         // TODO need a fix
         // cb.opcode_lookup(opcode.expr(), 1.expr());
-        // cb.add_lookup(
-        //     "Responsible opcode lookup",
-        //     Lookup::Fixed {
-        //         tag: FixedTableTag::ResponsibleOpcode.expr(),
-        //         values: [
-        //             cb.execution_state().as_u64().expr(),
-        //             opcode.expr(),
-        //             0.expr(),
-        //         ],
-        //     },
-        // );
+        cb.add_lookup(
+            "Responsible opcode lookup",
+            Lookup::Fixed {
+                tag: FixedTableTag::ResponsibleOpcode.expr(),
+                values: [
+                    cb.execution_state().as_u64().expr(),
+                    opcode.expr(),
+                    0.expr(),
+                ],
+            },
+        );
 
         // Check gas_left is sufficient
         let sufficient_gas_left = RangeCheckGadget::construct(cb, cb.next.state.gas_left.expr());

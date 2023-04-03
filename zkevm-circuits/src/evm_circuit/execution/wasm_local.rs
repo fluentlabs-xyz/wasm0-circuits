@@ -52,17 +52,17 @@ impl<F: Field> ExecutionGadget<F> for WasmLocalGadget<F> {
 
         cb.condition(is_set_local.expr(), |cb| {
             cb.stack_pop(value.expr());
-            cb.stack_lookup(1.expr(), cb.stack_pointer_offset() + 1.expr() - index.expr(), value.expr());
+            cb.stack_lookup(1.expr(), cb.stack_pointer_offset() + index.expr() - 1.expr(), value.expr());
         });
 
         cb.condition(is_get_local.expr(), |cb| {
-            cb.stack_lookup(0.expr(), cb.stack_pointer_offset() - index.expr(), value.expr());
+            cb.stack_lookup(0.expr(), cb.stack_pointer_offset() + index.expr(), value.expr());
             cb.stack_push(value.expr());
         });
 
         cb.condition(is_tee_local.expr(), |cb| {
             cb.stack_pop(value.expr());
-            cb.stack_lookup(1.expr(), cb.stack_pointer_offset() + 1.expr() - index.expr(), value.expr());
+            cb.stack_lookup(1.expr(), cb.stack_pointer_offset() + index.expr() - 1.expr(), value.expr());
             cb.stack_push(value.expr());
         });
 
@@ -144,18 +144,30 @@ mod test {
         let mut code = bytecode! {
             GetLocal[0]
             Drop
+            GetLocal[1]
+            Drop
+            GetLocal[0]
+            GetLocal[1]
+            Drop
+            Drop
         };
-        code.with_main_locals(vec![(1, ValType::I32)]);
+        code.with_main_locals(vec![(2, ValType::I32)]);
         run_test(code);
     }
 
     #[test]
     fn test_set_local() {
         let mut code = bytecode! {
-            I32Const[123]
+            I32Const[100]
             SetLocal[0]
+            I32Const[20]
+            SetLocal[1]
+            I32Const[100]
+            I32Const[20]
+            SetLocal[0]
+            SetLocal[1]
         };
-        code.with_main_locals(vec![(1, ValType::I32)]);
+        code.with_main_locals(vec![(2, ValType::I32)]);
         run_test(code);
     }
 
@@ -171,7 +183,7 @@ mod test {
     }
 
     #[test]
-    fn test_wasm_locals_encoding() {
+    fn test_different_locals() {
         let mut code = bytecode! {
             GetLocal[0]
             GetLocal[1]

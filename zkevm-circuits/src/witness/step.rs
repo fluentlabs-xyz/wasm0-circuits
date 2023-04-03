@@ -48,6 +48,12 @@ pub struct ExecStep {
     pub log_id: usize,
     /// The opcode corresponds to the step
     pub opcode: Option<OpcodeId>,
+    /// Wasm function index
+    pub function_index: u32,
+    /// Num locals
+    pub max_stack_height: u32,
+    /// Num locals
+    pub num_locals: u32,
 }
 
 impl fmt::Debug for ExecStep {
@@ -303,5 +309,8 @@ pub(super) fn step_convert(step: &circuit_input_builder::ExecStep) -> ExecStep {
         reversible_write_counter: step.reversible_write_counter,
         reversible_write_counter_delta: step.reversible_write_counter_delta,
         log_id: step.log_id,
+        function_index: step.function_index,
+        max_stack_height: step.function_index,
+        num_locals: step.num_locals,
     }
 }

@@ -1,4 +1,4 @@
-use eth_types::{GethExecStep, ToU256, ToWord};
+    use eth_types::{GethExecStep, ToU256, ToWord};
 use eth_types::evm_types::OpcodeId;
 
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};

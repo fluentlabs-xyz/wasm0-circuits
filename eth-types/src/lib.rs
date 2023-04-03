@@ -620,6 +620,17 @@ pub struct GethExecTraceGlobal {
     pub value: u64,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
+#[doc(hidden)]
+pub struct GethExecTraceFunctionCall {
+    #[serde(rename = "fnIndex")]
+    pub fn_index: u32,
+    #[serde(rename = "maxStackHeight")]
+    pub max_stack_height: u32,
+    #[serde(rename = "numLocals")]
+    pub num_locals: u32,
+}
+
 /// The execution trace type returned by geth RPC debug_trace* methods.
 /// Corresponds to `ExecutionResult` in `go-ethereum/internal/ethapi/api.go`.
 /// The deserialization truncates the memory of each step in `struct_logs` to
@@ -644,6 +655,9 @@ pub struct GethExecTrace {
     /// Globals.
     #[serde(rename = "globals")]
     pub globals: Vec<GethExecTraceGlobal>,
+    /// Globals.
+    #[serde(rename = "functionCalls")]
+    pub function_calls: Vec<GethExecTraceFunctionCall>,
 }
 
 #[derive(Deserialize)]
@@ -671,6 +685,9 @@ pub struct GethExecTraceInternal {
     #[serde(rename = "globals")]
     #[serde(default)]
     pub globals: Vec<GethExecTraceGlobal>,
+    /// Globals.
+    #[serde(rename = "functionCalls")]
+    pub function_calls: Vec<GethExecTraceFunctionCall>,
 }
 
 impl<'de> Deserialize<'de> for GethExecTrace {
@@ -705,6 +722,7 @@ impl<'de> Deserialize<'de> for GethExecTrace {
             return_value: s.return_value,
             struct_logs: s.struct_logs,
             globals: s.globals,
+            function_calls: s.function_calls,
         })
     }
 }
@@ -828,6 +846,7 @@ mod tests {
                 return_value: "".to_owned(),
                 global_memory: Memory::new(),
                 globals: Vec::new(),
+                function_calls: Vec::new(),
                 struct_logs: vec![
                     GethExecStep {
                         pc: ProgramCounter(0),

@@ -1202,6 +1202,10 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
         );
     }
 
+    pub(crate) fn register_local_variables(&mut self, num_locals: Expression<F>) {
+        self.stack_pointer_offset = self.stack_pointer_offset.clone() + num_locals;
+    }
+
     // Memory
 
     pub(crate) fn memory_rlc_lookup<const N: usize>(

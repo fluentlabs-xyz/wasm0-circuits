@@ -106,9 +106,6 @@ impl<'a> CircuitInputStateRef<'a> {
             self.block
                 .container
                 .insert(Operation::new(self.block_ctx.rwc.inc_pre(), rw, op.clone()));
-        if step.rwc.0 == 73 {
-            println!("rwc: {} {:?}", self.block_ctx.rwc.0, op);
-        }
         step.bus_mapping_instance.push(op_ref);
     }
 
@@ -285,6 +282,7 @@ impl<'a> CircuitInputStateRef<'a> {
         local_index: usize,
         value: StackWord,
     ) -> Result<(), Error> {
+        // println!("set local, value={}, addr={}, local_index={}", value, address.0, local_index);
         let call_id = self.call()?.call_id;
         self.push_op(step, RW::WRITE, StackOp::new_with_local_index(call_id, address, value, local_index));
         Ok(())
@@ -298,6 +296,7 @@ impl<'a> CircuitInputStateRef<'a> {
         local_index: usize,
         value: StackWord,
     ) -> Result<(), Error> {
+        // println!("get local, value={}, addr={}, local_index={}", value, address.0, local_index);
         let call_id = self.call()?.call_id;
         self.push_op(step, RW::READ, StackOp::new_with_local_index(call_id, address, value, local_index));
         Ok(())
@@ -315,6 +314,7 @@ impl<'a> CircuitInputStateRef<'a> {
         address: StackAddress,
         value: StackWord,
     ) -> Result<(), Error> {
+        // println!("push stack, value={}, addr={}", value, address.0);
         let call_id = self.call()?.call_id;
         self.push_op(step, RW::WRITE, StackOp::new(call_id, address, value));
         Ok(())
@@ -332,6 +332,7 @@ impl<'a> CircuitInputStateRef<'a> {
         address: StackAddress,
         value: StackWord,
     ) -> Result<(), Error> {
+        // println!("pop stack, value={}, addr={}", value, address.0);
         let call_id = self.call()?.call_id;
         self.push_op(step, RW::READ, StackOp::new(call_id, address, value));
         Ok(())
