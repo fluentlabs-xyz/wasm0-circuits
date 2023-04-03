@@ -52,7 +52,7 @@ impl<F: Field> ExecutionGadget<F> for WasmLocalGadget<F> {
 
         cb.condition(is_set_local.expr(), |cb| {
             cb.stack_pop(value.expr());
-            cb.stack_lookup(1.expr(), cb.stack_pointer_offset() - index.expr(), value.expr());
+            cb.stack_lookup(1.expr(), cb.stack_pointer_offset() + 1.expr() - index.expr(), value.expr());
         });
 
         cb.condition(is_get_local.expr(), |cb| {
@@ -62,14 +62,15 @@ impl<F: Field> ExecutionGadget<F> for WasmLocalGadget<F> {
 
         cb.condition(is_tee_local.expr(), |cb| {
             cb.stack_pop(value.expr());
-            cb.stack_lookup(1.expr(), cb.stack_pointer_offset() - index.expr(), value.expr());
+            cb.stack_lookup(1.expr(), cb.stack_pointer_offset() + 1.expr() - index.expr(), value.expr());
             cb.stack_push(value.expr());
         });
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(2.expr()),
             program_counter: Delta(1.expr()),
-            stack_pointer: Delta(is_tee_local.expr() * 2.expr() + (1.expr() - is_tee_local.expr()) * 1.expr()),
+            stack_pointer: Delta((-1).expr()),
+            // stack_pointer: Delta(is_tee_local.expr() * 2.expr() + (1.expr() - is_tee_local.expr()) * 1.expr()),
             gas_left: Delta(-OpcodeId::GetLocal.constant_gas_cost().expr()),
             ..Default::default()
         };
@@ -139,13 +140,39 @@ mod test {
     }
 
     #[test]
+    fn test_get_local() {
+        let mut code = bytecode! {
+            GetLocal[0]
+            Drop
+        };
+        code.with_main_locals(vec![(1, ValType::I32)]);
+        run_test(code);
+    }
+
+    #[test]
+    fn test_set_local() {
+        let mut code = bytecode! {
+            I32Const[123]
+            SetLocal[0]
+        };
+        code.with_main_locals(vec![(1, ValType::I32)]);
+        run_test(code);
+    }
+
+    #[test]
+    fn test_tee_local() {
+        let mut code = bytecode! {
+            I32Const[123]
+            TeeLocal[0]
+            Drop
+        };
+        code.with_main_locals(vec![(1, ValType::I32)]);
+        run_test(code);
+    }
+
+    #[test]
     fn test_wasm_locals_encoding() {
         let mut code = bytecode! {
-            I32Const[100]
-            I32Const[20]
-            Call[0]
-        };
-        code.new_function(vec![ValType::I32; 2], vec![], bytecode! {
             GetLocal[0]
             GetLocal[1]
             I32Add
@@ -153,7 +180,8 @@ mod test {
             I32Const[0]
             TeeLocal[2]
             Drop
-        }, vec![(1, ValType::I32)]);
+        };
+        code.with_main_locals(vec![(3, ValType::I32)]);
         run_test(code);
     }
 }

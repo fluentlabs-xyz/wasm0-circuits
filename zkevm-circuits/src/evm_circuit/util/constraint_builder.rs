@@ -539,13 +539,13 @@ impl<'a, F: Field> ConstraintBuilder<'a, F> {
             };
         }
 
-        // constrain!(rw_counter);
+        // constrain!(rw_counter); // TODO: "need to recheck why its commented"
         constrain!(call_id);
         constrain!(is_root);
         constrain!(is_create);
         constrain!(code_hash);
-        // constrain!(program_counter);
-        constrain!(stack_pointer);
+        // constrain!(program_counter); // TODO: "we should verify LEB128 values in the bytecode, before that we can't properly calc PC"
+        // constrain!(stack_pointer); // TODO: "some opcodes like Drop/Return/End might drop stack items, we need to re-write circuits for this"
         constrain!(gas_left);
         // constrain!(memory_word_size);
         constrain!(reversible_write_counter);

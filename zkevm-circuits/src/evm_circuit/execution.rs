@@ -104,10 +104,12 @@ mod swap;
 mod end;
 mod wasm_bin;
 mod wasm_const;
+mod wasm_call;
 mod wasm_drop;
 mod wasm_global;
 mod wasm_unary;
 mod wasm_local;
+mod wasm_break;
 
 use begin_tx::BeginTxGadget;
 use end_block::EndBlockGadget;
@@ -141,6 +143,8 @@ use wasm_unary::WasmUnaryGadget;
 use crate::evm_circuit::execution::callop::CallOpGadget;
 use crate::evm_circuit::execution::codecopy::CodeCopyGadget;
 use crate::evm_circuit::execution::error_oog_call::ErrorOOGCallGadget;
+use crate::evm_circuit::execution::wasm_break::WasmBreakGadget;
+use crate::evm_circuit::execution::wasm_call::WasmCallGadget;
 use crate::evm_circuit::execution::extcodecopy::ExtcodecopyGadget;
 use crate::evm_circuit::execution::extcodesize::ExtcodesizeGadget;
 use crate::evm_circuit::execution::wasm_local::WasmLocalGadget;
@@ -290,6 +294,8 @@ pub(crate) struct ExecutionConfig<F> {
     wasm_local_gadget: Box<WasmLocalGadget<F>>,
     wasm_unary_gadget: Box<WasmUnaryGadget<F>>,
     wasm_end_gadget: Box<WasmEndGadget<F>>,
+    wasm_break_gadget: Box<WasmBreakGadget<F>>,
+    wasm_call_gadget: Box<WasmCallGadget<F>>,
 }
 
 impl<F: Field> ExecutionConfig<F> {
@@ -523,7 +529,8 @@ impl<F: Field> ExecutionConfig<F> {
             // sstore_gadget: configure_gadget!(),
             // stop_gadget: configure_gadget!(),
             wasm_end_gadget: configure_gadget!(),
-            // wasm_gadget: configure_gadget!(),
+            wasm_break_gadget: configure_gadget!(),
+            wasm_call_gadget: configure_gadget!(),
             // swap_gadget: configure_gadget!(),
             // block_ctx_u64_gadget: configure_gadget!(),
             // block_ctx_u160_gadget: configure_gadget!(),
@@ -1167,6 +1174,8 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::WASM_LOCAL => assign_exec_step!(self.wasm_local_gadget),
             ExecutionState::WASM_UNARY => assign_exec_step!(self.wasm_unary_gadget),
             ExecutionState::WASM_END => assign_exec_step!(self.wasm_end_gadget),
+            ExecutionState::WASM_BREAK => assign_exec_step!(self.wasm_break_gadget),
+            ExecutionState::WASM_CALL => assign_exec_step!(self.wasm_call_gadget),
             // opcode
             // ExecutionState::ADDMOD => assign_exec_step!(self.addmod_gadget),
             ExecutionState::ADDRESS => assign_exec_step!(self.address_gadget),

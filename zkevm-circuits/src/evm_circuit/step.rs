@@ -26,7 +26,9 @@ pub enum ExecutionState {
     EndBlock,
     // WASM opcode cases
     WASM_BIN,
+    WASM_BREAK,
     WASM_CONST,
+    WASM_CALL,
     WASM_DROP,
     WASM_GLOBAL,
     WASM_LOCAL,
@@ -220,9 +222,19 @@ impl ExecutionState {
                 OpcodeId::I32RemU,
                 OpcodeId::I64RemU,
             ],
+            Self::WASM_BREAK => vec![
+                OpcodeId::Return,
+                OpcodeId::Br,
+                OpcodeId::BrIf,
+                OpcodeId::BrTable,
+            ],
             Self::WASM_CONST => vec![
                 OpcodeId::I32Const,
                 OpcodeId::I64Const,
+            ],
+            Self::WASM_CALL => vec![
+                OpcodeId::Call,
+                OpcodeId::CallIndirect,
             ],
             Self::WASM_DROP => vec![
                 OpcodeId::Drop,

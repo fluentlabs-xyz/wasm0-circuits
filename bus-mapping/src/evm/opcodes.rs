@@ -1,4 +1,47 @@
 //! Definition of each opcode of the EVM.
+use core::fmt::Debug;
+
+use ethers_core::utils::get_contract_address;
+
+use address::Address;
+use balance::Balance;
+use calldatacopy::Calldatacopy;
+use calldataload::Calldataload;
+use calldatasize::Calldatasize;
+use caller::Caller;
+use callop::CallOpcode;
+use callvalue::Callvalue;
+use chainid::ChainId;
+use codecopy::Codecopy;
+use codesize::Codesize;
+use error_invalid_jump::InvalidJump;
+use error_oog_call::OOGCall;
+use error_oog_exp::OOGExp;
+use error_oog_log::ErrorOOGLog;
+use error_oog_sload_sstore::OOGSloadSstore;
+use error_return_data_outofbound::ErrorReturnDataOutOfBound;
+use error_simple::ErrorSimple;
+use error_write_protection::ErrorWriteProtection;
+use eth_types::{evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED}, evm_unimplemented, GethExecStep, GethExecTrace, StackWord, ToAddress, ToWord, Word};
+use eth_types::evm_types::MemoryAddress;
+use extcodecopy::Extcodecopy;
+use extcodesize::Extcodesize;
+use gasprice::GasPrice;
+use keccak256::EMPTY_HASH;
+use number::Number;
+use origin::Origin;
+use return_revert::ReturnRevert;
+use returndatacopy::Returndatacopy;
+use returndatasize::Returndatasize;
+use selfbalance::Selfbalance;
+use stackonlyop::StackOnlyOpcode;
+use stacktomemoryop::StackToMemoryOpcode;
+use stop::Stop;
+use wasm_break::WasmBreakOpcode;
+use wasm_call::WasmCallOpcode;
+use wasm_global::WasmGlobalOpcode;
+use wasm_local::WasmLocalOpcode;
+
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, ExecStep},
     error::{ExecError, OogError},
@@ -9,10 +52,6 @@ use crate::{
         TxRefundOp,
     },
 };
-use core::fmt::Debug;
-use eth_types::{evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED}, evm_unimplemented, GethExecStep, GethExecTrace, StackWord, ToAddress, ToWord, Word};
-use ethers_core::utils::get_contract_address;
-use keccak256::EMPTY_HASH;
 
 #[cfg(any(feature = "test", test))]
 pub use self::sha3::sha3_tests::{gen_sha3_code, MemoryKind};
@@ -63,43 +102,10 @@ mod error_write_protection;
 
 #[cfg(test)]
 mod memory_expansion_test;
+mod wasm_call;
 mod wasm_global;
 mod wasm_local;
-
-use address::Address;
-use balance::Balance;
-use calldatacopy::Calldatacopy;
-use calldataload::Calldataload;
-use calldatasize::Calldatasize;
-use caller::Caller;
-use callop::CallOpcode;
-use callvalue::Callvalue;
-use codecopy::Codecopy;
-use codesize::Codesize;
-use error_invalid_jump::InvalidJump;
-use error_oog_call::OOGCall;
-use error_oog_exp::OOGExp;
-use error_oog_log::ErrorOOGLog;
-use error_oog_sload_sstore::OOGSloadSstore;
-use error_return_data_outofbound::ErrorReturnDataOutOfBound;
-use error_simple::ErrorSimple;
-use error_write_protection::ErrorWriteProtection;
-use eth_types::evm_types::{MemoryAddress};
-use gasprice::GasPrice;
-use origin::Origin;
-use return_revert::ReturnRevert;
-use returndatacopy::Returndatacopy;
-use returndatasize::Returndatasize;
-use selfbalance::Selfbalance;
-use stackonlyop::StackOnlyOpcode;
-use stop::Stop;
-use crate::evm::opcodes::chainid::ChainId;
-use crate::evm::opcodes::extcodecopy::Extcodecopy;
-use crate::evm::opcodes::extcodesize::Extcodesize;
-use crate::evm::opcodes::number::Number;
-use crate::evm::opcodes::stacktomemoryop::StackToMemoryOpcode;
-use crate::evm::opcodes::wasm_global::WasmGlobalOpcode;
-use crate::evm::opcodes::wasm_local::WasmLocalOpcode;
+mod wasm_break;
 
 /// Generic opcode trait which defines the logic of the
 /// [`Operation`](crate::operation::Operation) that should be generated for one
@@ -228,14 +234,16 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::SetLocal |
         OpcodeId::GetLocal |
         OpcodeId::TeeLocal => WasmLocalOpcode::gen_associated_ops,
+        // call opcodes
+        OpcodeId::Call |
+        OpcodeId::CallIndirect => WasmCallOpcode::gen_associated_ops,
+        // control flow opcodes (PC)
+        OpcodeId::Return |
+        OpcodeId::Br |
+        OpcodeId::BrIf |
+        OpcodeId::BrTable => WasmBreakOpcode::gen_associated_ops,
 
         OpcodeId::Drop => StackOnlyOpcode::<1, 0>::gen_associated_ops,
-        OpcodeId::Return => Dummy::gen_associated_ops,
-
-        // TODO these are temporal. need a fix.
-        // OpcodeId::I32GtU => Dummy::gen_associated_ops,
-        // OpcodeId::If => Dummy::gen_associated_ops,
-        // OpcodeId::Call => Dummy::gen_associated_ops,
 
         // EVM opcodes
         OpcodeId::STOP => Stop::gen_associated_ops,
@@ -559,6 +567,7 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, exec_trace: &GethExecT
                     (CallContextField::IsRoot, 1.into()),
                     (CallContextField::IsCreate, 0.into()),
                     (CallContextField::CodeHash, callee_code_hash),
+                    (CallContextField::InternalFunctionId, 0.into()),
                 ] {
                     state.call_context_write(&mut exec_step, call.call_id, field, value);
                 }
@@ -568,9 +577,8 @@ pub fn gen_begin_tx_ops(state: &mut CircuitInputStateRef, exec_trace: &GethExecT
 
     // Initialize WASM global memory and global variables section
     for (i, byte) in exec_trace.global_memory.0.iter().enumerate() {
-        // if *byte != 0 {
-            state.memory_write(&mut exec_step, MemoryAddress::from(i), *byte)?;
-        // }
+        // TODO: "I think there is easier way to proof init memory"
+        state.memory_write(&mut exec_step, MemoryAddress::from(i), *byte)?;
     }
     for global in &exec_trace.globals {
         // TODO: "proof const evaluation"

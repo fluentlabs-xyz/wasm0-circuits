@@ -40,37 +40,43 @@ fn main() {
     // Link
     println!("cargo:rustc-link-search=native={}", out_dir);
     println!("cargo:rustc-link-lib=static={}", lib_name);
-    let lib_name = "gas_injector";
-    let go_package_name = "zkwasm-gas-injector";
-    let go_mod_file_rel_path = manifest_dir.as_str();
-    let go_mod_file_name = "go.mod";
-    let go_package_path = golang_utils::go_package_system_path(go_package_name, go_mod_file_name, go_mod_file_rel_path).unwrap();
-    let mut local_libs_subdirs = vec![];
-    let arch = env::consts::ARCH;
-    match env::consts::OS {
-        "linux" => {
-            if arch.contains("x86_64") || arch.contains("amd64") {
-                local_libs_subdirs.push("linux-amd64");
-            } else {
-                panic!("unsupported arch '{}'", arch)
-            }
-        },
-        "macos" => {
-            if arch.contains("aarch64") { local_libs_subdirs.push("darwin-aarch64"); }
-            else if arch.contains("x86_64") || arch.contains("amd64") {
-                local_libs_subdirs.push("darwin-amd64");
-            } else {
-                panic!("unsupported arch '{}'", arch)
-            }
-        },
-        platform => panic!("unsupported build platform '{}'", platform)
+
+    let external_libs = vec![
+        ("zkwasm-gas-injector", "gas_injector"),
+        ("zkwasm-wasmi", "wasmi_c_api"),
+    ];
+
+    for (go_package_name, lib_name) in &external_libs {
+        let go_mod_file_rel_path = manifest_dir.as_str();
+        let go_mod_file_name = "go.mod";
+        let go_package_path = golang_utils::go_package_system_path(go_package_name, go_mod_file_name, go_mod_file_rel_path).unwrap();
+        let mut local_libs_subdirs = vec![];
+        let arch = env::consts::ARCH;
+        match env::consts::OS {
+            "linux" => {
+                if arch.contains("x86_64") || arch.contains("amd64") {
+                    local_libs_subdirs.push("linux-amd64");
+                } else {
+                    panic!("unsupported arch '{}'", arch)
+                }
+            },
+            "macos" => {
+                if arch.contains("aarch64") { local_libs_subdirs.push("darwin-aarch64"); }
+                else if arch.contains("x86_64") || arch.contains("amd64") {
+                    local_libs_subdirs.push("darwin-amd64");
+                } else {
+                    panic!("unsupported arch '{}'", arch)
+                }
+            },
+            platform => panic!("unsupported build platform '{}'", platform)
+        }
+        for subdir in local_libs_subdirs {
+            let local_libs_path = go_package_path.clone() + "/packaged/lib/" + subdir;
+            println!("cargo:rustc-link-search={}", &local_libs_path);
+            println!("cargo:rustc-link-arg=-Wl,-rpath,{}", &local_libs_path);
+        }
+        println!("cargo:rustc-link-lib={}", lib_name);
     }
-    for subdir in local_libs_subdirs {
-        let local_libs_path = go_package_path.clone() + "/packaged/lib/" + subdir;
-        println!("cargo:rustc-link-search={}", &local_libs_path);
-        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", &local_libs_path);
-    }
-    println!("cargo:rustc-link-lib={}", lib_name);
 }
 
 fn fail(message: String) {

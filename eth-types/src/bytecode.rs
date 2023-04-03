@@ -113,6 +113,7 @@ pub struct Bytecode {
     types: TypeSection,
     functions: FunctionSection,
     codes: CodeSection,
+    main_locals: Vec<(u32, ValType)>,
     evm_table: HashMap<EvmCall, usize>,
     num_opcodes: usize,
     markers: HashMap<String, usize>,
@@ -178,7 +179,7 @@ impl WasmBinaryBytecode for Bytecode {
         let mut functions = self.functions.clone();
         functions.function(0);
         let mut codes = self.codes.clone();
-        let mut f = Function::new(vec![]);
+        let mut f = Function::new(self.main_locals.clone());
         f.raw(self.code());
         f.instruction(&Instruction::End);
         codes.function(&f);
@@ -235,6 +236,7 @@ impl Default for Bytecode {
             types: Default::default(),
             functions: Default::default(),
             codes: Default::default(),
+            main_locals: Default::default(),
             evm_table: Default::default(),
             num_opcodes: 0,
             markers: Default::default(),
@@ -266,6 +268,11 @@ impl Bytecode {
         let current_offset = self.global_data.1.len();
         self.global_data.1.extend(&data);
         current_offset as u32
+    }
+
+    pub fn with_main_locals(&mut self, locals: Vec<(u32, ValType)>) -> &mut Self {
+        self.main_locals.extend(&locals);
+        self
     }
 
     pub fn with_global_data(&mut self, memory_index: u32, memory_offset: u32, data: Vec<u8>) -> &mut Self {

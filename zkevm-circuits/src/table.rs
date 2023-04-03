@@ -375,6 +375,8 @@ pub enum CallContextFieldTag {
     RwCounterEndOfReversion = 1,
     /// CallerId
     CallerId,
+    /// InternalFunctionId
+    InternalFunctionId,
     /// TxId
     TxId,
     /// Depth

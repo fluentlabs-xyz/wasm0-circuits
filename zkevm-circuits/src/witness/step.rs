@@ -178,6 +178,14 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::SetLocal |
                     OpcodeId::TeeLocal => ExecutionState::WASM_LOCAL,
 
+                    OpcodeId::Call |
+                    OpcodeId::CallIndirect => ExecutionState::WASM_CALL,
+
+                    OpcodeId::Return |
+                    OpcodeId::Br |
+                    OpcodeId::BrIf |
+                    OpcodeId::BrTable => ExecutionState::WASM_BREAK,
+
                     OpcodeId::End => ExecutionState::WASM_END,
 
                     // EVM opcodes

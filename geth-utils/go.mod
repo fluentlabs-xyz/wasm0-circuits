@@ -31,6 +31,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.5 // indirect
 	github.com/tklauser/numcpus v0.2.2 // indirect
 	github.com/wasm0/zkwasm-gas-injector v0.0.0-20230306121902-d7223199c7d8 // indirect
+	github.com/wasm0/zkwasm-wasmi v0.0.0-20230330135535-25b083bbd9f9 // indirect
 	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
 	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
@@ -41,4 +42,5 @@ require (
 
 // Uncomment for debugging
 replace github.com/tetratelabs/wazero v1.0.0-pre.7 => ../../zkwasm-wazero
+
 replace github.com/ethereum/go-ethereum => ../../zkwasm-geth

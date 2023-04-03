@@ -817,9 +817,8 @@ impl From<&operation::OperationContainer> for RwMap {
                         CallContextField::StackPointer => CallContextFieldTag::StackPointer,
                         CallContextField::GasLeft => CallContextFieldTag::GasLeft,
                         CallContextField::MemorySize => CallContextFieldTag::MemorySize,
-                        CallContextField::ReversibleWriteCounter => {
-                            CallContextFieldTag::ReversibleWriteCounter
-                        }
+                        CallContextField::ReversibleWriteCounter => CallContextFieldTag::ReversibleWriteCounter,
+                        CallContextField::InternalFunctionId => CallContextFieldTag::InternalFunctionId,
                     },
                     value: op.op().value,
                 })

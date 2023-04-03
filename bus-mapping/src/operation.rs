@@ -705,6 +705,8 @@ impl Op for AccountOp {
 pub enum CallContextField {
     /// RwCounterEndOfReversion
     RwCounterEndOfReversion,
+    /// InternalFunctionId
+    InternalFunctionId,
     /// CallerId
     CallerId,
     /// TxId
