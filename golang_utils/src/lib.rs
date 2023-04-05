@@ -18,5 +18,5 @@ pub fn go_package_system_path(golang_package_name: &str, golang_mod_file_name: &
             return Ok(golang_package_path);
         }
     }
-    Err(String::from("golang mod file doesnt contain package name"))
+    Err(format!("golang mod file doesnt contain package name: {}", golang_package_name))
 }
