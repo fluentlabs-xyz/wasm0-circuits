@@ -103,7 +103,18 @@ mod test {
     }
 
     #[test]
-    fn test_wasm_locals_encoding() {
+    fn test_function_without_locals() {
+        let mut code = bytecode! {
+            Call[0]
+        };
+        code.new_function(vec![], vec![], bytecode! {
+            Return
+        }, vec![]);
+        run_test(code);
+    }
+
+    #[test]
+    fn test_function_with_locals() {
         let mut code = bytecode! {
             I32Const[100]
             I32Const[20]

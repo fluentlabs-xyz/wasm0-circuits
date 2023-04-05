@@ -1,20 +1,22 @@
 use halo2_proofs::circuit::Value;
+use halo2_proofs::plonk::Error;
+
+use bus_mapping::evm::OpcodeId;
+use eth_types::{Field, ToScalar};
+
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
         step::ExecutionState,
         util::{
-            common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
-            CachedRegion, Cell,
+            CachedRegion,
+            Cell,
+            common_gadget::SameContextGadget, constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
-use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToScalar};
-use halo2_proofs::plonk::Error;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmDropGadget<F> {
@@ -70,50 +72,27 @@ impl<F: Field> ExecutionGadget<F> for WasmDropGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::{evm_circuit::test::rand_word, test_util::CircuitTestBuilder};
-    use eth_types::{bytecode, Word};
+    use eth_types::{bytecode, Bytecode};
     use mock::TestContext;
 
-    fn test_ok(value: Word) {
-        let bytecode = bytecode! {
-            PUSH32(value)
-            POP
-            STOP
-        };
+    use crate::{test_util::CircuitTestBuilder};
 
+    fn run_test(bytecode: Bytecode) {
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
-        )
-            .run();
+        ).run()
     }
 
     #[test]
-    fn pop_gadget_simple() {
-        test_ok(Word::from(0x030201));
-    }
-
-    #[test]
-    fn pop_gadget_rand() {
-        test_ok(rand_word());
-    }
-
-    fn test_stack_underflow(value: Word) {
-        let bytecode = bytecode! {
-            PUSH32(value)
-            POP
-            POP
-            STOP
+    fn test_different_locals() {
+        let code = bytecode! {
+            I32Const[1]
+            I32Const[2]
+            I32Const[3]
+            Drop
+            Drop
+            Drop
         };
-
-        CircuitTestBuilder::new_from_test_ctx(
-            TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
-        )
-            .run();
-    }
-
-    #[test]
-    fn pop_gadget_underflow() {
-        test_stack_underflow(Word::from(0x030201));
-        test_stack_underflow(Word::from(0xab));
+        run_test(code);
     }
 }
