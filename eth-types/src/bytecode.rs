@@ -439,6 +439,60 @@ impl Bytecode {
         }
         let op = match op {
             // WASM opcode mapping
+
+            OpcodeId::I32GtU => Instruction::I32GtU,
+            OpcodeId::I32GeU => Instruction::I32GeU,
+            OpcodeId::I32LtU => Instruction::I32LtU,
+            OpcodeId::I32LeU => Instruction::I32LeU,
+            OpcodeId::I32Eq => Instruction::I32Eq,
+            OpcodeId::I32Ne => Instruction::I32Ne,
+            OpcodeId::I32GtS => Instruction::I32GtS,
+            OpcodeId::I32GeS => Instruction::I32GeS,
+            OpcodeId::I32LtS => Instruction::I32LtS,
+            OpcodeId::I32LeS => Instruction::I32LeS,
+
+            OpcodeId::I64GtU => Instruction::I64GtU,
+            OpcodeId::I64GeU => Instruction::I64GeU,
+            OpcodeId::I64LtU => Instruction::I64LtU,
+            OpcodeId::I64LeU => Instruction::I64LeU,
+            OpcodeId::I64Eq => Instruction::I64Eq,
+            OpcodeId::I64Ne => Instruction::I64Ne,
+            OpcodeId::I64GtS => Instruction::I64GtS,
+            OpcodeId::I64GeS => Instruction::I64GeS,
+            OpcodeId::I64LtS => Instruction::I64LtS,
+            OpcodeId::I64LeS => Instruction::I64LeS,
+
+/*
+            OpcodeId::I32Load => Instruction::I32Load,
+            OpcodeId::I32Load8S => Instruction::I32Load8S,
+            OpcodeId::I32Load8U => Instruction::I32Load8U,
+            OpcodeId::I32Load16S => Instruction::I32Load16S,
+            OpcodeId::I32Load16U => Instruction::I32Load16U,
+
+            OpcodeId::I64Load => Instruction::I64Load,
+            OpcodeId::I64Load8S => Instruction::I64Load8S,
+            OpcodeId::I64Load8U => Instruction::I64Load8U,
+            OpcodeId::I64Load16S => Instruction::I64Load16S,
+            OpcodeId::I64Load16U => Instruction::I64Load16U,
+            OpcodeId::I64Load32S => Instruction::I64Load32S,
+            OpcodeId::I64Load32U => Instruction::I64Load32U,
+*/
+
+            //OpcodeId::Select => Instruction::Select,
+
+/*
+            OpcodeId::I32Store => Instruction::I32Store,
+            OpcodeId::I32Store8 => Instruction::I32Store8,
+            OpcodeId::I32Store16 => Instruction::I32Store16,
+            OpcodeId::I64Store => Instruction::I64Store,
+            OpcodeId::I64Store8 => Instruction::I64Store8,
+            OpcodeId::I64Store16 => Instruction::I64Store16,
+            OpcodeId::I64Store32 => Instruction::I64Store32,
+*/
+
+            //OpcodeId::GrowMemory => Instruction::MemoryGrow,
+            //OpcodeId::CurrentMemory => Instruction::MemorySize,
+
             OpcodeId::I32Add => Instruction::I32Add,
             OpcodeId::I64Add => Instruction::I64Add,
             OpcodeId::I32Sub => Instruction::I32Sub,

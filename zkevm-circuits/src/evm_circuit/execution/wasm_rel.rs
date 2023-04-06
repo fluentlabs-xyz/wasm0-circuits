@@ -310,7 +310,31 @@ mod test {
         ).run()
     }
 
+    macro_rules! tests_from_data { ($($t:tt)*) => {} }
+
+    tests_from_data! {
+      [
+        [I32Const [0, 1, 2, -1, -2, 0x80000000]
+          [I32GtU, I32GeU, I32LtU, I32LeU, I32Eq, I32Ne, I32GtS, I32GeS, I32LtS, I32LeS]
+        ]
+        [I64Const [0, 1, 2, -1, -2, -0x100000001, -0x100000002, 0x100000001, 0x100000002]
+          [I64GtU, I64GeU, I64LtU, I64LeU, I64Eq, I64Ne, I64GtS, I64GeS, I64LtS, I64LeS]
+        ]
+      ]
+    }
+
+    #[test]
+    fn test_i32_gt_u() {
+        run_test(bytecode! {
+            I32Const 0
+            I32Const 0
+            I32GtU
+            Drop
+        });
+    }
+
 /*
+
     #[test]
     fn test_i32_eqz() {
         run_test(bytecode! {

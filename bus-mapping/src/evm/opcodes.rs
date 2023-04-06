@@ -190,6 +190,33 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I32Const |
         OpcodeId::I64Const => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         // WASM binary opcodes
+
+        OpcodeId::I32Eq |
+        OpcodeId::I32Ne |
+
+        OpcodeId::I32LtS |
+        OpcodeId::I32GtS |
+        OpcodeId::I32LeS |
+        OpcodeId::I32GeS |
+
+        OpcodeId::I32LtU |
+        OpcodeId::I32GtU |
+        OpcodeId::I32LeU |
+        OpcodeId::I32GeU |
+
+        OpcodeId::I64Eq |
+        OpcodeId::I64Ne |
+
+        OpcodeId::I64LtS |
+        OpcodeId::I64GtS |
+        OpcodeId::I64LeS |
+        OpcodeId::I64GeS |
+
+        OpcodeId::I64LtU |
+        OpcodeId::I64GtU |
+        OpcodeId::I64LeU |
+        OpcodeId::I64GeU |
+
         OpcodeId::I32Add |
         OpcodeId::I32Sub |
         OpcodeId::I32Mul |
@@ -220,6 +247,21 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I64ShrU |
         OpcodeId::I64Rotl |
         OpcodeId::I64Rotr => StackOnlyOpcode::<2, 1>::gen_associated_ops,
+
+        // WASM load store like opcodes (like unary).
+        OpcodeId::I32Load |
+        OpcodeId::I32Load8S |
+        OpcodeId::I32Load8U |
+        OpcodeId::I32Load16S |
+        OpcodeId::I32Load16U |
+        OpcodeId::I64Load |
+        OpcodeId::I64Load8S |
+        OpcodeId::I64Load8U |
+        OpcodeId::I64Load16S |
+        OpcodeId::I64Load16U |
+        OpcodeId::I64Load32S |
+        OpcodeId::I64Load32U => StackOnlyOpcode::<1, 1>::gen_associated_ops,
+
         // WASM unary opcodes
         OpcodeId::I64ExtendI32 |
         OpcodeId::I32Ctz |
@@ -244,6 +286,18 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::Br |
         OpcodeId::BrIf |
         OpcodeId::BrTable => WasmBreakOpcode::gen_associated_ops,
+
+        // WASM select like opcodes.
+        OpcodeId::Select => StackOnlyOpcode::<3, 1>::gen_associated_ops,
+
+        // WASM store like ops.
+        OpcodeId::I32Store |
+        OpcodeId::I32Store8 |
+        OpcodeId::I32Store16 |
+        OpcodeId::I64Store |
+        OpcodeId::I64Store8 |
+        OpcodeId::I64Store16 |
+        OpcodeId::I64Store32 => StackOnlyOpcode::<2, 0>::gen_associated_ops,
 
         // WASM test opcodes
         OpcodeId::I32Eqz | OpcodeId::I64Eqz => StackOnlyOpcode::<1, 1>::gen_associated_ops,

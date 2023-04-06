@@ -14,7 +14,6 @@ use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
 use mock::test_ctx::{gen_geth_traces, LoggerConfig};
 use serde_json::{from_value, Value};
 use std::{collections::HashMap, fs::File, io::BufReader};
-use bus_mapping::mocks::BlockData;
 use zkevm_circuits::{super_circuit::SuperCircuit, util::SubCircuit, witness::block_convert};
 
 #[derive(serde::Deserialize)]

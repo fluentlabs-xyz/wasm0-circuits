@@ -299,6 +299,7 @@ pub(crate) struct ExecutionConfig<F> {
     wasm_end_gadget: Box<WasmEndGadget<F>>,
     wasm_break_gadget: Box<WasmBreakGadget<F>>,
     wasm_call_gadget: Box<WasmCallGadget<F>>,
+    wasm_test_gadget: Box<WasmTestGadget<F>>,
 }
 
 impl<F: Field> ExecutionConfig<F> {
