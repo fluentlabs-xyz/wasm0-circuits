@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use wasm_encoder::{CodeSection, ConstExpr, DataSection, Encode, Function, FunctionSection, GlobalSection, GlobalType, Instruction, TypeSection, ValType};
+use wasm_encoder::{CodeSection, ConstExpr, DataSection, Encode, Function, FunctionSection, GlobalSection, GlobalType, Instruction, MemArg, TypeSection, ValType};
 
 use crate::{Address, Bytes, evm_types::OpcodeId, ToLittleEndian, U256, Word};
 
@@ -478,6 +478,48 @@ impl Bytecode {
     pub fn write_call(&mut self, index: u32) -> &mut Self {
         let mut buf: Vec<u8> = vec![];
         Instruction::Call(index).encode(&mut buf);
+        for (i, b) in buf.iter().enumerate() {
+            if i == 0 {
+                self.write_op_internal(*b);
+            } else {
+                self.write(*b, false);
+            }
+        }
+        self
+    }
+
+    pub fn write_memarg(&mut self, op: OpcodeId, offset: u64, align: u32, memory_index: u32) -> &mut Self {
+        let mem_arg = MemArg { offset, align, memory_index };
+        let op = match op {
+            OpcodeId::I32Load => Instruction::I32Load(mem_arg),
+            OpcodeId::I64Load => Instruction::I64Load(mem_arg),
+            OpcodeId::F32Load => Instruction::F32Load(mem_arg),
+            OpcodeId::F64Load => Instruction::F64Load(mem_arg),
+            OpcodeId::I32Load8S => Instruction::I32Load8S(mem_arg),
+            OpcodeId::I32Load8U => Instruction::I32Load8U(mem_arg),
+            OpcodeId::I32Load16S => Instruction::I32Load16S(mem_arg),
+            OpcodeId::I32Load16U => Instruction::I32Load16U(mem_arg),
+            OpcodeId::I64Load8S => Instruction::I64Load8S(mem_arg),
+            OpcodeId::I64Load8U => Instruction::I64Load8U(mem_arg),
+            OpcodeId::I64Load16S => Instruction::I64Load16S(mem_arg),
+            OpcodeId::I64Load16U => Instruction::I64Load16U(mem_arg),
+            OpcodeId::I64Load32S => Instruction::I64Load32S(mem_arg),
+            OpcodeId::I64Load32U => Instruction::I64Load32U(mem_arg),
+            OpcodeId::I32Store => Instruction::I32Store(mem_arg),
+            OpcodeId::I64Store => Instruction::I64Store(mem_arg),
+            OpcodeId::F32Store => Instruction::F32Store(mem_arg),
+            OpcodeId::F64Store => Instruction::F64Store(mem_arg),
+            OpcodeId::I32Store8 => Instruction::I32Store8(mem_arg),
+            OpcodeId::I32Store16 => Instruction::I32Store16(mem_arg),
+            OpcodeId::I64Store8 => Instruction::I64Store8(mem_arg),
+            OpcodeId::I64Store16 => Instruction::I64Store16(mem_arg),
+            OpcodeId::I64Store32 => Instruction::I64Store32(mem_arg),
+            _ => {
+                unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
+            }
+        };
+        let mut buf: Vec<u8> = vec![];
+        op.encode(&mut buf);
         for (i, b) in buf.iter().enumerate() {
             if i == 0 {
                 self.write_op_internal(*b);

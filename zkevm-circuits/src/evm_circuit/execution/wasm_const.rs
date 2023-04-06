@@ -74,6 +74,7 @@ impl<F: Field> ExecutionGadget<F> for WasmConstGadget<F> {
 #[cfg(test)]
 mod test {
     use eth_types::{bytecode, Bytecode};
+    use eth_types::evm_types::OpcodeId;
     use mock::TestContext;
 
     use crate::test_util::CircuitTestBuilder;
@@ -88,6 +89,7 @@ mod test {
     fn push_gadget_simple() {
         test_ok(bytecode! {
             I32Const[12]
+            .write_memarg(OpcodeId::I32Load, 0u64, 0u32, 0u32)
             Drop
         });
     }
