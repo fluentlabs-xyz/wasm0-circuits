@@ -7,6 +7,3 @@
 	update = none
 	path = integration-tests/contracts/vendor/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
-[submodule "delphinus-zkwasm"]
-	path = delphinus-zkwasm
-	url = git@github.com:DelphinusLab/zkWasm
