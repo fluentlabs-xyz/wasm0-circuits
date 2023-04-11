@@ -42,7 +42,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static={}", lib_name);
 
     let external_libs = vec![
-        // ("zkwasm-gas-injector", "gas_injector"),
+        ("zkwasm-gas-injector", "gas_injector"),
         ("zkwasm-wasmi", "wasmi_c_api"),
     ];
 
