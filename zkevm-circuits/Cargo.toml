@@ -65,3 +65,6 @@ test = ["ethers-signers"]
 test-circuits = []
 warn-unimplemented = ["eth-types/warn-unimplemented"]
 demo = []
+
+[build-dependencies]
+golang_utils = { path = "../golang_utils" }

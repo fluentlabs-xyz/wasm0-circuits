@@ -104,12 +104,10 @@ github.com/tklauser/numcpus v0.2.2 h1:oyhllyrScuYI6g+h/zUvNXNp1wy7x8qQy3t/piefld
 github.com/tklauser/numcpus v0.2.2/go.mod h1:x3qojaO3uyYt0i56EW/VUYs7uBvdl2fkfZFu0T9wgjM=
 github.com/wasm0/zkwasm-gas-injector v0.0.0-20230408222147-c84ccb18ec90 h1:cWrYgvCQxyQykuv6Re0BYI0aGzrlOoy4VG7HI40hhT4=
 github.com/wasm0/zkwasm-gas-injector v0.0.0-20230408222147-c84ccb18ec90/go.mod h1:ms+SgxHswYob8xR8S0n98F9hA0/+JFj33+17rpiKW1Q=
-github.com/wasm0/zkwasm-gas-injector v0.0.0-20230411142508-c7b0f5abfee3 h1:/JWoZibbWnRs7gR06zqovq1voJ/yqmU99wx1IWwdgKc=
-github.com/wasm0/zkwasm-gas-injector v0.0.0-20230411142508-c7b0f5abfee3/go.mod h1:ms+SgxHswYob8xR8S0n98F9hA0/+JFj33+17rpiKW1Q=
-github.com/wasm0/zkwasm-geth v1.10.23-zkevm.0.20230409111023-de593ecf7334 h1:pbTolytBMj9ei11w68ygWBOgcUauvBBem9cKIoNhaEk=
-github.com/wasm0/zkwasm-geth v1.10.23-zkevm.0.20230409111023-de593ecf7334/go.mod h1:QMeUKattuvtCFoJsD8KPjM0Geio/IyTpWy0FYGO6Q0Q=
-github.com/wasm0/zkwasm-wasmi v0.0.0-20230408223130-a0ba8afbc84e h1:WYtUNalcjfVfAeE4WLwHMKDO8pFru66XnmfdMKEOl3k=
-github.com/wasm0/zkwasm-wasmi v0.0.0-20230408223130-a0ba8afbc84e/go.mod h1:KvTRmrMKpWvJzQNNL5YgsjDJVpzDkLWy6o74VdOYI/8=
+github.com/wasm0/zkwasm-geth v1.10.23-zkevm.0.20230412112613-492e1e75a6f3 h1:NA41Xo78XSmEXHo2CexTdFwYX/xKTfTcBUWvLxVoW/s=
+github.com/wasm0/zkwasm-geth v1.10.23-zkevm.0.20230412112613-492e1e75a6f3/go.mod h1:XrNB5Nh6yugRsJK1Bllr7Gc3/LlNc1gKn5vJyMvhBNI=
+github.com/wasm0/zkwasm-wasmi v0.0.0-20230411115956-6f7b5f78538d h1:Ch/kQp0sQB4Uy0Tqwdfe6hUimOdaRS7URqpozqi7QWs=
+github.com/wasm0/zkwasm-wasmi v0.0.0-20230411115956-6f7b5f78538d/go.mod h1:KvTRmrMKpWvJzQNNL5YgsjDJVpzDkLWy6o74VdOYI/8=
 github.com/wasm0/zkwasm-wazero v0.0.0-20230317183354-15bd6ed9215e h1:Dgj01lmkelJ2knSUZP89UDabiBxm2oakcuUCzwfjZaI=
 github.com/wasm0/zkwasm-wazero v0.0.0-20230317183354-15bd6ed9215e/go.mod h1:u8wrFmpdrykiFK0DFPiFm5a4+0RzsdmXYVtijBKqUVo=
 github.com/wasmerio/wasmer-go v1.0.4 h1:MnqHoOGfiQ8MMq2RF6wyCeebKOe84G88h5yv+vmxJgs=
