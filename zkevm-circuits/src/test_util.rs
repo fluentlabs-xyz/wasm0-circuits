@@ -173,6 +173,74 @@ impl<const NACC: usize, const NTX: usize> CircuitTestBuilder<NACC, NTX> {
 }
 
 impl<const NACC: usize, const NTX: usize> CircuitTestBuilder<NACC, NTX> {
+
+    /// TODO
+    pub fn must_fail_run(self) {
+        let params = if let Some(block) = self.block.as_ref() {
+            block.circuits_params
+        } else {
+            self.circuits_params.unwrap_or_default()
+        };
+
+        let block: Block<Fr> = if self.block.is_some() {
+            self.block.unwrap()
+        } else if self.test_ctx.is_some() {
+            let block: GethData = self.test_ctx.unwrap().into();
+            let mut builder = BlockData::new_from_geth_data_with_params(block.clone(), params)
+                .new_circuit_input_builder();
+            builder
+                .handle_block(&block.eth_block, &block.geth_traces)
+                .unwrap();
+            // Build a witness block from trace result.
+            let mut block =
+                crate::witness::block_convert(&builder.block, &builder.code_db).unwrap();
+
+            for modifier_fn in self.block_modifiers {
+                modifier_fn.as_ref()(&mut block);
+            }
+            block
+        } else {
+            panic!("No attribute to build a block was passed to the CircuitTestBuilder")
+        };
+
+        let mut error_appear = false;
+
+        // Run evm circuit test
+        {
+            let k = block.get_test_degree();
+
+            let (active_gate_rows, active_lookup_rows) = EvmCircuit::<Fr>::get_active_rows(&block);
+
+            let circuit = EvmCircuitCached::get_test_cicuit_from_block(block.clone());
+            let prover = MockProver::<Fr>::run(k, &circuit, vec![]).unwrap();
+
+            error_appear |= prover.verify_at_rows_par((&active_gate_rows).iter().cloned(), (&active_lookup_rows).iter().cloned()).is_err();
+        }
+
+        // Run state circuit test
+        // TODO: use randomness as one of the circuit public input, since randomness in
+        // state circuit and evm circuit must be same
+        {
+            let state_circuit = StateCircuit::<Fr>::new(block.rws, params.max_rws);
+            let instance = state_circuit.instance();
+            let prover = MockProver::<Fr>::run(18, &state_circuit, instance).unwrap();
+            // Skip verification of Start rows to accelerate testing
+            let non_start_rows_len = state_circuit
+                .rows
+                .iter()
+                .filter(|rw| !matches!(rw, Rw::Start { .. }))
+                .count();
+            let rows: Vec<_> = (params.max_rws - non_start_rows_len..params.max_rws)
+                .into_iter()
+                .collect();
+
+            error_appear |= prover.verify_at_rows_par((&rows).iter().cloned(), (&rows).iter().cloned()).is_err();
+        }
+        assert!(error_appear);
+    }
+
+
+
     /// Triggers the `CircuitTestBuilder` to convert the [`TestContext`] if any,
     /// into a [`Block`] and apply the default or provided block_modifiers or
     /// circuit checks to the provers generated for the State and EVM circuits.
