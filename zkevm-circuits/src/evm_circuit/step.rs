@@ -27,12 +27,14 @@ pub enum ExecutionState {
     // WASM opcode cases
     WASM_BIN,
     WASM_BREAK,
+    WASM_TEST,
     WASM_CONST,
     WASM_CALL,
     WASM_DROP,
     WASM_GLOBAL,
     WASM_LOCAL,
     WASM_UNARY,
+    WASM_CONVERSION,
     WASM_END,
     // Opcode successful cases
     STOP,
@@ -238,6 +240,10 @@ impl ExecutionState {
             ],
             Self::WASM_DROP => vec![
                 OpcodeId::Drop,
+            ],
+            Self::WASM_TEST => vec![
+                OpcodeId::I32Eqz,
+                OpcodeId::I64Eqz,
             ],
             Self::WASM_UNARY => vec![
                 OpcodeId::I32Ctz,

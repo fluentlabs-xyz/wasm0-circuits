@@ -103,6 +103,7 @@ mod stop;
 mod swap;
 mod end;
 mod wasm_bin;
+mod wasm_test;
 mod wasm_const;
 mod wasm_call;
 mod wasm_drop;
@@ -110,6 +111,7 @@ mod wasm_global;
 mod wasm_unary;
 mod wasm_local;
 mod wasm_break;
+mod wasm_conversion;
 
 use begin_tx::BeginTxGadget;
 use end_block::EndBlockGadget;
@@ -137,6 +139,7 @@ use origin::OriginGadget;
 use return_revert::ReturnRevertGadget;
 use selfbalance::SelfbalanceGadget;
 use wasm_bin::WasmBinGadget;
+use wasm_test::WasmTestGadget;
 use wasm_const::WasmConstGadget;
 use wasm_global::WasmGlobalGadget;
 use wasm_unary::WasmUnaryGadget;
@@ -296,6 +299,7 @@ pub(crate) struct ExecutionConfig<F> {
     wasm_end_gadget: Box<WasmEndGadget<F>>,
     wasm_break_gadget: Box<WasmBreakGadget<F>>,
     wasm_call_gadget: Box<WasmCallGadget<F>>,
+    wasm_test_gadget: Box<WasmTestGadget<F>>,
 }
 
 impl<F: Field> ExecutionConfig<F> {
@@ -561,6 +565,7 @@ impl<F: Field> ExecutionConfig<F> {
             error_return_data_out_of_bound: configure_gadget!(),
 
             wasm_bin_gadget: configure_gadget!(),
+            wasm_test_gadget: configure_gadget!(),
             wasm_const_gadget: configure_gadget!(),
             wasm_drop_gadget: configure_gadget!(),
             wasm_global_gadget: configure_gadget!(),
@@ -1168,6 +1173,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::EndBlock => assign_exec_step!(self.end_block_gadget),
             // WASM opcodes
             ExecutionState::WASM_BIN => assign_exec_step!(self.wasm_bin_gadget),
+            ExecutionState::WASM_TEST => assign_exec_step!(self.wasm_test_gadget),
             ExecutionState::WASM_CONST => assign_exec_step!(self.wasm_const_gadget),
             ExecutionState::WASM_DROP => assign_exec_step!(self.wasm_drop_gadget),
             ExecutionState::WASM_GLOBAL => assign_exec_step!(self.wasm_global_gadget),
