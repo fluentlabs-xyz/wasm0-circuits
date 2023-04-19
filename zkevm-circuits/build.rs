@@ -1,6 +1,5 @@
 use std::{
     env,
-    io::{self, Write},
 };
 
 fn main() {
