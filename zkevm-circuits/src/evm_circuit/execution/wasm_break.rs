@@ -122,7 +122,7 @@ mod test {
     #[test]
     fn test_wasm_br_if_breaks_1() {
         let code = bytecode! {
-            Block #ttt
+            Block
                 I32Const[1]
                 I32Const[2]
                 I32Add
