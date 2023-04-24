@@ -7,6 +7,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use wasm_encoder::{CodeSection, ConstExpr, DataSection, Encode, Function, FunctionSection, GlobalSection, GlobalType, Instruction, MemArg, TypeSection, ValType};
+use wasm_encoder::BlockType::Empty;
 
 use crate::{Address, Bytes, evm_types::OpcodeId, ToLittleEndian, U256, Word};
 
@@ -517,6 +518,7 @@ impl Bytecode {
             OpcodeId::Unreachable => Instruction::Unreachable,
             OpcodeId::Drop => Instruction::Drop,
             OpcodeId::Return => Instruction::Return,
+            OpcodeId::Block => Instruction::Block(Empty),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }
@@ -598,6 +600,8 @@ impl Bytecode {
             OpcodeId::SetLocal => Instruction::LocalSet(val as u32),
             OpcodeId::TeeLocal => Instruction::LocalTee(val as u32),
             OpcodeId::Call => Instruction::Call(val as u32),
+            OpcodeId::Br => Instruction::Br(val as u32),
+            OpcodeId::BrIf => Instruction::BrIf(val as u32),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }

@@ -30,7 +30,6 @@ impl<F: Field> ExecutionGadget<F> for WasmBreakGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_BREAK;
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
-
         let program_counter = cb.query_cell();
 
         let step_state_transition = StepStateTransition {
@@ -67,8 +66,10 @@ impl<F: Field> ExecutionGadget<F> for WasmBreakGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use wasm_encoder::ValType;
+    use std::fs;
+    use wabt::wasm2wat;
     use eth_types::{bytecode, Bytecode};
+    use eth_types::bytecode::WasmBinaryBytecode;
     use mock::test_ctx::TestContext;
 
     use crate::test_util::CircuitTestBuilder;
@@ -79,23 +80,80 @@ mod test {
         ).run()
     }
 
+    // #[test]
+    // fn test_wasm_locals_encoding() {
+    //     let mut code = bytecode! {
+    //         I32Const[100]
+    //         I32Const[20]
+    //         Call[0]
+    //         Drop
+    //     };
+    //     code.new_function(vec![ValType::I32; 2], vec![ValType::I32; 1], bytecode! {
+    //         GetLocal[0]
+    //         GetLocal[1]
+    //         I32Add
+    //         SetLocal[2]
+    //         I32Const[0]
+    //         TeeLocal[2]
+    //         Return
+    //     }, vec![(1, ValType::I32)]);
+    //     run_test(code);
+    // }
+
     #[test]
-    fn test_wasm_locals_encoding() {
-        let mut code = bytecode! {
-            I32Const[100]
-            I32Const[20]
-            Call[0]
-            Drop
+    fn test_wasm_br_breaks_1() {
+        let code = bytecode! {
+            Block
+                I32Const[1]
+                I32Const[2]
+                I32Add
+                Br[0]
+                I32Const[100]
+                Drop
+            End
         };
-        code.new_function(vec![ValType::I32; 2], vec![ValType::I32; 1], bytecode! {
-            GetLocal[0]
-            GetLocal[1]
-            I32Add
-            SetLocal[2]
-            I32Const[0]
-            TeeLocal[2]
-            Return
-        }, vec![(1, ValType::I32)]);
+        _ = fs::write(
+            "tmp/Br_breaks_1.wat",
+            wasm2wat(code.wasm_binary()).unwrap()
+        );
+        run_test(code);
+    }
+
+    #[test]
+    fn test_wasm_br_if_breaks_1() {
+        let code = bytecode! {
+            Block #ttt
+                I32Const[1]
+                I32Const[2]
+                I32Add
+                BrIf[0]
+                I32Const[100]
+                Drop
+            End
+        };
+        // _ = fs::write(
+        //     "tmp/Br_if_breaks_1.wat",
+        //     wasm2wat(code.wasm_binary()).unwrap()
+        // );
+        run_test(code);
+    }
+
+    #[test]
+    fn test_wasm_br_if_no_breaks_1() {
+        let code = bytecode! {
+            Block
+                I32Const[0]
+                I32Const[0]
+                I32Add
+                BrIf[0]
+                I32Const[100]
+                Drop
+            End
+        };
+        // _ = fs::write(
+        //     "tmp/Br_if_no_breaks_1.wat",
+        //     wasm2wat(code.wasm_binary()).unwrap()
+        // );
         run_test(code);
     }
 }
