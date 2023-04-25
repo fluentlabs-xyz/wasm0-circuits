@@ -519,6 +519,7 @@ impl Bytecode {
             OpcodeId::Drop => Instruction::Drop,
             OpcodeId::Return => Instruction::Return,
             OpcodeId::Block => Instruction::Block(Empty),
+            OpcodeId::Loop => Instruction::Loop(Empty),
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }

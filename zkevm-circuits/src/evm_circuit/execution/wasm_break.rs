@@ -112,10 +112,6 @@ mod test {
                 Drop
             End
         };
-        _ = fs::write(
-            "tmp/Br_breaks_1.wat",
-            wasm2wat(code.wasm_binary()).unwrap()
-        );
         run_test(code);
     }
 
@@ -131,10 +127,40 @@ mod test {
                 Drop
             End
         };
-        // _ = fs::write(
-        //     "tmp/Br_if_breaks_1.wat",
-        //     wasm2wat(code.wasm_binary()).unwrap()
-        // );
+        run_test(code);
+    }
+
+    #[test]
+    fn test_wasm_br_if_breaks_to_lv2_1() {
+        let code = bytecode! {
+            Block
+                Block
+                    I32Const[1]
+                    I32Const[2]
+                    I32Add
+                    BrIf[1]
+                    I32Const[100]
+                    Drop
+                End
+            End
+        };
+        run_test(code);
+    }
+
+    #[test]
+    fn test_wasm_br_if_loop_breaks_to_lv2_1() {
+        let code = bytecode! {
+            Block
+                Loop
+                    I32Const[1]
+                    I32Const[2]
+                    I32Add
+                    BrIf[1]
+                    I32Const[100]
+                    Drop
+                End
+            End
+        };
         run_test(code);
     }
 
@@ -150,10 +176,6 @@ mod test {
                 Drop
             End
         };
-        // _ = fs::write(
-        //     "tmp/Br_if_no_breaks_1.wat",
-        //     wasm2wat(code.wasm_binary()).unwrap()
-        // );
         run_test(code);
     }
 }
