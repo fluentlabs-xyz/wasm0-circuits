@@ -68,6 +68,7 @@ impl<F: Field> ExecutionGadget<F> for WasmBreakGadget<F> {
 mod test {
     use std::fs;
     use wabt::wasm2wat;
+    use wasm_encoder::ValType;
     use eth_types::{bytecode, Bytecode};
     use eth_types::bytecode::WasmBinaryBytecode;
     use mock::test_ctx::TestContext;
@@ -161,6 +162,27 @@ mod test {
                 End
             End
         };
+        run_test(code);
+    }
+
+    #[test]
+    fn test_wasm_br_if_loop_breaks_to_lv2_on_2nd_iteration_1() {
+        let mut code = bytecode! {
+            I32Const[0]
+            SetLocal[0]
+            Block
+                Loop
+                    GetLocal[0]
+                    BrIf[1]
+                    GetLocal[0]
+                    I32Const[1]
+                    I32Add
+                    SetLocal[0]
+                    Br[0]
+                End
+            End
+        };
+        code.with_main_locals(vec![(1, ValType::I32)]);
         run_test(code);
     }
 
