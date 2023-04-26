@@ -52,7 +52,7 @@ impl<F: Field> ExecutionGadget<F> for WasmLocalGadget<F> {
 
         cb.condition(is_set_local.expr(), |cb| {
             cb.stack_pop(value.expr());
-            cb.stack_lookup(1.expr(), cb.stack_pointer_offset() + index.expr() - 1.expr(), value.expr());
+            cb.stack_lookup(1.expr(), cb.stack_pointer_offset() + index.expr(), value.expr());
         });
 
         cb.condition(is_get_local.expr(), |cb| {

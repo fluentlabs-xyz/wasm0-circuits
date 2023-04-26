@@ -27,7 +27,7 @@ impl Opcode for WasmLocalOpcode {
             OpcodeId::SetLocal => {
                 let value = current_step.stack.nth_last(0)?;
                 state.stack_read(&mut exec_step, current_step.stack.nth_last_filled(0), value)?;
-                state.local_write(&mut exec_step, current_step.stack.nth_last_filled(local_offset), local_offset, value)?;
+                state.local_write(&mut exec_step, next_step.stack.nth_last_filled(local_offset), local_offset, value)?;
             }
             OpcodeId::GetLocal => {
                 let value = current_step.stack.nth_last(local_offset)?;
@@ -37,7 +37,7 @@ impl Opcode for WasmLocalOpcode {
             OpcodeId::TeeLocal => {
                 let value = current_step.stack.nth_last(0)?;
                 state.stack_read(&mut exec_step, current_step.stack.nth_last_filled(0), value)?;
-                state.local_write(&mut exec_step, current_step.stack.nth_last_filled(local_offset), local_offset, value)?;
+                state.local_write(&mut exec_step, next_step.stack.nth_last_filled(local_offset), local_offset, value)?;
                 state.stack_write(&mut exec_step, next_step.stack.nth_last_filled(0), value)?;
             }
             _ => unreachable!("not supported opcode: {:?}", current_step.op)
