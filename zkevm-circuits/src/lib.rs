@@ -20,6 +20,7 @@
 
 extern crate core;
 
+pub mod leb128_circuit;
 pub mod bytecode_circuit;
 pub mod copy_circuit;
 pub mod evm_circuit;
