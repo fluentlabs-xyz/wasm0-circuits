@@ -5,3 +5,5 @@ pub mod circuit;
 /// LEB128 circuit tester
 #[cfg(any(feature = "test", test))]
 pub mod dev;
+///
+pub mod consts;

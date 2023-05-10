@@ -7,37 +7,38 @@ use halo2_proofs::plonk::{Constraints, Expression, Selector};
 use halo2_proofs::poly::Rotation;
 use eth_types::Field;
 use gadgets::util::Expr;
+use crate::leb128_circuit::consts::{BITS_IN_BYTE, BYTES_IN_BASE64_WORD, LEB128_BITS_LIMB_SIZE};
 
 
 /// LEB128NumberConfig
 #[derive(Debug, Clone)]
-pub struct LEB128NumberConfig<F, const BIT_DEPTH: usize> {
+pub struct LEB128NumberConfig<F, const BIT_DEPTH: usize, const IS_SIGNED: bool> {
     ///
     pub selector: Selector,
     /// base64 repr of leb128 (each column represents a part of leb128)
-    pub leb_base64_words: [Column<Advice>; 2],
+    pub leb_base64_words: Column<Advice>,
     /// bytes repr of leb128
     pub leb_bytes: Column<Advice>,
     ///
     pub byte_has_continuation_bit: Column<Advice>,
     /// solid number represented in leb128. TODO maybe we dont need it anymore
-    pub solid_number: Column<Advice>,
+    // pub solid_number: Column<Advice>,
     _marker: PhantomData<F>,
 }
 
-impl<F: Field, const BIT_DEPTH: usize> LEB128NumberConfig<F, BIT_DEPTH>
+impl<F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> LEB128NumberConfig<F, BIT_DEPTH, IS_SIGNED>
 {}
 
 
 ///
 #[derive(Debug, Clone)]
-pub struct LEB128NumberChip<F, const BIT_DEPTH: usize> {
+pub struct LEB128NumberChip<F, const BIT_DEPTH: usize, const IS_SIGNED: bool> {
     ///
-    pub config: LEB128NumberConfig<F, BIT_DEPTH>,
+    pub config: LEB128NumberConfig<F, BIT_DEPTH, IS_SIGNED>,
     _marker: PhantomData<F>,
 }
 
-impl<F: Field, const BIT_DEPTH: usize> LEB128NumberChip<F, BIT_DEPTH>
+impl<F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> LEB128NumberChip<F, BIT_DEPTH, IS_SIGNED>
 {
     /// max leb bytes needed to represent number with selected BIT_DEPTH
     pub const LEB_BYTES_N: usize = (BIT_DEPTH + 6) / 7;
@@ -49,7 +50,7 @@ impl<F: Field, const BIT_DEPTH: usize> LEB128NumberChip<F, BIT_DEPTH>
     }
 
     ///
-    pub fn construct(config: LEB128NumberConfig<F, BIT_DEPTH>) -> Self {
+    pub fn construct(config: LEB128NumberConfig<F, BIT_DEPTH, IS_SIGNED>) -> Self {
         let instance = Self {
             config,
             _marker: PhantomData,
@@ -61,60 +62,70 @@ impl<F: Field, const BIT_DEPTH: usize> LEB128NumberChip<F, BIT_DEPTH>
     ///
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-    ) -> LEB128NumberConfig<F, BIT_DEPTH> {
+    ) -> LEB128NumberConfig<F, BIT_DEPTH, IS_SIGNED> {
         Self::validate_static_state();
         let selector = cs.selector();
-        let leb_base64_words = [0; 2].map(|_| cs.advice_column());
+        // let base64_words_count = (BIT_DEPTH / LEB128_BITS_LIMB_SIZE + BYTES_IN_BASE64_WORD - 1) / BYTES_IN_BASE64_WORD;
+        let leb_base64_words = cs.advice_column();
         let leb_bytes = cs.advice_column();
         let byte_has_continuation_bit = cs.advice_column();
-        let solid_number = cs.advice_column();
+        // let solid_number = cs.advice_column();
 
+        let mut continuation_bits_constraints = Vec::<Expression<F>>::new();
         cs.create_gate("leb128 gate", |vc| {
             let selector_expr = vc.query_selector(selector);
-            let solid_number_expr = vc.query_advice(solid_number, Rotation(0));
+            // let solid_number_expr = vc.query_advice(solid_number, Rotation(0));
             let mut leb_as_bytes_sum = 0.expr();
-            let mut continuation_bit_value_check = 0.expr();
             let mut continuation_bit_transition_check = 0.expr();
             for i in (0..Self::LEB_BYTES_N).rev() {
                 let leb_byte_expr = vc.query_advice(leb_bytes, Rotation(i as i32));
                 let has_continuation_bit_expr = vc.query_advice(byte_has_continuation_bit, Rotation(i as i32));
-                // continuation bit must have 0 or 1 value
-                continuation_bit_value_check = continuation_bit_value_check + has_continuation_bit_expr.clone() * (has_continuation_bit_expr.clone() - 1.expr());
+                // continuation bit must have 0 or 1 value (TODO replace with lookup)
+                continuation_bits_constraints.push(has_continuation_bit_expr.clone() * (has_continuation_bit_expr.clone() - 1.expr()));
                 if i < Self::LEB_BYTES_N - 1 {
                     let has_continuation_bit_next_expr = vc.query_advice(byte_has_continuation_bit, Rotation((i + 1) as i32));
-                    // continuation bit eligible transitions: 1->1 or 1->0 or 0->0 not 0->1
+                    // continuation bit (CB) eligible transitions: 1->1 or 1->0 or 0->0 not 0->1 (TODO we can replace CB with replacements by lookup mappings)
                     continuation_bit_transition_check = continuation_bit_transition_check + (has_continuation_bit_expr.clone() - 1.expr()) * has_continuation_bit_next_expr
                 }
                 leb_as_bytes_sum = leb_as_bytes_sum * 0b10000000.expr() + leb_byte_expr - has_continuation_bit_expr * 0b10000000.expr();
             }
 
-            let mut leb_base64_words_restored = Vec::<Expression<F>>::new();
-            let mut rot_idx: i32 = 0;
-            let leb_bytes_max_index: i32 = (Self::LEB_BYTES_N - 1) as i32;
+            let mut leb_base64_words_recovered = Vec::<Expression<F>>::new();
+            let mut rot_idx = 0;
+            let leb_bytes_max_index = Self::LEB_BYTES_N - 1;
             for i in 0..=leb_bytes_max_index {
-                if i % 8 == 0 {
-                    leb_base64_words_restored.push(0.expr());
-                    rot_idx = (i + 7) as i32;
+                if i % BYTES_IN_BASE64_WORD == 0 {
+                    leb_base64_words_recovered.push(0.expr());
+                    rot_idx = i + 7;
                     if rot_idx > leb_bytes_max_index { rot_idx = leb_bytes_max_index }
                 } else {
                     rot_idx -= 1;
                 }
-                let leb_as_byte_expr = vc.query_advice(leb_bytes, Rotation(rot_idx));
-                let leb_base64_words_last_index = leb_base64_words_restored.len() - 1;
-                let leb_base64_word = leb_base64_words_restored[leb_base64_words_last_index].clone();
-                leb_base64_words_restored[leb_base64_words_last_index] = leb_as_byte_expr + leb_base64_word * 0b100000000.expr();
+                let mut leb_byte_expr = vc.query_advice(leb_bytes, Rotation(rot_idx as i32));
+                if i > 0 {
+                    // let cb_prev_expr = vc.query_advice(byte_has_continuation_bit, Rotation((i - 1) as i32));
+                    // let cb_expr = vc.query_advice(byte_has_continuation_bit, Rotation(i as i32));
+                    // leb_byte_expr = leb_byte_expr * (cb_prev_expr.clone() + cb_expr.clone() - cb_prev_expr * cb_expr);
+                }
+                let leb_base64_words_last_index = leb_base64_words_recovered.len() - 1;
+                let leb_base64_word = leb_base64_words_recovered[leb_base64_words_last_index].clone();
+                leb_base64_words_recovered[leb_base64_words_last_index] = leb_byte_expr + leb_base64_word * 0b100000000.expr();
             }
+            // TODO recovering made in reverse order so we must reverse
+            // leb_base64_words_recovered.reverse();
 
             let mut constraints = Vec::from([
-                ("solid number equals to 7-bits repr sum", leb_as_bytes_sum - solid_number_expr),
-                ("continuation bits values check", continuation_bit_value_check),
+                // ("solid number equals to 7-bits repr sum", leb_as_bytes_sum - solid_number_expr),
                 ("continuation bits may transit from 1 to 0 only", continuation_bit_transition_check),
             ]);
-            for (i, leb_base64_word) in leb_base64_words_restored.iter().enumerate() {
-                let base64_word = vc.query_advice(leb_base64_words[i], Rotation::cur());
+            for continuation_bits_constraint in continuation_bits_constraints {
+                constraints.push(("continuation bit check", continuation_bits_constraint));
+            }
+            for (i, leb_base64_word_recovered) in leb_base64_words_recovered.iter().enumerate() {
+                let leb_base64_word = vc.query_advice(leb_base64_words, Rotation(i as i32));
                 constraints.push((
-                    "base64 word component equals to bytes sum",
-                    leb_base64_word.clone() - base64_word
+                    "base64 word equals to recovered base64 word",
+                    leb_base64_word_recovered.clone() - leb_base64_word
                 ));
             }
             Constraints::with_selector(
@@ -128,7 +139,7 @@ impl<F: Field, const BIT_DEPTH: usize> LEB128NumberChip<F, BIT_DEPTH>
             leb_base64_words,
             leb_bytes,
             byte_has_continuation_bit,
-            solid_number,
+            // solid_number,
             _marker: PhantomData,
         };
 
@@ -141,7 +152,8 @@ impl<F: Field, const BIT_DEPTH: usize> LEB128NumberChip<F, BIT_DEPTH>
         region: &mut Region<F>,
         leb_bytes: &[u8],
         leb_last_byte_index: u64,
-        solid_number: u64,
+        // is_signed: bool,
+        // solid_number: u64,
         leb_base64_words: &[u64],
     ) {
         self.config.selector.enable(region, 0).unwrap();
@@ -164,19 +176,21 @@ impl<F: Field, const BIT_DEPTH: usize> LEB128NumberChip<F, BIT_DEPTH>
             ).unwrap();
         }
 
-        region.assign_advice(
-            || "solid_number",
-            self.config.solid_number,
-            0,
-            || Value::known(F::from(solid_number)),
-        ).unwrap();
+        // region.assign_advice(
+        //     || "solid_number",
+        //     self.config.solid_number,
+        //     0,
+        //     || Value::known(F::from(solid_number)),
+        // ).unwrap();
 
-        for (i, &base_64_word) in self.config.leb_base64_words.iter().enumerate() {
+        let base64_words_count = (BIT_DEPTH / LEB128_BITS_LIMB_SIZE + BYTES_IN_BASE64_WORD - 1) / BYTES_IN_BASE64_WORD;
+        for i in 0..base64_words_count {
+            let leb_base64_word = if i < leb_base64_words.len() { leb_base64_words[i] } else { 0 };
             region.assign_advice(
-                || format!("leb_base64_word index {} value {}", i, leb_base64_words[i]),
-                base_64_word,
-                0,
-                || Value::known(F::from(leb_base64_words[i] as u64)),
+                || format!("leb_base64_word index {} value {}", i, leb_base64_word),
+                self.config.leb_base64_words,
+                i,
+                || Value::known(F::from(leb_base64_word as u64)),
             ).unwrap();
         };
     }
