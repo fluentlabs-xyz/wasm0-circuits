@@ -155,7 +155,7 @@ mod tests {
         if is_positive || number == 0 {
             return convert_to_leb_bytes_unsigned(number, exact_bytes_count);
         }
-        let max_signed_value: u64 = i32::MAX as u64;
+        let max_signed_value: u64 = i64::MAX as u64;
         if number >= max_signed_value {
             panic!("max signed value is {} but given {} (is_positive: {})", max_signed_value, number, is_positive)
         }
@@ -233,10 +233,10 @@ mod tests {
     #[test]
     pub fn test_debug_exact_number() {
         debug_exact_number::<32, 64, false>();
-        // debug_exact_number::<1, 64, true>();
-        // debug_exact_number::<123456, 64, true>();
-        // test_debug_exact_number::<16383, 64, true>();
-        // test_debug_exact_number::<16382, 64, true>();
+        debug_exact_number::<1, 64, true>();
+        debug_exact_number::<123456, 64, true>();
+        debug_exact_number::<16383, 64, true>();
+        debug_exact_number::<16382, 64, true>();
     }
 
     pub fn test_ok<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
@@ -292,12 +292,12 @@ mod tests {
     #[test]
     pub fn test_ok_signed() {
         test_ok::<{ 8 * 1 }, true>();
-        // test_ok::<{ 8 * 2 }, true>();
-        // test_ok::<{ 8 * 3 }, true>();
-        // test_ok::<{ 8 * 4 }, true>();
-        // test_ok::<{ 8 * 5 }, true>();
-        // test_ok::<{ 8 * 6 }, true>();
-        // test_ok::<{ 8 * 7 }, true>();
+        test_ok::<{ 8 * 2 }, true>();
+        test_ok::<{ 8 * 3 }, true>();
+        test_ok::<{ 8 * 4 }, true>();
+        test_ok::<{ 8 * 5 }, true>();
+        test_ok::<{ 8 * 6 }, true>();
+        test_ok::<{ 8 * 7 }, true>();
     }
 
     pub fn leb_broken_continuation_bit<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
@@ -341,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_leb_broken_continuation_bit() {
+    pub fn test_leb_broken_continuation_bit_unsigned() {
         leb_broken_continuation_bit::<{ 8 * 1 }, false>();
         leb_broken_continuation_bit::<{ 8 * 2 }, false>();
         leb_broken_continuation_bit::<{ 8 * 3 }, false>();
@@ -350,6 +350,17 @@ mod tests {
         leb_broken_continuation_bit::<{ 8 * 6 }, false>();
         leb_broken_continuation_bit::<{ 8 * 7 }, false>();
         leb_broken_continuation_bit::<{ 8 * 8 }, false>();
+    }
+
+    #[test]
+    pub fn test_leb_broken_continuation_bit_signed() {
+        leb_broken_continuation_bit::<{ 8 * 1 }, true>();
+        leb_broken_continuation_bit::<{ 8 * 2 }, true>();
+        leb_broken_continuation_bit::<{ 8 * 3 }, true>();
+        leb_broken_continuation_bit::<{ 8 * 4 }, true>();
+        leb_broken_continuation_bit::<{ 8 * 5 }, true>();
+        leb_broken_continuation_bit::<{ 8 * 6 }, true>();
+        leb_broken_continuation_bit::<{ 8 * 7 }, true>();
     }
 
     pub fn leb_broken_random_bit<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
@@ -444,7 +455,7 @@ mod tests {
     // }
     //
     // #[test]
-    // pub fn test_broken_solid_number() {
+    // pub fn test_broken_solid_number_unsigned() {
     //     broken_solid_number::<{ 8 * 1 }, false>();
     //     broken_solid_number::<{ 8 * 2 }, false>();
     //     broken_solid_number::<{ 8 * 3 }, false>();
@@ -453,6 +464,17 @@ mod tests {
     //     broken_solid_number::<{ 8 * 6 }, false>();
     //     broken_solid_number::<{ 8 * 7 }, false>();
     //     broken_solid_number::<{ 8 * 8 }, false>();
+    // }
+    //
+    // #[test]
+    // pub fn test_broken_solid_number_signed() {
+    //     broken_solid_number::<{ 8 * 1 }, true>();
+    //     broken_solid_number::<{ 8 * 2 }, true>();
+    //     broken_solid_number::<{ 8 * 3 }, true>();
+    //     broken_solid_number::<{ 8 * 4 }, true>();
+    //     broken_solid_number::<{ 8 * 5 }, true>();
+    //     broken_solid_number::<{ 8 * 6 }, true>();
+    //     broken_solid_number::<{ 8 * 7 }, true>();
     // }
 
     pub fn broken_base64_word<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
@@ -505,7 +527,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_broken_base64_word() {
+    pub fn test_broken_base64_word_unsigned() {
         broken_base64_word::<{ 8 * 1 }, false>();
         broken_base64_word::<{ 8 * 2 }, false>();
         broken_base64_word::<{ 8 * 3 }, false>();
@@ -514,5 +536,16 @@ mod tests {
         broken_base64_word::<{ 8 * 6 }, false>();
         broken_base64_word::<{ 8 * 7 }, false>();
         broken_base64_word::<{ 8 * 8 }, false>();
+    }
+
+    #[test]
+    pub fn test_broken_base64_word_signed() {
+        broken_base64_word::<{ 8 * 1 }, true>();
+        broken_base64_word::<{ 8 * 2 }, true>();
+        broken_base64_word::<{ 8 * 3 }, true>();
+        broken_base64_word::<{ 8 * 4 }, true>();
+        broken_base64_word::<{ 8 * 5 }, true>();
+        broken_base64_word::<{ 8 * 6 }, true>();
+        broken_base64_word::<{ 8 * 7 }, true>();
     }
 }
