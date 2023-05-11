@@ -113,8 +113,6 @@ impl<F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> LEB128NumberChip<F
                 let leb_base64_word = leb_base64_words_recovered[leb_base64_words_last_index].clone();
                 leb_base64_words_recovered[leb_base64_words_last_index] = leb_byte_expr + leb_base64_word * 0b100000000.expr();
             }
-            // TODO recovering made in reverse order so we must reverse
-            // leb_base64_words_recovered.reverse();
 
             let mut constraints = Vec::from([
                 // ("solid number equals to 7-bits repr sum", leb_as_bytes_sum - solid_number_expr),

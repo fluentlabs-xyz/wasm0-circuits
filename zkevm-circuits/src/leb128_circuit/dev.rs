@@ -211,7 +211,7 @@ mod tests {
         }
     }
 
-    pub fn debug_exact_number<const NUMBER: u64, const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
+    pub fn exact_number<const NUMBER: u64, const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
         let (input_number_leb128, last_byte_index) = convert_to_leb_bytes(!IS_SIGNED, NUMBER, ((BIT_DEPTH + 6) / 7) as u8);
         let base64_words = convert_leb128_to_base64_words(&input_number_leb128, last_byte_index);
         let solid_number = NUMBER;
@@ -237,11 +237,18 @@ mod tests {
 
     #[test]
     pub fn test_debug_exact_number() {
-        debug_exact_number::<32, 64, false>();
-        debug_exact_number::<1, 64, true>();
-        debug_exact_number::<123456, 64, true>();
-        debug_exact_number::<16383, 64, true>();
-        debug_exact_number::<16382, 64, true>();
+        exact_number::<123456789, 64, false>();
+        exact_number::<123456789, 64, true>();
+        exact_number::<123456, 64, false>();
+        exact_number::<123456, 64, true>();
+        exact_number::<16383, 64, false>();
+        exact_number::<16383, 64, true>();
+        exact_number::<16382, 64, false>();
+        exact_number::<16382, 64, true>();
+        exact_number::<32, 64, false>();
+        exact_number::<32, 64, true>();
+        exact_number::<1, 64, false>();
+        exact_number::<1, 64, true>();
     }
 
     pub fn test_ok<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
