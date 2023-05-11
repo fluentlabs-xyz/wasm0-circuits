@@ -7,7 +7,7 @@ use halo2_proofs::plonk::{Constraints, Expression, Selector};
 use halo2_proofs::poly::Rotation;
 use eth_types::Field;
 use gadgets::util::Expr;
-use crate::leb128_circuit::consts::{BITS_IN_BYTE, BYTES_IN_BASE64_WORD, LEB128_BITS_LIMB_SIZE};
+use crate::leb128_circuit::consts::{BITS_IN_BYTE, BYTES_IN_BASE64_WORD, EIGHT_LS_BITS_MASK, LEB128_BITS_CHUNK_SIZE};
 
 
 /// LEB128NumberConfig
@@ -65,7 +65,7 @@ impl<F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> LEB128NumberChip<F
     ) -> LEB128NumberConfig<F, BIT_DEPTH, IS_SIGNED> {
         Self::validate_static_state();
         let selector = cs.selector();
-        // let base64_words_count = (BIT_DEPTH / LEB128_BITS_LIMB_SIZE + BYTES_IN_BASE64_WORD - 1) / BYTES_IN_BASE64_WORD;
+        // let base64_words_count = (BIT_DEPTH / LEB128_BITS_CHUNK_SIZE + BYTES_IN_BASE64_WORD - 1) / BYTES_IN_BASE64_WORD;
         let leb_base64_words = cs.advice_column();
         let leb_bytes = cs.advice_column();
         let byte_has_continuation_bit = cs.advice_column();
@@ -102,10 +102,12 @@ impl<F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> LEB128NumberChip<F
                     rot_idx -= 1;
                 }
                 let mut leb_byte_expr = vc.query_advice(leb_bytes, Rotation(rot_idx as i32));
-                if rot_idx > 0 {
+                if rot_idx > 0 && IS_SIGNED {
                     let cb_prev_expr = vc.query_advice(byte_has_continuation_bit, Rotation((rot_idx - 1) as i32));
                     let cb_expr = vc.query_advice(byte_has_continuation_bit, Rotation(rot_idx as i32));
-                    leb_byte_expr = leb_byte_expr * (cb_prev_expr.clone() + cb_expr.clone() - cb_prev_expr * cb_expr);
+                    let consider_expr = cb_prev_expr.clone() + cb_expr.clone() - cb_prev_expr * cb_expr;
+                    let do_not_consider = 1.expr() - consider_expr.clone();
+                    leb_byte_expr = leb_byte_expr - do_not_consider.clone() * EIGHT_LS_BITS_MASK.expr();
                 }
                 let leb_base64_words_last_index = leb_base64_words_recovered.len() - 1;
                 let leb_base64_word = leb_base64_words_recovered[leb_base64_words_last_index].clone();
@@ -185,7 +187,7 @@ impl<F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> LEB128NumberChip<F
         //     || Value::known(F::from(solid_number)),
         // ).unwrap();
 
-        let base64_words_count = (BIT_DEPTH / LEB128_BITS_LIMB_SIZE + BYTES_IN_BASE64_WORD - 1) / BYTES_IN_BASE64_WORD;
+        let base64_words_count = (BIT_DEPTH / LEB128_BITS_CHUNK_SIZE + BYTES_IN_BASE64_WORD - 1) / BYTES_IN_BASE64_WORD;
         for i in 0..base64_words_count {
             let leb_base64_word = if i < leb_base64_words.len() { leb_base64_words[i] } else { 0 };
             region.assign_advice(

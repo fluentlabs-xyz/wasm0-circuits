@@ -59,6 +59,8 @@ impl<'a, F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> Circuit<F> for
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+    use std::env::VarError;
     use std::marker::PhantomData;
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
@@ -68,6 +70,10 @@ mod tests {
     use crate::leb128_circuit::dev::TestCircuit;
 
     const ALL_BIT_DEPTHS_BYTES: &[usize] = &[1, 2, 3, 4, 5, 6, 7, 8];
+
+    fn rust_log_is_debug() -> bool {
+        env::var("RUST_LOG").unwrap_or("".to_string()) == "debug"
+    }
 
     /// unsigned leb repr and last byte index
     fn convert_to_leb_bytes_unsigned(number: u64, exact_bytes_count: u8) -> (Vec<u8>, usize) {
@@ -106,10 +112,8 @@ mod tests {
         let mut res = Vec::new();
         let mut last_byte_index: usize = 0;
         let mut number = number;
-        let mut is_positive = true;
         if number < 0 {
             number = -number;
-            is_positive = false;
         }
         let mut twos_complement_val: u64 = 1;
         let mut overflow: u64 = 0;
@@ -186,9 +190,8 @@ mod tests {
     }
 
     pub fn leb_break_continuation_bit(rng: &mut rand::prelude::ThreadRng, leb128: &mut Vec<u8>) {
-        const BIT_TO_BREAK_MASK: u8 = 0b10000000;
         let byte_number = rng.gen::<usize>() % leb128.len();
-        break_bit(&mut leb128[byte_number], BIT_TO_BREAK_MASK);
+        break_bit(&mut leb128[byte_number], EIGHT_MS_BIT_MASK);
     }
 
     pub fn leb_break_random_bit(rng: &mut rand::prelude::ThreadRng, leb128: &mut Vec<u8>) {
@@ -212,13 +215,15 @@ mod tests {
         let (input_number_leb128, last_byte_index) = convert_to_leb_bytes(!IS_SIGNED, NUMBER, ((BIT_DEPTH + 6) / 7) as u8);
         let base64_words = convert_leb128_to_base64_words(&input_number_leb128, last_byte_index);
         let solid_number = NUMBER;
-        println!(
-            "IS_SIGNED:{} input_number {} base64_words {:x?} leb128 {:x?}",
-            IS_SIGNED,
-            if IS_SIGNED { -(solid_number as i64) } else { solid_number as i64 },
-            base64_words,
-            input_number_leb128,
-        );
+        if rust_log_is_debug() {
+            println!(
+                "IS_SIGNED:{} input_number {} base64_words {:x?} leb128 {:x?}",
+                IS_SIGNED,
+                if IS_SIGNED { -(solid_number as i64) } else { solid_number as i64 },
+                base64_words,
+                input_number_leb128,
+            );
+        }
         let circuit = TestCircuit::<Fr, BIT_DEPTH, IS_SIGNED> {
             leb_base64_words: base64_words.as_slice(),
             leb_bytes: input_number_leb128.as_slice(),
@@ -242,7 +247,9 @@ mod tests {
     pub fn test_ok<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
         let mut rng = rand::thread_rng();
         let mut numbers_to_check = Vec::<(bool, u64)>::new();
-        numbers_to_check.push((IS_SIGNED, 0));
+        if !IS_SIGNED { // 0 cannot be SIGNED
+            numbers_to_check.push((IS_SIGNED, 0));
+        }
         numbers_to_check.push((IS_SIGNED, 1));
         // TODO is it possible to represent 0 as signed?
         for i in 0..(BIT_DEPTH - 1) {
@@ -252,19 +259,24 @@ mod tests {
             if i > 0 {
                 let val_rnd: u64 = rng.gen();
                 val = val_rnd % val;
-                numbers_to_check.push((IS_SIGNED, val));
+                if !IS_SIGNED && val != 0 { // 0 cannot be SIGNED
+                    numbers_to_check.push((IS_SIGNED, val));
+                }
             }
         }
-        for input_number in numbers_to_check {
+        for (i, &input_number) in numbers_to_check.iter().enumerate() {
             let (input_number_leb128, last_byte_index) = convert_to_leb_bytes(!input_number.0, input_number.1, ((BIT_DEPTH + 6) / 7) as u8);
             let base64_words = convert_leb128_to_base64_words(&input_number_leb128, last_byte_index);
-            println!(
-                "IS_SIGNED:{} input_number {} base64_words {:x?} leb128 {:x?}",
-                IS_SIGNED,
-                if IS_SIGNED { -(input_number.1 as i64) } else { input_number.1 as i64 },
-                base64_words,
-                input_number_leb128,
-            );
+            if rust_log_is_debug() {
+                println!(
+                    "{}. IS_SIGNED:{} input_number {} base64_words {:x?} leb128 {:x?}",
+                    i,
+                    IS_SIGNED,
+                    if IS_SIGNED { -(input_number.1 as i64) } else { input_number.1 as i64 },
+                    base64_words,
+                    input_number_leb128,
+                );
+            }
             let circuit = TestCircuit::<'_, Fr, BIT_DEPTH, IS_SIGNED> {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
@@ -320,14 +332,17 @@ mod tests {
 
             let base64_words = convert_leb128_to_base64_words(&input_number_leb128, last_byte_index);
             leb_break_continuation_bit(&mut rng, &mut input_number_leb128);
-
-            println!(
-                "IS_SIGNED:{} input_number {} base64_words {:x?} leb128 {:x?}",
-                IS_SIGNED,
-                if IS_SIGNED { -(solid_number as i64) } else { solid_number as i64 },
-                base64_words,
-                input_number_leb128,
-            );
+            if rust_log_is_debug() {
+                println!(
+                    "{}. BIT_DEPTH {} IS_SIGNED:{} input_number {} base64_words {:x?} leb128 {:x?}",
+                    i,
+                    BIT_DEPTH,
+                    IS_SIGNED,
+                    if IS_SIGNED { -(solid_number as i64) } else { solid_number as i64 },
+                    base64_words,
+                    input_number_leb128,
+                );
+            }
             let circuit = TestCircuit::<'_, Fr, BIT_DEPTH, IS_SIGNED> {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
@@ -383,14 +398,16 @@ mod tests {
 
             let base64_words = convert_leb128_to_base64_words(&input_number_leb128, last_byte_index);
             leb_break_random_bit(&mut rng, &mut input_number_leb128);
-
-            println!(
-                "IS_SIGNED:{} input_number {} base64_words {:x?} leb128 {:x?}",
-                IS_SIGNED,
-                if IS_SIGNED { -(solid_number as i64) } else { solid_number as i64 },
-                base64_words,
-                input_number_leb128,
-            );
+            if rust_log_is_debug() {
+                println!(
+                    "{}. IS_SIGNED:{} input_number {} base64_words {:x?} leb128 {:x?}",
+                    i,
+                    IS_SIGNED,
+                    if IS_SIGNED { -(solid_number as i64) } else { solid_number as i64 },
+                    base64_words,
+                    input_number_leb128,
+                );
+            }
             let circuit = TestCircuit::<'_, Fr, BIT_DEPTH, IS_SIGNED> {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
@@ -404,7 +421,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_leb_broken_random_bit() {
+    pub fn test_leb_broken_random_bit_unsigned() {
         leb_broken_random_bit::<{ 8 * 1 }, false>();
         leb_broken_random_bit::<{ 8 * 2 }, false>();
         leb_broken_random_bit::<{ 8 * 3 }, false>();
@@ -413,6 +430,17 @@ mod tests {
         leb_broken_random_bit::<{ 8 * 6 }, false>();
         leb_broken_random_bit::<{ 8 * 7 }, false>();
         leb_broken_random_bit::<{ 8 * 8 }, false>();
+    }
+
+    #[test]
+    pub fn test_leb_broken_random_bit_signed() {
+        leb_broken_random_bit::<{ 8 * 1 }, true>();
+        leb_broken_random_bit::<{ 8 * 2 }, true>();
+        leb_broken_random_bit::<{ 8 * 3 }, true>();
+        leb_broken_random_bit::<{ 8 * 4 }, true>();
+        leb_broken_random_bit::<{ 8 * 5 }, true>();
+        leb_broken_random_bit::<{ 8 * 6 }, true>();
+        leb_broken_random_bit::<{ 8 * 7 }, true>();
     }
 
     // pub fn broken_solid_number<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
@@ -506,14 +534,16 @@ mod tests {
                 }
             }
 
-            println!(
-                "{}. IS_SIGNED:{} input_number {} base64_words {:x?} leb128 {:x?}",
-                i,
-                IS_SIGNED,
-                solid_number,
-                base64_words,
-                input_number_leb128,
-            );
+            if rust_log_is_debug() {
+                println!(
+                    "{}. IS_SIGNED:{} input_number {} base64_words {:x?} leb128 {:x?}",
+                    i,
+                    IS_SIGNED,
+                    solid_number,
+                    base64_words,
+                    input_number_leb128,
+                );
+            }
             let circuit = TestCircuit::<'_, Fr, BIT_DEPTH, IS_SIGNED> {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),

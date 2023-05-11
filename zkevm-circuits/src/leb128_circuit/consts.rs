@@ -9,4 +9,4 @@ pub const BYTES_IN_BASE64_WORD: usize = 8;
 ///
 pub const BITS_IN_BYTE: usize = 8;
 ///
-pub const LEB128_BITS_LIMB_SIZE: usize = 7;
+pub const LEB128_BITS_CHUNK_SIZE: usize = 7;
