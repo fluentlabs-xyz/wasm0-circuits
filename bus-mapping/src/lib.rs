@@ -229,7 +229,6 @@ extern crate core;
 
 pub mod circuit_input_builder;
 pub mod error;
-pub mod evm;
 pub mod exec_trace;
 pub(crate) mod geth_errors;
 pub mod mocks;
@@ -237,3 +236,12 @@ pub mod operation;
 pub mod rpc;
 pub mod state_db;
 pub use error::Error;
+
+// pub mod evm;
+pub mod wasm;
+
+///
+pub mod evm {
+    pub use crate::wasm;
+    pub use crate::wasm::*;
+}
