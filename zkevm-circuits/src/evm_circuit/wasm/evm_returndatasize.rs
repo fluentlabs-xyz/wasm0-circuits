@@ -1,7 +1,7 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::N_BYTES_ACCOUNT_ADDRESS,
+        param::N_BYTES_U64,
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
@@ -14,48 +14,48 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToAddress, ToLittleEndian};
+use eth_types::{Field, ToLittleEndian};
 use halo2_proofs::plonk::Error;
-use std::convert::TryInto;
 
 #[derive(Clone, Debug)]
-pub(crate) struct AddressGadget<F> {
+pub(crate) struct EvmReturnDataSizeGadget<F> {
     same_context: SameContextGadget<F>,
-    address: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
+    return_data_size: RandomLinearCombination<F, N_BYTES_U64>,
 }
 
-impl<F: Field> ExecutionGadget<F> for AddressGadget<F> {
-    const NAME: &'static str = "ADDRESS";
+impl<F: Field> ExecutionGadget<F> for EvmReturnDataSizeGadget<F> {
+    const NAME: &'static str = "RETURNDATASIZE";
 
-    const EXECUTION_STATE: ExecutionState = ExecutionState::ADDRESS;
+    const EXECUTION_STATE: ExecutionState = ExecutionState::RETURNDATASIZE;
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
-        let address = cb.query_word_rlc();
+        let opcode = cb.query_cell();
 
-        // Lookup callee address in call context.
+        // Add lookup constraint in the call context for the returndatasize field.
+        let return_data_size = cb.query_word_rlc();
         cb.call_context_lookup(
             false.expr(),
             None,
-            CallContextFieldTag::CalleeAddress,
-            from_bytes::expr(&address.cells),
+            CallContextFieldTag::LastCalleeReturnDataLength,
+            from_bytes::expr(&return_data_size.cells),
         );
 
-        cb.stack_push(address.expr());
+        // The returndatasize should be pushed to the top of the stack.
+        cb.stack_push(return_data_size.expr());
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(2.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta((-1).expr()),
-            gas_left: Delta(-OpcodeId::ADDRESS.constant_gas_cost().expr()),
+            gas_left: Delta(-OpcodeId::RETURNDATASIZE.constant_gas_cost().expr()),
             ..Default::default()
         };
 
-        let opcode = cb.query_cell();
         let same_context = SameContextGadget::construct(cb, opcode, step_state_transition);
 
         Self {
             same_context,
-            address,
+            return_data_size,
         }
     }
 
@@ -64,22 +64,19 @@ impl<F: Field> ExecutionGadget<F> for AddressGadget<F> {
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
         block: &Block<F>,
-        _: &Transaction,
-        call: &Call,
+        _tx: &Transaction,
+        _call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
-
-        let address = block.rws[step.rw_indices[1]].stack_value();
-        debug_assert_eq!(call.callee_address, address.to_address());
-
-        self.address.assign(
+        let return_data_size = block.rws[step.rw_indices[1]].stack_value();
+        self.return_data_size.assign(
             region,
             offset,
             Some(
-                address.to_le_bytes()[..N_BYTES_ACCOUNT_ADDRESS]
+                return_data_size.to_le_bytes()[..N_BYTES_U64]
                     .try_into()
-                    .unwrap(),
+                    .expect("could not encode return_data_size as byte array in little endian"),
             ),
         )?;
 
@@ -93,43 +90,33 @@ mod test {
     use eth_types::{bytecode, ToWord, Word};
     use mock::test_ctx::TestContext;
 
-    fn test_root_ok() {
-        let bytecode = bytecode! {
-            ADDRESS
-            STOP
-        };
-
-        CircuitTestBuilder::new_from_test_ctx(
-            TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
-        )
-        .run();
-    }
-
-    fn test_internal_ok(call_data_offset: usize, call_data_length: usize) {
+    fn test_ok_internal(return_data_offset: usize, return_data_size: usize) {
         let (addr_a, addr_b) = (mock::MOCK_ACCOUNTS[0], mock::MOCK_ACCOUNTS[1]);
 
-        // code B gets called by code A, so the call is an internal call.
+        let pushdata = rand_bytes(32);
         let code_b = bytecode! {
-            ADDRESS
+            PUSH32(Word::from_big_endian(&pushdata))
+            PUSH1(0)
+            MSTORE
+
+            PUSH32(return_data_size)
+            PUSH1(return_data_offset)
+            RETURN
             STOP
         };
 
         // code A calls code B.
-        let pushdata = rand_bytes(8);
         let code_a = bytecode! {
-            // populate memory in A's context.
-            PUSH8(Word::from_big_endian(&pushdata))
-            PUSH1(0x00) // offset
-            MSTORE
             // call ADDR_B.
-            PUSH1(0x00) // retLength
-            PUSH1(0x00) // retOffset
-            PUSH32(call_data_length) // argsLength
-            PUSH32(call_data_offset) // argsOffset
+            PUSH32(return_data_size) // retLength
+            PUSH1(return_data_offset) // retOffset
+            PUSH1(0x00) // argsLength
+            PUSH1(0x00) // argsOffset
             PUSH1(0x00) // value
             PUSH32(addr_b.to_word()) // addr
             PUSH32(0x1_0000) // gas
             CALL
+            RETURNDATASIZE
             STOP
         };
 
@@ -153,15 +140,29 @@ mod test {
     }
 
     #[test]
-    fn address_gadget_root() {
-        test_root_ok();
+    fn returndatasize_gadget_simple() {
+        test_ok_internal(0x00, 0x02);
     }
 
     #[test]
-    fn address_gadget_internal() {
-        test_internal_ok(0x20, 0x00);
-        test_internal_ok(0x20, 0x10);
-        test_internal_ok(0x40, 0x20);
-        test_internal_ok(0x1010, 0xff);
+    fn returndatasize_gadget_large() {
+        test_ok_internal(0x00, 0x20);
+    }
+
+    #[test]
+    fn returndatasize_gadget_zero_length() {
+        test_ok_internal(0x00, 0x00);
+    }
+
+    #[test]
+    fn test_simple() {
+        let code = bytecode! {
+            RETURNDATASIZE
+            STOP
+        };
+        CircuitTestBuilder::new_from_test_ctx(
+            TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
+        )
+        .run();
     }
 }

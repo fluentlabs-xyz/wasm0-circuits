@@ -8,6 +8,7 @@ use halo2_proofs::{
 };
 
 mod execution;
+mod wasm;
 pub mod param;
 pub(crate) mod step;
 pub(crate) mod util;
@@ -23,7 +24,9 @@ use crate::{
 };
 use bus_mapping::evm::OpcodeId;
 use eth_types::Field;
-use execution::ExecutionConfig;
+// TODO: "we should use feature flag here"
+// use execution::ExecutionConfig;
+use wasm::ExecutionConfig;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
 use table::FixedTableTag;

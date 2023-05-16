@@ -93,11 +93,9 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             (lhs.expr() + res_is_lt.expr() * diff.expr()
                         - res_is_gt.expr() * diff.expr()
                         - rhs.expr()),
-            (res_is_gt.expr() + res_is_lt.expr() + res_is_eq.expr()
-                              - constant_from!(1)),
+            (res_is_gt.expr() + res_is_lt.expr() + res_is_eq.expr() - 1.expr()),
             (diff.expr() * res_is_eq.expr()),
-            (diff.expr() * diff_inv.expr() + res_is_eq.expr()
-                                           - constant_from!(1)),
+            (diff.expr() * diff_inv.expr() + res_is_eq.expr() - 1.expr()),
         ]);
 
         cb.require_zeros("op_rel: compare op", vec![
@@ -107,7 +105,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
                 + op_is_gt.expr()
                 + op_is_le.expr()
                 + op_is_ge.expr()
-                - constant_from!(1)),
+                - 1.expr()),
         ]);
 
         /* constraint_builder.push(
@@ -132,16 +130,16 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         ); */
 
         cb.require_zeros("op_rel: compare op res", {
-            let l_pos_r_pos = (constant_from!(1) - lhs_leading_bit.expr())
-                            * (constant_from!(1) - rhs_leading_bit.expr());
-            let l_pos_r_neg = (constant_from!(1) - lhs_leading_bit.expr()) * rhs_leading_bit.expr();
+            let l_pos_r_pos = (1.expr() - lhs_leading_bit.expr())
+                            * (1.expr() - rhs_leading_bit.expr());
+            let l_pos_r_neg = (1.expr() - lhs_leading_bit.expr()) * rhs_leading_bit.expr();
             let l_neg_r_pos =
-                              lhs_leading_bit.expr() * (constant_from!(1) - rhs_leading_bit.expr());
+                              lhs_leading_bit.expr() * (1.expr() - rhs_leading_bit.expr());
             let l_neg_r_neg = lhs_leading_bit.expr() * rhs_leading_bit.expr();
             vec![
                 op_is_eq.expr() * (res.expr() - res_is_eq.expr()),
                 op_is_ne.expr()
-                    * (res.expr() - constant_from!(1) + res_is_eq.expr()),
+                    * (res.expr() - 1.expr() + res_is_eq.expr()),
                 op_is_lt.expr()
                     * (res.expr()
                         - l_neg_r_pos.clone()
@@ -171,19 +169,18 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             "compare op res",
             Box::new(move |meta| {
 
-                let l_pos_r_pos = (constant_from!(1) - lhs_leading_bit.expr(meta))
-                    * (constant_from!(1) - rhs_leading_bit.expr(meta));
+                let l_pos_r_pos = (1.expr() - lhs_leading_bit.expr(meta))
+                    * (1.expr() - rhs_leading_bit.expr(meta));
                 let l_pos_r_neg =
-                    (constant_from!(1) - lhs_leading_bit.expr(meta)) * rhs_leading_bit.expr(meta);
+                    (1.expr() - lhs_leading_bit.expr(meta)) * rhs_leading_bit.expr(meta);
                 let l_neg_r_pos =
-                    lhs_leading_bit.expr(meta) * (constant_from!(1) - rhs_leading_bit.expr(meta));
+                    lhs_leading_bit.expr(meta) * (1.expr() - rhs_leading_bit.expr(meta));
                 let l_neg_r_neg = lhs_leading_bit.expr(meta) * rhs_leading_bit.expr(meta);
 
                 vec![
-
                     op_is_eq.expr(meta) * (res.expr(meta) - res_is_eq.expr(meta)),
                     op_is_ne.expr(meta)
-                        * (res.expr(meta) - constant_from!(1) + res_is_eq.expr(meta)),
+                        * (res.expr(meta) - 1.expr() + res_is_eq.expr(meta)),
                     op_is_lt.expr(meta)
                         * (res.expr(meta)
                             - l_neg_r_pos.clone()
@@ -326,8 +323,8 @@ mod test {
     #[test]
     fn test_i32_gt_u() {
         run_test(bytecode! {
-            I32Const 0
-            I32Const 0
+            I32Const[0]
+            I32Const[0]
             I32GtU
             Drop
         });

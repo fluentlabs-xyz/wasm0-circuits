@@ -36,27 +36,11 @@ use std::{
     iter,
 };
 
-mod address;
-mod balance;
-mod begin_tx;
-mod bitwise;
-mod block_ctx;
-mod blockhash;
-mod byte;
-mod calldatacopy;
-mod calldataload;
-mod calldatasize;
-mod caller;
-mod callop;
-mod callvalue;
-mod chainid;
-mod codecopy;
-mod codesize;
-mod comparator;
-mod dummy;
-mod dup;
-mod end_block;
-mod end_tx;
+mod common_begin_tx;
+mod common_block_ctx;
+mod common_dummy;
+mod common_end_block;
+mod common_end_tx;
 mod error_invalid_jump;
 mod error_invalid_opcode;
 mod error_oog_call;
@@ -68,90 +52,115 @@ mod error_oog_static_memory;
 mod error_return_data_oo_bound;
 mod error_stack;
 mod error_write_protection;
-mod extcodecopy;
-mod extcodehash;
-mod extcodesize;
-mod gas;
-mod gasprice;
-mod is_zero;
-mod jump;
-mod jumpdest;
-mod jumpi;
-mod logs;
-mod memory;
-mod msize;
-mod mul_div_mod;
-// mod mulmod;
-#[path = "execution/not.rs"]
-mod opcode_not;
-mod origin;
-mod pc;
-mod pop;
-mod return_revert;
-// mod returndatacopy;
-// mod returndatasize;
-mod sar;
-// mod sdiv_smod;
-mod selfbalance;
-mod sha3;
-// mod shl_shr;
-mod signed_comparator;
-mod signextend;
-mod sload;
-mod sstore;
-mod stop;
-mod swap;
+mod evm_address;
+mod evm_balance;
+mod evm_blockhash;
+mod evm_calldatacopy;
+mod evm_calldataload;
+mod evm_calldatasize;
+mod evm_caller;
+mod evm_callop;
+mod evm_callvalue;
+mod evm_chainid;
+mod evm_codecopy;
+mod evm_codesize;
+mod evm_extcodecopy;
+mod evm_extcodehash;
+mod evm_extcodesize;
+mod evm_gas;
+mod evm_gasprice;
+mod evm_keccak256;
+mod evm_log;
+mod evm_memory;
+mod evm_msize;
+mod evm_origin;
+mod evm_pc;
+mod evm_return_revert;
+mod evm_returndatacopy;
+mod evm_returndatasize;
+mod evm_selfbalance;
+mod evm_sload;
+mod evm_sstore;
+mod evm_stop;
+mod wasm_bin;
+mod wasm_break;
+mod wasm_call;
+mod wasm_const;
+mod wasm_conversion;
+mod wasm_drop;
+mod wasm_end;
+mod wasm_global;
+// mod wasm_load;
+mod wasm_local;
+// mod wasm_rel;
+mod wasm_select;
+// mod wasm_store;
+mod wasm_test;
+mod wasm_unary;
 
-use begin_tx::BeginTxGadget;
-use end_block::EndBlockGadget;
-use end_tx::EndTxGadget;
+use common_begin_tx::CommonBeginTxGadget;
+use common_block_ctx::CommonBlockCtxGadget;
+use common_dummy::CommonDummyGadget;
+use common_end_block::CommonEndBlockGadget;
+use common_end_tx::CommonEndTxGadget;
 use error_invalid_jump::ErrorInvalidJumpGadget;
 use error_invalid_opcode::ErrorInvalidOpcodeGadget;
+use error_oog_call::ErrorOOGCallGadget;
 use error_oog_constant::ErrorOOGConstantGadget;
 use error_oog_exp::ErrorOOGExpGadget;
 use error_oog_log::ErrorOOGLogGadget;
 use error_oog_sload_sstore::ErrorOOGSloadSstoreGadget;
+use error_oog_static_memory::ErrorOOGStaticMemoryGadget;
 use error_return_data_oo_bound::ErrorReturnDataOutOfBoundGadget;
 use error_stack::ErrorStackGadget;
 use error_write_protection::ErrorWriteProtectionGadget;
-use gasprice::GasPriceGadget;
-use address::AddressGadget;
-use balance::BalanceGadget;
-use caller::CallerGadget;
-use callvalue::CallValueGadget;
-use chainid::ChainIdGadget;
-use codesize::CodesizeGadget;
-use dummy::DummyGadget;
-use origin::OriginGadget;
-use return_revert::ReturnRevertGadget;
-use selfbalance::SelfbalanceGadget;
-use crate::evm_circuit::execution::callop::CallOpGadget;
-use crate::evm_circuit::execution::codecopy::CodeCopyGadget;
-use crate::evm_circuit::execution::error_oog_call::ErrorOOGCallGadget;
-use crate::evm_circuit::execution::extcodecopy::ExtcodecopyGadget;
-use crate::evm_circuit::execution::extcodesize::ExtcodesizeGadget;
+use evm_address::EvmAddressGadget;
+use evm_balance::EvmBalanceGadget;
+use evm_blockhash::EvmBlockHashGadget;
+use evm_calldatacopy::EvmCallDataCopyGadget;
+use evm_calldataload::EvmCallDataLoadGadget;
+use evm_calldatasize::EvmCallDataSizeGadget;
+use evm_caller::EvmCallerGadget;
+use evm_callop::EvmCallOpGadget;
+use evm_callvalue::EvmCallValueGadget;
+use evm_chainid::EvmChainIdGadget;
+use evm_codecopy::EvmCodeCopyGadget;
+use evm_codesize::EvmCodeSizeGadget;
+use evm_extcodecopy::EvmExtCodeCopyGadget;
+use evm_extcodehash::EvmExtCodeHashGadget;
+use evm_extcodesize::EvmExtCodeSizeGadget;
+use evm_gas::EvmGasGadget;
+use evm_gasprice::EvmGasPriceGadget;
+use evm_keccak256::EvmKeccak256Gadget;
+use evm_log::EvmLogGadget;
+use evm_memory::EvmMemoryGadget;
+use evm_msize::EvmMsizeGadget;
+use evm_origin::EvmOriginGadget;
+use evm_pc::EvmPcGadget;
+use evm_return_revert::EvmReturnRevertGadget;
+use evm_returndatacopy::EvmReturnDataCopyGadget;
+use evm_returndatasize::EvmReturnDataSizeGadget;
+use evm_selfbalance::EvmSelfBalanceGadget;
+use evm_sload::EvmSloadGadget;
+use evm_sstore::EvmSstoreGadget;
+use evm_stop::EvmStopGadget;
+use wasm_bin::WasmBinGadget;
+use wasm_break::WasmBreakGadget;
+use wasm_call::WasmCallGadget;
+use wasm_const::WasmConstGadget;
+use wasm_conversion::WasmConversionGadget;
+use wasm_drop::WasmDropGadget;
+use wasm_end::WasmEndGadget;
+use wasm_global::WasmGlobalGadget;
+// use wasm_load::WasmLoadGadget;
+use wasm_local::WasmLocalGadget;
+// use wasm_rel::WasmRelGadget;
+use wasm_select::WasmSelectGadget;
+// use wasm_store::WasmStoreGadget;
+use wasm_test::WasmTestGadget;
+use wasm_unary::WasmUnaryGadget;
 
-pub(crate) trait ExecutionGadget<F: FieldExt> {
-    const NAME: &'static str;
-
-    const EXECUTION_STATE: ExecutionState;
-
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self;
-
-    fn configure_with_meta<R: ExecutionGadget<F>>(cb: &mut ConstraintBuilder<F>, _meta: &mut ConstraintSystem<F>) -> R {
-        return R::configure(cb);
-    }
-
-    fn assign_exec_step(
-        &self,
-        region: &mut CachedRegion<'_, '_, F>,
-        offset: usize,
-        block: &Block<F>,
-        transaction: &Transaction,
-        call: &Call,
-        step: &ExecStep,
-    ) -> Result<(), Error>;
-}
+use crate::evm_circuit::execution::ExecutionGadget;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ExecutionConfig<F> {
@@ -175,99 +184,87 @@ pub(crate) struct ExecutionConfig<F> {
     pub(crate) height_map: HashMap<ExecutionState, usize>,
     stored_expressions_map: HashMap<ExecutionState, Vec<StoredExpression<F>>>,
     instrument: Instrument,
-    // internal state gadgets
-    begin_tx_gadget: Box<BeginTxGadget<F>>,
-    end_block_gadget: Box<EndBlockGadget<F>>,
-    end_tx_gadget: Box<EndTxGadget<F>>,
-    // opcode gadgets
-    // addmod_gadget: AddModGadget<F>,
-    address_gadget: Box<AddressGadget<F>>,
-    balance_gadget: Box<BalanceGadget<F>>,
-    // add_sub_gadget: Box<AddSubGadget<F>>,
-    // addmod_gadget: Box<AddModGadget<F>>,
-    // bitwise_gadget: Box<BitwiseGadget<F>>,
-    // byte_gadget: Box<ByteGadget<F>>,
-    call_op_gadget: Box<CallOpGadget<F>>,
-    call_value_gadget: Box<CallValueGadget<F>>,
-    // calldatacopy_gadget: Box<CallDataCopyGadget<F>>,
-    // calldataload_gadget: Box<CallDataLoadGadget<F>>,
-    // calldatasize_gadget: Box<CallDataSizeGadget<F>>,
-    caller_gadget: Box<CallerGadget<F>>,
-    chainid_gadget: Box<ChainIdGadget<F>>,
-    codecopy_gadget: Box<CodeCopyGadget<F>>,
-    codesize_gadget: Box<CodesizeGadget<F>>,
-    // comparator_gadget: Box<ComparatorGadget<F>>,
-    // dup_gadget: Box<DupGadget<F>>,
-    // exp_gadget: Box<ExponentiationGadget<F>>,
-    // extcodehash_gadget: Box<ExtcodehashGadget<F>>,
-    extcodesize_gadget: Box<ExtcodesizeGadget<F>>,
-    extcodecopy_gadget: Box<ExtcodecopyGadget<F>>,
-    // gas_gadget: Box<GasGadget<F>>,
-    gasprice_gadget: Box<GasPriceGadget<F>>,
-    // iszero_gadget: Box<IsZeroGadget<F>>,
-    // jump_gadget: Box<JumpGadget<F>>,
-    // jumpdest_gadget: Box<JumpdestGadget<F>>,
-    // jumpi_gadget: Box<JumpiGadget<F>>,
-    // log_gadget: Box<LogGadget<F>>,
-    // memory_gadget: Box<MemoryGadget<F>>,
-    // msize_gadget: Box<MsizeGadget<F>>,
-    // mul_div_mod_gadget: Box<MulDivModGadget<F>>,
-    // mulmod_gadget: Box<MulModGadget<F>>,
-    // not_gadget: Box<NotGadget<F>>,
-    origin_gadget: Box<OriginGadget<F>>,
-    // pc_gadget: Box<PcGadget<F>>,
-    // pop_gadget: Box<PopGadget<F>>,
-    // push_gadget: Box<PushGadget<F>>,
-    return_revert_gadget: Box<ReturnRevertGadget<F>>,
-    // sar_gadget: Box<SarGadget<F>>,
-    // sdiv_smod_gadget: Box<SignedDivModGadget<F>>,
-    selfbalance_gadget: Box<SelfbalanceGadget<F>>,
-    // sha3_gadget: Box<Sha3Gadget<F>>,
-    // shl_shr_gadget: Box<ShlShrGadget<F>>,
-    // returndatasize_gadget: Box<ReturnDataSizeGadget<F>>,
-    // returndatacopy_gadget: Box<ReturnDataCopyGadget<F>>,
-    // create_gadget: Box<DummyGadget<F, 3, 1, { ExecutionState::CREATE }>>,
-    // create2_gadget: Box<DummyGadget<F, 4, 1, { ExecutionState::CREATE2 }>>,
-    // selfdestruct_gadget: Box<DummyGadget<F, 1, 0, { ExecutionState::SELFDESTRUCT }>>,
-    // signed_comparator_gadget: Box<SignedComparatorGadget<F>>,
-    // signextend_gadget: Box<SignextendGadget<F>>,
-    // sload_gadget: Box<SloadGadget<F>>,
-    // sstore_gadget: Box<SstoreGadget<F>>,
-    // stop_gadget: Box<StopGadget<F>>,
-    // swap_gadget: Box<SwapGadget<F>>,
-    // blockhash_gadget: Box<BlockHashGadget<F>>,
-    // block_ctx_u64_gadget: Box<BlockCtxU64Gadget<F>>,
-    // block_ctx_u160_gadget: Box<BlockCtxU160Gadget<F>>,
-    // block_ctx_u256_gadget: Box<BlockCtxU256Gadget<F>>,
-    // error gadgets
+
+    // Common Gadgets
+    common_begin_tx: Box<CommonBeginTxGadget<F>>,
+    // common_block_ctx: Box<CommonBlockCtxGadget<F>>,
+    // common_dummy: Box<CommonDummyGadget<F>>,
+    common_end_block: Box<CommonEndBlockGadget<F>>,
+    common_end_tx: Box<CommonEndTxGadget<F>>,
+
+    // Error Gadgets
+    error_invalid_jump: Box<ErrorInvalidJumpGadget<F>>,
+    error_invalid_opcode: Box<ErrorInvalidOpcodeGadget<F>>,
     error_oog_call: Box<ErrorOOGCallGadget<F>>,
     error_oog_constant: Box<ErrorOOGConstantGadget<F>>,
     error_oog_exp: Box<ErrorOOGExpGadget<F>>,
     error_oog_sload_sstore: Box<ErrorOOGSloadSstoreGadget<F>>,
-    error_oog_static_memory_gadget: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasStaticMemoryExpansion }>>,
+    error_oog_static_memory_gadget: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasStaticMemoryExpansion }>>,
     error_stack: Box<ErrorStackGadget<F>>,
     error_write_protection: Box<ErrorWriteProtectionGadget<F>>,
-    error_oog_dynamic_memory_gadget: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasDynamicMemoryExpansion }>>,
+    error_oog_dynamic_memory_gadget: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasDynamicMemoryExpansion }>>,
     error_oog_log: Box<ErrorOOGLogGadget<F>>,
-    error_oog_memory_copy: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasMemoryCopy }>>,
-    error_oog_account_access:
-        Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasAccountAccess }>>,
-    error_oog_sha3: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasSHA3 }>>,
-    error_oog_ext_codecopy: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasEXTCODECOPY }>>,
-    error_oog_create2: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasCREATE2 }>>,
-    error_oog_self_destruct:
-        Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasSELFDESTRUCT }>>,
-    error_oog_code_store: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasCodeStore }>>,
-    error_insufficient_balance:
-        Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorInsufficientBalance }>>,
-    error_invalid_jump: Box<ErrorInvalidJumpGadget<F>>,
-    error_invalid_opcode: Box<ErrorInvalidOpcodeGadget<F>>,
-    error_depth: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorDepth }>>,
-    error_contract_address_collision:
-        Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorContractAddressCollision }>>,
-    error_invalid_creation_code:
-        Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorInvalidCreationCode }>>,
+    error_oog_memory_copy: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasMemoryCopy }>>,
+    error_oog_account_access: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasAccountAccess }>>,
+    error_oog_sha3: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasSHA3 }>>,
+    error_oog_ext_codecopy: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasEXTCODECOPY }>>,
+    error_oog_create2: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasCREATE2 }>>,
+    error_oog_self_destruct: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasSELFDESTRUCT }>>,
+    error_oog_code_store: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasCodeStore }>>,
+    error_insufficient_balance: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorInsufficientBalance }>>,
+    error_depth: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorDepth }>>,
+    error_contract_address_collision: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorContractAddressCollision }>>,
+    error_invalid_creation_code: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorInvalidCreationCode }>>,
     error_return_data_out_of_bound: Box<ErrorReturnDataOutOfBoundGadget<F>>,
+
+    // EVM Gadgets
+    evm_address: Box<EvmAddressGadget<F>>,
+    evm_balance: Box<EvmBalanceGadget<F>>,
+    evm_blockhash: Box<EvmBlockHashGadget<F>>,
+    evm_calldatacopy: Box<EvmCallDataCopyGadget<F>>,
+    evm_calldataload: Box<EvmCallDataLoadGadget<F>>,
+    evm_calldatasize: Box<EvmCallDataSizeGadget<F>>,
+    evm_caller: Box<EvmCallerGadget<F>>,
+    evm_callop: Box<EvmCallOpGadget<F>>,
+    evm_callvalue: Box<EvmCallValueGadget<F>>,
+    evm_chainid: Box<EvmChainIdGadget<F>>,
+    evm_codecopy: Box<EvmCodeCopyGadget<F>>,
+    evm_codesize: Box<EvmCodeSizeGadget<F>>,
+    evm_extcodecopy: Box<EvmExtCodeCopyGadget<F>>,
+    evm_extcodehash: Box<EvmExtCodeHashGadget<F>>,
+    evm_extcodesize: Box<EvmExtCodeSizeGadget<F>>,
+    evm_gas: Box<EvmGasGadget<F>>,
+    evm_gasprice: Box<EvmGasPriceGadget<F>>,
+    evm_keccak256: Box<EvmKeccak256Gadget<F>>,
+    evm_log: Box<EvmLogGadget<F>>,
+    evm_memory: Box<EvmMemoryGadget<F>>,
+    evm_msize: Box<EvmMsizeGadget<F>>,
+    evm_origin: Box<EvmOriginGadget<F>>,
+    evm_pc: Box<EvmPcGadget<F>>,
+    evm_return_revert: Box<EvmReturnRevertGadget<F>>,
+    evm_returndatacopy: Box<EvmReturnDataCopyGadget<F>>,
+    evm_returndatasize: Box<EvmReturnDataSizeGadget<F>>,
+    evm_selfbalance: Box<EvmSelfBalanceGadget<F>>,
+    evm_sload: Box<EvmSloadGadget<F>>,
+    evm_sstore: Box<EvmSstoreGadget<F>>,
+    evm_stop: Box<EvmStopGadget<F>>,
+
+    // WASM Gadgets
+    wasm_bin: Box<WasmBinGadget<F>>,
+    wasm_break: Box<WasmBreakGadget<F>>,
+    wasm_call: Box<WasmCallGadget<F>>,
+    wasm_const: Box<WasmConstGadget<F>>,
+    wasm_conversion: Box<WasmConversionGadget<F>>,
+    wasm_drop: Box<WasmDropGadget<F>>,
+    wasm_end: Box<WasmEndGadget<F>>,
+    wasm_global: Box<WasmGlobalGadget<F>>,
+    // wasm_load: Box<WasmLoadGadget<F>>,
+    wasm_local: Box<WasmLocalGadget<F>>,
+    // wasm_rel: Box<WasmRelGadget<F>>,
+    wasm_select: Box<WasmSelectGadget<F>>,
+    // wasm_store: Box<WasmStoreGadget<F>>,
+    wasm_test: Box<WasmTestGadget<F>>,
+    wasm_unary: Box<WasmUnaryGadget<F>>,
 }
 
 impl<F: Field> ExecutionConfig<F> {
@@ -443,91 +440,80 @@ impl<F: Field> ExecutionConfig<F> {
             q_step_first,
             q_step_last,
             advices,
-            // internal states
-            begin_tx_gadget: configure_gadget!(),
-            end_block_gadget: configure_gadget!(),
-            end_tx_gadget: configure_gadget!(),
-            // opcode gadgets
-            // addmod_gadget: configure_gadget!(),
-            // bitwise_gadget: configure_gadget!(),
-            // byte_gadget: configure_gadget!(),
-            call_op_gadget: configure_gadget!(),
-            // call_value_gadget: configure_gadget!(),
-            // calldatacopy_gadget: configure_gadget!(),
-            // calldataload_gadget: configure_gadget!(),
-            // calldatasize_gadget: configure_gadget!(),
-            caller_gadget: configure_gadget!(),
-            call_value_gadget: configure_gadget!(),
-            chainid_gadget: configure_gadget!(),
-            codecopy_gadget: configure_gadget!(),
-            codesize_gadget: configure_gadget!(),
-            // comparator_gadget: configure_gadget!(),
-            // dup_gadget: configure_gadget!(),
-            // extcodehash_gadget: configure_gadget!(),
-            extcodesize_gadget: configure_gadget!(),
-            // gas_gadget: configure_gadget!(),
-            gasprice_gadget: configure_gadget!(),
-            // iszero_gadget: configure_gadget!(),
-            // jump_gadget: configure_gadget!(),
-            // jumpdest_gadget: configure_gadget!(),
-            // jumpi_gadget: configure_gadget!(),
-            // log_gadget: configure_gadget!(),
-            // memory_gadget: configure_gadget!(),
-            // msize_gadget: configure_gadget!(),
-            // mul_div_mod_gadget: configure_gadget!(),
-            // mulmod_gadget: configure_gadget!(),
-            // not_gadget: configure_gadget!(),
-            origin_gadget: configure_gadget!(),
-            // pc_gadget: configure_gadget!(),
-            return_revert_gadget: configure_gadget!(),
-            // sdiv_smod_gadget: configure_gadget!(),
-            selfbalance_gadget: configure_gadget!(),
-            // sha3_gadget: configure_gadget!(),
-            address_gadget: configure_gadget!(),
-            balance_gadget: configure_gadget!(),
-            // blockhash_gadget: configure_gadget!(),
-            // exp_gadget: configure_gadget!(),
-            // sar_gadget: configure_gadget!(),
-            extcodecopy_gadget: configure_gadget!(),
-            // returndatasize_gadget: configure_gadget!(),
-            // returndatacopy_gadget: configure_gadget!(),
-            // create_gadget: configure_gadget!(),
-            // create2_gadget: configure_gadget!(),
-            // selfdestruct_gadget: configure_gadget!(),
-            // shl_shr_gadget: configure_gadget!(),
-            // signed_comparator_gadget: configure_gadget!(),
-            // signextend_gadget: configure_gadget!(),
-            // sload_gadget: configure_gadget!(),
-            // sstore_gadget: configure_gadget!(),
-            // stop_gadget: configure_gadget!(),
-            // swap_gadget: configure_gadget!(),
-            // block_ctx_u64_gadget: configure_gadget!(),
-            // block_ctx_u160_gadget: configure_gadget!(),
-            // block_ctx_u256_gadget: configure_gadget!(),
-            // error gadgets
+
+            common_begin_tx: configure_gadget!(),
+            // common_block_ctx: configure_gadget!(),
+            // common_dummy: configure_gadget!(),
+            common_end_block: configure_gadget!(),
+            common_end_tx: configure_gadget!(),
+            error_invalid_jump: configure_gadget!(),
+            error_invalid_opcode: configure_gadget!(),
+            error_oog_call: configure_gadget!(),
             error_oog_constant: configure_gadget!(),
+            error_oog_exp: configure_gadget!(),
+            error_oog_sload_sstore: configure_gadget!(),
             error_oog_static_memory_gadget: configure_gadget!(),
             error_stack: configure_gadget!(),
+            error_write_protection: configure_gadget!(),
             error_oog_dynamic_memory_gadget: configure_gadget!(),
             error_oog_log: configure_gadget!(),
-            error_oog_sload_sstore: configure_gadget!(),
-            error_oog_call: configure_gadget!(),
             error_oog_memory_copy: configure_gadget!(),
             error_oog_account_access: configure_gadget!(),
             error_oog_sha3: configure_gadget!(),
             error_oog_ext_codecopy: configure_gadget!(),
-            error_oog_exp: configure_gadget!(),
             error_oog_create2: configure_gadget!(),
             error_oog_self_destruct: configure_gadget!(),
             error_oog_code_store: configure_gadget!(),
             error_insufficient_balance: configure_gadget!(),
-            error_invalid_jump: configure_gadget!(),
-            error_invalid_opcode: configure_gadget!(),
-            error_write_protection: configure_gadget!(),
             error_depth: configure_gadget!(),
             error_contract_address_collision: configure_gadget!(),
             error_invalid_creation_code: configure_gadget!(),
             error_return_data_out_of_bound: configure_gadget!(),
+            evm_address: configure_gadget!(),
+            evm_balance: configure_gadget!(),
+            evm_blockhash: configure_gadget!(),
+            evm_calldatacopy: configure_gadget!(),
+            evm_calldataload: configure_gadget!(),
+            evm_calldatasize: configure_gadget!(),
+            evm_caller: configure_gadget!(),
+            evm_callop: configure_gadget!(),
+            evm_callvalue: configure_gadget!(),
+            evm_chainid: configure_gadget!(),
+            evm_codecopy: configure_gadget!(),
+            evm_codesize: configure_gadget!(),
+            evm_extcodecopy: configure_gadget!(),
+            evm_extcodehash: configure_gadget!(),
+            evm_extcodesize: configure_gadget!(),
+            evm_gas: configure_gadget!(),
+            evm_gasprice: configure_gadget!(),
+            evm_keccak256: configure_gadget!(),
+            evm_log: configure_gadget!(),
+            evm_memory: configure_gadget!(),
+            evm_msize: configure_gadget!(),
+            evm_origin: configure_gadget!(),
+            evm_pc: configure_gadget!(),
+            evm_return_revert: configure_gadget!(),
+            evm_returndatacopy: configure_gadget!(),
+            evm_returndatasize: configure_gadget!(),
+            evm_selfbalance: configure_gadget!(),
+            evm_sload: configure_gadget!(),
+            evm_sstore: configure_gadget!(),
+            evm_stop: configure_gadget!(),
+            wasm_bin: configure_gadget!(),
+            wasm_break: configure_gadget!(),
+            wasm_call: configure_gadget!(),
+            wasm_const: configure_gadget!(),
+            wasm_conversion: configure_gadget!(),
+            wasm_drop: configure_gadget!(),
+            wasm_end: configure_gadget!(),
+            wasm_global: configure_gadget!(),
+            // wasm_load: configure_gadget!(),
+            wasm_local: configure_gadget!(),
+            // wasm_rel: configure_gadget!(),
+            wasm_select: configure_gadget!(),
+            // wasm_store: configure_gadget!(),
+            wasm_test: configure_gadget!(),
+            wasm_unary: configure_gadget!(),
 
             // step and presets
             step: step_curr,
@@ -1125,31 +1111,40 @@ impl<F: Field> ExecutionConfig<F> {
 
         match step.execution_state {
             // internal states
-            ExecutionState::BeginTx => assign_exec_step!(self.begin_tx_gadget),
-            ExecutionState::EndTx => assign_exec_step!(self.end_tx_gadget),
-            ExecutionState::EndBlock => assign_exec_step!(self.end_block_gadget),
+            ExecutionState::BeginTx => assign_exec_step!(self.common_begin_tx),
+            ExecutionState::EndBlock => assign_exec_step!(self.common_end_block),
+            ExecutionState::EndTx => assign_exec_step!(self.common_end_tx),
+            // WASM opcodes
+            ExecutionState::WASM_BIN => assign_exec_step!(self.wasm_bin),
+            ExecutionState::WASM_TEST => assign_exec_step!(self.wasm_test),
+            ExecutionState::WASM_CONST => assign_exec_step!(self.wasm_const),
+            ExecutionState::WASM_DROP => assign_exec_step!(self.wasm_drop),
+            ExecutionState::WASM_GLOBAL => assign_exec_step!(self.wasm_global),
+            ExecutionState::WASM_LOCAL => assign_exec_step!(self.wasm_local),
+            ExecutionState::WASM_UNARY => assign_exec_step!(self.wasm_unary),
+            ExecutionState::WASM_END => assign_exec_step!(self.wasm_end),
+            ExecutionState::WASM_BREAK => assign_exec_step!(self.wasm_break),
+            ExecutionState::WASM_CALL => assign_exec_step!(self.wasm_call),
             // opcode
-            // ExecutionState::ADDMOD => assign_exec_step!(self.addmod_gadget),
-            ExecutionState::ADDRESS => assign_exec_step!(self.address_gadget),
-            ExecutionState::BALANCE => assign_exec_step!(self.balance_gadget),
-            // ExecutionState::BITWISE => assign_exec_step!(self.bitwise_gadget),
-            // ExecutionState::BYTE => assign_exec_step!(self.byte_gadget),
-            ExecutionState::CALL_OP => assign_exec_step!(self.call_op_gadget),
+            ExecutionState::ADDRESS => assign_exec_step!(self.evm_address),
+            ExecutionState::BALANCE => assign_exec_step!(self.evm_balance),
+
+            ExecutionState::CALL_OP => assign_exec_step!(self.evm_callop),
             // ExecutionState::CALLDATACOPY => assign_exec_step!(self.calldatacopy_gadget),
             // ExecutionState::CALLDATALOAD => assign_exec_step!(self.calldataload_gadget),
             // ExecutionState::CALLDATASIZE => assign_exec_step!(self.calldatasize_gadget),
-            ExecutionState::CALLER => assign_exec_step!(self.caller_gadget),
-            ExecutionState::CALLVALUE => assign_exec_step!(self.call_value_gadget),
-            ExecutionState::CHAINID => assign_exec_step!(self.chainid_gadget),
-            ExecutionState::CODECOPY => assign_exec_step!(self.codecopy_gadget),
-            ExecutionState::CODESIZE => assign_exec_step!(self.codesize_gadget),
+            ExecutionState::CALLER => assign_exec_step!(self.evm_caller),
+            ExecutionState::CALLVALUE => assign_exec_step!(self.evm_callvalue),
+            ExecutionState::CHAINID => assign_exec_step!(self.evm_chainid),
+            ExecutionState::CODECOPY => assign_exec_step!(self.evm_codecopy),
+            ExecutionState::CODESIZE => assign_exec_step!(self.evm_codesize),
             // ExecutionState::CMP => assign_exec_step!(self.comparator_gadget),
             // ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
             // ExecutionState::EXP => assign_exec_step!(self.exp_gadget),
             // ExecutionState::EXTCODEHASH => assign_exec_step!(self.extcodehash_gadget),
-            ExecutionState::EXTCODESIZE => assign_exec_step!(self.extcodesize_gadget),
+            ExecutionState::EXTCODESIZE => assign_exec_step!(self.evm_extcodesize),
             // ExecutionState::GAS => assign_exec_step!(self.gas_gadget),
-            ExecutionState::GASPRICE => assign_exec_step!(self.gasprice_gadget),
+            ExecutionState::GASPRICE => assign_exec_step!(self.evm_gasprice),
             // ExecutionState::ISZERO => assign_exec_step!(self.iszero_gadget),
             // ExecutionState::JUMP => assign_exec_step!(self.jump_gadget),
             // ExecutionState::JUMPDEST => assign_exec_step!(self.jumpdest_gadget),
@@ -1160,9 +1155,9 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::MUL_DIV_MOD => assign_exec_step!(self.mul_div_mod_gadget),
             // ExecutionState::MULMOD => assign_exec_step!(self.mulmod_gadget),
             // ExecutionState::NOT => assign_exec_step!(self.not_gadget),
-            ExecutionState::ORIGIN => assign_exec_step!(self.origin_gadget),
+            ExecutionState::ORIGIN => assign_exec_step!(self.evm_origin),
             // ExecutionState::PC => assign_exec_step!(self.pc_gadget),
-            ExecutionState::RETURN_REVERT => assign_exec_step!(self.return_revert_gadget),
+            ExecutionState::RETURN_REVERT => assign_exec_step!(self.evm_return_revert),
             // ExecutionState::RETURNDATASIZE => assign_exec_step!(self.returndatasize_gadget),
             // ExecutionState::RETURNDATACOPY => assign_exec_step!(self.returndatacopy_gadget),
             // ExecutionState::SAR => assign_exec_step!(self.sar_gadget),
@@ -1172,9 +1167,9 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::BLOCKCTXU160 => assign_exec_step!(self.block_ctx_u160_gadget),
             // ExecutionState::BLOCKCTXU256 => assign_exec_step!(self.block_ctx_u256_gadget),
             // ExecutionState::BLOCKHASH => assign_exec_step!(self.blockhash_gadget),
-            ExecutionState::SELFBALANCE => assign_exec_step!(self.selfbalance_gadget),
+            ExecutionState::SELFBALANCE => assign_exec_step!(self.evm_selfbalance),
             // dummy gadgets
-            ExecutionState::EXTCODECOPY => assign_exec_step!(self.extcodecopy_gadget),
+            ExecutionState::EXTCODECOPY => assign_exec_step!(self.evm_extcodecopy),
             // ExecutionState::CREATE => assign_exec_step!(self.create_gadget),
             // ExecutionState::CREATE2 => assign_exec_step!(self.create2_gadget),
             // ExecutionState::SELFDESTRUCT => assign_exec_step!(self.selfdestruct_gadget),
@@ -1187,77 +1182,29 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::STOP => assign_exec_step!(self.stop_gadget),
             // ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
             // dummy errors
-            ExecutionState::ErrorOutOfGasStaticMemoryExpansion => {
-                assign_exec_step!(self.error_oog_static_memory_gadget)
-            }
-            ExecutionState::ErrorOutOfGasConstant => {
-                assign_exec_step!(self.error_oog_constant)
-            }
-            ExecutionState::ErrorOutOfGasCall => {
-                // assign_exec_step!(self.error_oog_call)
-            }
-            ExecutionState::ErrorOutOfGasDynamicMemoryExpansion => {
-                assign_exec_step!(self.error_oog_dynamic_memory_gadget)
-            }
-            ExecutionState::ErrorOutOfGasLOG => {
-                assign_exec_step!(self.error_oog_log)
-            }
-            ExecutionState::ErrorOutOfGasSloadSstore => {
-                assign_exec_step!(self.error_oog_sload_sstore)
-            }
-            ExecutionState::ErrorOutOfGasMemoryCopy => {
-                assign_exec_step!(self.error_oog_memory_copy)
-            }
-            ExecutionState::ErrorOutOfGasAccountAccess => {
-                assign_exec_step!(self.error_oog_account_access)
-            }
-            ExecutionState::ErrorOutOfGasSHA3 => {
-                assign_exec_step!(self.error_oog_sha3)
-            }
-            ExecutionState::ErrorOutOfGasEXTCODECOPY => {
-                assign_exec_step!(self.error_oog_ext_codecopy)
-            }
-            ExecutionState::ErrorOutOfGasEXP => {
-                assign_exec_step!(self.error_oog_exp)
-            }
-            ExecutionState::ErrorOutOfGasCREATE2 => {
-                assign_exec_step!(self.error_oog_create2)
-            }
-            ExecutionState::ErrorOutOfGasSELFDESTRUCT => {
-                assign_exec_step!(self.error_oog_self_destruct)
-            }
-
-            ExecutionState::ErrorOutOfGasCodeStore => {
-                assign_exec_step!(self.error_oog_code_store)
-            }
-            ExecutionState::ErrorStack => {
-                assign_exec_step!(self.error_stack)
-            }
-
-            ExecutionState::ErrorInsufficientBalance => {
-                assign_exec_step!(self.error_insufficient_balance)
-            }
-            ExecutionState::ErrorInvalidJump => {
-                assign_exec_step!(self.error_invalid_jump)
-            }
-            ExecutionState::ErrorInvalidOpcode => {
-                assign_exec_step!(self.error_invalid_opcode)
-            }
-            ExecutionState::ErrorWriteProtection => {
-                assign_exec_step!(self.error_write_protection)
-            }
-            ExecutionState::ErrorDepth => {
-                assign_exec_step!(self.error_depth)
-            }
-            ExecutionState::ErrorContractAddressCollision => {
-                assign_exec_step!(self.error_contract_address_collision)
-            }
-            ExecutionState::ErrorInvalidCreationCode => {
-                assign_exec_step!(self.error_invalid_creation_code)
-            }
-            ExecutionState::ErrorReturnDataOutOfBound => {
-                assign_exec_step!(self.error_return_data_out_of_bound)
-            }
+            ExecutionState::ErrorOutOfGasStaticMemoryExpansion => assign_exec_step!(self.error_oog_static_memory_gadget),
+            ExecutionState::ErrorOutOfGasConstant => assign_exec_step!(self.error_oog_constant),
+            ExecutionState::ErrorOutOfGasCall => assign_exec_step!(self.error_oog_call),
+            ExecutionState::ErrorOutOfGasDynamicMemoryExpansion => assign_exec_step!(self.error_oog_dynamic_memory_gadget),
+            ExecutionState::ErrorOutOfGasLOG => assign_exec_step!(self.error_oog_log),
+            ExecutionState::ErrorOutOfGasSloadSstore => assign_exec_step!(self.error_oog_sload_sstore),
+            ExecutionState::ErrorOutOfGasMemoryCopy => assign_exec_step!(self.error_oog_memory_copy),
+            ExecutionState::ErrorOutOfGasAccountAccess => assign_exec_step!(self.error_oog_account_access),
+            ExecutionState::ErrorOutOfGasSHA3 => assign_exec_step!(self.error_oog_sha3),
+            ExecutionState::ErrorOutOfGasEXTCODECOPY => assign_exec_step!(self.error_oog_ext_codecopy),
+            ExecutionState::ErrorOutOfGasEXP => assign_exec_step!(self.error_oog_exp),
+            ExecutionState::ErrorOutOfGasCREATE2 => assign_exec_step!(self.error_oog_create2),
+            ExecutionState::ErrorOutOfGasSELFDESTRUCT => assign_exec_step!(self.error_oog_self_destruct),
+            ExecutionState::ErrorOutOfGasCodeStore => assign_exec_step!(self.error_oog_code_store),
+            ExecutionState::ErrorStack => assign_exec_step!(self.error_stack),
+            ExecutionState::ErrorInsufficientBalance => assign_exec_step!(self.error_insufficient_balance),
+            ExecutionState::ErrorInvalidJump => assign_exec_step!(self.error_invalid_jump),
+            ExecutionState::ErrorInvalidOpcode => assign_exec_step!(self.error_invalid_opcode),
+            ExecutionState::ErrorWriteProtection => assign_exec_step!(self.error_write_protection),
+            ExecutionState::ErrorDepth => assign_exec_step!(self.error_depth),
+            ExecutionState::ErrorContractAddressCollision => assign_exec_step!(self.error_contract_address_collision),
+            ExecutionState::ErrorInvalidCreationCode => assign_exec_step!(self.error_invalid_creation_code),
+            ExecutionState::ErrorReturnDataOutOfBound => assign_exec_step!(self.error_return_data_out_of_bound),
 
             _ => evm_unimplemented!("unimplemented ExecutionState: {:?}", step.execution_state),
         }
