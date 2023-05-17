@@ -37,7 +37,6 @@ pub mod rlp_circuit;
 pub mod state_circuit;
 pub mod super_circuit;
 pub mod table;
-pub mod delph_circuit;
 
 #[cfg(any(feature = "test", test))]
 pub mod test_util;

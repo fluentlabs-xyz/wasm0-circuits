@@ -67,9 +67,7 @@ mod oog_account_access_tests {
         mock::BlockData,
         operation::{StackOp, RW},
     };
-    use eth_types::{
-        address, bytecode, evm_types::OpcodeId, geth_types::GethData, Bytecode, ToWord, Word,
-    };
+    use eth_types::{address, bytecode, evm_types::OpcodeId, geth_types::GethData, Bytecode, ToWord, Word, ToStackWord};
     use mock::TestContext;
     use pretty_assertions::assert_eq;
 
@@ -168,7 +166,8 @@ mod oog_account_access_tests {
             &StackOp {
                 call_id,
                 address: 1023.into(),
-                value: address.to_word(),
+                value: address.to_stack_word(),
+                local_index: 0,
             }
         );
     }

@@ -106,3 +106,10 @@ fn code_hashing() {
 pub static KECCAK_CODE_HASH_ZERO: Lazy<Hash> = Lazy::new(|| hash_code_keccak(&[]));
 /// the zero poseidon code hash
 pub static POSEIDON_CODE_HASH_ZERO: Lazy<Hash> = Lazy::new(|| hash_code_poseidon(&[]));
+
+pub fn append_vector_to_vector_with_padding(dest: &mut Vec<u8>, source: &Vec<u8>, source_size_with_padding: usize) {
+    let mut vec_to_append = vec![0; source_size_with_padding];
+    let start_idx = source_size_with_padding - source.len();
+    vec_to_append[start_idx..].copy_from_slice(source.as_slice());
+    dest.extend_from_slice(vec_to_append.as_slice());
+}

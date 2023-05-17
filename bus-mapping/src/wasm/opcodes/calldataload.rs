@@ -127,7 +127,7 @@ mod calldataload_tests {
     use eth_types::bytecode::{WasmBinaryBytecode};
 
     use crate::{circuit_input_builder::ExecState, mock::BlockData, operation::StackOp};
-    use crate::evm::opcodes::append_vector_to_vector_with_padding;
+    use crate::util::append_vector_to_vector_with_padding;
 
     use super::*;
 
