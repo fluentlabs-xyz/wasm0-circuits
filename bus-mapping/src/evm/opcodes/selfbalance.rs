@@ -4,10 +4,7 @@ use crate::{
     operation::{AccountField, CallContextField},
     Error,
 };
-use eth_types::{GethExecStep, ToBigEndian, ToWord, U256};
-use eth_types::evm_types::MemoryAddress;
-
-const SELF_BALANCE_BYTE_LENGTH: usize = 32;
+use eth_types::{GethExecStep, ToWord};
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Selfbalance;
@@ -18,11 +15,8 @@ impl Opcode for Selfbalance {
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
         let geth_step = &geth_steps[0];
-        let geth_second_step = &geth_steps[1];
         let mut exec_step = state.new_step(geth_step)?;
-        let self_balance = &geth_second_step.memory[0].0;
-        let self_balance = U256::from_big_endian(self_balance);
-        let self_balance_bytes = self_balance.to_be_bytes();
+        let self_balance = geth_steps[1].stack.last()?;
         let callee_address = state.call()?.address;
 
         // CallContext read of the callee_address
@@ -41,17 +35,12 @@ impl Opcode for Selfbalance {
             self_balance,
         );
 
-        // Copy result to memory
-        let dest_offset = geth_step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
-        let offset_addr = MemoryAddress::try_from(dest_offset)?;
-
-        // Copy result to memory
-        for i in 0..SELF_BALANCE_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), self_balance_bytes[i])?;
-        }
-        let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_second_step.global_memory.clone();
+        // Stack write of self_balance
+        state.stack_write(
+            &mut exec_step,
+            geth_step.stack.last_filled().map(|a| a - 1),
+            self_balance,
+        )?;
 
         Ok(vec![exec_step])
     }
@@ -62,20 +51,22 @@ mod selfbalance_tests {
     use super::*;
     use crate::{
         circuit_input_builder::ExecState,
-        mocks::BlockData,
+        mock::BlockData,
         operation::{AccountOp, CallContextField, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToBigEndian};
+    use eth_types::{
+        bytecode,
+        evm_types::{OpcodeId, StackAddress},
+        geth_types::GethData,
+    };
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
-    use crate::operation::MemoryOp;
 
     #[test]
     fn selfbalance_opcode_impl() {
-        let res_mem_address = 0x7f;
         let code = bytecode! {
-            I32Const[res_mem_address]
             SELFBALANCE
+            STOP
         };
 
         // Get the execution steps from the external tracer
@@ -102,7 +93,6 @@ mod selfbalance_tests {
         let call_id = builder.block.txs()[0].calls()[0].call_id;
         let callee_address = builder.block.txs()[0].to;
         let self_balance = builder.sdb.get_account(&callee_address).1.balance;
-        let self_balance_bytes = self_balance.to_be_bytes();
 
         assert_eq!(
             {
@@ -142,27 +132,9 @@ mod selfbalance_tests {
                 (operation.rw(), operation.op())
             },
             (
-                RW::READ,
-                &StackOp::new(1, StackAddress::from(1023), StackWord::from(res_mem_address))
+                RW::WRITE,
+                &StackOp::new(1, StackAddress::from(1023), self_balance)
             )
         );
-        for idx in 0..SELF_BALANCE_BYTE_LENGTH {
-            let mem_address = MemoryAddress::from(res_mem_address + idx as u32);
-            assert_eq!(
-                {
-                    let operation =
-                        &builder.block.container.memory[step.bus_mapping_instance[3 + idx].as_usize()];
-                    (operation.rw(), operation.op())
-                },
-                (
-                    RW::WRITE,
-                    &MemoryOp::new(
-                        1,
-                        mem_address,
-                        self_balance_bytes[idx]
-                    )
-                )
-            );
-        }
     }
 }

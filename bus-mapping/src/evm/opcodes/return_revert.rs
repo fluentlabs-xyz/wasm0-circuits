@@ -20,10 +20,10 @@ impl Opcode for ReturnRevert {
         let step = &steps[0];
         let mut exec_step = state.new_step(step)?;
 
-        let length = step.stack.nth_last(0)?;
-        let offset = step.stack.nth_last(1)?;
-        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), length)?;
-        state.stack_read(&mut exec_step, step.stack.nth_last_filled(1), offset)?;
+        let offset = step.stack.nth_last(0)?;
+        let length = step.stack.nth_last(1)?;
+        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), offset)?;
+        state.stack_read(&mut exec_step, step.stack.nth_last_filled(1), length)?;
 
         if !length.is_zero() {
             state
@@ -237,7 +237,7 @@ fn handle_create(
     let size = values.len();
     let dst_id = NumberOrHash::Hash(code_hash);
     let bytes: Vec<_> = Bytecode::from(values)
-        .raw_code()
+        .code
         .iter()
         .map(|element| (element.value, element.is_code))
         .collect();
@@ -276,7 +276,7 @@ fn handle_create(
 
 #[cfg(test)]
 mod return_tests {
-    use crate::mocks::BlockData;
+    use crate::mock::BlockData;
     use eth_types::{bytecode, geth_types::GethData, word};
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},

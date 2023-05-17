@@ -60,9 +60,15 @@ impl<const N_POP: usize, const N_PUSH: usize, const IS_ERR: bool> Opcode
 mod stackonlyop_tests {
     use crate::{
         circuit_input_builder::ExecState,
-        mocks::BlockData,
-        operation::{StackOp, RW},};
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, word, Bytecode, Word, StackWord, stack_word};
+        mock::BlockData,
+        operation::{StackOp, RW},
+    };
+    use eth_types::{
+        bytecode,
+        evm_types::{OpcodeId, StackAddress},
+        geth_types::GethData,
+        word, Bytecode, Word,
+    };
     use itertools::Itertools;
     use mock::{
         test_ctx::{helpers::*, TestContext},
@@ -70,7 +76,6 @@ mod stackonlyop_tests {
     };
     use pretty_assertions::assert_eq;
     use std::ops::{BitOr, BitXor};
-    use eth_types::bytecode::WasmBinaryBytecode;
 
     fn stack_only_opcode_impl<const N_POP: usize, const N_PUSH: usize>(
         opcode: OpcodeId,
@@ -125,28 +130,22 @@ mod stackonlyop_tests {
 
     #[test]
     fn sdiv_opcode_impl() {
-        let divident = 0x1c;
-        let divisor = 0x2;
-        let code = bytecode! {
-            // PUSH1(0x80u64)
-            // PUSH1(0x60u64)
-            I32Const[divident]
-            I32Const[divisor]
-            I32DivS // TODO not supported error
-            // STOP
-        };
-        let wasm_bytecode = Bytecode::from_raw_unchecked(code.wasm_binary());
         stack_only_opcode_impl::<2, 1>(
-            OpcodeId::I32DivS,
-            wasm_bytecode,
+            OpcodeId::SDIV,
+            bytecode! {
+                PUSH1(0x80u64)
+                PUSH1(0x60u64)
+                SDIV
+                STOP
+            },
             vec![
-                StackOp::new(1, StackAddress(1022), StackWord::from(0x60)),
-                StackOp::new(1, StackAddress(1023), StackWord::from(0x80)),
+                StackOp::new(1, StackAddress(1022), Word::from(0x60)),
+                StackOp::new(1, StackAddress(1023), Word::from(0x80)),
             ],
             vec![StackOp::new(
                 1,
                 StackAddress(1023),
-                StackWord::from(0x60) / StackWord::from(0x80),
+                Word::from(0x60) / Word::from(0x80),
             )],
         );
     }
@@ -162,13 +161,13 @@ mod stackonlyop_tests {
                 STOP
             },
             vec![
-                StackOp::new(1, StackAddress(1022), StackWord::from(0x60)),
-                StackOp::new(1, StackAddress(1023), StackWord::from(0x80)),
+                StackOp::new(1, StackAddress(1022), Word::from(0x60)),
+                StackOp::new(1, StackAddress(1023), Word::from(0x80)),
             ],
             vec![StackOp::new(
                 1,
                 StackAddress(1023),
-                StackWord::from(0x60) % StackWord::from(0x80),
+                Word::from(0x60) % Word::from(0x80),
             )],
         );
     }
@@ -184,35 +183,13 @@ mod stackonlyop_tests {
                 STOP
             },
             vec![
-                StackOp::new(1, StackAddress(1022), StackWord::from(0x60)),
-                StackOp::new(1, StackAddress(1023), StackWord::from(0x80)),
+                StackOp::new(1, StackAddress(1022), Word::from(0x60)),
+                StackOp::new(1, StackAddress(1023), Word::from(0x80)),
             ],
             vec![StackOp::new(
                 1,
                 StackAddress(1023),
-                StackWord::from(0x60) % StackWord::from(0x80),
-            )],
-        );
-    }
-
-    #[test]
-    fn add_opcode_impl() {
-        stack_only_opcode_impl::<2, 1>(
-            OpcodeId::I32Add,
-            bytecode! {
-                I32Const[0x80]
-                I32Const[0x60]
-                I32Add
-                Drop
-            },
-            vec![
-                StackOp::new(1, StackAddress(1021), StackWord::from(0x60)),
-                StackOp::new(1, StackAddress(1022), StackWord::from(0x80)),
-            ],
-            vec![StackOp::new(
-                1,
-                StackAddress(1022),
-                StackWord::from(0x60) + StackWord::from(0x80),
+                Word::from(0x60) % Word::from(0x80),
             )],
         );
     }
@@ -227,10 +204,10 @@ mod stackonlyop_tests {
                 STOP
             },
             vec![
-                StackOp::new(1, StackAddress(1022), StackWord::from(a)),
-                StackOp::new(1, StackAddress(1023), StackWord::from(b)),
+                StackOp::new(1, StackAddress(1022), Word::from(a)),
+                StackOp::new(1, StackAddress(1023), Word::from(b)),
             ],
-            vec![StackOp::new(1, StackAddress(1023), StackWord::from(result))],
+            vec![StackOp::new(1, StackAddress(1023), Word::from(result))],
         );
     }
 
@@ -251,10 +228,10 @@ mod stackonlyop_tests {
                 STOP
             },
             vec![
-                StackOp::new(1, StackAddress(1022), StackWord::from(a)),
-                StackOp::new(1, StackAddress(1023), StackWord::from(b)),
+                StackOp::new(1, StackAddress(1022), Word::from(a)),
+                StackOp::new(1, StackAddress(1023), Word::from(b)),
             ],
-            vec![StackOp::new(1, StackAddress(1023), StackWord::from(result))],
+            vec![StackOp::new(1, StackAddress(1023), Word::from(result))],
         );
     }
     #[test]
@@ -274,10 +251,10 @@ mod stackonlyop_tests {
                 STOP
             },
             vec![
-                StackOp::new(1, StackAddress(1022), StackWord::from(a)),
-                StackOp::new(1, StackAddress(1023), StackWord::from(b)),
+                StackOp::new(1, StackAddress(1022), Word::from(a)),
+                StackOp::new(1, StackAddress(1023), Word::from(b)),
             ],
-            vec![StackOp::new(1, StackAddress(1023), StackWord::from(result))],
+            vec![StackOp::new(1, StackAddress(1023), Word::from(result))],
         );
     }
 
@@ -298,10 +275,10 @@ mod stackonlyop_tests {
                 STOP
             },
             vec![
-                StackOp::new(1, StackAddress(1022), StackWord::from(a)),
-                StackOp::new(1, StackAddress(1023), StackWord::from(b)),
+                StackOp::new(1, StackAddress(1022), Word::from(a)),
+                StackOp::new(1, StackAddress(1023), Word::from(b)),
             ],
-            vec![StackOp::new(1, StackAddress(1023), StackWord::from(result))],
+            vec![StackOp::new(1, StackAddress(1023), Word::from(result))],
         );
     }
     #[test]
@@ -321,10 +298,10 @@ mod stackonlyop_tests {
                 STOP
             },
             vec![
-                StackOp::new(1, StackAddress(1022), StackWord::from(a)),
-                StackOp::new(1, StackAddress(1023), StackWord::from(b)),
+                StackOp::new(1, StackAddress(1022), Word::from(a)),
+                StackOp::new(1, StackAddress(1023), Word::from(b)),
             ],
-            vec![StackOp::new(1, StackAddress(1023), StackWord::from(result))],
+            vec![StackOp::new(1, StackAddress(1023), Word::from(result))],
         );
     }
     #[test]
@@ -344,10 +321,10 @@ mod stackonlyop_tests {
                 STOP
             },
             vec![
-                StackOp::new(1, StackAddress(1022), StackWord::from(a)),
-                StackOp::new(1, StackAddress(1023), StackWord::from(b)),
+                StackOp::new(1, StackAddress(1022), Word::from(a)),
+                StackOp::new(1, StackAddress(1023), Word::from(b)),
             ],
-            vec![StackOp::new(1, StackAddress(1023), StackWord::from(result))],
+            vec![StackOp::new(1, StackAddress(1023), Word::from(result))],
         );
     }
     #[test]
@@ -367,13 +344,12 @@ mod stackonlyop_tests {
                 STOP
             },
             vec![
-                StackOp::new(1, StackAddress(1022), StackWord::from(a)),
-                StackOp::new(1, StackAddress(1023), StackWord::from(b)),
+                StackOp::new(1, StackAddress(1022), Word::from(a)),
+                StackOp::new(1, StackAddress(1023), Word::from(b)),
             ],
-            vec![StackOp::new(1, StackAddress(1023), StackWord::from(result))],
+            vec![StackOp::new(1, StackAddress(1023), Word::from(result))],
         );
     }
-
     #[test]
     fn test_xor_operate() {
         xor_opcode_impl(0x01, 0x01, 0x01.bitxor(0x01) as usize);
@@ -393,12 +369,12 @@ mod stackonlyop_tests {
             vec![StackOp::new(
                 1,
                 StackAddress(1023),
-                stack_word!("0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+                word!("0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
             )],
             vec![StackOp::new(
                 1,
                 StackAddress(1023),
-                stack_word!("0xfffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0"),
+                word!("0xfffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0"),
             )],
         );
     }

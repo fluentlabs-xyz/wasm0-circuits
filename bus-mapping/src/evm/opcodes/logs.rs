@@ -169,7 +169,7 @@ fn gen_copy_event(
 mod log_tests {
     use crate::{
         circuit_input_builder::{CopyDataType, ExecState, NumberOrHash},
-        mocks::BlockData,
+        mock::BlockData,
         operation::{CallContextField, CallContextOp, MemoryOp, StackOp, TxLogField, TxLogOp, RW},
     };
     use eth_types::{
@@ -250,7 +250,7 @@ mod log_tests {
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(code_prepare, None),
+            account_0_code_account_1_no_code(code_prepare),
             tx_from_1_to_0,
             |block, _tx| block.number(0xcafeu64),
         )

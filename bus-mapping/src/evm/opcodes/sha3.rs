@@ -4,7 +4,7 @@ use crate::{
     },
     Error,
 };
-use eth_types::{GethExecStep, StackWord};
+use eth_types::{GethExecStep, Word, U256};
 use ethers_core::utils::keccak256;
 
 use super::Opcode;
@@ -30,7 +30,7 @@ impl Opcode for Sha3 {
         let size = geth_step.stack.nth_last(1)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), size)?;
 
-        if size.gt(&StackWord::zero()) {
+        if size.gt(&U256::zero()) {
             state
                 .call_ctx_mut()?
                 .memory
@@ -44,11 +44,11 @@ impl Opcode for Sha3 {
 
         // keccak-256 hash of the given data in memory.
         let sha3 = keccak256(&memory);
-        debug_assert_eq!(StackWord::from_big_endian(&sha3), expected_sha3);
+        debug_assert_eq!(Word::from_big_endian(&sha3), expected_sha3);
         state.stack_write(
             &mut exec_step,
             geth_steps[1].stack.last_filled(),
-            StackWord::from_big_endian(&sha3),
+            sha3.into(),
         )?;
 
         // Memory read operations
@@ -87,7 +87,7 @@ impl Opcode for Sha3 {
 
 #[cfg(any(feature = "test", test))]
 pub mod sha3_tests {
-    use eth_types::{bytecode, evm_types::OpcodeId, geth_types::GethData, Bytecode, Word, StackWord};
+    use eth_types::{bytecode, evm_types::OpcodeId, geth_types::GethData, Bytecode, Word};
     use ethers_core::utils::keccak256;
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
@@ -97,7 +97,7 @@ pub mod sha3_tests {
 
     use crate::{
         circuit_input_builder::{CircuitsParams, ExecState},
-        mocks::BlockData,
+        mock::BlockData,
         operation::{MemoryOp, StackOp, RW},
     };
 
@@ -109,20 +109,20 @@ pub mod sha3_tests {
             MemoryKind::LessThanSize => {
                 offset
                     + if size.gt(&0) {
-                    rng.gen_range(0..size)
-                } else {
-                    0
-                }
+                        rng.gen_range(0..size)
+                    } else {
+                        0
+                    }
             }
             MemoryKind::EqualToSize => offset + size,
             MemoryKind::MoreThanSize => {
                 offset
                     + size
                     + if size.gt(&0) {
-                    rng.gen_range(0..size)
-                } else {
-                    0
-                }
+                        rng.gen_range(0..size)
+                    } else {
+                        0
+                    }
             }
             MemoryKind::Empty => 0,
         };
@@ -189,8 +189,8 @@ pub mod sha3_tests {
             tx_from_1_to_0,
             |block, _txs| block,
         )
-            .unwrap()
-            .into();
+        .unwrap()
+        .into();
 
         let mut builder = BlockData::new_from_geth_data_with_params(
             block.clone(),
@@ -199,7 +199,7 @@ pub mod sha3_tests {
                 ..Default::default()
             },
         )
-            .new_circuit_input_builder();
+        .new_circuit_input_builder();
         builder
             .handle_block(&block.eth_block, &block.geth_traces)
             .unwrap();
@@ -220,15 +220,15 @@ pub mod sha3_tests {
             [
                 (
                     RW::READ,
-                    &StackOp::new(call_id, 1022.into(), StackWord::from(offset)),
+                    &StackOp::new(call_id, 1022.into(), Word::from(offset)),
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(call_id, 1023.into(), StackWord::from(size)),
+                    &StackOp::new(call_id, 1023.into(), Word::from(size)),
                 ),
                 (
                     RW::WRITE,
-                    &StackOp::new(call_id, 1023.into(), StackWord::from_big_endian(&expected_sha3_value)),
+                    &StackOp::new(call_id, 1023.into(), expected_sha3_value.into()),
                 ),
             ]
         );
