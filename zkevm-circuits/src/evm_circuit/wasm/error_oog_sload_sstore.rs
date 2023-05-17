@@ -9,7 +9,7 @@ use crate::{
                 cal_sload_gas_cost_for_assignment, cal_sstore_gas_cost_for_assignment,
                 CommonErrorGadget, SloadGasGadget, SstoreGasGadget,
             },
-            constraint_builder::ConstraintBuilder,
+            constraint_builder::ConstrainBuilderCommon,
             math_gadget::{LtGadget, PairSelectGadget},
             or, select, CachedRegion, Cell,
         },
@@ -20,6 +20,7 @@ use crate::{
 };
 use eth_types::{evm_types::{GasCost, OpcodeId}, Field, StackWord, ToScalar, ToU256, Word};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 /// Gadget to implement the corresponding out of gas errors for
 /// [`OpcodeId::SLOAD`] and [`OpcodeId::SSTORE`].
@@ -47,7 +48,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGSloadSstoreGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::ErrorOutOfGasSloadSstore;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let is_sstore = PairSelectGadget::construct(

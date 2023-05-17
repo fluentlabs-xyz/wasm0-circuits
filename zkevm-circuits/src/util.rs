@@ -1,13 +1,18 @@
 //! Common utility traits and functions.
+use std::collections::BTreeSet;
+
 use bus_mapping::evm::OpcodeId;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Layouter, Value},
-    plonk::{
-        Challenge, ConstraintSystem, Error, Expression, FirstPhase, SecondPhase, VirtualCells,
-    },
+    plonk::{Challenge, Circuit, ConstraintSystem, Error, Expression, FirstPhase, VirtualCells},
 };
 use keccak256::plain::Keccak;
+
+#[cfg(feature = "onephase")]
+use halo2_proofs::plonk::FirstPhase as SecondPhase;
+#[cfg(not(feature = "onephase"))]
+use halo2_proofs::plonk::SecondPhase;
 
 use crate::{evm_circuit::util::rlc, table::TxLogFieldTag, witness};
 use eth_types::{Field, ToAddress, Word};
@@ -30,6 +35,14 @@ pub(crate) fn random_linear_combine_word<F: FieldExt>(bytes: [u8; 32], randomnes
     rlc::value(&bytes, randomness)
 }
 
+pub(crate) fn rlc_be_bytes<F: Field>(bytes: &[u8], rand: Value<F>) -> Value<F> {
+    rand.map(|rand| {
+        bytes
+            .iter()
+            .fold(F::zero(), |acc, byte| acc * rand + F::from(*byte as u64))
+    })
+}
+
 /// All challenges used in `SuperCircuit`.
 #[derive(Default, Clone, Copy, Debug)]
 pub struct Challenges<T = Challenge> {
@@ -38,13 +51,48 @@ pub struct Challenges<T = Challenge> {
     lookup_input: T,
 }
 
+/// ..
+#[derive(Default, Clone, Copy, Debug)]
+pub struct MockChallenges {
+    evm_word: u64,
+    keccak_input: u64,
+    lookup_input: u64,
+}
+
+impl MockChallenges {
+    /// ..
+    pub fn construct<F: FieldExt>(_meta: &mut ConstraintSystem<F>) -> Self {
+        Self {
+            evm_word: 0x100,
+            keccak_input: 0x100,
+            lookup_input: 0x100,
+        }
+    }
+    /// ..
+    pub fn exprs<F: FieldExt>(&self, _meta: &mut ConstraintSystem<F>) -> Challenges<Expression<F>> {
+        Challenges {
+            evm_word: Expression::Constant(F::from(self.evm_word)),
+            keccak_input: Expression::Constant(F::from(self.keccak_input)),
+            lookup_input: Expression::Constant(F::from(self.lookup_input)),
+        }
+    }
+    /// ..
+    pub fn values<F: FieldExt>(&self, _layouter: &impl Layouter<F>) -> Challenges<Value<F>> {
+        Challenges {
+            evm_word: Value::known(F::from(self.evm_word)),
+            keccak_input: Value::known(F::from(self.keccak_input)),
+            lookup_input: Value::known(F::from(self.lookup_input)),
+        }
+    }
+}
+
 impl Challenges {
     /// Construct `Challenges` by allocating challenges in specific phases.
     pub fn construct<F: FieldExt>(meta: &mut ConstraintSystem<F>) -> Self {
-        #[cfg(any(feature = "test", test, feature = "test-circuits"))]
+        #[cfg(any(not(feature = "onephase"), feature = "test", test))]
         let _dummy_cols = [
             meta.advice_column(),
-            meta.advice_column_in(SecondPhase),
+            meta.advice_column_in(halo2_proofs::plonk::SecondPhase),
             meta.advice_column_in(halo2_proofs::plonk::ThirdPhase),
         ];
 
@@ -69,7 +117,7 @@ impl Challenges {
     }
 
     /// Returns `Value` of challenges from `Layouter`.
-    pub fn values<F: FieldExt>(&self, layouter: &mut impl Layouter<F>) -> Challenges<Value<F>> {
+    pub fn values<F: FieldExt>(&self, layouter: &impl Layouter<F>) -> Challenges<Value<F>> {
         Challenges {
             evm_word: layouter.get_challenge(self.evm_word),
             keccak_input: layouter.get_challenge(self.keccak_input),
@@ -99,7 +147,8 @@ impl<T: Clone> Challenges<T> {
         [&self.evm_word, &self.keccak_input, &self.lookup_input]
     }
 
-    pub(crate) fn mock(evm_word: T, keccak_input: T, lookup_input: T) -> Self {
+    /// ..
+    pub fn mock(evm_word: T, keccak_input: T, lookup_input: T) -> Self {
         Self {
             evm_word,
             keccak_input,
@@ -158,6 +207,12 @@ pub trait SubCircuit<F: Field> {
     /// Configuration of the SubCircuit.
     type Config: SubCircuitConfig<F>;
 
+    /// Returns number of unusable rows of the SubCircuit, which should be
+    /// `meta.blinding_factors() + 1`.
+    fn unusable_rows() -> usize {
+        256
+    }
+
     /// Create a new SubCircuit from a witness Block
     fn new_from_block(block: &witness::Block<F>) -> Self;
 
@@ -211,4 +266,80 @@ pub(crate) fn get_push_size(byte: u8) -> u64 {
     } else {
         0u64
     }
+}
+
+/// Using values like this will make it easier to debug...
+pub const DEFAULT_RAND: u128 = 0x10000;
+
+#[derive(Debug)]
+pub(crate) struct CircuitStats {
+    num_constraints: usize,
+    num_fixed_columns: usize,
+    num_lookups: usize,
+    num_advice_columns: usize,
+    num_instance_columns: usize,
+    num_selectors: usize,
+    num_simple_selectors: usize,
+    num_permutation_columns: usize,
+    degree: usize,
+    num_challenges: usize,
+    max_phase: u8,
+    num_rotation: usize,
+    min_rotation: i32,
+    max_rotation: i32,
+    num_verification_ecmul: usize,
+}
+
+pub(crate) fn circuit_stats<F: Field>(meta: &ConstraintSystem<F>) -> CircuitStats {
+    let rotations = meta
+        .advice_queries
+        .iter()
+        .map(|(_, q)| q.0)
+        .collect::<BTreeSet<i32>>();
+    CircuitStats {
+        num_constraints: meta
+            .gates()
+            .iter()
+            .map(|g| g.polynomials().len())
+            .sum::<usize>(),
+        num_fixed_columns: meta.num_fixed_columns,
+        num_lookups: meta.lookups.len(),
+        num_advice_columns: meta.num_advice_columns,
+        num_instance_columns: meta.num_instance_columns,
+        num_selectors: meta.num_selectors,
+        num_simple_selectors: meta.num_simple_selectors,
+        num_permutation_columns: meta.permutation.columns.len(),
+        degree: meta.degree(),
+        num_challenges: meta.num_challenges(),
+        max_phase: meta.max_phase(),
+        num_rotation: rotations.len(),
+        min_rotation: rotations.first().cloned().unwrap_or_default(),
+        max_rotation: rotations.last().cloned().unwrap_or_default(),
+        num_verification_ecmul: meta.num_advice_columns
+            + meta.num_instance_columns
+            + meta.permutation.columns.len()
+            + meta.num_selectors
+            + meta.num_fixed_columns
+            + 3 * meta.lookups.len()
+            + rotations.len(),
+    }
+}
+
+/// Returns number of unusable rows of the Circuit.
+/// The minimum unusable rows of a circuit is currently 6, where
+/// - 3 comes from minimum number of distinct queries to permutation argument witness column
+/// - 1 comes from queries at x_3 during multiopen
+/// - 1 comes as slight defense against off-by-one errors
+/// - 1 comes from reservation for last row for grand-product boundray check, hence not copy-able or
+///   lookup-able. Note this 1 is not considered in [`ConstraintSystem::blinding_factors`], so below
+///   we need to add an extra 1.
+///
+/// For circuit with column queried at more than 3 distinct rotation, we can
+/// calculate the unusable rows as (x - 3) + 6 where x is the number of distinct
+/// rotation.
+pub(crate) fn unusable_rows<F: Field, C: Circuit<F>>() -> usize {
+    let mut cs = ConstraintSystem::default();
+    C::configure(&mut cs);
+
+    cs.blinding_factors() + 1
 }

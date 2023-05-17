@@ -10,7 +10,9 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition},
+            constraint_builder::{
+                ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition, Transition,
+            },
             from_bytes, CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
@@ -33,7 +35,7 @@ impl<F: Field> ExecutionGadget<F> for CodesizeGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::CODESIZE;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
         let dest_offset = cb.query_cell();
 

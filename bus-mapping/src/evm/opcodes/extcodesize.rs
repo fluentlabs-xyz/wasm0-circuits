@@ -4,11 +4,7 @@ use crate::{
     operation::{AccountField, CallContextField, TxAccessListAccountOp},
     Error,
 };
-use eth_types::{GethExecStep, ToWord, H256};
-use eth_types::evm_types::MemoryAddress;
-use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
-
-const CODESIZE_BYTE_LENGTH: usize = 4;
+use eth_types::{GethExecStep, ToAddress, ToWord, Word, H256};
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Extcodesize;
@@ -22,10 +18,9 @@ impl Opcode for Extcodesize {
         let mut exec_step = state.new_step(geth_step)?;
 
         // Read account address from stack.
-        let codesize_offset = geth_step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), codesize_offset)?;
-        let address_offset = geth_step.stack.nth_last(1)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), address_offset)?;
+        let address_word = geth_step.stack.last()?;
+        let address = address_word.to_address();
+        state.stack_read(&mut exec_step, geth_step.stack.last_filled(), address_word)?;
 
         // Read transaction ID, rw_counter_end_of_reversion, and is_persistent from call
         // context.
@@ -44,13 +39,12 @@ impl Opcode for Extcodesize {
         }
 
         // Update transaction access list for account address.
-        let address = &geth_step.global_memory.read_address(address_offset)?;
         let is_warm = state.sdb.check_account_in_access_list(&address);
         state.push_op_reversible(
             &mut exec_step,
             TxAccessListAccountOp {
                 tx_id: state.tx_ctx.id(),
-                address: address.clone(),
+                address,
                 is_warm: true,
                 is_warm_prev: is_warm,
             },
@@ -59,36 +53,33 @@ impl Opcode for Extcodesize {
         // Read account code hash and get code length.
         let account = state.sdb.get_account(&address).1;
         let exists = !account.is_empty();
-        let code_hash = if exists {
-            account.code_hash
+        let (code_hash, code_size) = if exists {
+            (account.code_hash, account.code_size)
         } else {
-            H256::zero()
+            (H256::zero(), Word::zero())
         };
         state.account_read(
             &mut exec_step,
-            address.clone(),
+            address,
             AccountField::CodeHash,
             code_hash.to_word(),
         );
-        let codesize = if exists {
-            state.code(code_hash)?.len()
-        } else {
-            0
-        };
+        // If "scroll" feature is enabled, CodeSize is read of AccountTrie,
+        // so the full code don't need to be put into bytecode circuit.
+        // TODO: check the bytecode circuit assignment codes, to make sure this optimization
+        // is correctly applied.
+        #[cfg(feature = "scroll")]
+        if exists {
+            state.account_read(&mut exec_step, address, AccountField::CodeSize, code_size);
+        }
 
-        let address_bytes = address.as_bytes();
-        let address_offset_addr = MemoryAddress::try_from(address_offset)?;
-        for i in 0..ADDRESS_BYTE_LENGTH {
-            state.memory_read(&mut exec_step, address_offset_addr.map(|a| a + i), address_bytes[i])?;
-        }
-        let codesize_offset_addr = MemoryAddress::try_from(codesize_offset)?;
-        let codesize_bytes = codesize.to_be_bytes();
-        let codesize_bytes_base_idx = codesize_bytes.len() - CODESIZE_BYTE_LENGTH;
-        for i in 0..CODESIZE_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, codesize_offset_addr.map(|a| a + i), codesize_bytes[codesize_bytes_base_idx + i])?;
-        }
-        let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_step.global_memory.clone();
+        // Write the EXTCODESIZE result to stack.
+        debug_assert_eq!(code_size, geth_steps[1].stack.last()?);
+        state.stack_write(
+            &mut exec_step,
+            geth_steps[1].stack.nth_last_filled(0),
+            code_size,
+        )?;
 
         Ok(vec![exec_step])
     }
@@ -96,83 +87,63 @@ impl Opcode for Extcodesize {
 
 #[cfg(test)]
 mod extcodesize_tests {
-    use ethers_core::utils::keccak256;
     use super::*;
     use crate::{
         circuit_input_builder::ExecState,
+        mock::BlockData,
         operation::{AccountOp, CallContextOp, StackOp, RW},
+        state_db::CodeDB,
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::{Account, GethData}, Bytecode, Word, U256, StackWord};
+    use eth_types::{
+        bytecode,
+        evm_types::{OpcodeId, StackAddress},
+        geth_types::{Account, GethData},
+        Bytecode, U256,
+    };
     use mock::{TestContext, MOCK_1_ETH, MOCK_ACCOUNTS, MOCK_CODES};
     use pretty_assertions::assert_eq;
-    use eth_types::bytecode::WasmBinaryBytecode;
-    use crate::mocks::BlockData;
-    use crate::operation::MemoryOp;
 
     #[test]
-    fn test_extcodesize_opcode_empty_acc() {
-        // Test for empty account.
-        test_ok(&Account::default(), true);
-    }
-
-    #[test]
-    fn test_extcodesize_opcode_cold_acc() {
+    fn test_extcodesize_opcode() {
         let account = Account {
             address: MOCK_ACCOUNTS[4],
             code: MOCK_CODES[4].clone(),
             ..Default::default()
         };
 
+        // Test for empty account.
+        test_ok(&Account::default(), false);
         // Test for cold account.
+        test_ok(&account, false);
+        // Test for warm account.
         test_ok(&account, true);
     }
 
-    // #[test]
-    // fn test_extcodesize_opcode_warm_acc() {
-    //     let account = Account {
-    //         address: MOCK_ACCOUNTS[4],
-    //         code: MOCK_CODES[4].clone(),
-    //         ..Default::default()
-    //     };
-    //
-    //     // Test for warm account.
-    //     test_ok(&account, true);
-    // }
-
     fn test_ok(account: &Account, is_warm: bool) {
         let exists = !account.is_empty();
-        let account_mem_address = 0x0;
-        let res_mem_address = 0x7f;
 
-        let mut code = Bytecode::default();
-        // if is_warm {
-        //     code.append(&bytecode! {
-        //         // PUSH20(account.address.to_word())
-        //         // EXTCODESIZE
-        //         // POP
-        //         I32Const[account_mem_address]
-        //         I32Const[res_mem_address]
-        //         EXTCODESIZE
-        //     });
-        // }
-        code.append(&bytecode! {
-            // PUSH20(account.address.to_word())
-            // EXTCODESIZE
-            // STOP
-            I32Const[account_mem_address]
-            I32Const[res_mem_address]
+        let mut bytecode = Bytecode::default();
+        if is_warm {
+            bytecode.append(&bytecode! {
+                PUSH20(account.address.to_word())
+                EXTCODESIZE
+                POP
+            });
+        }
+        bytecode.append(&bytecode! {
+            PUSH20(account.address.to_word())
             EXTCODESIZE
+            STOP
         });
 
         // Get the execution steps from the external tracer.
-        code.with_global_data(0, account_mem_address, account.address.0.to_vec());
         let block: GethData = TestContext::<3, 1>::new(
             None,
             |accs| {
                 accs[0]
                     .address(MOCK_ACCOUNTS[0])
                     .balance(*MOCK_1_ETH)
-                    .code(code.wasm_binary());
+                    .code(bytecode);
                 if exists {
                     accs[1].address(account.address).code(account.code.clone());
                 } else {
@@ -187,11 +158,6 @@ mod extcodesize_tests {
         )
         .unwrap()
         .into();
-
-        let codesize = &account.code.len();
-        let codesize_bytes = codesize.to_be_bytes();
-        let codesize_vec = codesize_bytes[codesize_bytes.len()-CODESIZE_BYTE_LENGTH..codesize_bytes.len()].to_vec();
-        assert_eq!(codesize_vec.len(), CODESIZE_BYTE_LENGTH);
 
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
         builder
@@ -214,35 +180,18 @@ mod extcodesize_tests {
             .bus_mapping_instance
             .clone();
         let container = builder.block.container;
-
-        let mut indices_index = 0;
-        let operation = &container.stack[indices[indices_index].as_usize()];
-        assert_eq!(operation.rw(), RW::READ);
-        assert_eq!(
-            operation.op(),
-            &StackOp {
-                call_id,
-                address: StackAddress::from(1022u32),
-                value: StackWord::from(res_mem_address),
-                local_index: 0,
-            }
-        );
-
-        indices_index += 1;
-        let operation = &container.stack[indices[indices_index].as_usize()];
+        let operation = &container.stack[indices[0].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
         assert_eq!(
             operation.op(),
             &StackOp {
                 call_id,
                 address: StackAddress::from(1023u32),
-                value: StackWord::from(account_mem_address),
-                local_index: 0,
+                value: account.address.to_word()
             }
         );
 
-        indices_index += 1;
-        let operation = &container.call_context[indices[indices_index].as_usize()];
+        let operation = &container.call_context[indices[1].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
         assert_eq!(
             operation.op(),
@@ -253,8 +202,7 @@ mod extcodesize_tests {
             }
         );
 
-        indices_index += 1;
-        let operation = &container.call_context[indices[indices_index].as_usize()];
+        let operation = &container.call_context[indices[2].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
         assert_eq!(
             operation.op(),
@@ -265,8 +213,7 @@ mod extcodesize_tests {
             }
         );
 
-        indices_index += 1;
-        let operation = &container.call_context[indices[indices_index].as_usize()];
+        let operation = &container.call_context[indices[3].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
         assert_eq!(
             operation.op(),
@@ -277,69 +224,57 @@ mod extcodesize_tests {
             }
         );
 
-        indices_index += 1;
-        let operation = &container.tx_access_list_account[indices[indices_index].as_usize()];
+        let operation = &container.tx_access_list_account[indices[4].as_usize()];
         assert_eq!(operation.rw(), RW::WRITE);
         assert_eq!(
             operation.op(),
             &TxAccessListAccountOp {
                 tx_id,
-                address: account.address.clone(),
-                is_warm,
-                is_warm_prev: false,
+                address: account.address,
+                is_warm: true,
+                is_warm_prev: is_warm
             }
         );
 
-        indices_index += 1;
-        let code_hash = Word::from(keccak256(account.code.clone()));
-        let operation = &container.account[indices[indices_index].as_usize()];
+        let code_hash = CodeDB::hash(&account.code).to_word();
+        let operation = &container.account[indices[5].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
         assert_eq!(
             operation.op(),
             &AccountOp {
                 address: account.address,
                 field: AccountField::CodeHash,
-                value: if exists { code_hash } else { U256::zero() },
-                value_prev: if exists { code_hash } else { U256::zero() },
+                value: if exists { code_hash } else { Word::zero() },
+                value_prev: if exists { code_hash } else { Word::zero() },
             }
         );
-
-        for idx in 0..ADDRESS_BYTE_LENGTH {
-            indices_index += 1;
+        #[cfg(feature = "scroll")]
+        if exists {
+            let code_size = account.code.len().to_word();
+            let operation = &container.account[indices[6].as_usize()];
+            assert_eq!(operation.rw(), RW::READ);
             assert_eq!(
-                {
-                    let operation =
-                        &container.memory[indices[indices_index].as_usize()];
-                    (operation.rw(), operation.op())
+                operation.op(),
+                &AccountOp {
+                    address: account.address,
+                    field: AccountField::CodeSize,
+                    value: code_size,
+                    value_prev: code_size,
                 },
-                (
-                    RW::READ,
-                    &MemoryOp::new(
-                        1,
-                        MemoryAddress::from(account_mem_address + idx as u32),
-                        account.address[idx]
-                    )
-                )
             );
         }
-
-        for idx in 0..CODESIZE_BYTE_LENGTH {
-            indices_index += 1;
-            assert_eq!(
-                {
-                    let operation =
-                        &container.memory[indices[indices_index].as_usize()];
-                    (operation.rw(), operation.op())
-                },
-                (
-                    RW::WRITE,
-                    &MemoryOp::new(
-                        1,
-                        MemoryAddress::from(res_mem_address + idx as u32),
-                        codesize_vec[idx]
-                    )
-                )
-            );
-        }
+        let rw_offset = 6;
+        #[cfg(feature = "scroll")]
+        let rw_offset = if exists { rw_offset + 1 } else { rw_offset };
+        let operation = &container.stack[indices[rw_offset].as_usize()];
+        assert_eq!(operation.rw(), RW::WRITE);
+        assert_eq!(
+            operation.op(),
+            &StackOp {
+                call_id,
+                address: 1023u32.into(),
+                value: (if exists { account.code.len() } else { 0 }).into(),
+            }
+        );
     }
 }

@@ -6,7 +6,7 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{
-                ConstraintBuilder, StepStateTransition,
+                StepStateTransition,
                 Transition::{Delta, To},
             },
             from_bytes,
@@ -23,6 +23,8 @@ use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
 use eth_types::{evm_types::GasCost, Field, StackWord, ToLittleEndian, ToScalar};
 use gadgets::util::not;
 use halo2_proofs::{circuit::Value, plonk::Error};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
+use crate::evm_circuit::util::memory_gadget::CommonMemoryAddressGadget;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmReturnDataCopyGadget<F> {
@@ -57,7 +59,7 @@ impl<F: Field> ExecutionGadget<F> for EvmReturnDataCopyGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::RETURNDATACOPY;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let dest_offset = cb.query_cell_phase2();

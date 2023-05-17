@@ -6,7 +6,7 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{
-                ConstraintBuilder, ReversionInfo, StepStateTransition, Transition::Delta,
+                ConstrainBuilderCommon, ReversionInfo, StepStateTransition, Transition::Delta,
             },
             from_bytes,
             math_gadget::IsZeroGadget,
@@ -26,6 +26,7 @@ use halo2_proofs::{
     circuit::Value,
     plonk::Error,
 };
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmBalanceGadget<F> {
@@ -46,7 +47,7 @@ impl<F: Field> ExecutionGadget<F> for EvmBalanceGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::BALANCE;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let address_word = cb.query_word_rlc();
         let address = from_bytes::expr(&address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]);
 

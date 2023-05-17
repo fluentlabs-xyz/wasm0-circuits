@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/imdario/mergo"
 	"math/big"
 	"os"
 )
@@ -57,7 +58,10 @@ type TraceConfig struct {
 	Accounts      map[common.Address]Account `json:"accounts"`
 	Transactions  []Transaction              `json:"transactions"`
 	LoggerConfig  *logger.Config             `json:"logger_config"`
+	ChainConfig   *params.ChainConfig        `json:"chain_config"`
 }
+
+func newUint64(val uint64) *uint64 { return &val }
 
 func Trace(config TraceConfig, printFile bool) ([]*logger.WasmExecutionResult, error) {
 	chainConfig := params.ChainConfig{
@@ -79,9 +83,16 @@ func Trace(config TraceConfig, printFile bool) ([]*logger.WasmExecutionResult, e
 		WebAssemblyBlock:    big.NewInt(0),
 	}
 
+	if config.ChainConfig != nil {
+		mergo.Merge(&chainConfig, config.ChainConfig, mergo.WithOverride)
+	}
+
+	// Debug for Shanghai
+	// fmt.Printf("geth-utils: ShanghaiTime = %d\n", *chainConfig.ShanghaiTime)
+
 	var txsGasLimit uint64
 	blockGasLimit := toBigInt(config.Block.GasLimit).Uint64()
-	messages := make([]types.Message, len(config.Transactions))
+	messages := make([]core.Message, len(config.Transactions))
 	for i, tx := range config.Transactions {
 		// If gas price is specified directly, the tx is treated as legacy type.
 		if tx.GasPrice != nil {
@@ -94,25 +105,16 @@ func Trace(config TraceConfig, printFile bool) ([]*logger.WasmExecutionResult, e
 			txAccessList[i].Address = accessList.Address
 			txAccessList[i].StorageKeys = accessList.StorageKeys
 		}
-		messages[i] = types.NewMessage(
-			tx.From,
-			tx.To,
-			uint64(tx.Nonce),
-			toBigInt(tx.Value),
-			uint64(tx.GasLimit),
-			toBigInt(tx.GasPrice),
-			toBigInt(tx.GasFeeCap),
-			toBigInt(tx.GasTipCap),
-			tx.CallData,
-			txAccessList,
-			false,
-		)
+		messages[i] = types.NewMessage(tx.From, tx.To, uint64(tx.Nonce), toBigInt(tx.Value), uint64(tx.GasLimit), toBigInt(tx.GasPrice), toBigInt(tx.GasFeeCap), toBigInt(tx.GasTipCap), tx.CallData, txAccessList, false)
 
 		txsGasLimit += uint64(tx.GasLimit)
 	}
 	if txsGasLimit > blockGasLimit {
 		return nil, fmt.Errorf("txs total gas: %d Exceeds block gas limit: %d", txsGasLimit, blockGasLimit)
 	}
+
+	// For opcode PREVRANDAO
+	randao := common.BigToHash(toBigInt(config.Block.Difficulty)) // TODO: fix
 
 	blockCtx := vm.BlockContext{
 		CanTransfer: core.CanTransfer,
@@ -129,6 +131,7 @@ func Trace(config TraceConfig, printFile bool) ([]*logger.WasmExecutionResult, e
 		BlockNumber: toBigInt(config.Block.Number),
 		Time:        toBigInt(config.Block.Timestamp),
 		Difficulty:  toBigInt(config.Block.Difficulty),
+		Random:      &randao,
 		BaseFee:     toBigInt(config.Block.BaseFee),
 		GasLimit:    blockGasLimit,
 	}

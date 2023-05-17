@@ -52,7 +52,7 @@ mod origin_tests {
     use crate::{
         circuit_input_builder::ExecState,
         evm::OpcodeId,
-        mocks::BlockData,
+        mock::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
         Error,
     };

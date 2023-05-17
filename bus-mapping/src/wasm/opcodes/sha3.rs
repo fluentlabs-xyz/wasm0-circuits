@@ -84,7 +84,7 @@ impl Opcode for Sha3 {
 
 #[cfg(any(feature = "test", test))]
 pub mod sha3_tests {
-    use eth_types::{bytecode, evm_types::OpcodeId, geth_types::GethData, Bytecode, Word, StackWord};
+    use eth_types::{bytecode, evm_types::OpcodeId, geth_types::GethData, Bytecode, Word, StackWord, ToWord};
     use ethers_core::utils::keccak256;
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
@@ -94,7 +94,7 @@ pub mod sha3_tests {
 
     use crate::{
         circuit_input_builder::{CircuitsParams, ExecState},
-        mocks::BlockData,
+        mock::BlockData,
         operation::{MemoryOp, StackOp, RW},
     };
 
@@ -139,7 +139,7 @@ pub mod sha3_tests {
             };
             memory.extend_from_slice(&mem_value);
             code.push(32, Word::from_big_endian(&mem_value));
-            code.push(32, (32 * i).into());
+            code.push(32, (32 * i).to_word());
             code.write_op(OpcodeId::MSTORE);
         }
         // append SHA3 related opcodes at the tail end.

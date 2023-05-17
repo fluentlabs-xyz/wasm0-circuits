@@ -5,7 +5,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
             from_bytes, CachedRegion, RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},
@@ -15,6 +15,7 @@ use crate::{
 use bus_mapping::evm::OpcodeId;
 use eth_types::Field;
 use halo2_proofs::plonk::Error;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmPcGadget<F> {
@@ -27,7 +28,7 @@ impl<F: Field> ExecutionGadget<F> for EvmPcGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::PC;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let value = cb.query_word_rlc();
 
         // program_counter is limited to 64 bits so we only consider 8 bytes

@@ -11,13 +11,14 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
 use crate::evm_circuit::util::Cell;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmUnaryGadget<F> {
@@ -41,7 +42,7 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_UNARY;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let operand = cb.alloc_u64();
         let result = cb.alloc_u64();
         let operand_is_zero = cb.alloc_bit_value();

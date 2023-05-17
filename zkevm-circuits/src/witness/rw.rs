@@ -46,7 +46,11 @@ impl RwMap {
         let err_msg_first = "first access reads don't change value";
         let err_msg_non_first = "non-first access reads don't change value";
         let rows = self.table_assignments();
-        let updates = MptUpdates::mock_from(&rows);
+        let updates = MptUpdates::from_rws_with_mock_state_roots(
+            &rows,
+            0xcafeu64.into(),
+            0xdeadbeefu64.into(),
+        );
         let mut errs = Vec::new();
         for idx in 1..rows.len() {
             let row = &rows[idx];
@@ -84,17 +88,9 @@ impl RwMap {
                 }
             }
         }
-        if !errs.is_empty() {
-            log::error!("after rw value check, err num: {}", errs.len());
-            for (idx, err_msg, row, prev_row) in errs {
-                log::error!(
-                    "err: rw idx: {}, reason: \"{}\", row: {:?}, prev_row: {:?}",
-                    idx,
-                    err_msg,
-                    row,
-                    prev_row
-                );
-            }
+        log::debug!("rw value check err num: {}", errs.len());
+        for e in errs {
+            log::debug!("err is {:?}", e);
         }
     }
     /// Calculates the number of Rw::Start rows needed.
@@ -299,7 +295,7 @@ impl<F: Field> RwRow<F> {
 }
 
 impl Rw {
-    pub(crate) fn tx_access_list_value_pair(&self) -> (bool, bool) {
+    pub fn tx_access_list_value_pair(&self) -> (bool, bool) {
         match self {
             Self::TxAccessListAccount {
                 is_warm,
@@ -311,40 +307,68 @@ impl Rw {
                 is_warm_prev,
                 ..
             } => (*is_warm, *is_warm_prev),
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", self),
         }
     }
 
-    pub(crate) fn tx_refund_value_pair(&self) -> (u64, u64) {
+    pub fn tx_refund_value_pair(&self) -> (u64, u64) {
         match self {
             Self::TxRefund {
                 value, value_prev, ..
             } => (*value, *value_prev),
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", self),
         }
     }
 
-    pub(crate) fn account_value_pair(&self) -> (Word, Word) {
+    pub fn account_value_pair(&self) -> (Word, Word) {
         match self {
             Self::Account {
                 value, value_prev, ..
             } => (*value, *value_prev),
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", self),
         }
     }
 
-    pub(crate) fn aux_pair(&self) -> (usize, Word) {
+    pub fn account_balance_pair(&self) -> (Word, Word) {
+        self.account_value_pair_field_tag(AccountFieldTag::Balance)
+    }
+    pub fn account_codehash_pair(&self) -> (Word, Word) {
+        self.account_value_pair_field_tag(AccountFieldTag::CodeHash)
+    }
+    pub fn account_nonce_pair(&self) -> (Word, Word) {
+        self.account_value_pair_field_tag(AccountFieldTag::Nonce)
+    }
+
+    pub fn account_value_pair_field_tag(
+        &self,
+        required_field_tag: AccountFieldTag,
+    ) -> (Word, Word) {
+        match self {
+            Self::Account {
+                value,
+                value_prev,
+                field_tag,
+                ..
+            } => {
+                debug_assert_eq!(*field_tag, required_field_tag, "invalid rw {:?}", &self);
+                (*value, *value_prev)
+            }
+            _ => unreachable!("{:?}", self),
+        }
+    }
+
+    pub fn aux_pair(&self) -> (usize, Word) {
         match self {
             Self::AccountStorage {
                 tx_id,
                 committed_value,
                 ..
             } => (*tx_id, *committed_value),
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", self),
         }
     }
 
-    pub(crate) fn storage_value_aux(&self) -> (Word, Word, usize, Word) {
+    pub fn storage_value_aux(&self) -> (Word, Word, usize, Word) {
         match self {
             Self::AccountStorage {
                 value,
@@ -353,21 +377,21 @@ impl Rw {
                 committed_value,
                 ..
             } => (*value, *value_prev, *tx_id, *committed_value),
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", self),
         }
     }
 
-    pub(crate) fn call_context_value(&self) -> Word {
+    pub fn call_context_value(&self) -> Word {
         match self {
             Self::CallContext { value, .. } => *value,
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", self),
         }
     }
 
-    pub(crate) fn stack_value(&self) -> StackWord {
+    pub fn stack_value(&self) -> StackWord {
         match self {
             Self::Stack { value, .. } => *value,
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", self),
         }
     }
 
@@ -385,24 +409,24 @@ impl Rw {
         }
     }
 
-    pub(crate) fn log_value(&self) -> Word {
+    pub fn log_value(&self) -> Word {
         match self {
             Self::TxLog { value, .. } => *value,
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", self),
         }
     }
 
-    pub(crate) fn receipt_value(&self) -> u64 {
+    pub fn receipt_value(&self) -> u64 {
         match self {
             Self::TxReceipt { value, .. } => *value,
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", self),
         }
     }
 
-    pub(crate) fn memory_value(&self) -> u8 {
+    pub fn memory_value(&self) -> u8 {
         match self {
             Self::Memory { byte, .. } => *byte,
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", self),
         }
     }
 
@@ -415,7 +439,7 @@ impl Rw {
             tag: F::from(self.tag() as u64),
             id: F::from(self.id().unwrap_or_default() as u64),
             address: self.address().unwrap_or_default().to_scalar().unwrap(),
-            field_tag: F::from(self.field_tag().unwrap_or_default() as u64),
+            field_tag: F::from(self.field_tag().unwrap_or_default()),
             storage_key: rlc::value(
                 &self.storage_key().unwrap_or_default().to_le_bytes(),
                 randomness,
@@ -436,7 +460,7 @@ impl Rw {
             tag: Value::known(F::from(self.tag() as u64)),
             id: Value::known(F::from(self.id().unwrap_or_default() as u64)),
             address: Value::known(self.address().unwrap_or_default().to_scalar().unwrap()),
-            field_tag: Value::known(F::from(self.field_tag().unwrap_or_default() as u64)),
+            field_tag: Value::known(F::from(self.field_tag().unwrap_or_default())),
             storage_key: randomness.map(|randomness| {
                 rlc::value(
                     &self.storage_key().unwrap_or_default().to_le_bytes(),
@@ -455,7 +479,7 @@ impl Rw {
         }
     }
 
-    pub(crate) fn rw_counter(&self) -> usize {
+    pub fn rw_counter(&self) -> usize {
         match self {
             Self::Start { rw_counter }
             | Self::Memory { rw_counter, .. }
@@ -472,7 +496,7 @@ impl Rw {
         }
     }
 
-    pub(crate) fn is_write(&self) -> bool {
+    pub fn is_write(&self) -> bool {
         match self {
             Self::Start { .. } => false,
             Self::Memory { is_write, .. }
@@ -489,7 +513,7 @@ impl Rw {
         }
     }
 
-    pub(crate) fn tag(&self) -> RwTableTag {
+    pub fn tag(&self) -> RwTableTag {
         match self {
             Self::Start { .. } => RwTableTag::Start,
             Self::Memory { .. } => RwTableTag::Memory,
@@ -506,7 +530,7 @@ impl Rw {
         }
     }
 
-    pub(crate) fn id(&self) -> Option<usize> {
+    pub fn id(&self) -> Option<usize> {
         match self {
             Self::AccountStorage { tx_id, .. }
             | Self::TxAccessListAccount { tx_id, .. }
@@ -522,7 +546,7 @@ impl Rw {
         }
     }
 
-    pub(crate) fn address(&self) -> Option<Address> {
+    pub fn address(&self) -> Option<Address> {
         match self {
             Self::TxAccessListAccount {
                 account_address, ..
@@ -559,7 +583,7 @@ impl Rw {
         }
     }
 
-    pub(crate) fn field_tag(&self) -> Option<u64> {
+    pub fn field_tag(&self) -> Option<u64> {
         match self {
             Self::Account { field_tag, .. } => Some(*field_tag as u64),
             Self::CallContext { field_tag, .. } => Some(*field_tag as u64),
@@ -576,7 +600,7 @@ impl Rw {
         }
     }
 
-    pub(crate) fn storage_key(&self) -> Option<Word> {
+    pub fn storage_key(&self) -> Option<Word> {
         match self {
             Self::AccountStorage { storage_key, .. }
             | Self::TxAccessListAccountStorage { storage_key, .. } => Some(*storage_key),
@@ -601,20 +625,34 @@ impl Rw {
             } => {
                 match field_tag {
                     // Only these two tags have values that may not fit into a scalar, so we need to
-                    // RLC.
-                    CallContextFieldTag::CodeHash | CallContextFieldTag::Value => {
-                        rlc::value(&value.to_le_bytes(), randomness)
+                    // RLC. (for poseidon hash feature, CodeHash not need rlc)
+                    CallContextFieldTag::CodeHash => {
+                        if cfg!(feature = "poseidon-codehash") {
+                            value.to_scalar().unwrap()
+                        } else {
+                            rlc::value(&value.to_le_bytes(), randomness)
+                        }
                     }
+                    CallContextFieldTag::Value => rlc::value(&value.to_le_bytes(), randomness),
                     _ => value.to_scalar().unwrap(),
                 }
             }
             Self::Account {
                 value, field_tag, ..
             } => match field_tag {
-                AccountFieldTag::CodeHash | AccountFieldTag::Balance => {
+                AccountFieldTag::KeccakCodeHash | AccountFieldTag::Balance => {
                     rlc::value(&value.to_le_bytes(), randomness)
                 }
-                AccountFieldTag::Nonce | AccountFieldTag::NonExisting => value.to_scalar().unwrap(),
+                AccountFieldTag::CodeHash => {
+                    if cfg!(feature = "poseidon-codehash") {
+                        value.to_scalar().unwrap()
+                    } else {
+                        rlc::value(&value.to_le_bytes(), randomness)
+                    }
+                }
+                AccountFieldTag::Nonce
+                | AccountFieldTag::NonExisting
+                | AccountFieldTag::CodeSize => value.to_scalar().unwrap(),
             },
             Self::AccountStorage { value, .. } => {
                 rlc::value(&value.to_le_bytes(), randomness)
@@ -647,12 +685,19 @@ impl Rw {
                 field_tag,
                 ..
             } => Some(match field_tag {
-                AccountFieldTag::CodeHash | AccountFieldTag::Balance => {
+                AccountFieldTag::KeccakCodeHash | AccountFieldTag::Balance => {
                     rlc::value(&value_prev.to_le_bytes(), randomness)
                 }
-                AccountFieldTag::Nonce | AccountFieldTag::NonExisting => {
-                    value_prev.to_scalar().unwrap()
+                AccountFieldTag::CodeHash => {
+                    if cfg!(feature = "poseidon-codehash") {
+                        value_prev.to_scalar().unwrap()
+                    } else {
+                        rlc::value(&value_prev.to_le_bytes(), randomness)
+                    }
                 }
+                AccountFieldTag::Nonce
+                | AccountFieldTag::NonExisting
+                | AccountFieldTag::CodeSize => value_prev.to_scalar().unwrap(),
             }),
             Self::AccountStorage { value_prev, .. } => {
                 Some(rlc::value(&value_prev.to_le_bytes(), randomness))
@@ -754,6 +799,8 @@ impl From<&operation::OperationContainer> for RwMap {
                         AccountField::Nonce => AccountFieldTag::Nonce,
                         AccountField::Balance => AccountFieldTag::Balance,
                         AccountField::CodeHash => AccountFieldTag::CodeHash,
+                        AccountField::KeccakCodeHash => AccountFieldTag::KeccakCodeHash,
+                        AccountField::CodeSize => AccountFieldTag::CodeSize,
                     },
                     value: op.op().value,
                     value_prev: op.op().value_prev,

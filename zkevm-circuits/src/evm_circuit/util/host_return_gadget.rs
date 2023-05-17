@@ -6,7 +6,7 @@ use eth_types::{Field, ToScalar, U64};
 use gadgets::util::Expr;
 
 use crate::evm_circuit::util::{CachedRegion, Cell, RandomLinearCombination};
-use crate::evm_circuit::util::constraint_builder::ConstraintBuilder;
+use crate::evm_circuit::util::constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder};
 
 #[derive(Clone, Debug)]
 pub(crate) struct HostReturnGadget<F, const N_SIZE: usize> {
@@ -16,7 +16,7 @@ pub(crate) struct HostReturnGadget<F, const N_SIZE: usize> {
 
 impl<F: Field, const N_SIZE: usize> HostReturnGadget<F, N_SIZE> {
     pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
+        cb: &mut EVMConstraintBuilder<F>,
         value: RandomLinearCombination<F, N_SIZE>,
     ) -> Self {
         // last stack item is memory destination offset

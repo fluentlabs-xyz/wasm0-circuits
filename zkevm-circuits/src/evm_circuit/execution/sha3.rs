@@ -8,8 +8,13 @@ use crate::evm_circuit::{
     step::ExecutionState,
     util::{
         common_gadget::SameContextGadget,
-        constraint_builder::{ConstraintBuilder, StepStateTransition, Transition},
-        memory_gadget::{MemoryAddressGadget, MemoryCopierGasGadget, MemoryExpansionGadget},
+        constraint_builder::{
+            ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition, Transition,
+        },
+        memory_gadget::{
+            CommonMemoryAddressGadget, MemoryAddressGadget, MemoryCopierGasGadget,
+            MemoryExpansionGadget,
+        },
         rlc, CachedRegion, Cell, Word,
     },
     witness::{Block, Call, ExecStep, Transaction},
@@ -33,7 +38,7 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
 
     const NAME: &'static str = "SHA3";
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let offset = cb.query_cell_phase2();
@@ -146,12 +151,8 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
             step.memory_word_size(),
             [memory_address],
         )?;
-        self.memory_copier_gas.assign(
-            region,
-            offset,
-            size.as_u64(),
-            memory_expansion_gas_cost as u64,
-        )?;
+        self.memory_copier_gas
+            .assign(region, offset, size.as_u64(), memory_expansion_gas_cost)?;
 
         Ok(())
     }
@@ -164,6 +165,7 @@ mod tests {
         circuit_input_builder::CircuitsParams,
         evm::{gen_sha3_code, MemoryKind},
     };
+    use eth_types::{bytecode, Word};
     use mock::TestContext;
 
     fn test_ok(offset: usize, size: usize, mem_kind: MemoryKind) {
@@ -173,6 +175,7 @@ mod tests {
         )
         .params(CircuitsParams {
             max_rws: 5500,
+            max_copy_rows: 3000,
             ..Default::default()
         })
         .run();
@@ -197,5 +200,19 @@ mod tests {
         test_ok(0x202, 0x303, MemoryKind::LessThanSize);
         test_ok(0x303, 0x404, MemoryKind::EqualToSize);
         test_ok(0x404, 0x505, MemoryKind::MoreThanSize);
+    }
+
+    #[test]
+    fn sha3_gadget_overflow_offset_and_zero_size() {
+        let bytecode = bytecode! {
+            PUSH1(0)
+            PUSH32(Word::MAX)
+            SHA3
+        };
+
+        CircuitTestBuilder::new_from_test_ctx(
+            TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
+        )
+        .run();
     }
 }

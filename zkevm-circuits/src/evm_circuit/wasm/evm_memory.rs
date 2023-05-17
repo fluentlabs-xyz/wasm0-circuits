@@ -6,7 +6,7 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{
-                ConstraintBuilder, StepStateTransition,
+                ConstrainBuilderCommon, StepStateTransition,
                 Transition::{Delta, To},
             },
             from_bytes,
@@ -20,6 +20,7 @@ use crate::{
 };
 use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian};
 use halo2_proofs::plonk::Error;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmMemoryGadget<F> {
@@ -36,7 +37,7 @@ impl<F: Field> ExecutionGadget<F> for EvmMemoryGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::MEMORY;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         // In successful case the address must be in 5 bytes

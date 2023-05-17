@@ -13,7 +13,7 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta}, from_bytes, RandomLinearCombination,
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta}, from_bytes, RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -32,7 +32,7 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_UNARY;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut ConstrainBuilderCommon<F>) -> Self {
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(22.expr()),
             program_counter: Delta(1.expr()),

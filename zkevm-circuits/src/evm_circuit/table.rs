@@ -172,7 +172,7 @@ impl<F: Field> RwValues<F> {
 
 #[derive(Clone, Debug)]
 pub(crate) enum Lookup<F> {
-    /// Lookup to fixed table, which contains serveral pre-built tables such as
+    /// Lookup to fixed table, which contains several pre-built tables such as
     /// range tables or bitwise tables.
     Fixed {
         /// Tag to specify which table to lookup.
@@ -226,8 +226,8 @@ pub(crate) enum Lookup<F> {
     Block {
         /// Tag to specify which field to read.
         field_tag: Expression<F>,
-        /// Stores the block number only when field_tag is BlockHash, otherwise
-        /// should be set to 0.
+        /// Stores the block's number in all cases except `BLOCKHASH` where this
+        /// indicates a parent block number.
         number: Expression<F>,
         /// Value of the field.
         value: Expression<F>,
@@ -311,7 +311,13 @@ impl<F: Field> Lookup<F> {
                 field_tag,
                 index,
                 value,
-            } => vec![id.clone(), field_tag.clone(), index.clone(), value.clone()],
+            } => vec![
+                1.expr(),
+                id.clone(),
+                field_tag.clone(),
+                index.clone(),
+                value.clone(),
+            ],
             Self::Rw {
                 counter,
                 is_write,
@@ -319,6 +325,7 @@ impl<F: Field> Lookup<F> {
                 values,
             } => {
                 vec![
+                    1.expr(),
                     counter.clone(),
                     is_write.clone(),
                     tag.clone(),
@@ -340,6 +347,7 @@ impl<F: Field> Lookup<F> {
                 value,
             } => {
                 vec![
+                    1.expr(), // q_enable
                     hash.clone(),
                     tag.clone(),
                     index.clone(),
@@ -368,6 +376,7 @@ impl<F: Field> Lookup<F> {
                 rw_counter,
                 rwc_inc,
             } => vec![
+                1.expr(),
                 is_first.clone(),
                 src_id.clone(),
                 src_tag.clone(),
@@ -386,7 +395,8 @@ impl<F: Field> Lookup<F> {
                 input_len,
                 output_rlc,
             } => vec![
-                1.expr(), // is_enabled
+                1.expr(), // q_enable
+                1.expr(), // is_final
                 input_rlc.clone(),
                 input_len.clone(),
                 output_rlc.clone(),
@@ -398,6 +408,7 @@ impl<F: Field> Lookup<F> {
                 exponent_lo_hi,
                 exponentiation_lo_hi,
             } => vec![
+                1.expr(), // q_enable
                 1.expr(), // is_step
                 identifier.clone(),
                 is_last.clone(),

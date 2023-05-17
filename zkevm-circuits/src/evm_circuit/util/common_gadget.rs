@@ -1,16 +1,18 @@
 use super::{
+    constraint_builder::ConstrainBuilderCommon,
     from_bytes,
-    math_gadget::{IsEqualGadget, IsZeroGadget},
-    memory_gadget::{MemoryAddressGadget},
+    math_gadget::{IsEqualGadget, IsZeroGadget, LtGadget},
+    memory_gadget::{CommonMemoryAddressGadget, MemoryExpansionGadget},
     CachedRegion,
 };
 use crate::{
     evm_circuit::{
-        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_GAS},
+        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_GAS, N_BYTES_MEMORY_WORD_SIZE},
         step::ExecutionState,
+        table::{FixedTableTag, Lookup},
         util::{
             constraint_builder::{
-                ConstraintBuilder, ReversionInfo, StepStateTransition,
+                EVMConstraintBuilder, ReversionInfo, StepStateTransition,
                 Transition::{Delta, Same, To},
             },
             math_gadget::{AddWordsGadget, RangeCheckGadget},
@@ -27,7 +29,6 @@ use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
 };
-use crate::evm_circuit::table::{FixedTableTag, Lookup};
 
 /// Construction of execution state that stays in the same call context, which
 /// lookups the opcode and verifies the execution state is responsible for it,
@@ -40,11 +41,10 @@ pub(crate) struct SameContextGadget<F> {
 
 impl<F: Field> SameContextGadget<F> {
     pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
+        cb: &mut EVMConstraintBuilder<F>,
         opcode: Cell<F>,
         step_state_transition: StepStateTransition<F>,
     ) -> Self {
-        // TODO need a fix
         // cb.opcode_lookup(opcode.expr(), 1.expr());
         cb.add_lookup(
             "Responsible opcode lookup",
@@ -80,11 +80,8 @@ impl<F: Field> SameContextGadget<F> {
         self.opcode
             .assign(region, offset, Value::known(F::from(opcode.as_u64())))?;
 
-        self.sufficient_gas_left.assign(
-            region,
-            offset,
-            F::from((step.gas_left - step.gas_cost) as u64),
-        )?;
+        self.sufficient_gas_left
+            .assign(region, offset, F::from(step.gas_left - step.gas_cost))?;
 
         Ok(())
     }
@@ -105,8 +102,9 @@ pub(crate) struct RestoreContextGadget<F> {
 }
 
 impl<F: Field> RestoreContextGadget<F> {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
+        cb: &mut EVMConstraintBuilder<F>,
         is_success: Expression<F>,
         // Expression for the number of rw lookups that occur after this gadget is constructed.
         subsequent_rw_lookups: Expression<F>,
@@ -128,11 +126,22 @@ impl<F: Field> RestoreContextGadget<F> {
                 CallContextFieldTag::MemorySize,
                 CallContextFieldTag::ReversibleWriteCounter,
             ]
-                .map(|field_tag| cb.call_context(Some(caller_id.expr()), field_tag));
+            .map(|field_tag| cb.call_context(Some(caller_id.expr()), field_tag));
 
         // Update caller's last callee information
         // EIP-211 CREATE/CREATE2 call successful case should set RETURNDATASIZE = 0
-        let is_call_create_and_success_expr = cb.curr.state.is_create.expr() * is_success.clone();
+        // There is only one case where RETURNDATASIZE != 0:
+        //      opcode is REVERT, and no stack/oog error occured.
+        // In other words, for RETURN opcode, RETURNDATASIZE is 0 for both successful
+        // and fail case.
+        let discard_return_data = cb.curr.state.is_create.expr()
+            * not::expr(
+                cb.curr
+                    .state
+                    .execution_state
+                    .selector([ExecutionState::RETURN_REVERT as usize])
+                    * not::expr(is_success.clone()),
+            );
         for (field_tag, value) in [
             (
                 CallContextFieldTag::LastCalleeId,
@@ -140,19 +149,11 @@ impl<F: Field> RestoreContextGadget<F> {
             ),
             (
                 CallContextFieldTag::LastCalleeReturnDataOffset,
-                select::expr(
-                    is_call_create_and_success_expr.clone(),
-                    0.expr(),
-                    return_data_offset,
-                ),
+                select::expr(discard_return_data.clone(), 0.expr(), return_data_offset),
             ),
             (
                 CallContextFieldTag::LastCalleeReturnDataLength,
-                select::expr(
-                    is_call_create_and_success_expr,
-                    0.expr(),
-                    return_data_length.clone(),
-                ),
+                select::expr(discard_return_data, 0.expr(), return_data_length.clone()),
             ),
         ] {
             cb.call_context_lookup(true.expr(), Some(caller_id.expr()), field_tag, value);
@@ -220,13 +221,29 @@ impl<F: Field> RestoreContextGadget<F> {
         step: &ExecStep,
         rw_offset: usize,
     ) -> Result<(), Error> {
+        let field_tags = [
+            CallContextFieldTag::CallerId,
+            CallContextFieldTag::IsRoot,
+            CallContextFieldTag::IsCreate,
+            CallContextFieldTag::CodeHash,
+            CallContextFieldTag::ProgramCounter,
+            CallContextFieldTag::StackPointer,
+            CallContextFieldTag::GasLeft,
+            CallContextFieldTag::MemorySize,
+            CallContextFieldTag::ReversibleWriteCounter,
+        ];
         let [caller_id, caller_is_root, caller_is_create, caller_code_hash, caller_program_counter, caller_stack_pointer, caller_gas_left, caller_memory_word_size, caller_reversible_write_counter] =
             if call.is_root {
                 [U256::zero(); 9]
             } else {
-                [0, 1, 2, 3, 4, 5, 6, 7, 8]
-                    .map(|i| step.rw_indices[i + rw_offset])
-                    .map(|idx| block.rws[idx].call_context_value())
+                field_tags
+                    .zip([0, 1, 2, 3, 4, 5, 6, 7, 8])
+                    .map(|(field_tag, i)| {
+                        let idx = step.rw_indices[i + rw_offset];
+                        let rw = block.rws[idx];
+                        debug_assert_eq!(rw.field_tag(), Some(field_tag as u64));
+                        rw.call_context_value()
+                    })
             };
 
         for (cell, value) in [
@@ -254,7 +271,7 @@ impl<F: Field> RestoreContextGadget<F> {
         }
 
         self.caller_code_hash
-            .assign(region, offset, region.word_rlc(caller_code_hash))?;
+            .assign(region, offset, region.code_hash(caller_code_hash))?;
 
         Ok(())
     }
@@ -266,10 +283,10 @@ pub(crate) struct UpdateBalanceGadget<F, const N_ADDENDS: usize, const INCREASE:
 }
 
 impl<F: Field, const N_ADDENDS: usize, const INCREASE: bool>
-UpdateBalanceGadget<F, N_ADDENDS, INCREASE>
+    UpdateBalanceGadget<F, N_ADDENDS, INCREASE>
 {
     pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
+        cb: &mut EVMConstraintBuilder<F>,
         address: Expression<F>,
         updates: Vec<Word<F>>,
         reversion_info: Option<&mut ReversionInfo<F>>,
@@ -364,7 +381,7 @@ pub(crate) struct TransferWithGasFeeGadget<F> {
 impl<F: Field> TransferWithGasFeeGadget<F> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
+        cb: &mut EVMConstraintBuilder<F>,
         sender_address: Expression<F>,
         receiver_address: Expression<F>,
         receiver_exists: Expression<F>,
@@ -386,7 +403,7 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
                 cb.account_write(
                     receiver_address.clone(),
                     AccountFieldTag::CodeHash,
-                    cb.empty_hash_rlc(),
+                    cb.empty_code_hash_rlc(),
                     0.expr(),
                     Some(reversion_info),
                 );
@@ -490,30 +507,38 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
 pub(crate) struct TransferGadget<F> {
     sender: UpdateBalanceGadget<F, 2, false>,
     receiver: UpdateBalanceGadget<F, 2, true>,
+    must_create: Expression<F>,
+    receiver_exists: Expression<F>,
     pub(crate) value_is_zero: IsZeroGadget<F>,
 }
 
 impl<F: Field> TransferGadget<F> {
     pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
+        cb: &mut EVMConstraintBuilder<F>,
         sender_address: Expression<F>,
         receiver_address: Expression<F>,
         receiver_exists: Expression<F>,
+        must_create: Expression<F>,
         value: Word<F>,
         reversion_info: &mut ReversionInfo<F>,
     ) -> Self {
         let value_is_zero = IsZeroGadget::construct(cb, value.expr());
         // If receiver doesn't exist, create it
         cb.condition(
-            not::expr(value_is_zero.expr()) * not::expr(receiver_exists),
+            or::expr([
+                not::expr(value_is_zero.expr()) * not::expr(receiver_exists.expr()),
+                must_create.clone(),
+            ]),
             |cb| {
                 cb.account_write(
                     receiver_address.clone(),
                     AccountFieldTag::CodeHash,
-                    cb.empty_hash_rlc(),
+                    cb.empty_code_hash_rlc(),
                     0.expr(),
                     Some(reversion_info),
                 );
+                // TODO: also write empty keccak code hash? codesize seems not need yet. write a
+                // test to verify this.
             },
         );
         // Skip transfer if value == 0
@@ -534,6 +559,8 @@ impl<F: Field> TransferGadget<F> {
         });
 
         Self {
+            must_create,
+            receiver_exists,
             sender,
             receiver,
             value_is_zero,
@@ -546,6 +573,28 @@ impl<F: Field> TransferGadget<F> {
 
     pub(crate) fn receiver(&self) -> &UpdateBalanceGadget<F, 2, true> {
         &self.receiver
+    }
+
+    pub(crate) fn rw_delta(&self) -> Expression<F> {
+        // +1 Write Account (receiver) CodeHash (account creation via code_hash update)
+        or::expr([
+            not::expr(self.value_is_zero.expr()) * not::expr(self.receiver_exists.clone()),
+            self.must_create.clone()]
+        ) * 1.expr() +
+        // +1 Write Account (sender) Balance
+        // +1 Write Account (receiver) Balance
+        not::expr(self.value_is_zero.expr()) * 2.expr()
+    }
+
+    pub(crate) fn reversible_w_delta(&self) -> Expression<F> {
+        // +1 Write Account (receiver) CodeHash (account creation via code_hash update)
+        or::expr([
+            not::expr(self.value_is_zero.expr()) * not::expr(self.receiver_exists.clone()),
+            self.must_create.clone()]
+        ) * 1.expr() +
+        // +1 Write Account (sender) Balance
+        // +1 Write Account (receiver) Balance
+        not::expr(self.value_is_zero.expr()) * 2.expr()
     }
 
     pub(crate) fn assign(
@@ -577,7 +626,7 @@ impl<F: Field> TransferGadget<F> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct CommonCallGadget<F, const IS_SUCCESS_CALL: bool> {
+pub(crate) struct CommonCallGadget<F, MemAddrGadget, const IS_SUCCESS_CALL: bool> {
     pub is_success: Cell<F>,
 
     pub gas: Cell<F>,
@@ -586,9 +635,11 @@ pub(crate) struct CommonCallGadget<F, const IS_SUCCESS_CALL: bool> {
     pub callee_address: Word<F>,
     pub value_offset: Cell<F>,
     pub value: Word<F>,
-    pub cd_address: MemoryAddressGadget<F>,
-    pub rd_address: MemoryAddressGadget<F>,
+    pub cd_address: MemAddrGadget,
+    pub rd_address: MemAddrGadget,
     pub status_offset: Cell<F>,
+
+    pub memory_expansion: MemoryExpansionGadget<F, 2, N_BYTES_MEMORY_WORD_SIZE>,
 
     pub value_is_zero: IsZeroGadget<F>,
     pub has_value: Expression<F>,
@@ -598,9 +649,11 @@ pub(crate) struct CommonCallGadget<F, const IS_SUCCESS_CALL: bool> {
     pub callee_not_exists: IsZeroGadget<F>,
 }
 
-impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL> {
+impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CALL: bool>
+    CommonCallGadget<F, MemAddrGadget, IS_SUCCESS_CALL>
+{
     pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
+        cb: &mut EVMConstraintBuilder<F>,
         is_call: Expression<F>,
         is_callcode: Expression<F>,
         is_delegatecall: Expression<F>,
@@ -618,10 +671,8 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
         let callee_address = cb.query_word_rlc();
         let value_offset = cb.query_cell();
         let value = cb.query_word_rlc();
-        let cd_offset = cb.query_cell_phase2();
-        let cd_length = cb.query_word_rlc();
-        let rd_offset = cb.query_cell_phase2();
-        let rd_length = cb.query_word_rlc();
+        let cd_address = MemAddrGadget::construct_self(cb);
+        let rd_address = MemAddrGadget::construct_self(cb);
         let status_offset = cb.query_cell();
         let is_success = cb.query_bool();
 
@@ -635,10 +686,10 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
         // `current_callee_address` and callee address is `callee_address`.
 
         cb.stack_pop(status_offset.expr());
-        cb.stack_pop(rd_length.expr());
-        cb.stack_pop(rd_offset.expr());
-        cb.stack_pop(cd_length.expr());
-        cb.stack_pop(cd_offset.expr());
+        cb.stack_pop(rd_address.length());
+        cb.stack_pop(rd_address.address());
+        cb.stack_pop(cd_address.length());
+        cb.stack_pop(cd_address.address());
 
         // `CALL` and `CALLCODE` opcodes have an additional stack pop `value`.
         cb.condition(is_call + is_callcode, |cb| {
@@ -658,8 +709,8 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
 
         // Recomposition of random linear combination to integer
         let gas_is_u64 = IsZeroGadget::construct(cb, gas.expr());
-        let cd_address = MemoryAddressGadget::construct(cb, cd_offset, cd_length);
-        let rd_address = MemoryAddressGadget::construct(cb, rd_offset, rd_length);
+        let memory_expansion =
+            MemoryExpansionGadget::construct(cb, [cd_address.address(), rd_address.address()]);
 
         // construct common gadget
         let value_is_zero = IsZeroGadget::construct(cb, sum::expr(&value.cells));
@@ -676,7 +727,7 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
             phase2_callee_code_hash.expr(),
         );
         let is_empty_code_hash =
-            IsEqualGadget::construct(cb, phase2_callee_code_hash.expr(), cb.empty_hash_rlc());
+            IsEqualGadget::construct(cb, phase2_callee_code_hash.expr(), cb.empty_code_hash_rlc());
         let callee_not_exists = IsZeroGadget::construct(cb, phase2_callee_code_hash.expr());
 
         Self {
@@ -690,6 +741,8 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
             cd_address,
             rd_address,
             status_offset,
+
+            memory_expansion,
 
             value_is_zero,
             has_value,
@@ -719,8 +772,9 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
             GasCost::COLD_ACCOUNT_ACCESS.expr(),
         ) + self.has_value.clone()
             * (GasCost::CALL_WITH_VALUE.expr()
-            // Only CALL opcode could invoke transfer to make empty account into non-empty.
-            + is_call * self.callee_not_exists.expr() * GasCost::NEW_ACCOUNT.expr())
+                // Only CALL opcode could invoke transfer to make empty account into non-empty.
+                + is_call * self.callee_not_exists.expr() * GasCost::NEW_ACCOUNT.expr())
+            + self.memory_expansion.gas_cost()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -757,11 +811,13 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
         self.gas_is_u64.assign(
             region,
             offset,
-            F::from(gas.as_u64()),
+            sum::value(&gas.to_le_bytes()[N_BYTES_GAS..]),
         )?;
-        self.cd_address
+        let cd_address = self
+            .cd_address
             .assign(region, offset, cd_offset, cd_length)?;
-        self.rd_address
+        let rd_address = self
+            .rd_address
             .assign(region, offset, rd_offset, rd_length)?;
 
         self.value_is_zero
@@ -772,7 +828,7 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
             region,
             offset,
             phase2_callee_code_hash,
-            region.empty_hash_rlc(),
+            region.empty_code_hash_rlc(),
         )?;
         self.callee_not_exists
             .assign_value(region, offset, phase2_callee_code_hash)?;
@@ -795,10 +851,10 @@ impl<F: Field, const IS_SUCCESS_CALL: bool> CommonCallGadget<F, IS_SUCCESS_CALL>
             GasCost::CALL_WITH_VALUE.as_u64()
                 // Only CALL opcode could invoke transfer to make empty account into non-empty.
                 + if is_call && is_empty_account {
-                GasCost::NEW_ACCOUNT.as_u64()
-            } else {
-                0
-            }
+                    GasCost::NEW_ACCOUNT.as_u64()
+                } else {
+                    0
+                }
         } else {
             0
         } + memory_expansion_gas_cost;
@@ -814,7 +870,7 @@ pub(crate) struct SloadGasGadget<F> {
 }
 
 impl<F: Field> SloadGasGadget<F> {
-    pub(crate) fn construct(_cb: &mut ConstraintBuilder<F>, is_warm: Expression<F>) -> Self {
+    pub(crate) fn construct(_cb: &mut EVMConstraintBuilder<F>, is_warm: Expression<F>) -> Self {
         let gas_cost = select::expr(
             is_warm.expr(),
             GasCost::WARM_ACCESS.expr(),
@@ -844,7 +900,7 @@ pub(crate) struct SstoreGasGadget<F> {
 
 impl<F: Field> SstoreGasGadget<F> {
     pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
+        cb: &mut EVMConstraintBuilder<F>,
         value: Cell<F>,
         value_prev: Cell<F>,
         original_value: Cell<F>,
@@ -965,9 +1021,25 @@ pub(crate) struct CommonErrorGadget<F> {
 
 impl<F: Field> CommonErrorGadget<F> {
     pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
+        cb: &mut EVMConstraintBuilder<F>,
         opcode: Expression<F>,
         rw_counter_delta: Expression<F>,
+    ) -> Self {
+        Self::construct_with_lastcallee_return_data(
+            cb,
+            opcode,
+            rw_counter_delta,
+            0.expr(),
+            0.expr(),
+        )
+    }
+
+    pub(crate) fn construct_with_lastcallee_return_data(
+        cb: &mut EVMConstraintBuilder<F>,
+        opcode: Expression<F>,
+        rw_counter_delta: Expression<F>,
+        return_data_offset: Expression<F>,
+        return_data_length: Expression<F>,
     ) -> Self {
         cb.opcode_lookup(opcode.expr(), 1.expr());
 
@@ -1008,8 +1080,8 @@ impl<F: Field> CommonErrorGadget<F> {
                 cb,
                 0.expr(),
                 0.expr(),
-                0.expr(),
-                0.expr(),
+                return_data_offset,
+                return_data_length,
                 0.expr(),
                 0.expr(),
             )
@@ -1050,5 +1122,123 @@ impl<F: Field> CommonErrorGadget<F> {
 
         // NOTE: return value not use for now.
         Ok(1u64)
+    }
+}
+
+/// Check if the passed in word is within the specified byte range
+/// (not overflow) and less than a maximum cap.
+#[derive(Clone, Debug)]
+pub(crate) struct WordByteCapGadget<F, const VALID_BYTES: usize> {
+    word: WordByteRangeGadget<F, VALID_BYTES>,
+    lt_cap: LtGadget<F, VALID_BYTES>,
+}
+
+impl<F: Field, const VALID_BYTES: usize> WordByteCapGadget<F, VALID_BYTES> {
+    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, cap: Expression<F>) -> Self {
+        let word = WordByteRangeGadget::construct(cb);
+        let value = select::expr(word.overflow(), cap.expr(), word.valid_value());
+        let lt_cap = LtGadget::construct(cb, value, cap);
+
+        Self { word, lt_cap }
+    }
+
+    /// Return true if within the specified byte range (not overflow), false if
+    /// overflow. No matter whether it is less than the cap.
+    pub(crate) fn assign(
+        &self,
+        region: &mut CachedRegion<'_, '_, F>,
+        offset: usize,
+        original: U256,
+        cap: F,
+    ) -> Result<bool, Error> {
+        let not_overflow = self.word.assign(region, offset, original)?;
+
+        let value = if not_overflow {
+            let mut bytes = [0; 32];
+            bytes[0..VALID_BYTES].copy_from_slice(&original.to_le_bytes()[0..VALID_BYTES]);
+            F::from_repr(bytes).unwrap()
+        } else {
+            cap
+        };
+
+        self.lt_cap.assign(region, offset, value, cap)?;
+
+        Ok(not_overflow)
+    }
+
+    pub(crate) fn lt_cap(&self) -> Expression<F> {
+        self.lt_cap.expr()
+    }
+
+    pub(crate) fn original_word(&self) -> Expression<F> {
+        self.word.original_word()
+    }
+
+    pub(crate) fn overflow(&self) -> Expression<F> {
+        self.word.overflow()
+    }
+
+    pub(crate) fn valid_value(&self) -> Expression<F> {
+        self.word.valid_value()
+    }
+
+    pub(crate) fn not_overflow(&self) -> Expression<F> {
+        self.word.not_overflow()
+    }
+}
+
+/// Check if the passed in word is within the specified byte range (not overflow).
+#[derive(Clone, Debug)]
+pub(crate) struct WordByteRangeGadget<F, const VALID_BYTES: usize> {
+    original: Word<F>,
+    not_overflow: IsZeroGadget<F>,
+}
+
+impl<F: Field, const VALID_BYTES: usize> WordByteRangeGadget<F, VALID_BYTES> {
+    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>) -> Self {
+        debug_assert!(VALID_BYTES < 32);
+
+        let original = cb.query_word_rlc();
+        let not_overflow = IsZeroGadget::construct(cb, sum::expr(&original.cells[VALID_BYTES..]));
+
+        Self {
+            original,
+            not_overflow,
+        }
+    }
+
+    /// Return true if within the range, false if overflow.
+    pub(crate) fn assign(
+        &self,
+        region: &mut CachedRegion<'_, '_, F>,
+        offset: usize,
+        original: U256,
+    ) -> Result<bool, Error> {
+        self.original
+            .assign(region, offset, Some(original.to_le_bytes()))?;
+
+        let overflow_hi = original.to_le_bytes()[VALID_BYTES..]
+            .iter()
+            .fold(0, |acc, val| acc + u64::from(*val));
+        self.not_overflow
+            .assign(region, offset, F::from(overflow_hi))?;
+
+        Ok(overflow_hi == 0)
+    }
+
+    pub(crate) fn original_word(&self) -> Expression<F> {
+        self.original.expr()
+    }
+
+    pub(crate) fn overflow(&self) -> Expression<F> {
+        not::expr(self.not_overflow())
+    }
+
+    pub(crate) fn valid_value(&self) -> Expression<F> {
+        from_bytes::expr(&self.original.cells[..VALID_BYTES])
+    }
+
+    pub(crate) fn not_overflow(&self) -> Expression<F> {
+        self.not_overflow.expr()
     }
 }

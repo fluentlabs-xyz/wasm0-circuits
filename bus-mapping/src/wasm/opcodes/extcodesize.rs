@@ -106,7 +106,7 @@ mod extcodesize_tests {
     use mock::{TestContext, MOCK_1_ETH, MOCK_ACCOUNTS, MOCK_CODES};
     use pretty_assertions::assert_eq;
     use eth_types::bytecode::WasmBinaryBytecode;
-    use crate::mocks::BlockData;
+    use crate::mock::BlockData;
     use crate::operation::MemoryOp;
 
     #[test]

@@ -2,15 +2,16 @@ use super::{AccountMatch, StateTest, StateTestResult};
 use crate::config::TestSuite;
 use bus_mapping::{
     circuit_input_builder::{CircuitInputBuilder, CircuitsParams},
-    mocks::BlockData,
+    mock::BlockData,
 };
 use eth_types::{geth_types, Address, Bytes, GethExecTrace, U256, U64};
 use ethers_core::{
     k256::ecdsa::SigningKey,
     types::{transaction::eip2718::TypedTransaction, TransactionRequest},
+    utils::keccak256,
 };
 use ethers_signers::{LocalWallet, Signer};
-use external_tracer::TraceConfig;
+use external_tracer::{LoggerConfig, TraceConfig};
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
 use std::{collections::HashMap, str::FromStr};
 use thiserror::Error;
@@ -39,15 +40,22 @@ pub enum StateTestError {
     SkipTestMaxGasLimit(u64),
     #[error("SkipTestMaxSteps({0})")]
     SkipTestMaxSteps(usize),
+    #[error("SkipTestSelfDestruct")]
+    SkipTestSelfDestruct,
     #[error("Exception(expected:{expected:?}, found:{found:?})")]
     Exception { expected: bool, found: String },
 }
 
 impl StateTestError {
     pub fn is_skip(&self) -> bool {
+        // Avoid lint `variant is never constructed` if no feature skip-self-destruct.
+        let _ = StateTestError::SkipTestSelfDestruct;
+
         matches!(
             self,
-            StateTestError::SkipTestMaxSteps(_) | StateTestError::SkipTestMaxGasLimit(_)
+            StateTestError::SkipTestMaxSteps(_)
+                | StateTestError::SkipTestMaxGasLimit(_)
+                | StateTestError::SkipTestSelfDestruct
         )
     }
 }
@@ -61,6 +69,7 @@ fn check_post(
     builder: &CircuitInputBuilder,
     post: &HashMap<Address, AccountMatch>,
 ) -> Result<(), StateTestError> {
+    log::trace!("check post");
     // check if the generated account data is the expected one
     for (address, expected) in post {
         let (_, actual) = builder.sdb.get_account(address);
@@ -73,6 +82,11 @@ fn check_post(
         }
 
         if expected.nonce.map(|v| v == actual.nonce) == Some(false) {
+            log::error!(
+                "nonce mismatch, expected {:?} actual {:?}",
+                expected,
+                actual
+            );
             return Err(StateTestError::NonceMismatch {
                 expected: expected.nonce.unwrap(),
                 found: actual.nonce,
@@ -95,6 +109,12 @@ fn check_post(
         for (slot, expected_value) in &expected.storage {
             let actual_value = actual.storage.get(slot).cloned().unwrap_or_else(U256::zero);
             if expected_value != &actual_value {
+                log::error!(
+                    "StorageMismatch address {:?}, expected {:?}, actual {:?}",
+                    address,
+                    expected,
+                    actual
+                );
                 return Err(StateTestError::StorageMismatch {
                     slot: *slot,
                     expected: *expected_value,
@@ -103,6 +123,7 @@ fn check_post(
             }
         }
     }
+    log::trace!("check post done");
     Ok(())
 }
 
@@ -124,6 +145,21 @@ fn into_traceconfig(st: StateTest) -> (String, TraceConfig, StateTestResult) {
     let tx: TypedTransaction = tx.into();
 
     let sig = wallet.sign_transaction_sync(&tx);
+    let tx_hash = keccak256(tx.rlp_signed(&sig));
+    let mut accounts = st.pre;
+    for i in 1..=9 {
+        let mut addr_bytes = [0u8; 20];
+        addr_bytes[19] = i as u8;
+        let address = Address::from(addr_bytes);
+        accounts
+            .entry(address)
+            .or_insert(eth_types::geth_types::Account {
+                // balance: 1.into(),
+                // nonce: 1.into(),
+                address,
+                ..Default::default()
+            });
+    }
 
     (
         st.id,
@@ -136,7 +172,7 @@ fn into_traceconfig(st: StateTest) -> (String, TraceConfig, StateTestResult) {
                 number: U64::from(st.env.current_number),
                 difficulty: st.env.current_difficulty,
                 gas_limit: U256::from(st.env.current_gas_limit),
-                base_fee: U256::one(),
+                base_fee: st.env.current_base_fee,
             },
 
             transactions: vec![geth_types::Transaction {
@@ -153,9 +189,17 @@ fn into_traceconfig(st: StateTest) -> (String, TraceConfig, StateTestResult) {
                 v: sig.v,
                 r: sig.r,
                 s: sig.s,
+                hash: tx_hash.into(),
             }],
-            accounts: st.pre,
-            ..Default::default()
+            accounts,
+            logger_config: LoggerConfig {
+                enable_memory: *bus_mapping::util::CHECK_MEM_STRICT,
+                ..Default::default()
+            },
+            #[cfg(feature = "shanghai")]
+            chain_config: Some(external_tracer::ChainConfig::shanghai()),
+            #[cfg(not(feature = "shanghai"))]
+            chain_config: None,
         },
         st.result,
     )
@@ -198,6 +242,15 @@ pub fn run_test(
         }
     };
 
+    #[cfg(feature = "skip-self-destruct")]
+    if geth_traces.iter().any(|gt| {
+        gt.struct_logs
+            .iter()
+            .any(|sl| sl.op == eth_types::evm_types::OpcodeId::SELFDESTRUCT)
+    }) {
+        return Err(StateTestError::SkipTestSelfDestruct);
+    }
+
     if geth_traces[0].struct_logs.len() as u64 > suite.max_steps {
         return Err(StateTestError::SkipTestMaxSteps(
             geth_traces[0].struct_logs.len(),
@@ -239,6 +292,7 @@ pub fn run_test(
         gas_limit: trace_config.block_constants.gas_limit,
         base_fee_per_gas: Some(trace_config.block_constants.base_fee),
         transactions,
+        parent_hash: st.env.previous_hash,
         ..eth_types::Block::default()
     };
 
@@ -263,13 +317,15 @@ pub fn run_test(
     if !circuits_config.super_circuit {
         let circuits_params = CircuitsParams {
             max_txs: 1,
-            max_rws: 55000,
+            max_rws: 0,
             max_calldata: 5000,
             max_bytecode: 5000,
+            max_mpt_rows: 5000,
             max_copy_rows: 55000,
             max_evm_rows: 0,
             max_exp_steps: 5000,
             max_keccak_rows: 0,
+            max_inner_blocks: 64,
         };
         let block_data = BlockData::new_from_geth_data_with_params(geth_data, circuits_params);
 
@@ -291,13 +347,15 @@ pub fn run_test(
             max_calldata: MAX_CALLDATA,
             max_rws: 256,
             max_copy_rows: 256,
+            max_mpt_rows: 256,
             max_exp_steps: 256,
             max_bytecode: 512,
             max_evm_rows: 0,
             max_keccak_rows: 0,
+            max_inner_blocks: 64,
         };
         let (k, circuit, instance, _builder) =
-            SuperCircuit::<Fr, MAX_TXS, MAX_CALLDATA, 0x100>::build(geth_data, circuits_params)
+            SuperCircuit::<Fr, MAX_TXS, MAX_CALLDATA, 64, 0x100>::build(geth_data, circuits_params)
                 .unwrap();
         builder = _builder;
 

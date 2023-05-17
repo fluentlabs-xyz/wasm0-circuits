@@ -11,13 +11,14 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta, Transition::To},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta, Transition::To},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
 use crate::evm_circuit::util::Cell;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 use crate::table::CallContextFieldTag;
 
 #[derive(Clone, Debug)]
@@ -32,7 +33,7 @@ impl<F: Field> ExecutionGadget<F> for WasmCallGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_CALL;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let function_index = cb.query_cell();
         let program_counter = cb.query_cell();
 

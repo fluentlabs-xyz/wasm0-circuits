@@ -5,7 +5,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
             from_bytes, CachedRegion, Cell, RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},
@@ -17,6 +17,7 @@ use bus_mapping::evm::OpcodeId;
 use eth_types::{Field, ToLittleEndian, ToScalar, ToWord};
 use halo2_proofs::{circuit::Value, plonk::Error};
 use halo2_proofs::plonk::Error::Synthesis;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmOriginGadget<F> {
@@ -31,7 +32,7 @@ impl<F: Field> ExecutionGadget<F> for EvmOriginGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::ORIGIN;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let origin = cb.query_word_rlc();
         let dest_offset = cb.query_cell();
 

@@ -14,7 +14,7 @@ use crate::{
             Cell,
             common_gadget::SameContextGadget,
             constraint_builder::{
-                ConstraintBuilder, ReversionInfo, StepStateTransition, Transition,
+                ConstrainBuilderCommon, ReversionInfo, StepStateTransition, Transition,
             },
             from_bytes, memory_gadget::{MemoryAddressGadget, MemoryCopierGasGadget}, MemoryAddress, not, select,
         },
@@ -22,6 +22,8 @@ use crate::{
     },
     table::{AccountFieldTag, CallContextFieldTag},
 };
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
+use crate::evm_circuit::util::memory_gadget::CommonMemoryAddressGadget;
 use crate::evm_circuit::util::RandomLinearCombination;
 use crate::table::RwTableTag;
 
@@ -50,7 +52,7 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeCopyGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::EXTCODECOPY;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let external_address_word = cb.query_word_rlc();

@@ -25,9 +25,9 @@ impl Opcode for Extcodecopy {
         let mut exec_step = gen_extcodecopy_step(state, geth_step)?;
 
         // reconstruction
-        let length = geth_step.stack.nth_last(0)?.as_u64();
-        let code_offset = geth_step.stack.nth_last(1)?.as_u64();
-        let dest_offset = geth_step.stack.nth_last(2)?.as_u64();
+        let length = geth_step.stack.nth_last(0)?;
+        let code_offset = geth_step.stack.nth_last(1)?;
+        let dest_offset = geth_step.stack.nth_last(2)?;
         let external_address_offset = geth_step.stack.nth_last(3)?;
         let external_address = geth_step.global_memory.read_address(external_address_offset)?;
         let address_offset_addr = MemoryAddress::try_from(external_address_offset)?;
@@ -42,7 +42,7 @@ impl Opcode for Extcodecopy {
         let call_ctx = state.call_ctx_mut()?;
         let memory = &mut call_ctx.memory;
 
-        memory.copy_from(dest_offset, &code, code_offset, length as usize);
+        memory.copy_from(dest_offset, code_offset, length, &code);
 
         let copy_event = gen_copy_event(state, geth_step)?;
 
@@ -202,7 +202,7 @@ fn gen_copy_event(
 mod extcodecopy_tests {
     use crate::{
         circuit_input_builder::{CopyDataType, ExecState, NumberOrHash},
-        mocks::BlockData,
+        mock::BlockData,
         operation::{
             AccountField, AccountOp, CallContextField, CallContextOp, MemoryOp, StackOp,
             TxAccessListAccountOp, RW,

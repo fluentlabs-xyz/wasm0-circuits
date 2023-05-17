@@ -10,7 +10,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition},
+            constraint_builder::{StepStateTransition, Transition},
             memory_gadget::{MemoryAddressGadget},
             not, CachedRegion, Cell, MemoryAddress,
         },
@@ -18,8 +18,9 @@ use crate::{
     },
     util::Expr,
 };
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 use crate::evm_circuit::util::from_bytes;
-use crate::evm_circuit::util::memory_gadget::{MemoryCopierGasGadget};
+use crate::evm_circuit::util::memory_gadget::{CommonMemoryAddressGadget, MemoryCopierGasGadget};
 
 use super::ExecutionGadget;
 
@@ -48,7 +49,7 @@ impl<F: Field> ExecutionGadget<F> for EvmCodeCopyGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::CODECOPY;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         // Query elements to be popped from the stack.

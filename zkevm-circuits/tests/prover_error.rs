@@ -4,7 +4,7 @@
 // prover_error -- --nocapture --ignored`. Change any constant variables like
 // `MAX_TXS` to suit your needs.
 use bus_mapping::circuit_input_builder::CircuitsParams;
-use bus_mapping::mocks::BlockData;
+use bus_mapping::mock::BlockData;
 use env_logger::Env;
 use eth_types::{
     geth_types::{Account, GethData},
@@ -105,8 +105,9 @@ fn prover_error() {
         block.randomness = Fr::from(MOCK_RANDOMNESS);
         block
     };
-    let circuit =
-        SuperCircuit::<_, MAX_TXS, MAX_CALLDATA, MOCK_RANDOMNESS>::new_from_block(&block_witness);
+    let circuit = SuperCircuit::<_, MAX_TXS, MAX_CALLDATA, 64, MOCK_RANDOMNESS>::new_from_block(
+        &block_witness,
+    );
     let res = MockProver::run(k, &circuit, circuit.instance())
         .expect("MockProver::run")
         .verify_par();

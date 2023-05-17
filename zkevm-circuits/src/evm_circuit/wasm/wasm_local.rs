@@ -11,13 +11,14 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
 use crate::evm_circuit::util::Cell;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmLocalGadget<F> {
@@ -34,7 +35,7 @@ impl<F: Field> ExecutionGadget<F> for WasmLocalGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_LOCAL;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let is_get_local = cb.query_cell();

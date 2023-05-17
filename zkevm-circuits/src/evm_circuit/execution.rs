@@ -5,6 +5,7 @@ use super::{
         N_PHASE1_COLUMNS, RW_TABLE_LOOKUPS, TX_TABLE_LOOKUPS,
     },
     util::{instrumentation::Instrument, CachedRegion, CellManager, StoredExpression},
+    EvmCircuitExports,
 };
 use crate::{
     evm_circuit::{
@@ -12,22 +13,25 @@ use crate::{
         step::{ExecutionState, Step},
         table::Table,
         util::{
-            constraint_builder::{BaseConstraintBuilder, ConstraintBuilder},
+            constraint_builder::{
+                BaseConstraintBuilder, ConstrainBuilderCommon, EVMConstraintBuilder,
+            },
             rlc, CellType,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    table::LookupTable,
+    table::{LookupTable, RwTableTag, TxReceiptFieldTag},
     util::{query_expression, Challenges, Expr},
 };
-use eth_types::{evm_unimplemented, Field};
+use bus_mapping::util::read_env_var;
+use eth_types::{Field, ToLittleEndian};
 use gadgets::util::not;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Layouter, Region, Value},
     plonk::{
-        Advice, Column, ConstraintSystem, Error, Expression, FirstPhase, Fixed, SecondPhase,
-        Selector, ThirdPhase, VirtualCells,
+        Advice, Assigned, Column, ConstraintSystem, Error, Expression, FirstPhase, Fixed, Selector,
+        VirtualCells,
     },
     poly::Rotation,
 };
@@ -36,6 +40,23 @@ use std::{
     iter,
 };
 
+#[cfg(feature = "onephase")]
+use halo2_proofs::plonk::FirstPhase as SecondPhase;
+#[cfg(feature = "onephase")]
+use halo2_proofs::plonk::FirstPhase as ThirdPhase;
+#[cfg(not(feature = "onephase"))]
+use halo2_proofs::plonk::SecondPhase;
+#[cfg(not(feature = "onephase"))]
+use halo2_proofs::plonk::ThirdPhase;
+
+use strum::{EnumCount, IntoEnumIterator};
+
+use once_cell::sync::Lazy;
+pub(crate) static CHECK_RW_LOOKUP: Lazy<bool> =
+    Lazy::new(|| read_env_var("CHECK_RW_LOOKUP", false));
+
+mod add_sub;
+mod addmod;
 mod address;
 mod balance;
 mod begin_tx;
@@ -53,21 +74,33 @@ mod chainid;
 mod codecopy;
 mod codesize;
 mod comparator;
+mod create;
+#[cfg(not(feature = "scroll"))]
 mod dummy;
 mod dup;
 mod end_block;
+mod end_inner_block;
 mod end_tx;
+mod error_code_store;
+mod error_invalid_creation_code;
 mod error_invalid_jump;
 mod error_invalid_opcode;
+mod error_oog_account_access;
 mod error_oog_call;
 mod error_oog_constant;
+mod error_oog_create2;
+mod error_oog_dynamic_memory;
 mod error_oog_exp;
 mod error_oog_log;
+mod error_oog_memory_copy;
+mod error_oog_sha3;
 mod error_oog_sload_sstore;
 mod error_oog_static_memory;
+mod error_precompile_failed;
 mod error_return_data_oo_bound;
 mod error_stack;
 mod error_write_protection;
+mod exp;
 mod extcodecopy;
 mod extcodehash;
 mod extcodesize;
@@ -81,20 +114,21 @@ mod logs;
 mod memory;
 mod msize;
 mod mul_div_mod;
-// mod mulmod;
+mod mulmod;
 #[path = "execution/not.rs"]
 mod opcode_not;
 mod origin;
 mod pc;
 mod pop;
+mod push;
 mod return_revert;
-// mod returndatacopy;
-// mod returndatasize;
+mod returndatacopy;
+mod returndatasize;
 mod sar;
-// mod sdiv_smod;
+mod sdiv_smod;
 mod selfbalance;
 mod sha3;
-// mod shl_shr;
+mod shl_shr;
 mod signed_comparator;
 mod signextend;
 mod sload;
@@ -102,45 +136,92 @@ mod sstore;
 mod stop;
 mod swap;
 
+use self::{logs::LogGadget, sha3::Sha3Gadget};
+use add_sub::AddSubGadget;
+use addmod::AddModGadget;
+use address::AddressGadget;
+use balance::BalanceGadget;
 use begin_tx::BeginTxGadget;
+use bitwise::BitwiseGadget;
+use block_ctx::{BlockCtxU160Gadget, BlockCtxU256Gadget, BlockCtxU64Gadget};
+use blockhash::BlockHashGadget;
+use byte::ByteGadget;
+use calldatacopy::CallDataCopyGadget;
+use calldataload::CallDataLoadGadget;
+use calldatasize::CallDataSizeGadget;
+use caller::CallerGadget;
+use callop::CallOpGadget;
+use callvalue::CallValueGadget;
+use chainid::ChainIdGadget;
+use codecopy::CodeCopyGadget;
+use codesize::CodesizeGadget;
+use comparator::ComparatorGadget;
+use create::CreateGadget;
+#[cfg(not(feature = "scroll"))]
+use dummy::DummyGadget;
+use dup::DupGadget;
 use end_block::EndBlockGadget;
+use end_inner_block::EndInnerBlockGadget;
 use end_tx::EndTxGadget;
+use error_code_store::ErrorCodeStoreGadget;
+use error_invalid_creation_code::ErrorInvalidCreationCodeGadget;
 use error_invalid_jump::ErrorInvalidJumpGadget;
 use error_invalid_opcode::ErrorInvalidOpcodeGadget;
+use error_oog_account_access::ErrorOOGAccountAccessGadget;
+use error_oog_call::ErrorOOGCallGadget;
 use error_oog_constant::ErrorOOGConstantGadget;
+use error_oog_create2::ErrorOOGCreate2Gadget;
+use error_oog_dynamic_memory::ErrorOOGDynamicMemoryGadget;
 use error_oog_exp::ErrorOOGExpGadget;
 use error_oog_log::ErrorOOGLogGadget;
+use error_oog_memory_copy::ErrorOOGMemoryCopyGadget;
+use error_oog_sha3::ErrorOOGSha3Gadget;
 use error_oog_sload_sstore::ErrorOOGSloadSstoreGadget;
+use error_oog_static_memory::ErrorOOGStaticMemoryGadget;
+use error_precompile_failed::ErrorPrecompileFailedGadget;
 use error_return_data_oo_bound::ErrorReturnDataOutOfBoundGadget;
 use error_stack::ErrorStackGadget;
 use error_write_protection::ErrorWriteProtectionGadget;
+use exp::ExponentiationGadget;
+use extcodecopy::ExtcodecopyGadget;
+use extcodehash::ExtcodehashGadget;
+use extcodesize::ExtcodesizeGadget;
+use gas::GasGadget;
 use gasprice::GasPriceGadget;
-use address::AddressGadget;
-use balance::BalanceGadget;
-use caller::CallerGadget;
-use callvalue::CallValueGadget;
-use chainid::ChainIdGadget;
-use codesize::CodesizeGadget;
-use dummy::DummyGadget;
+use is_zero::IsZeroGadget;
+use jump::JumpGadget;
+use jumpdest::JumpdestGadget;
+use jumpi::JumpiGadget;
+
+use memory::MemoryGadget;
+use msize::MsizeGadget;
+use mul_div_mod::MulDivModGadget;
+use mulmod::MulModGadget;
+use opcode_not::NotGadget;
 use origin::OriginGadget;
+use pc::PcGadget;
+use pop::PopGadget;
+use push::PushGadget;
 use return_revert::ReturnRevertGadget;
+use returndatacopy::ReturnDataCopyGadget;
+use returndatasize::ReturnDataSizeGadget;
+use sar::SarGadget;
+use sdiv_smod::SignedDivModGadget;
 use selfbalance::SelfbalanceGadget;
-use crate::evm_circuit::execution::callop::CallOpGadget;
-use crate::evm_circuit::execution::codecopy::CodeCopyGadget;
-use crate::evm_circuit::execution::error_oog_call::ErrorOOGCallGadget;
-use crate::evm_circuit::execution::extcodecopy::ExtcodecopyGadget;
-use crate::evm_circuit::execution::extcodesize::ExtcodesizeGadget;
+use shl_shr::ShlShrGadget;
+use signed_comparator::SignedComparatorGadget;
+use signextend::SignextendGadget;
+use sload::SloadGadget;
+use sstore::SstoreGadget;
+use stop::StopGadget;
+use swap::SwapGadget;
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
 
     const EXECUTION_STATE: ExecutionState;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self;
-
-    fn configure_with_meta<R: ExecutionGadget<F>>(cb: &mut ConstraintBuilder<F>, _meta: &mut ConstraintSystem<F>) -> R {
-        return R::configure(cb);
-    }
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self;
 
     fn assign_exec_step(
         &self,
@@ -178,95 +259,90 @@ pub(crate) struct ExecutionConfig<F> {
     // internal state gadgets
     begin_tx_gadget: Box<BeginTxGadget<F>>,
     end_block_gadget: Box<EndBlockGadget<F>>,
+    end_inner_block_gadget: Box<EndInnerBlockGadget<F>>,
     end_tx_gadget: Box<EndTxGadget<F>>,
     // opcode gadgets
-    // addmod_gadget: AddModGadget<F>,
+    add_sub_gadget: Box<AddSubGadget<F>>,
+    addmod_gadget: Box<AddModGadget<F>>,
     address_gadget: Box<AddressGadget<F>>,
     balance_gadget: Box<BalanceGadget<F>>,
-    // add_sub_gadget: Box<AddSubGadget<F>>,
-    // addmod_gadget: Box<AddModGadget<F>>,
-    // bitwise_gadget: Box<BitwiseGadget<F>>,
-    // byte_gadget: Box<ByteGadget<F>>,
+    bitwise_gadget: Box<BitwiseGadget<F>>,
+    byte_gadget: Box<ByteGadget<F>>,
     call_op_gadget: Box<CallOpGadget<F>>,
     call_value_gadget: Box<CallValueGadget<F>>,
-    // calldatacopy_gadget: Box<CallDataCopyGadget<F>>,
-    // calldataload_gadget: Box<CallDataLoadGadget<F>>,
-    // calldatasize_gadget: Box<CallDataSizeGadget<F>>,
+    calldatacopy_gadget: Box<CallDataCopyGadget<F>>,
+    calldataload_gadget: Box<CallDataLoadGadget<F>>,
+    calldatasize_gadget: Box<CallDataSizeGadget<F>>,
     caller_gadget: Box<CallerGadget<F>>,
     chainid_gadget: Box<ChainIdGadget<F>>,
     codecopy_gadget: Box<CodeCopyGadget<F>>,
     codesize_gadget: Box<CodesizeGadget<F>>,
-    // comparator_gadget: Box<ComparatorGadget<F>>,
-    // dup_gadget: Box<DupGadget<F>>,
-    // exp_gadget: Box<ExponentiationGadget<F>>,
-    // extcodehash_gadget: Box<ExtcodehashGadget<F>>,
+    comparator_gadget: Box<ComparatorGadget<F>>,
+    dup_gadget: Box<DupGadget<F>>,
+    exp_gadget: Box<ExponentiationGadget<F>>,
+    extcodehash_gadget: Box<ExtcodehashGadget<F>>,
     extcodesize_gadget: Box<ExtcodesizeGadget<F>>,
     extcodecopy_gadget: Box<ExtcodecopyGadget<F>>,
-    // gas_gadget: Box<GasGadget<F>>,
+    gas_gadget: Box<GasGadget<F>>,
     gasprice_gadget: Box<GasPriceGadget<F>>,
-    // iszero_gadget: Box<IsZeroGadget<F>>,
-    // jump_gadget: Box<JumpGadget<F>>,
-    // jumpdest_gadget: Box<JumpdestGadget<F>>,
-    // jumpi_gadget: Box<JumpiGadget<F>>,
-    // log_gadget: Box<LogGadget<F>>,
-    // memory_gadget: Box<MemoryGadget<F>>,
-    // msize_gadget: Box<MsizeGadget<F>>,
-    // mul_div_mod_gadget: Box<MulDivModGadget<F>>,
-    // mulmod_gadget: Box<MulModGadget<F>>,
-    // not_gadget: Box<NotGadget<F>>,
+    iszero_gadget: Box<IsZeroGadget<F>>,
+    jump_gadget: Box<JumpGadget<F>>,
+    jumpdest_gadget: Box<JumpdestGadget<F>>,
+    jumpi_gadget: Box<JumpiGadget<F>>,
+    log_gadget: Box<LogGadget<F>>,
+    memory_gadget: Box<MemoryGadget<F>>,
+    msize_gadget: Box<MsizeGadget<F>>,
+    mul_div_mod_gadget: Box<MulDivModGadget<F>>,
+    mulmod_gadget: Box<MulModGadget<F>>,
+    not_gadget: Box<NotGadget<F>>,
     origin_gadget: Box<OriginGadget<F>>,
-    // pc_gadget: Box<PcGadget<F>>,
-    // pop_gadget: Box<PopGadget<F>>,
-    // push_gadget: Box<PushGadget<F>>,
+    pc_gadget: Box<PcGadget<F>>,
+    pop_gadget: Box<PopGadget<F>>,
+    push_gadget: Box<PushGadget<F>>,
     return_revert_gadget: Box<ReturnRevertGadget<F>>,
-    // sar_gadget: Box<SarGadget<F>>,
-    // sdiv_smod_gadget: Box<SignedDivModGadget<F>>,
+    sar_gadget: Box<SarGadget<F>>,
+    sdiv_smod_gadget: Box<SignedDivModGadget<F>>,
     selfbalance_gadget: Box<SelfbalanceGadget<F>>,
-    // sha3_gadget: Box<Sha3Gadget<F>>,
-    // shl_shr_gadget: Box<ShlShrGadget<F>>,
-    // returndatasize_gadget: Box<ReturnDataSizeGadget<F>>,
-    // returndatacopy_gadget: Box<ReturnDataCopyGadget<F>>,
-    // create_gadget: Box<DummyGadget<F, 3, 1, { ExecutionState::CREATE }>>,
-    // create2_gadget: Box<DummyGadget<F, 4, 1, { ExecutionState::CREATE2 }>>,
-    // selfdestruct_gadget: Box<DummyGadget<F, 1, 0, { ExecutionState::SELFDESTRUCT }>>,
-    // signed_comparator_gadget: Box<SignedComparatorGadget<F>>,
-    // signextend_gadget: Box<SignextendGadget<F>>,
-    // sload_gadget: Box<SloadGadget<F>>,
-    // sstore_gadget: Box<SstoreGadget<F>>,
-    // stop_gadget: Box<StopGadget<F>>,
-    // swap_gadget: Box<SwapGadget<F>>,
-    // blockhash_gadget: Box<BlockHashGadget<F>>,
-    // block_ctx_u64_gadget: Box<BlockCtxU64Gadget<F>>,
-    // block_ctx_u160_gadget: Box<BlockCtxU160Gadget<F>>,
-    // block_ctx_u256_gadget: Box<BlockCtxU256Gadget<F>>,
+    sha3_gadget: Box<Sha3Gadget<F>>,
+    shl_shr_gadget: Box<ShlShrGadget<F>>,
+    returndatasize_gadget: Box<ReturnDataSizeGadget<F>>,
+    returndatacopy_gadget: Box<ReturnDataCopyGadget<F>>,
+    create_gadget: Box<CreateGadget<F, false, { ExecutionState::CREATE }>>,
+    create2_gadget: Box<CreateGadget<F, true, { ExecutionState::CREATE2 }>>,
+    #[cfg(not(feature = "scroll"))]
+    selfdestruct_gadget: Box<DummyGadget<F, 1, 0, { ExecutionState::SELFDESTRUCT }>>,
+    signed_comparator_gadget: Box<SignedComparatorGadget<F>>,
+    signextend_gadget: Box<SignextendGadget<F>>,
+    sload_gadget: Box<SloadGadget<F>>,
+    sstore_gadget: Box<SstoreGadget<F>>,
+    stop_gadget: Box<StopGadget<F>>,
+    swap_gadget: Box<SwapGadget<F>>,
+    blockhash_gadget: Box<BlockHashGadget<F>>,
+    block_ctx_u64_gadget: Box<BlockCtxU64Gadget<F>>,
+    block_ctx_u160_gadget: Box<BlockCtxU160Gadget<F>>,
+    block_ctx_u256_gadget: Box<BlockCtxU256Gadget<F>>,
     // error gadgets
     error_oog_call: Box<ErrorOOGCallGadget<F>>,
     error_oog_constant: Box<ErrorOOGConstantGadget<F>>,
     error_oog_exp: Box<ErrorOOGExpGadget<F>>,
+    error_oog_memory_copy: Box<ErrorOOGMemoryCopyGadget<F>>,
     error_oog_sload_sstore: Box<ErrorOOGSloadSstoreGadget<F>>,
-    error_oog_static_memory_gadget: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasStaticMemoryExpansion }>>,
+    error_oog_static_memory_gadget: Box<ErrorOOGStaticMemoryGadget<F>>,
     error_stack: Box<ErrorStackGadget<F>>,
     error_write_protection: Box<ErrorWriteProtectionGadget<F>>,
-    error_oog_dynamic_memory_gadget: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasDynamicMemoryExpansion }>>,
+    error_oog_dynamic_memory_gadget: Box<ErrorOOGDynamicMemoryGadget<F>>,
     error_oog_log: Box<ErrorOOGLogGadget<F>>,
-    error_oog_memory_copy: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasMemoryCopy }>>,
-    error_oog_account_access:
-        Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasAccountAccess }>>,
-    error_oog_sha3: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasSHA3 }>>,
-    error_oog_ext_codecopy: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasEXTCODECOPY }>>,
-    error_oog_create2: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasCREATE2 }>>,
+    error_oog_account_access: Box<ErrorOOGAccountAccessGadget<F>>,
+    error_oog_sha3: Box<ErrorOOGSha3Gadget<F>>,
+    error_oog_create2: Box<ErrorOOGCreate2Gadget<F>>,
+    error_code_store: Box<ErrorCodeStoreGadget<F>>,
+    #[cfg(not(feature = "scroll"))]
     error_oog_self_destruct:
         Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasSELFDESTRUCT }>>,
-    error_oog_code_store: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasCodeStore }>>,
-    error_insufficient_balance:
-        Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorInsufficientBalance }>>,
     error_invalid_jump: Box<ErrorInvalidJumpGadget<F>>,
     error_invalid_opcode: Box<ErrorInvalidOpcodeGadget<F>>,
-    error_depth: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorDepth }>>,
-    error_contract_address_collision:
-        Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorContractAddressCollision }>>,
-    error_invalid_creation_code:
-        Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorInvalidCreationCode }>>,
+    error_invalid_creation_code: Box<ErrorInvalidCreationCodeGadget<F>>,
+    error_precompile_failed: Box<ErrorPrecompileFailedGadget<F>>,
     error_return_data_out_of_bound: Box<ErrorReturnDataOutOfBoundGadget<F>>,
 }
 
@@ -446,64 +522,68 @@ impl<F: Field> ExecutionConfig<F> {
             // internal states
             begin_tx_gadget: configure_gadget!(),
             end_block_gadget: configure_gadget!(),
+            end_inner_block_gadget: configure_gadget!(),
             end_tx_gadget: configure_gadget!(),
             // opcode gadgets
-            // addmod_gadget: configure_gadget!(),
-            // bitwise_gadget: configure_gadget!(),
-            // byte_gadget: configure_gadget!(),
+            add_sub_gadget: configure_gadget!(),
+            addmod_gadget: configure_gadget!(),
+            bitwise_gadget: configure_gadget!(),
+            byte_gadget: configure_gadget!(),
             call_op_gadget: configure_gadget!(),
-            // call_value_gadget: configure_gadget!(),
-            // calldatacopy_gadget: configure_gadget!(),
-            // calldataload_gadget: configure_gadget!(),
-            // calldatasize_gadget: configure_gadget!(),
-            caller_gadget: configure_gadget!(),
             call_value_gadget: configure_gadget!(),
+            calldatacopy_gadget: configure_gadget!(),
+            calldataload_gadget: configure_gadget!(),
+            calldatasize_gadget: configure_gadget!(),
+            caller_gadget: configure_gadget!(),
             chainid_gadget: configure_gadget!(),
             codecopy_gadget: configure_gadget!(),
             codesize_gadget: configure_gadget!(),
-            // comparator_gadget: configure_gadget!(),
-            // dup_gadget: configure_gadget!(),
-            // extcodehash_gadget: configure_gadget!(),
+            comparator_gadget: configure_gadget!(),
+            dup_gadget: configure_gadget!(),
+            extcodehash_gadget: configure_gadget!(),
             extcodesize_gadget: configure_gadget!(),
-            // gas_gadget: configure_gadget!(),
+            gas_gadget: configure_gadget!(),
             gasprice_gadget: configure_gadget!(),
-            // iszero_gadget: configure_gadget!(),
-            // jump_gadget: configure_gadget!(),
-            // jumpdest_gadget: configure_gadget!(),
-            // jumpi_gadget: configure_gadget!(),
-            // log_gadget: configure_gadget!(),
-            // memory_gadget: configure_gadget!(),
-            // msize_gadget: configure_gadget!(),
-            // mul_div_mod_gadget: configure_gadget!(),
-            // mulmod_gadget: configure_gadget!(),
-            // not_gadget: configure_gadget!(),
+            iszero_gadget: configure_gadget!(),
+            jump_gadget: configure_gadget!(),
+            jumpdest_gadget: configure_gadget!(),
+            jumpi_gadget: configure_gadget!(),
+            log_gadget: configure_gadget!(),
+            memory_gadget: configure_gadget!(),
+            msize_gadget: configure_gadget!(),
+            mul_div_mod_gadget: configure_gadget!(),
+            mulmod_gadget: configure_gadget!(),
+            not_gadget: configure_gadget!(),
             origin_gadget: configure_gadget!(),
-            // pc_gadget: configure_gadget!(),
+            pc_gadget: configure_gadget!(),
+            pop_gadget: configure_gadget!(),
+            push_gadget: configure_gadget!(),
             return_revert_gadget: configure_gadget!(),
-            // sdiv_smod_gadget: configure_gadget!(),
+            sdiv_smod_gadget: configure_gadget!(),
             selfbalance_gadget: configure_gadget!(),
-            // sha3_gadget: configure_gadget!(),
+            sha3_gadget: configure_gadget!(),
             address_gadget: configure_gadget!(),
             balance_gadget: configure_gadget!(),
-            // blockhash_gadget: configure_gadget!(),
-            // exp_gadget: configure_gadget!(),
-            // sar_gadget: configure_gadget!(),
+            blockhash_gadget: configure_gadget!(),
+            exp_gadget: configure_gadget!(),
+            sar_gadget: configure_gadget!(),
             extcodecopy_gadget: configure_gadget!(),
-            // returndatasize_gadget: configure_gadget!(),
-            // returndatacopy_gadget: configure_gadget!(),
-            // create_gadget: configure_gadget!(),
-            // create2_gadget: configure_gadget!(),
-            // selfdestruct_gadget: configure_gadget!(),
-            // shl_shr_gadget: configure_gadget!(),
-            // signed_comparator_gadget: configure_gadget!(),
-            // signextend_gadget: configure_gadget!(),
-            // sload_gadget: configure_gadget!(),
-            // sstore_gadget: configure_gadget!(),
-            // stop_gadget: configure_gadget!(),
-            // swap_gadget: configure_gadget!(),
-            // block_ctx_u64_gadget: configure_gadget!(),
-            // block_ctx_u160_gadget: configure_gadget!(),
-            // block_ctx_u256_gadget: configure_gadget!(),
+            returndatasize_gadget: configure_gadget!(),
+            returndatacopy_gadget: configure_gadget!(),
+            create_gadget: configure_gadget!(),
+            create2_gadget: configure_gadget!(),
+            #[cfg(not(feature = "scroll"))]
+            selfdestruct_gadget: configure_gadget!(),
+            shl_shr_gadget: configure_gadget!(),
+            signed_comparator_gadget: configure_gadget!(),
+            signextend_gadget: configure_gadget!(),
+            sload_gadget: configure_gadget!(),
+            sstore_gadget: configure_gadget!(),
+            stop_gadget: configure_gadget!(),
+            swap_gadget: configure_gadget!(),
+            block_ctx_u64_gadget: configure_gadget!(),
+            block_ctx_u160_gadget: configure_gadget!(),
+            block_ctx_u256_gadget: configure_gadget!(),
             // error gadgets
             error_oog_constant: configure_gadget!(),
             error_oog_static_memory_gadget: configure_gadget!(),
@@ -515,20 +595,17 @@ impl<F: Field> ExecutionConfig<F> {
             error_oog_memory_copy: configure_gadget!(),
             error_oog_account_access: configure_gadget!(),
             error_oog_sha3: configure_gadget!(),
-            error_oog_ext_codecopy: configure_gadget!(),
             error_oog_exp: configure_gadget!(),
             error_oog_create2: configure_gadget!(),
+            #[cfg(not(feature = "scroll"))]
             error_oog_self_destruct: configure_gadget!(),
-            error_oog_code_store: configure_gadget!(),
-            error_insufficient_balance: configure_gadget!(),
+            error_code_store: configure_gadget!(),
             error_invalid_jump: configure_gadget!(),
             error_invalid_opcode: configure_gadget!(),
             error_write_protection: configure_gadget!(),
-            error_depth: configure_gadget!(),
-            error_contract_address_collision: configure_gadget!(),
             error_invalid_creation_code: configure_gadget!(),
             error_return_data_out_of_bound: configure_gadget!(),
-
+            error_precompile_failed: configure_gadget!(),
             // step and presets
             step: step_curr,
             height_map,
@@ -576,27 +653,27 @@ impl<F: Field> ExecutionConfig<F> {
         // height
         let height = {
             let dummy_step_next = Step::new(meta, advices, MAX_STEP_HEIGHT, true);
-            let mut cb = ConstraintBuilder::new(
+            let mut cb = EVMConstraintBuilder::new(
                 step_curr.clone(),
                 dummy_step_next,
                 challenges,
                 G::EXECUTION_STATE,
             );
-            G::configure_with_meta::<G>(&mut cb, meta);
+            G::configure(&mut cb);
             let (_, _, height) = cb.build();
             height
         };
 
         // Now actually configure the gadget with the correct minimal height
         let step_next = &Step::new(meta, advices, height, true);
-        let mut cb = ConstraintBuilder::new(
+        let mut cb = EVMConstraintBuilder::new(
             step_curr.clone(),
             step_next.clone(),
             challenges,
             G::EXECUTION_STATE,
         );
 
-        let gadget = G::configure_with_meta::<G>(&mut cb, meta);
+        let gadget = G::configure(&mut cb);
 
         Self::configure_gadget_impl(
             meta,
@@ -627,15 +704,15 @@ impl<F: Field> ExecutionConfig<F> {
         num_rows_until_next_step: Column<Advice>,
         q_step_first: Selector,
         q_step_last: Selector,
-        _step_curr: &Step<F>,
-        _step_next: &Step<F>,
+        step_curr: &Step<F>,
+        step_next: &Step<F>,
         height_map: &mut HashMap<ExecutionState, usize>,
         stored_expressions_map: &mut HashMap<ExecutionState, Vec<StoredExpression<F>>>,
         instrument: &mut Instrument,
         name: &'static str,
         execution_state: ExecutionState,
         height: usize,
-        mut cb: ConstraintBuilder<F>,
+        mut cb: EVMConstraintBuilder<F>,
     ) {
         // Enforce the step height for this opcode
         let num_rows_until_next_step_next = query_expression(meta, |meta| {
@@ -691,64 +768,103 @@ impl<F: Field> ExecutionConfig<F> {
         }
 
         // Enforce the state transitions for this opcode
-        // meta.create_gate("Constrain state machine transitions", |meta| {
-        //     let q_usable = meta.query_selector(q_usable);
-        //     let q_step = meta.query_advice(q_step, Rotation::cur());
-        //     let q_step_last = meta.query_selector(q_step_last);
-        //
-        //     // ExecutionState transition should be correct.
-        //     iter::empty()
-        //         .chain(
-        //             IntoIterator::into_iter([
-        //                 (
-        //                     "EndTx can only transit to BeginTx or EndBlock",
-        //                     ExecutionState::EndTx,
-        //                     vec![ExecutionState::BeginTx, ExecutionState::EndBlock],
-        //                 ),
-        //                 (
-        //                     "EndBlock can only transit to EndBlock",
-        //                     ExecutionState::EndBlock,
-        //                     vec![ExecutionState::EndBlock],
-        //                 ),
-        //             ])
-        //             .filter(move |(_, from, _)| *from == execution_state)
-        //             .map(|(_, _, to)| 1.expr() - step_next.execution_state_selector(to)),
-        //         )
-        //         .chain(
-        //             IntoIterator::into_iter([
-        //                 (
-        //                     "Only EndTx can transit to BeginTx",
-        //                     ExecutionState::BeginTx,
-        //                     vec![ExecutionState::EndTx],
-        //                 ),
-        //                 (
-        //                     "Only ExecutionState which halts or BeginTx can transit to EndTx",
-        //                     ExecutionState::EndTx,
-        //                     ExecutionState::iter()
-        //                         .filter(ExecutionState::halts)
-        //                         .chain(iter::once(ExecutionState::BeginTx))
-        //                         .collect(),
-        //                 ),
-        //                 (
-        //                     "Only EndTx or EndBlock can transit to EndBlock",
-        //                     ExecutionState::EndBlock,
-        //                     vec![ExecutionState::EndTx, ExecutionState::EndBlock],
-        //                 ),
-        //             ])
-        //             .filter(move |(_, _, from)| !from.contains(&execution_state))
-        //             .map(|(_, to, _)| step_next.execution_state_selector([to])),
-        //         )
-        //         // Accumulate all state transition checks.
-        //         // This can be done because all summed values are enforced to be boolean.
-        //         .reduce(|accum, poly| accum + poly)
-        //         .map(move |poly| {
-        //             q_usable.clone()
-        //                 * q_step.clone()
-        //                 * (1.expr() - q_step_last.clone())
-        //                 * step_curr.execution_state_selector([execution_state])
-        //                 * poly
-        //         })
-        // });
+        meta.create_gate("Constrain state machine transitions", |meta| {
+            let q_usable = meta.query_selector(q_usable);
+            let q_step = meta.query_advice(q_step, Rotation::cur());
+            let q_step_last = meta.query_selector(q_step_last);
+
+            // ExecutionState transition should be correct.
+            iter::empty()
+                .chain(
+                    IntoIterator::into_iter([
+                        (
+                            "EndTx can only transit to BeginTx or EndInnerBlock",
+                            ExecutionState::EndTx,
+                            vec![ExecutionState::BeginTx, ExecutionState::EndInnerBlock],
+                        ),
+                        (
+                            "EndInnerBlock can only transition to BeginTx, EndInnerBlock or EndBlock",
+                            ExecutionState::EndInnerBlock,
+                            vec![ExecutionState::BeginTx, ExecutionState::EndInnerBlock, ExecutionState::EndBlock],
+                        ),
+                        (
+                            "EndBlock can only transit to EndBlock",
+                            ExecutionState::EndBlock,
+                            vec![ExecutionState::EndBlock],
+                        ),
+                    ])
+                    .filter(move |(_, from, _)| *from == execution_state)
+                    .map(|(_, _, to)| 1.expr() - step_next.execution_state_selector(to)),
+                )
+                .chain(
+                    IntoIterator::into_iter([
+                        (
+                            "Only EndTx or EndInnerBlock can transit to BeginTx",
+                            ExecutionState::BeginTx,
+                            vec![ExecutionState::EndTx, ExecutionState::EndInnerBlock],
+                        ),
+                        (
+                            "Only ExecutionState which halts or BeginTx can transit to EndTx",
+                            ExecutionState::EndTx,
+                            ExecutionState::iter()
+                                .filter(ExecutionState::halts)
+                                .chain(iter::once(ExecutionState::BeginTx))
+                                .collect(),
+                        ),
+                        (
+                            "Only EndInnerBlock or EndBlock can transit to EndBlock",
+                            ExecutionState::EndBlock,
+                            vec![ExecutionState::EndInnerBlock, ExecutionState::EndBlock],
+                        ),
+                        (
+                            "Only EndTx or EndInnerBlock can transit to EndInnerBlock",
+                            ExecutionState::EndInnerBlock,
+                            vec![ExecutionState::EndTx, ExecutionState::EndInnerBlock],
+                        ),
+                    ])
+                    .filter(move |(_, _, from)| !from.contains(&execution_state))
+                    .map(|(_, to, _)| step_next.execution_state_selector([to])),
+                )
+                .chain(
+                    IntoIterator::into_iter([
+                        (
+                            "EndInnerBlock -> BeginTx/EndInnerBlock: block number increases by one",
+                            ExecutionState::EndInnerBlock,
+                            vec![ExecutionState::BeginTx, ExecutionState::EndInnerBlock],
+                            step_next.state.block_number.expr() - step_curr.state.block_number.expr() - 1.expr(),
+                        ),
+                        (
+                            "EndInnerBlock -> EndBlock: block number does not change",
+                            ExecutionState::EndInnerBlock,
+                            vec![ExecutionState::EndBlock],
+                            step_next.state.block_number.expr() - step_curr.state.block_number.expr(),
+                        ),
+                    ])
+                    .filter(move |(_, from, _, _)| *from == execution_state)
+                    .map(|(_, _, to, expr)| step_next.execution_state_selector(to) * expr)
+                )
+                .chain(
+                    IntoIterator::into_iter([
+                        (
+                            "step_cur != EndInnerBlock: block number does not change",
+                            ExecutionState::EndInnerBlock,
+                            step_next.state.block_number.expr() - step_curr.state.block_number.expr(),
+                        ),
+                    ])
+                    .filter(move |(_, from, _)| *from != execution_state)
+                    .map(|(_, _, expr)| expr)
+                )
+                // Accumulate all state transition checks.
+                // This can be done because all summed values are enforced to be boolean.
+                .reduce(|accum, poly| accum + poly)
+                .map(move |poly| {
+                    q_usable.clone()
+                        * q_step.clone()
+                        * (1.expr() - q_step_last.clone())
+                        * step_curr.execution_state_selector([execution_state])
+                        * poly
+                })
+        });
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -798,6 +914,23 @@ impl<F: Field> ExecutionConfig<F> {
         }
     }
 
+    pub fn get_num_rows_required(&self, block: &Block<F>) -> usize {
+        // Start at 1 so we can be sure there is an unused `next` row available
+        let mut num_rows = 1;
+        let evm_rows = block.circuits_params.max_evm_rows;
+        if evm_rows == 0 {
+            for transaction in &block.txs {
+                for step in &transaction.steps {
+                    num_rows += step.execution_state.get_step_height();
+                }
+            }
+            num_rows += 1; // EndBlock
+        } else {
+            num_rows = block.circuits_params.max_evm_rows;
+        }
+        num_rows
+    }
+
     /// Assign columns related to step counter
     fn assign_q_step(
         &self,
@@ -844,10 +977,22 @@ impl<F: Field> ExecutionConfig<F> {
         layouter: &mut impl Layouter<F>,
         block: &Block<F>,
         challenges: &Challenges<Value<F>>,
-    ) -> Result<(), Error> {
+    ) -> Result<EvmCircuitExports<Assigned<F>>, Error> {
+        let mut is_first_time = true;
+
         layouter.assign_region(
             || "Execution step",
             |mut region| {
+                if is_first_time {
+                    is_first_time = false;
+                    region.assign_advice(
+                        || "step selector",
+                        self.q_step,
+                        self.get_num_rows_required(block) - 1,
+                        || Value::known(F::zero()),
+                    )?;
+                    return Ok(());
+                }
                 let mut offset = 0;
 
                 // Annotate the EVMCircuit columns within it's single region.
@@ -888,6 +1033,39 @@ impl<F: Field> ExecutionConfig<F> {
                     let height = step.execution_state.get_step_height();
 
                     // Assign the step witness
+                    if step.execution_state == ExecutionState::EndTx {
+                        let mut tx = transaction.clone();
+                        tx.call_data.clear();
+                        tx.calls.clear();
+                        tx.steps.clear();
+                        tx.rlp_signed.clear();
+                        tx.rlp_unsigned.clear();
+                        let total_gas = {
+                            let gas_used = tx.gas - step.gas_left;
+                            let current_cumulative_gas_used: u64 = if tx.id == 1 {
+                                0
+                            } else {
+                                // first transaction needs TxReceiptFieldTag::COUNT(3) lookups
+                                // to tx receipt,
+                                // while later transactions need 4 (with one extra cumulative
+                                // gas read) lookups
+                                let rw = &block.rws[(
+                                    RwTableTag::TxReceipt,
+                                    (tx.id - 2) * (TxReceiptFieldTag::COUNT + 1) + 2,
+                                )];
+                                rw.receipt_value()
+                            };
+                            current_cumulative_gas_used + gas_used
+                        };
+                        log::info!(
+                            "offset {} tx_num {} total_gas {} assign last step {:?} of tx {:?}",
+                            offset,
+                            tx.id,
+                            total_gas,
+                            step,
+                            tx
+                        );
+                    }
                     self.assign_exec_step(
                         &mut region,
                         offset,
@@ -908,22 +1086,23 @@ impl<F: Field> ExecutionConfig<F> {
 
                 // part2: assign non-last EndBlock steps when padding needed
                 if !no_padding {
-                    if offset >= evm_rows {
-                        log::error!(
-                            "evm circuit offset larger than padding: {} > {}",
-                            offset,
-                            evm_rows
-                        );
-                        return Err(Error::Synthesis);
-                    }
                     let height = ExecutionState::EndBlock.get_step_height();
                     debug_assert_eq!(height, 1);
-                    let last_row = evm_rows - 1;
+                    // 1 for EndBlock(last), 1 for "part 4" cells
+                    let last_row = evm_rows - 2;
                     log::trace!(
                         "assign non-last EndBlock in range [{},{})",
                         offset,
                         last_row
                     );
+                    if offset > last_row {
+                        log::error!(
+                            "evm circuit row not enough, offset: {}, max_evm_rows: {}",
+                            offset,
+                            evm_rows
+                        );
+                        return Err(Error::Synthesis);
+                    }
                     self.assign_same_exec_step_in_range(
                         &mut region,
                         offset,
@@ -977,9 +1156,32 @@ impl<F: Field> ExecutionConfig<F> {
                     || Value::known(F::zero()),
                 )?;
 
+                log::debug!("assign for region done at offset {}", offset);
                 Ok(())
             },
-        )
+        )?;
+
+        log::debug!("assign_block done");
+
+        let final_withdraw_root_cell = self
+            .end_block_gadget
+            .withdraw_root_assigned
+            .borrow()
+            .expect("withdraw_root cell should has been assigned");
+
+        // sanity check
+        let evm_rows = block.circuits_params.max_evm_rows;
+        if evm_rows >= 2 {
+            assert_eq!(final_withdraw_root_cell.row_offset, evm_rows - 2);
+        }
+
+        let withdraw_root_rlc = challenges
+            .evm_word()
+            .map(|r| rlc::value(&block.withdraw_root.to_le_bytes(), r));
+
+        Ok(EvmCircuitExports {
+            withdraw_root: (final_withdraw_root_cell, withdraw_root_rlc.into()),
+        })
     }
 
     fn annotate_circuit(&self, region: &mut Region<F>) {
@@ -1043,7 +1245,7 @@ impl<F: Field> ExecutionConfig<F> {
             1,
             offset_begin,
         );
-        self.assign_exec_step_int(region, offset_begin, block, transaction, call, step)?;
+        self.assign_exec_step_int(region, offset_begin, block, transaction, call, step, false)?;
 
         region.replicate_assignment_for_range(
             || format!("repeat {:?} rows", step.execution_state),
@@ -1067,15 +1269,6 @@ impl<F: Field> ExecutionConfig<F> {
         next: Option<(&Transaction, &Call, &ExecStep)>,
         challenges: &Challenges<Value<F>>,
     ) -> Result<(), Error> {
-        if !matches!(step.execution_state, ExecutionState::EndBlock) {
-            log::trace!(
-                "assign_exec_step offset: {} state {:?} step: {:?} call: {:?}",
-                offset,
-                step.execution_state,
-                step,
-                call
-            );
-        }
         // Make the region large enough for the current step and the next step.
         // The next step's next step may also be accessed, so make the region large
         // enough for 3 steps.
@@ -1099,12 +1292,14 @@ impl<F: Field> ExecutionConfig<F> {
                 transaction_next,
                 call_next,
                 step_next,
+                false,
             )?;
         }
 
-        self.assign_exec_step_int(region, offset, block, transaction, call, step)
+        self.assign_exec_step_int(region, offset, block, transaction, call, step, true)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn assign_exec_step_int(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
@@ -1113,9 +1308,23 @@ impl<F: Field> ExecutionConfig<F> {
         transaction: &Transaction,
         call: &Call,
         step: &ExecStep,
+        verbose: bool,
     ) -> Result<(), Error> {
+        if verbose
+            && !(matches!(step.execution_state, ExecutionState::EndBlock)
+                && step.rw_indices.is_empty())
+        {
+            log::trace!(
+                "assign_exec_step offset: {} state {:?} step: {:?} call: {:?}",
+                offset,
+                step.execution_state,
+                step,
+                call
+            );
+        }
+
         self.step
-            .assign_exec_step(region, offset, block, call, step)?;
+            .assign_exec_step(region, offset, block, transaction, call, step)?;
 
         macro_rules! assign_exec_step {
             ($gadget:expr) => {
@@ -1127,65 +1336,72 @@ impl<F: Field> ExecutionConfig<F> {
             // internal states
             ExecutionState::BeginTx => assign_exec_step!(self.begin_tx_gadget),
             ExecutionState::EndTx => assign_exec_step!(self.end_tx_gadget),
+            ExecutionState::EndInnerBlock => assign_exec_step!(self.end_inner_block_gadget),
             ExecutionState::EndBlock => assign_exec_step!(self.end_block_gadget),
             // opcode
-            // ExecutionState::ADDMOD => assign_exec_step!(self.addmod_gadget),
+            ExecutionState::ADD_SUB => assign_exec_step!(self.add_sub_gadget),
+            ExecutionState::ADDMOD => assign_exec_step!(self.addmod_gadget),
             ExecutionState::ADDRESS => assign_exec_step!(self.address_gadget),
             ExecutionState::BALANCE => assign_exec_step!(self.balance_gadget),
-            // ExecutionState::BITWISE => assign_exec_step!(self.bitwise_gadget),
-            // ExecutionState::BYTE => assign_exec_step!(self.byte_gadget),
+            ExecutionState::BITWISE => assign_exec_step!(self.bitwise_gadget),
+            ExecutionState::BYTE => assign_exec_step!(self.byte_gadget),
             ExecutionState::CALL_OP => assign_exec_step!(self.call_op_gadget),
-            // ExecutionState::CALLDATACOPY => assign_exec_step!(self.calldatacopy_gadget),
-            // ExecutionState::CALLDATALOAD => assign_exec_step!(self.calldataload_gadget),
-            // ExecutionState::CALLDATASIZE => assign_exec_step!(self.calldatasize_gadget),
+            ExecutionState::CALLDATACOPY => assign_exec_step!(self.calldatacopy_gadget),
+            ExecutionState::CALLDATALOAD => assign_exec_step!(self.calldataload_gadget),
+            ExecutionState::CALLDATASIZE => assign_exec_step!(self.calldatasize_gadget),
             ExecutionState::CALLER => assign_exec_step!(self.caller_gadget),
             ExecutionState::CALLVALUE => assign_exec_step!(self.call_value_gadget),
             ExecutionState::CHAINID => assign_exec_step!(self.chainid_gadget),
             ExecutionState::CODECOPY => assign_exec_step!(self.codecopy_gadget),
             ExecutionState::CODESIZE => assign_exec_step!(self.codesize_gadget),
-            // ExecutionState::CMP => assign_exec_step!(self.comparator_gadget),
-            // ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
-            // ExecutionState::EXP => assign_exec_step!(self.exp_gadget),
-            // ExecutionState::EXTCODEHASH => assign_exec_step!(self.extcodehash_gadget),
+            ExecutionState::CMP => assign_exec_step!(self.comparator_gadget),
+            ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
+            ExecutionState::EXP => assign_exec_step!(self.exp_gadget),
+            ExecutionState::EXTCODEHASH => assign_exec_step!(self.extcodehash_gadget),
             ExecutionState::EXTCODESIZE => assign_exec_step!(self.extcodesize_gadget),
-            // ExecutionState::GAS => assign_exec_step!(self.gas_gadget),
+            ExecutionState::GAS => assign_exec_step!(self.gas_gadget),
             ExecutionState::GASPRICE => assign_exec_step!(self.gasprice_gadget),
-            // ExecutionState::ISZERO => assign_exec_step!(self.iszero_gadget),
-            // ExecutionState::JUMP => assign_exec_step!(self.jump_gadget),
-            // ExecutionState::JUMPDEST => assign_exec_step!(self.jumpdest_gadget),
-            // ExecutionState::JUMPI => assign_exec_step!(self.jumpi_gadget),
-            // ExecutionState::LOG => assign_exec_step!(self.log_gadget),
-            // ExecutionState::MEMORY => assign_exec_step!(self.memory_gadget),
-            // ExecutionState::MSIZE => assign_exec_step!(self.msize_gadget),
-            // ExecutionState::MUL_DIV_MOD => assign_exec_step!(self.mul_div_mod_gadget),
-            // ExecutionState::MULMOD => assign_exec_step!(self.mulmod_gadget),
-            // ExecutionState::NOT => assign_exec_step!(self.not_gadget),
+            ExecutionState::ISZERO => assign_exec_step!(self.iszero_gadget),
+            ExecutionState::JUMP => assign_exec_step!(self.jump_gadget),
+            ExecutionState::JUMPDEST => assign_exec_step!(self.jumpdest_gadget),
+            ExecutionState::JUMPI => assign_exec_step!(self.jumpi_gadget),
+            ExecutionState::LOG => assign_exec_step!(self.log_gadget),
+            ExecutionState::MEMORY => assign_exec_step!(self.memory_gadget),
+            ExecutionState::MSIZE => assign_exec_step!(self.msize_gadget),
+            ExecutionState::MUL_DIV_MOD => assign_exec_step!(self.mul_div_mod_gadget),
+            ExecutionState::MULMOD => assign_exec_step!(self.mulmod_gadget),
+            ExecutionState::NOT => assign_exec_step!(self.not_gadget),
             ExecutionState::ORIGIN => assign_exec_step!(self.origin_gadget),
-            // ExecutionState::PC => assign_exec_step!(self.pc_gadget),
+            ExecutionState::PC => assign_exec_step!(self.pc_gadget),
+            ExecutionState::POP => assign_exec_step!(self.pop_gadget),
+            ExecutionState::PUSH => assign_exec_step!(self.push_gadget),
             ExecutionState::RETURN_REVERT => assign_exec_step!(self.return_revert_gadget),
-            // ExecutionState::RETURNDATASIZE => assign_exec_step!(self.returndatasize_gadget),
-            // ExecutionState::RETURNDATACOPY => assign_exec_step!(self.returndatacopy_gadget),
-            // ExecutionState::SAR => assign_exec_step!(self.sar_gadget),
-            // ExecutionState::SCMP => assign_exec_step!(self.signed_comparator_gadget),
-            // ExecutionState::SDIV_SMOD => assign_exec_step!(self.sdiv_smod_gadget),
-            // ExecutionState::BLOCKCTXU64 => assign_exec_step!(self.block_ctx_u64_gadget),
-            // ExecutionState::BLOCKCTXU160 => assign_exec_step!(self.block_ctx_u160_gadget),
-            // ExecutionState::BLOCKCTXU256 => assign_exec_step!(self.block_ctx_u256_gadget),
-            // ExecutionState::BLOCKHASH => assign_exec_step!(self.blockhash_gadget),
+            ExecutionState::RETURNDATASIZE => assign_exec_step!(self.returndatasize_gadget),
+            ExecutionState::RETURNDATACOPY => assign_exec_step!(self.returndatacopy_gadget),
+            ExecutionState::SAR => assign_exec_step!(self.sar_gadget),
+            ExecutionState::SCMP => assign_exec_step!(self.signed_comparator_gadget),
+            ExecutionState::SDIV_SMOD => assign_exec_step!(self.sdiv_smod_gadget),
+            ExecutionState::BLOCKCTXU64 => assign_exec_step!(self.block_ctx_u64_gadget),
+            ExecutionState::BLOCKCTXU160 => assign_exec_step!(self.block_ctx_u160_gadget),
+            ExecutionState::BLOCKCTXU256 => assign_exec_step!(self.block_ctx_u256_gadget),
+            ExecutionState::BLOCKHASH => assign_exec_step!(self.blockhash_gadget),
             ExecutionState::SELFBALANCE => assign_exec_step!(self.selfbalance_gadget),
+            ExecutionState::CREATE => assign_exec_step!(self.create_gadget),
+            ExecutionState::CREATE2 => assign_exec_step!(self.create2_gadget),
             // dummy gadgets
             ExecutionState::EXTCODECOPY => assign_exec_step!(self.extcodecopy_gadget),
-            // ExecutionState::CREATE => assign_exec_step!(self.create_gadget),
-            // ExecutionState::CREATE2 => assign_exec_step!(self.create2_gadget),
-            // ExecutionState::SELFDESTRUCT => assign_exec_step!(self.selfdestruct_gadget),
+            ExecutionState::SELFDESTRUCT => {
+                #[cfg(not(feature = "scroll"))]
+                assign_exec_step!(self.selfdestruct_gadget)
+            }
             // end of dummy gadgets
-            // ExecutionState::SHA3 => assign_exec_step!(self.sha3_gadget),
-            // ExecutionState::SHL_SHR => assign_exec_step!(self.shl_shr_gadget),
-            // ExecutionState::SIGNEXTEND => assign_exec_step!(self.signextend_gadget),
-            // ExecutionState::SLOAD => assign_exec_step!(self.sload_gadget),
-            // ExecutionState::SSTORE => assign_exec_step!(self.sstore_gadget),
-            // ExecutionState::STOP => assign_exec_step!(self.stop_gadget),
-            // ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
+            ExecutionState::SHA3 => assign_exec_step!(self.sha3_gadget),
+            ExecutionState::SHL_SHR => assign_exec_step!(self.shl_shr_gadget),
+            ExecutionState::SIGNEXTEND => assign_exec_step!(self.signextend_gadget),
+            ExecutionState::SLOAD => assign_exec_step!(self.sload_gadget),
+            ExecutionState::SSTORE => assign_exec_step!(self.sstore_gadget),
+            ExecutionState::STOP => assign_exec_step!(self.stop_gadget),
+            ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
             // dummy errors
             ExecutionState::ErrorOutOfGasStaticMemoryExpansion => {
                 assign_exec_step!(self.error_oog_static_memory_gadget)
@@ -1194,7 +1410,7 @@ impl<F: Field> ExecutionConfig<F> {
                 assign_exec_step!(self.error_oog_constant)
             }
             ExecutionState::ErrorOutOfGasCall => {
-                // assign_exec_step!(self.error_oog_call)
+                assign_exec_step!(self.error_oog_call)
             }
             ExecutionState::ErrorOutOfGasDynamicMemoryExpansion => {
                 assign_exec_step!(self.error_oog_dynamic_memory_gadget)
@@ -1214,9 +1430,6 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::ErrorOutOfGasSHA3 => {
                 assign_exec_step!(self.error_oog_sha3)
             }
-            ExecutionState::ErrorOutOfGasEXTCODECOPY => {
-                assign_exec_step!(self.error_oog_ext_codecopy)
-            }
             ExecutionState::ErrorOutOfGasEXP => {
                 assign_exec_step!(self.error_oog_exp)
             }
@@ -1224,18 +1437,14 @@ impl<F: Field> ExecutionConfig<F> {
                 assign_exec_step!(self.error_oog_create2)
             }
             ExecutionState::ErrorOutOfGasSELFDESTRUCT => {
+                #[cfg(not(feature = "scroll"))]
                 assign_exec_step!(self.error_oog_self_destruct)
             }
-
-            ExecutionState::ErrorOutOfGasCodeStore => {
-                assign_exec_step!(self.error_oog_code_store)
+            ExecutionState::ErrorCodeStore => {
+                assign_exec_step!(self.error_code_store)
             }
             ExecutionState::ErrorStack => {
                 assign_exec_step!(self.error_stack)
-            }
-
-            ExecutionState::ErrorInsufficientBalance => {
-                assign_exec_step!(self.error_insufficient_balance)
             }
             ExecutionState::ErrorInvalidJump => {
                 assign_exec_step!(self.error_invalid_jump)
@@ -1246,34 +1455,32 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::ErrorWriteProtection => {
                 assign_exec_step!(self.error_write_protection)
             }
-            ExecutionState::ErrorDepth => {
-                assign_exec_step!(self.error_depth)
-            }
-            ExecutionState::ErrorContractAddressCollision => {
-                assign_exec_step!(self.error_contract_address_collision)
-            }
             ExecutionState::ErrorInvalidCreationCode => {
                 assign_exec_step!(self.error_invalid_creation_code)
             }
             ExecutionState::ErrorReturnDataOutOfBound => {
                 assign_exec_step!(self.error_return_data_out_of_bound)
             }
-
-            _ => evm_unimplemented!("unimplemented ExecutionState: {:?}", step.execution_state),
+            ExecutionState::ErrorPrecompileFailed => {
+                assign_exec_step!(self.error_precompile_failed)
+            }
         }
 
         // Fill in the witness values for stored expressions
         let assigned_stored_expressions = self.assign_stored_expressions(region, offset, step)?;
 
-        // enable with `RUST_LOG=debug`
-        if log::log_enabled!(log::Level::Debug) {
+        // enable with `CHECK_RW_LOOKUP=true`
+        if *CHECK_RW_LOOKUP && verbose {
             let is_padding_step = matches!(step.execution_state, ExecutionState::EndBlock)
                 && step.rw_indices.is_empty();
             if !is_padding_step {
                 // expensive function call
                 Self::check_rw_lookup(
                     &assigned_stored_expressions,
+                    offset,
                     step,
+                    call,
+                    transaction,
                     block,
                     region.challenges(),
                 );
@@ -1306,7 +1513,10 @@ impl<F: Field> ExecutionConfig<F> {
 
     fn check_rw_lookup(
         assigned_stored_expressions: &[(String, F)],
+        offset: usize,
         step: &ExecStep,
+        call: &Call,
+        transaction: &Transaction,
         block: &Block<F>,
         challenges: &Challenges<Value<F>>,
     ) {
@@ -1343,25 +1553,60 @@ impl<F: Field> ExecutionConfig<F> {
 
         // Check that every rw_lookup assigned from the execution steps in the EVM
         // Circuit is in the set of rw operations generated by the step.
-        for (idx, value) in assigned_rw_values.iter().enumerate() {
-            if !rlc_assignments.contains(&value.1) {
-                log::error!("rw lookup error: idx: {}, name: {}, step: {:?}", idx, value.0, step);
+        let mut log_ctx_done = false;
+        let mut log_ctx = |assigned_rw_values: &[(String, F)]| {
+            if log_ctx_done {
+                return;
             }
-        }
-        // Check that the number of rw operations generated from the bus-mapping
-        // correspond to the number of assigned rw lookups by the EVM Circuit
-        // plus the number of rw lookups done by the copy circuit.
-        if step.rw_indices.len() != assigned_rw_values.len() + step.copy_rw_counter_delta as usize {
+            log_ctx_done = true;
+            log::error!("assigned_rw_values {:?}", assigned_rw_values);
+            for (idx, rw_idx) in step.rw_indices.iter().enumerate() {
+                log::error!(
+                    "{}th rw of step: {:?} rlc {:?}",
+                    idx,
+                    block.rws[*rw_idx],
+                    block.rws[*rw_idx]
+                        .table_assignment_aux(evm_randomness)
+                        .rlc(lookup_randomness)
+                );
+            }
+            let mut tx = transaction.clone();
+            tx.call_data.clear();
+            tx.calls.clear();
+            tx.steps.clear();
             log::error!(
-                "step.rw_indices.len: {} != assigned_rw_values.len: {} + step.copy_rw_counter_delta: {} in step: {:?}",
+                "ctx: offset {} step {:?}. call: {:?}, tx: {:?}",
+                offset,
+                step,
+                call,
+                tx
+            );
+        };
+        for (idx, assigned_rw_value) in assigned_rw_values.iter().enumerate() {
+            let (_name, value) = assigned_rw_value;
+            if idx >= step.rw_indices.len() {
+                log_ctx(&assigned_rw_values);
+                panic!(
+                    "invalid rw len exp {} witness {}",
+                    assigned_rw_values.len(),
+                    step.rw_indices.len()
+                );
+            }
+            // Check that the number of rw operations generated from the bus-mapping
+            // correspond to the number of assigned rw lookups by the EVM Circuit
+            // plus the number of rw lookups done by the copy circuit.
+            if step.rw_indices.len()
+                != assigned_rw_values.len() + step.copy_rw_counter_delta as usize
+            {
+                log::error!(
+                "step.rw_indices.len: {} != assigned_rw_values.len: {} + step.copy_rw_counter_delta: {} in step: {:?}", 
                 step.rw_indices.len(),
                 assigned_rw_values.len(),
                 step.copy_rw_counter_delta,
                 step
             );
-        }
-        let mut rev_count = 0;
-        for (idx, assigned_rw_value) in assigned_rw_values.iter().enumerate() {
+            }
+            let mut rev_count = 0;
             let is_rev = if assigned_rw_value.0.contains(" with reversion") {
                 rev_count += 1;
                 true
@@ -1386,17 +1631,40 @@ impl<F: Field> ExecutionConfig<F> {
             let rw = block.rws[rw_idx];
             let table_assignments = rw.table_assignment_aux(evm_randomness);
             let rlc = table_assignments.rlc(lookup_randomness);
-            if rlc != assigned_rw_value.1 {
+
+            if !rlc_assignments.contains(value) {
+                log_ctx(&assigned_rw_values);
                 log::error!(
-                    "incorrect rw witness. lookup input name: \"{}\"\nassigned={:?}\nrlc     ={:?}\nrw index: {:?}, {}th rw of step {:?}, rw: {:?}",
-                    assigned_rw_value.0,
-                    assigned_rw_value.1,
+                    "incorrect rw witness. input_value {:?}, name \"{}\". table_value {:?}, table_assignments {:?}, rw {:?}, index {:?}, {}th rw of step",
+                    assigned_rw_values[idx].1,
+                    assigned_rw_values[idx].0,
                     rlc,
-                    rw_idx,
-                    idx,
-                    step.execution_state,
-                    rw);
+                    table_assignments,
+                    rw,
+                    rw_idx, idx);
+
+                // debug_assert_eq!(
+                //    rlc, assigned_rw_values[idx].1,
+                //    "left is witness, right is expression"
+                // );
             }
         }
+        // for (idx, assigned_rw_value) in assigned_rw_values.iter().enumerate()
+        // {     let rw_idx = step.rw_indices[idx];
+        //     let rw = block.rws[rw_idx];
+        //     let table_assignments =
+        // rw.table_assignment_aux(block.randomness);     let rlc =
+        // table_assignments.rlc(block.randomness);     if rlc !=
+        // assigned_rw_value.1 {         log::error!(
+        //             "incorrect rw witness. lookup input name:
+        // \"{}\"\n{:?}\nrw: {:?}, rw index: {:?}, {}th rw of step {:?}",
+        //             assigned_rw_value.0,
+        //             assigned_rw_value.1,
+        //             rw,
+        //             rw_idx,
+        //             idx,
+        //             step.execution_state);
+        //     }
+        // }
     }
 }

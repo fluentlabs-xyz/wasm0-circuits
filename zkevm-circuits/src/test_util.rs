@@ -1,15 +1,20 @@
 //! Testing utilities
 
 use crate::{
-    evm_circuit::{cached::EvmCircuitCached, EvmCircuit},
+    copy_circuit::CopyCircuit,
+    evm_circuit::EvmCircuit,
     state_circuit::StateCircuit,
-    util::SubCircuit,
+    util::{log2_ceil, SubCircuit},
     witness::{Block, Rw},
 };
-use bus_mapping::{circuit_input_builder::CircuitsParams, mocks::BlockData};
+use bus_mapping::{circuit_input_builder::CircuitsParams, mock::BlockData};
 use eth_types::geth_types::GethData;
 
-use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
+use halo2_proofs::{
+    circuit::Value,
+    dev::{unwrap_value, MockProver},
+    halo2curves::bn256::Fr,
+};
 use mock::TestContext;
 
 #[cfg(test)]
@@ -27,7 +32,7 @@ fn init_env_logger() {
 /// builder pattern provides functions that allow to pass different functions
 /// that the prover should execute when verifying the CTB correctness.
 ///
-/// The CTB also includes a mechanism to recieve calls that will modify the
+/// The CTB also includes a mechanism to receive calls that will modify the
 /// block produced from the [`TestContext`] and apply them before starting to
 /// compute the proof.
 ///
@@ -76,6 +81,7 @@ pub struct CircuitTestBuilder<const NACC: usize, const NTX: usize> {
     block: Option<Block<Fr>>,
     evm_checks: Box<dyn Fn(MockProver<Fr>, &Vec<usize>, &Vec<usize>)>,
     state_checks: Box<dyn Fn(MockProver<Fr>, &Vec<usize>, &Vec<usize>)>,
+    copy_checks: Box<dyn Fn(MockProver<Fr>, &Vec<usize>, &Vec<usize>)>,
     block_modifiers: Vec<Box<dyn Fn(&mut Block<Fr>)>>,
 }
 
@@ -87,16 +93,22 @@ impl<const NACC: usize, const NTX: usize> CircuitTestBuilder<NACC, NTX> {
             circuits_params: None,
             block: None,
             evm_checks: Box::new(|prover, gate_rows, lookup_rows| {
-                prover.assert_satisfied_at_rows_par(
+                assert_eq!(prover.verify_at_rows_par(
                     gate_rows.iter().cloned(),
                     lookup_rows.iter().cloned(),
-                )
+                ), Ok(()));
             }),
             state_checks: Box::new(|prover, gate_rows, lookup_rows| {
-                prover.assert_satisfied_at_rows_par(
+                assert_eq!(prover.verify_at_rows_par(
                     gate_rows.iter().cloned(),
                     lookup_rows.iter().cloned(),
-                )
+                ), Ok(()));
+            }),
+            copy_checks: Box::new(|prover, gate_rows, lookup_rows| {
+                assert_eq!(prover.verify_at_rows_par(
+                    gate_rows.iter().cloned(),
+                    lookup_rows.iter().cloned(),
+                ), Ok(()));
             }),
             block_modifiers: vec![],
         }
@@ -206,6 +218,7 @@ impl<const NACC: usize, const NTX: usize> CircuitTestBuilder<NACC, NTX> {
         let mut error_appear = false;
 
         // Run evm circuit test
+        #[cfg(all(feature = "disabled", test))]
         {
             let k = block.get_test_degree();
 
@@ -250,6 +263,7 @@ impl<const NACC: usize, const NTX: usize> CircuitTestBuilder<NACC, NTX> {
         } else {
             self.circuits_params.unwrap_or_default()
         };
+        log::debug!("params in CircuitTestBuilder: {:?}", params);
 
         let block: Block<Fr> = if self.block.is_some() {
             self.block.unwrap()
@@ -272,36 +286,57 @@ impl<const NACC: usize, const NTX: usize> CircuitTestBuilder<NACC, NTX> {
             panic!("No attribute to build a block was passed to the CircuitTestBuilder")
         };
 
+        const NUM_BLINDING_ROWS: usize = 64;
         // Run evm circuit test
         {
             let k = block.get_test_degree();
-
             let (active_gate_rows, active_lookup_rows) = EvmCircuit::<Fr>::get_active_rows(&block);
 
-            let circuit = EvmCircuitCached::get_test_cicuit_from_block(block.clone());
+            let circuit = EvmCircuit::get_test_cicuit_from_block(block.clone());
             let prover = MockProver::<Fr>::run(k, &circuit, vec![]).unwrap();
 
             self.evm_checks.as_ref()(prover, &active_gate_rows, &active_lookup_rows)
         }
 
         // Run state circuit test
-        // TODO: use randomness as one of the circuit public input, since randomness in
-        // state circuit and evm circuit must be same
         {
-            let state_circuit = StateCircuit::<Fr>::new(block.rws, params.max_rws);
+            let rows_needed = StateCircuit::<Fr>::min_num_rows_block(&block).1;
+            let k = log2_ceil(rows_needed + NUM_BLINDING_ROWS);
+            let state_circuit = StateCircuit::<Fr>::new(block.rws.clone(), params.max_rws);
             let instance = state_circuit.instance();
-            let prover = MockProver::<Fr>::run(18, &state_circuit, instance).unwrap();
+            let prover = MockProver::<Fr>::run(k, &state_circuit, instance).unwrap();
             // Skip verification of Start rows to accelerate testing
             let non_start_rows_len = state_circuit
                 .rows
                 .iter()
                 .filter(|rw| !matches!(rw, Rw::Start { .. }))
                 .count();
-            let rows = (params.max_rws - non_start_rows_len..params.max_rws)
-                .into_iter()
-                .collect();
+            let rows = (params.max_rws - non_start_rows_len..params.max_rws).collect();
 
             self.state_checks.as_ref()(prover, &rows, &rows);
         }
+
+        // Run copy circuit test
+        {
+            let (active_rows, max_rows) = CopyCircuit::<Fr>::min_num_rows_block(&block);
+            let k1 = block.get_test_degree();
+            let k2 = log2_ceil(max_rows + NUM_BLINDING_ROWS);
+            let k = k1.max(k2);
+            let copy_circuit = CopyCircuit::<Fr>::new_from_block(&block);
+            let instance = copy_circuit.instance();
+            let prover = MockProver::<Fr>::run(k, &copy_circuit, instance).unwrap();
+            let rows = (0..active_rows).collect();
+
+            self.copy_checks.as_ref()(prover, &rows, &rows);
+        }
+    }
+}
+
+/// Escape the type safety of Value in tests.
+pub fn escape_value<T>(v: Value<T>) -> Option<T> {
+    if v.is_none() {
+        None
+    } else {
+        Some(unwrap_value(v))
     }
 }

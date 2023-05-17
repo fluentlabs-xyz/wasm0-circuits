@@ -5,7 +5,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
             CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
@@ -18,6 +18,7 @@ use eth_types::{Field, ToLittleEndian, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
 use halo2_proofs::plonk::Error::Synthesis;
 use crate::evm_circuit::util::{RandomLinearCombination};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmGasPriceGadget<F> {
@@ -32,7 +33,7 @@ impl<F: Field> ExecutionGadget<F> for EvmGasPriceGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::GASPRICE;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         // Query gasprice value
         let gas_price = cb.query_word_rlc();
         let dest_offset = cb.query_cell();

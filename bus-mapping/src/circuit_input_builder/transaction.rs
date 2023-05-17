@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use eth_types::{evm_types::Memory, geth_types, Address, GethExecTrace, Signature, Word};
+use eth_types::{evm_types::Memory, geth_types, Address, GethExecTrace, Signature, Word, H256};
 use ethers_core::utils::get_contract_address;
 
 use crate::{
@@ -15,6 +15,8 @@ use super::{call::ReversionGroup, Call, CallContext, CallKind, CodeSource, ExecS
 #[derive(Debug, Default)]
 /// Context of a [`Transaction`] which can mutate in an [`ExecStep`].
 pub struct TransactionContext {
+    /// L1 fee
+    pub l1_fee: u64,
     /// Unique identifier of transaction of the block. The value is `index + 1`.
     id: usize,
     /// The index of logs made in the transaction.
@@ -81,6 +83,7 @@ impl TransactionContext {
             call_is_success,
             calls: Vec::new(),
             reversion_groups: Vec::new(),
+            l1_fee: geth_trace.l1_fee,
         };
         tx_ctx.push_call_ctx(0, eth_tx.input.to_vec());
 
@@ -182,8 +185,12 @@ impl TransactionContext {
 #[derive(Debug, Clone)]
 /// Result of the parsing of an Ethereum Transaction.
 pub struct Transaction {
+    /// ..
+    pub block_num: u64,
     /// Nonce
     pub nonce: u64,
+    /// Hash
+    pub hash: H256,
     /// Gas
     pub gas: u64,
     /// Gas price
@@ -196,6 +203,8 @@ pub struct Transaction {
     pub value: Word,
     /// Input / Call Data
     pub input: Vec<u8>,
+    /// Chain_id
+    pub chain_id: u64,
     /// Signature
     pub signature: Signature,
     /// Calls made in the transaction
@@ -207,6 +216,7 @@ pub struct Transaction {
 impl From<&Transaction> for geth_types::Transaction {
     fn from(tx: &Transaction) -> geth_types::Transaction {
         geth_types::Transaction {
+            hash: tx.hash,
             from: tx.from,
             to: Some(tx.to),
             nonce: Word::from(tx.nonce),
@@ -233,6 +243,7 @@ impl Transaction {
             to: Address::zero(),
             value: Word::zero(),
             input: Vec::new(),
+            chain_id: 0,
             signature: Signature {
                 r: Word::zero(),
                 s: Word::zero(),
@@ -240,6 +251,8 @@ impl Transaction {
             },
             calls: Vec::new(),
             steps: Vec::new(),
+            block_num: Default::default(),
+            hash: Default::default(),
         }
     }
 
@@ -281,6 +294,7 @@ impl Transaction {
         } else {
             // Contract creation
             let code_hash = code_db.insert(eth_tx.input.to_vec());
+            let address = get_contract_address(eth_tx.from, eth_tx.nonce);
             Call {
                 call_id,
                 kind: CallKind::Create,
@@ -288,7 +302,7 @@ impl Transaction {
                 is_persistent: is_success,
                 is_success,
                 caller_address: eth_tx.from,
-                address: get_contract_address(eth_tx.from, eth_tx.nonce),
+                address,
                 code_source: CodeSource::Tx,
                 code_hash,
                 depth: 1,
@@ -298,16 +312,28 @@ impl Transaction {
             }
         };
 
+        log::debug!(
+            "eth_tx's type: {:?}, idx: {:?}, hash: {:?}, tx: {:?}",
+            eth_tx.transaction_type,
+            eth_tx.transaction_index,
+            eth_tx.hash,
+            {
+                let mut debug_tx = eth_tx.clone();
+                debug_tx.input.0.clear();
+                debug_tx
+            }
+        );
         Ok(Self {
+            block_num: eth_tx.block_number.unwrap().as_u64(),
+            hash: eth_tx.hash,
             nonce: eth_tx.nonce.as_u64(),
             gas: eth_tx.gas.as_u64(),
             gas_price: eth_tx.gas_price.unwrap_or_default(),
             from: eth_tx.from,
-            to: eth_tx
-                .to
-                .unwrap_or_else(|| get_contract_address(eth_tx.from, eth_tx.nonce)),
+            to: eth_tx.to.unwrap_or_default(),
             value: eth_tx.value,
             input: eth_tx.input.to_vec(),
+            chain_id: eth_tx.chain_id.unwrap_or_default().as_u64(), // FIXME
             calls: vec![call],
             steps: Vec::new(),
             signature: Signature {

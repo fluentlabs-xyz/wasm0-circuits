@@ -3,11 +3,11 @@ use crate::{
     circuit_input_builder::{CircuitInputStateRef, CopyDataType, CopyEvent, NumberOrHash},
     evm::opcodes::ExecStep,
     operation::{AccountField, AccountOp, CallContextField, MemoryOp, RW},
+    state_db::CodeDB,
     Error,
 };
-use eth_types::{Bytecode, GethExecStep, ToWord, Word, H256};
+use eth_types::{Bytecode, GethExecStep, ToWord, H256};
 use ethers_core::utils::keccak256;
-use keccak256::EMPTY_HASH_LE;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct ReturnRevert;
@@ -40,14 +40,15 @@ impl Opcode for ReturnRevert {
             call.is_success.to_word(),
         );
 
-        let offset = offset.as_usize();
+        // Get low Uint64 of offset.
+        let offset = offset.low_u64() as usize;
         let length = length.as_usize();
 
         // Case A in the spec.
         if call.is_create() && call.is_success && length > 0 {
             // Note: handle_return updates state.code_db. All we need to do here is push the
             // copy event.
-            let code_hash = handle_create(
+            let code_info = handle_create(
                 state,
                 &mut exec_step,
                 Source {
@@ -69,13 +70,33 @@ impl Opcode for ReturnRevert {
                 state.call_context_read(&mut exec_step, state.call()?.call_id, field, value);
             }
 
+            #[cfg(feature = "scroll")]
+            state.push_op_reversible(
+                &mut exec_step,
+                AccountOp {
+                    address: state.call()?.address,
+                    field: AccountField::KeccakCodeHash,
+                    value: code_info.keccak_hash.to_word(),
+                    value_prev: crate::util::KECCAK_CODE_HASH_ZERO.to_word(),
+                },
+            )?;
             state.push_op_reversible(
                 &mut exec_step,
                 AccountOp {
                     address: state.call()?.address,
                     field: AccountField::CodeHash,
-                    value: code_hash.to_word(),
-                    value_prev: Word::from_little_endian(&*EMPTY_HASH_LE),
+                    value: code_info.hash.to_word(),
+                    value_prev: CodeDB::empty_code_hash().to_word(),
+                },
+            )?;
+            #[cfg(feature = "scroll")]
+            state.push_op_reversible(
+                &mut exec_step,
+                AccountOp {
+                    address: state.call()?.address,
+                    field: AccountField::CodeSize,
+                    value: code_info.size.to_word(),
+                    value_prev: eth_types::Word::zero(),
                 },
             )?;
         }
@@ -92,7 +113,7 @@ impl Opcode for ReturnRevert {
 
         // Case C in the specs.
         if !call.is_root {
-            state.handle_restore_context(steps, &mut exec_step)?;
+            state.handle_restore_context(&mut exec_step, steps)?;
         }
 
         // Case D in the specs.
@@ -104,14 +125,19 @@ impl Opcode for ReturnRevert {
                 state.call_context_read(&mut exec_step, call.call_id, field, value.into());
             }
 
+            let callee_memory = state.call_ctx()?.memory.clone();
+            let caller_ctx = state.caller_ctx_mut()?;
+            caller_ctx.return_data = callee_memory
+                .0
+                .get(offset..offset + length)
+                .unwrap_or_default()
+                .to_vec();
+
             let return_data_length = usize::try_from(call.return_data_length).unwrap();
             let copy_length = std::cmp::min(return_data_length, length);
             if copy_length > 0 {
                 // reconstruction
-                let callee_memory = state.call_ctx()?.memory.clone();
-                let caller_ctx = state.caller_ctx_mut()?;
                 let return_offset = call.return_data_offset.try_into().unwrap();
-
                 caller_ctx.memory.0[return_offset..return_offset + copy_length]
                     .copy_from_slice(&callee_memory.0[offset..offset + copy_length]);
 
@@ -132,7 +158,7 @@ impl Opcode for ReturnRevert {
             }
         }
 
-        state.handle_return(step)?;
+        state.handle_return(&mut exec_step, steps, false)?;
         Ok(vec![exec_step])
     }
 }
@@ -194,13 +220,21 @@ fn handle_copy(
     Ok(())
 }
 
+struct AccountCodeInfo {
+    keccak_hash: H256,
+    hash: H256,
+    size: usize,
+}
+
 fn handle_create(
     state: &mut CircuitInputStateRef,
     step: &mut ExecStep,
     source: Source,
-) -> Result<H256, Error> {
+) -> Result<AccountCodeInfo, Error> {
     let values = state.call_ctx()?.memory.0[source.offset..source.offset + source.length].to_vec();
-    let code_hash = H256(keccak256(&values));
+    let keccak_hash = H256(keccak256(&values));
+    let code_hash = CodeDB::hash(&values);
+    let size = values.len();
     let dst_id = NumberOrHash::Hash(code_hash);
     let bytes: Vec<_> = Bytecode::from(values)
         .raw_code()
@@ -233,7 +267,11 @@ fn handle_create(
         },
     );
 
-    Ok(code_hash)
+    Ok(AccountCodeInfo {
+        keccak_hash,
+        hash: code_hash,
+        size,
+    })
 }
 
 #[cfg(test)]
@@ -242,33 +280,13 @@ mod return_tests {
     use eth_types::{bytecode, geth_types::GethData, word};
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
-        TestContext,
+        TestContext, MOCK_DEPLOYED_CONTRACT_BYTECODE,
     };
 
     #[test]
     fn test_ok() {
-        // // deployed contract
-        // PUSH1 0x20
-        // PUSH1 0
-        // PUSH1 0
-        // CALLDATACOPY
-        // PUSH1 0x20
-        // PUSH1 0
-        // RETURN
-        //
-        // bytecode: 0x6020600060003760206000F3
-        //
-        // // constructor
-        // PUSH12 0x6020600060003760206000F3
-        // PUSH1 0
-        // MSTORE
-        // PUSH1 0xC
-        // PUSH1 0x14
-        // RETURN
-        //
-        // bytecode: 0x6B6020600060003760206000F3600052600C6014F3
         let code = bytecode! {
-            PUSH21(word!("6B6020600060003760206000F3600052600C6014F3"))
+            PUSH21(*MOCK_DEPLOYED_CONTRACT_BYTECODE)
             PUSH1(0)
             MSTORE
 

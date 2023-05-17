@@ -8,22 +8,35 @@ use crate::{
         step::{ExecutionState, Step},
         table::{FixedTableTag, Table},
         util::{
-            constraint_builder::ConstraintBuilder, rlc, CachedRegion, CellType, Expr,
+            constraint_builder::EVMConstraintBuilder, rlc, CachedRegion, CellType, Expr,
             StoredExpression, LOOKUP_CONFIG,
         },
         Advice, Column, Fixed,
     },
     table::LookupTable,
-    util::Challenges,
 };
+
+#[cfg(not(feature = "onephase"))]
+use crate::util::Challenges;
+#[cfg(feature = "onephase")]
+use crate::util::MockChallenges as Challenges;
+
+use halo2_proofs::plonk::FirstPhase;
+#[cfg(feature = "onephase")]
+use halo2_proofs::plonk::FirstPhase as SecondPhase;
+#[cfg(feature = "onephase")]
+use halo2_proofs::plonk::FirstPhase as ThirdPhase;
+#[cfg(not(feature = "onephase"))]
+use halo2_proofs::plonk::SecondPhase;
+#[cfg(not(feature = "onephase"))]
+use halo2_proofs::plonk::ThirdPhase;
+
 use eth_types::{Field, Word, U256};
 pub(crate) use halo2_proofs::circuit::{Layouter, Value};
 use halo2_proofs::{
     circuit::SimpleFloorPlanner,
     dev::MockProver,
-    plonk::{
-        Circuit, ConstraintSystem, Error, Expression, FirstPhase, SecondPhase, Selector, ThirdPhase,
-    },
+    plonk::{Circuit, ConstraintSystem, Error, Selector},
 };
 
 pub(crate) const WORD_LOW_MAX: Word = U256([u64::MAX, u64::MAX, 0, 0]);
@@ -45,7 +58,7 @@ pub(crate) fn generate_power_of_randomness<F: Field>(randomness: F) -> Vec<F> {
 }
 
 pub(crate) trait MathGadgetContainer<F: Field>: Clone {
-    fn configure_gadget_container(cb: &mut ConstraintBuilder<F>) -> Self
+    fn configure_gadget_container(cb: &mut EVMConstraintBuilder<F>) -> Self
     where
         Self: Sized;
 
@@ -68,7 +81,6 @@ where
     stored_expressions: Vec<StoredExpression<F>>,
     math_gadget_container: G,
     _marker: PhantomData<F>,
-    challenges: Challenges<Expression<F>>,
 }
 
 pub(crate) struct UnitTestMathGadgetBaseCircuit<G> {
@@ -125,7 +137,7 @@ impl<F: Field, G: MathGadgetContainer<F>> Circuit<F> for UnitTestMathGadgetBaseC
 
         let step_curr = Step::new(meta, advices, 0, false);
         let step_next = Step::new(meta, advices, MAX_STEP_HEIGHT, true);
-        let mut cb = ConstraintBuilder::new(
+        let mut cb = EVMConstraintBuilder::new(
             step_curr.clone(),
             step_next,
             &challenges_exprs,
@@ -169,7 +181,6 @@ impl<F: Field, G: MathGadgetContainer<F>> Circuit<F> for UnitTestMathGadgetBaseC
                 stored_expressions,
                 math_gadget_container,
                 _marker: PhantomData,
-                challenges: challenges_exprs,
             },
             challenges,
         )
@@ -181,7 +192,7 @@ impl<F: Field, G: MathGadgetContainer<F>> Circuit<F> for UnitTestMathGadgetBaseC
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let (config, challenges) = config;
-        let challenge_values = challenges.values(&mut layouter);
+        let challenge_values = challenges.values(&layouter);
         layouter.assign_region(
             || "assign test container",
             |mut region| {
@@ -202,9 +213,11 @@ impl<F: Field, G: MathGadgetContainer<F>> Circuit<F> for UnitTestMathGadgetBaseC
                 config
                     .math_gadget_container
                     .assign_gadget_container(&self.witnesses, cached_region)?;
+
                 for stored_expr in &config.stored_expressions {
                     stored_expr.assign(cached_region, offset)?;
                 }
+
                 Ok(())
             },
         )?;

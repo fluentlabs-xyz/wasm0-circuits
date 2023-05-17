@@ -5,7 +5,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::CommonErrorGadget,
-            constraint_builder::ConstraintBuilder,
+            constraint_builder::ConstrainBuilderCommon,
             math_gadget::LtGadget,
             memory_gadget::{MemoryAddressGadget, MemoryExpansionGadget},
             CachedRegion, Cell,
@@ -20,6 +20,8 @@ use eth_types::{
     Field,
 };
 use halo2_proofs::{circuit::Value, plonk::Error};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
+use crate::evm_circuit::util::memory_gadget::CommonMemoryAddressGadget;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ErrorOOGLogGadget<F> {
@@ -39,7 +41,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGLogGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::ErrorOutOfGasLOG;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
         let mstart = cb.query_cell_phase2();
         let msize = cb.query_word_rlc();

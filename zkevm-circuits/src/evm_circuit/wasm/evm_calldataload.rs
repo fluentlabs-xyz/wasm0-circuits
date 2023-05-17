@@ -11,7 +11,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
             from_bytes,
             memory_gadget::BufferReaderGadget,
             not, CachedRegion, Cell, MemoryAddress,
@@ -21,6 +21,7 @@ use crate::{
     table::{CallContextFieldTag, TxContextFieldTag},
     util::Expr,
 };
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 use super::ExecutionGadget;
 
@@ -53,7 +54,7 @@ impl<F: Field> ExecutionGadget<F> for EvmCallDataLoadGadget<F> {
 
     const NAME: &'static str = "CALLDATALOAD";
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let offset = cb.query_word_rlc();

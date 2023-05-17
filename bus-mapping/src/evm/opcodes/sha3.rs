@@ -40,7 +40,7 @@ impl Opcode for Sha3 {
         let memory = state
             .call_ctx()?
             .memory
-            .read_chunk(offset.as_usize().into(), size.as_usize().into());
+            .read_chunk(offset.low_u64().into(), size.as_usize().into());
 
         // keccak-256 hash of the given data in memory.
         let sha3 = keccak256(&memory);
@@ -65,8 +65,11 @@ impl Opcode for Sha3 {
         state.push_copy(
             &mut exec_step,
             CopyEvent {
-                src_addr: offset.as_u64(),
-                src_addr_end: offset.as_u64() + size.as_u64(),
+                src_addr: offset.low_u64(),
+                src_addr_end: offset
+                    .low_u64()
+                    .checked_add(size.as_u64())
+                    .unwrap_or(u64::MAX),
                 src_type: CopyDataType::Memory,
                 src_id: NumberOrHash::Number(call_id),
                 dst_addr: 0,
@@ -138,9 +141,7 @@ pub mod sha3_tests {
                 mem_chunk.to_vec()
             };
             memory.extend_from_slice(&mem_value);
-            code.push(32, Word::from_big_endian(&mem_value));
-            code.push(32, (32 * i).into());
-            code.write_op(OpcodeId::MSTORE);
+            code.op_mstore(32 * i, Word::from_big_endian(&mem_value));
         }
         // append SHA3 related opcodes at the tail end.
         let code_tail = bytecode! {

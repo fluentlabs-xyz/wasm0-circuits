@@ -6,7 +6,7 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{
-                ConstraintBuilder, StepStateTransition,
+                ConstrainBuilderCommon, StepStateTransition,
                 Transition::{Delta, To},
             },
             from_bytes,
@@ -23,6 +23,8 @@ use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 use std::cmp::min;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
+use crate::evm_circuit::util::memory_gadget::CommonMemoryAddressGadget;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmCallDataCopyGadget<F> {
@@ -42,7 +44,7 @@ impl<F: Field> ExecutionGadget<F> for EvmCallDataCopyGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::CALLDATACOPY;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let memory_offset = cb.query_cell_phase2();

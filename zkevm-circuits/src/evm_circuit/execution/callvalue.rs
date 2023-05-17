@@ -1,12 +1,11 @@
-use halo2_proofs::circuit::Value;
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
-            CachedRegion,
+            constraint_builder::{EVMConstraintBuilder, StepStateTransition, Transition::Delta},
+            CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -14,18 +13,15 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian, ToScalar};
+use eth_types::Field;
 use halo2_proofs::plonk::Error;
-use halo2_proofs::plonk::Error::Synthesis;
-use crate::evm_circuit::util::{Cell, RandomLinearCombination};
 
 #[derive(Clone, Debug)]
 pub(crate) struct CallValueGadget<F> {
     same_context: SameContextGadget<F>,
     // Value in rw_table->stack_op and call_context->call_value are both RLC
     // encoded, so no need to decode.
-    call_value: RandomLinearCombination<F, 32>,
-    dest_offset: Cell<F>,
+    call_value: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for CallValueGadget<F> {
@@ -33,9 +29,8 @@ impl<F: Field> ExecutionGadget<F> for CallValueGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::CALLVALUE;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
-        let call_value = cb.query_word_rlc();
-        let dest_offset = cb.query_cell();
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
+        let call_value = cb.query_cell_phase2();
 
         // Lookup rw_table -> call_context with call value
         cb.call_context_lookup(
@@ -46,14 +41,14 @@ impl<F: Field> ExecutionGadget<F> for CallValueGadget<F> {
         );
 
         // Push the value to the stack
-        cb.stack_pop(dest_offset.expr());
+        cb.stack_push(call_value.expr());
 
         // State transition
         let opcode = cb.query_cell();
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(34.expr()),
+            rw_counter: Delta(2.expr()),
             program_counter: Delta(1.expr()),
-            stack_pointer: Delta(1.expr()),
+            stack_pointer: Delta((-1).expr()),
             gas_left: Delta(-OpcodeId::CALLVALUE.constant_gas_cost().expr()),
             ..Default::default()
         };
@@ -62,7 +57,6 @@ impl<F: Field> ExecutionGadget<F> for CallValueGadget<F> {
         Self {
             same_context,
             call_value,
-            dest_offset,
         }
     }
 
@@ -77,24 +71,10 @@ impl<F: Field> ExecutionGadget<F> for CallValueGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let call_value = block.rws[step.rw_indices[0]].call_context_value();
-        let dest_offset = block.rws[step.rw_indices[1]].stack_value();
+        let call_value = block.rws[step.rw_indices[1]].stack_value();
 
-        self.call_value.assign(
-            region,
-            offset,
-            Some(
-                call_value.to_le_bytes()
-                    .try_into()
-                    .unwrap(),
-            ),
-        )?;
-
-        self.dest_offset.assign(
-            region,
-            offset,
-            Value::<F>::known(dest_offset.to_scalar().ok_or(Synthesis)?),
-        )?;
+        self.call_value
+            .assign(region, offset, region.word_rlc(call_value))?;
 
         Ok(())
     }
@@ -108,10 +88,9 @@ mod test {
 
     #[test]
     fn callvalue_gadget_test() {
-        let res_mem_address = 0x7f;
         let bytecode = bytecode! {
-            I32Const[res_mem_address]
             CALLVALUE
+            STOP
         };
 
         CircuitTestBuilder::new_from_test_ctx(

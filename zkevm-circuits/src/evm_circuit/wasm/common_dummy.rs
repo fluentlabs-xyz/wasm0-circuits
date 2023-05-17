@@ -4,13 +4,14 @@ use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
         step::ExecutionState,
-        util::{constraint_builder::ConstraintBuilder, CachedRegion, Word},
+        util::{constraint_builder::ConstrainBuilderCommon, CachedRegion, Word},
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
 use eth_types::{Field, ToLittleEndian};
 use halo2_proofs::plonk::Error;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct CommonDummyGadget<F, const N_POP: usize, const N_PUSH: usize, const S: ExecutionState> {
@@ -26,7 +27,7 @@ impl<F: Field, const N_POP: usize, const N_PUSH: usize, const S: ExecutionState>
 
     const EXECUTION_STATE: ExecutionState = S;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let pops: [Word<F>; N_POP] = [(); N_POP].map(|_| cb.query_word_rlc());
         let pushes: [Word<F>; N_PUSH] = [(); N_PUSH].map(|_| cb.query_word_rlc());
         for pop in pops.iter() {

@@ -54,7 +54,7 @@ mod caller_tests {
     use super::*;
     use crate::{
         circuit_input_builder::ExecState,
-        mocks::BlockData,
+        mock::BlockData,
         operation::{CallContextOp, StackOp, RW},
     };
     use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToU256, Word};

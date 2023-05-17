@@ -5,7 +5,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
             from_bytes, CachedRegion, RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},
@@ -16,6 +16,7 @@ use crate::{
 use bus_mapping::evm::OpcodeId;
 use eth_types::{Field, ToLittleEndian};
 use halo2_proofs::plonk::Error;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmCallDataSizeGadget<F> {
@@ -28,7 +29,7 @@ impl<F: Field> ExecutionGadget<F> for EvmCallDataSizeGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::CALLDATASIZE;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         // Add lookup constraint in the call context for the calldatasize field.

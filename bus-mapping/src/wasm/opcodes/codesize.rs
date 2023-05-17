@@ -52,7 +52,7 @@ mod codesize_tests {
         TestContext,
     };
 
-    use crate::{circuit_input_builder::ExecState, Error, mocks::BlockData, operation::{StackOp, RW}};
+    use crate::{circuit_input_builder::ExecState, Error, mock::BlockData, operation::{StackOp, RW}};
     use crate::evm::opcodes::codesize::CODE_SIZE_BYTE_LENGTH;
     use crate::operation::MemoryOp;
 

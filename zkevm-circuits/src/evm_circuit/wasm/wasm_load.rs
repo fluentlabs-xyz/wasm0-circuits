@@ -11,7 +11,7 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -63,7 +63,7 @@ impl<F: Field> ExecutionGadget<F> for WasmLoadGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_LOAD;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut ConstrainBuilderCommon<F>) -> Self {
 
         let opcode_load_offset = cb.alloc_common_range_value();
 

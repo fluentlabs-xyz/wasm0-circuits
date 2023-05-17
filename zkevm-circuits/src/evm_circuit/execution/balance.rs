@@ -6,39 +6,31 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{
-                ConstraintBuilder, ReversionInfo, StepStateTransition, Transition::Delta,
+                ConstrainBuilderCommon, EVMConstraintBuilder, ReversionInfo, StepStateTransition,
+                Transition::Delta,
             },
             from_bytes,
             math_gadget::IsZeroGadget,
             not, select, CachedRegion, Cell, Word,
-            RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    table::{AccountFieldTag, CallContextFieldTag, RwTableTag},
+    table::{AccountFieldTag, CallContextFieldTag},
     util::Expr,
 };
-use eth_types::{
-    evm_types::{GasCost},
-    Field, N_BYTES_WORD, ToLittleEndian, ToScalar
-};
-use halo2_proofs::{
-    circuit::Value,
-    plonk::Error,
-};
+use eth_types::{evm_types::GasCost, Field, ToLittleEndian};
+use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
 pub(crate) struct BalanceGadget<F> {
     same_context: SameContextGadget<F>,
-    address_offset: Cell<F>,
-    address_word: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
+    address_word: Word<F>,
     reversion_info: ReversionInfo<F>,
     tx_id: Cell<F>,
     is_warm: Cell<F>,
     code_hash: Cell<F>,
     not_exists: IsZeroGadget<F>,
-    balance_offset: Cell<F>,
-    balance: Word<F>,
+    balance: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
@@ -46,15 +38,10 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::BALANCE;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let address_word = cb.query_word_rlc();
         let address = from_bytes::expr(&address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]);
-
-        let balance_offset = cb.query_cell();
-        let address_offset = cb.query_cell();
-
-        cb.stack_pop(balance_offset.expr());
-        cb.stack_pop(address_offset.expr());
+        cb.stack_pop(address_word.expr());
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let mut reversion_info = cb.reversion_info_read(None);
@@ -71,16 +58,15 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         cb.account_read(address.expr(), AccountFieldTag::CodeHash, code_hash.expr());
         let not_exists = IsZeroGadget::construct(cb, code_hash.expr());
         let exists = not::expr(not_exists.expr());
-        let balance_word = cb.query_word_rlc();
+        let balance = cb.query_cell_phase2();
         cb.condition(exists.expr(), |cb| {
-            cb.account_read(address.expr(), AccountFieldTag::Balance, balance_word.expr());
+            cb.account_read(address.expr(), AccountFieldTag::Balance, balance.expr());
         });
         cb.condition(not_exists.expr(), |cb| {
-            cb.require_zero("balance is zero when non_exists", balance_word.expr());
+            cb.require_zero("balance is zero when non_exists", balance.expr());
         });
 
-        cb.memory_rlc_lookup(0.expr(), &address_offset, &address_word);
-        cb.memory_rlc_lookup(1.expr(), &balance_offset, &balance_word);
+        cb.stack_push(balance.expr());
 
         let gas_cost = select::expr(
             is_warm.expr(),
@@ -91,7 +77,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(7.expr() + exists.expr()),
             program_counter: Delta(1.expr()),
-            stack_pointer: Delta(2.expr()),
+            stack_pointer: Delta(0.expr()),
             gas_left: Delta(-gas_cost),
             reversible_write_counter: Delta(1.expr()),
             ..Default::default()
@@ -102,15 +88,13 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
         Self {
             same_context,
-            address_offset,
             address_word,
             reversion_info,
             tx_id,
             is_warm,
             code_hash,
             not_exists,
-            balance_offset,
-            balance: balance_word,
+            balance,
         }
     }
 
@@ -125,11 +109,9 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let balance_offset = block.rws[step.rw_indices[0]].stack_value();
-        let address_offset = block.rws[step.rw_indices[1]].stack_value();
-
-        self.address_offset.assign(region, offset, Value::<F>::known(address_offset.to_scalar().unwrap()))?;
-        self.balance_offset.assign(region, offset, Value::<F>::known(balance_offset.to_scalar().unwrap()))?;
+        let address = block.rws[step.rw_indices[0]].stack_value();
+        self.address_word
+            .assign(region, offset, Some(address.to_le_bytes()))?;
 
         self.tx_id
             .assign(region, offset, Value::known(F::from(tx.id as u64)))?;
@@ -141,42 +123,22 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
             call.is_persistent,
         )?;
 
-        let (_, is_warm) = block.rws[step.rw_indices[5]].tx_access_list_value_pair();
+        let (_, is_warm) = block.rws[step.rw_indices[4]].tx_access_list_value_pair();
         self.is_warm
-            .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
+            .assign(region, offset, Value::known(F::from(is_warm)))?;
 
-        let code_hash = block.rws[step.rw_indices[6]].account_value_pair().0;
+        let code_hash = block.rws[step.rw_indices[5]].account_value_pair().0;
         self.code_hash
-            .assign(region, offset, region.word_rlc(code_hash))?;
+            .assign(region, offset, region.code_hash(code_hash))?;
         self.not_exists
-            .assign_value(region, offset, region.word_rlc(code_hash))?;
-
-        let address_rw_index = if code_hash.is_zero() { 7 } else { 8 };
-        let balance_rw_index: usize = address_rw_index + N_BYTES_ACCOUNT_ADDRESS;
-
-        let address = {
-            let address_rw_tup_vec: Vec<(RwTableTag, usize)> = step.rw_indices[address_rw_index..(address_rw_index + N_BYTES_ACCOUNT_ADDRESS)].to_vec();
-            let address_bytes_vec: Vec<u8> = address_rw_tup_vec
-                .iter()
-                .map(|&b| block.rws[b].memory_value())
-                .collect();
-            eth_types::Word::from_big_endian(address_bytes_vec.as_slice())
-        };
-
-        self.address_word
-            .assign(region, offset, Some(address.to_le_bytes()[0..N_BYTES_ACCOUNT_ADDRESS].try_into().unwrap()))?;
-
+            .assign_value(region, offset, region.code_hash(code_hash))?;
         let balance = if code_hash.is_zero() {
             eth_types::Word::zero()
         } else {
-            let balance_vec = step.rw_indices[balance_rw_index..(balance_rw_index + N_BYTES_WORD)]
-                .iter()
-                .map(|&b| block.rws[b].memory_value())
-                .collect::<Vec<u8>>();
-            eth_types::Word::from_big_endian(balance_vec.as_slice())
+            block.rws[step.rw_indices[6]].account_value_pair().0
         };
         self.balance
-            .assign(region, offset, Some(balance.to_le_bytes()))?;
+            .assign(region, offset, region.word_rlc(balance))?;
 
         Ok(())
     }
@@ -185,12 +147,9 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::{evm_circuit::test::rand_bytes, test_util::CircuitTestBuilder};
-    use eth_types::{
-        address, bytecode, geth_types::Account, Address, Bytecode, ToWord, Word, U256,
-    };
+    use eth_types::{address, bytecode, geth_types::Account, Address, Bytecode, Word, U256};
     use lazy_static::lazy_static;
-    use eth_types::bytecode::WasmBinaryBytecode;
-    use mock::TestContext;
+    use mock::{generate_mock_call_bytecode, test_ctx::TestContext, MockCallBytecodeParams};
 
     lazy_static! {
         static ref TEST_ADDRESS: Address = address!("0xaabbccddee000000000000000000000000000000");
@@ -199,16 +158,17 @@ mod test {
     #[test]
     fn balance_gadget_non_existing_account() {
         test_root_ok(&None, false);
-        // test_internal_ok(0x20, 0x00, &None, false);
-        // test_internal_ok(0x1010, 0xff, &None, false);
+        test_internal_ok(0x20, 0x00, &None, false);
+        test_internal_ok(0x1010, 0xff, &None, false);
     }
 
     #[test]
     fn balance_gadget_empty_account() {
         let account = Some(Account::default());
+
         test_root_ok(&account, false);
-        // test_internal_ok(0x20, 0x00, &account, false);
-        // test_internal_ok(0x1010, 0xff, &account, false);
+        test_internal_ok(0x20, 0x00, &account, false);
+        test_internal_ok(0x1010, 0xff, &account, false);
     }
 
     #[test]
@@ -220,8 +180,8 @@ mod test {
         });
 
         test_root_ok(&account, false);
-        // test_internal_ok(0x20, 0x00, &account, false);
-        // test_internal_ok(0x1010, 0xff, &account, false);
+        test_internal_ok(0x20, 0x00, &account, false);
+        test_internal_ok(0x1010, 0xff, &account, false);
     }
 
     #[test]
@@ -233,28 +193,23 @@ mod test {
         });
 
         test_root_ok(&account, true);
-        // test_internal_ok(0x20, 0x00, &account, true);
-        // test_internal_ok(0x1010, 0xff, &account, true);
+        test_internal_ok(0x20, 0x00, &account, true);
+        test_internal_ok(0x1010, 0xff, &account, true);
     }
 
     fn test_root_ok(account: &Option<Account>, is_warm: bool) {
         let address = account.as_ref().map(|a| a.address).unwrap_or(*TEST_ADDRESS);
-        let address_mem_offset = 00;
-        let balance_mem_offset = 20;
 
         let mut code = Bytecode::default();
-        code.with_global_data(0, 0, address.to_fixed_bytes().to_vec());
         if is_warm {
             code.append(&bytecode! {
-                I32Const[address_mem_offset]
-                I32Const[balance_mem_offset]
-                BALANCE
+                .op_balance(address)
+                POP
             });
         }
         code.append(&bytecode! {
-            I32Const[address_mem_offset]
-            I32Const[balance_mem_offset]
-            BALANCE
+            .op_balance(address)
+            STOP
         });
 
         let ctx = TestContext::<3, 1>::new(
@@ -263,7 +218,7 @@ mod test {
                 accs[0]
                     .address(address!("0x000000000000000000000000000000000000cafe"))
                     .balance(Word::from(1_u64 << 20))
-                    .code(code.wasm_binary());
+                    .code(code);
                 // Set balance if account exists.
                 if let Some(account) = account {
                     accs[1].address(address).balance(account.balance);
@@ -281,7 +236,7 @@ mod test {
             },
             |block, _tx| block,
         )
-            .unwrap();
+        .unwrap();
 
         CircuitTestBuilder::new_from_test_ctx(ctx).run();
     }
@@ -297,44 +252,32 @@ mod test {
 
         // code B gets called by code A, so the call is an internal call.
         let mut code_b = Bytecode::default();
-        code_b.with_global_data(0, 0, address.to_fixed_bytes().to_vec());
         if is_warm {
             code_b.append(&bytecode! {
-                PUSH20(address.to_word())
-                BALANCE
+                .op_balance(address)
                 POP
             });
         }
         code_b.append(&bytecode! {
-            PUSH20(address.to_word())
-            BALANCE
+            .op_balance(address)
             STOP
         });
 
         // code A calls code B.
         let pushdata = rand_bytes(8);
-        let code_a = bytecode! {
-            // populate memory in A's context.
-            PUSH8(Word::from_big_endian(&pushdata))
-            PUSH1(0x00) // offset
-            MSTORE
-            // call ADDR_B.
-            PUSH1(0x00) // retLength
-            PUSH1(0x00) // retOffset
-            PUSH32(call_data_length) // argsLength
-            PUSH32(call_data_offset) // argsOffset
-            PUSH1(0x00) // value
-            PUSH32(addr_b.to_word()) // addr
-            PUSH32(0x1_0000) // gas
-            CALL
-            STOP
-        };
+        let code_a = generate_mock_call_bytecode(MockCallBytecodeParams {
+            address: addr_b,
+            pushdata,
+            call_data_length,
+            call_data_offset,
+            ..MockCallBytecodeParams::default()
+        });
 
         let ctx = TestContext::<4, 1>::new(
             None,
             |accs| {
-                accs[0].address(addr_b).code(code_b.wasm_binary());
-                accs[1].address(addr_a).code(code_a.wasm_binary());
+                accs[0].address(addr_b).code(code_b);
+                accs[1].address(addr_a).code(code_a);
                 // Set balance if account exists.
                 if let Some(account) = account {
                     accs[2].address(address).balance(account.balance);
@@ -352,7 +295,7 @@ mod test {
             },
             |block, _tx| block,
         )
-            .unwrap();
+        .unwrap();
 
         CircuitTestBuilder::new_from_test_ctx(ctx).run();
     }

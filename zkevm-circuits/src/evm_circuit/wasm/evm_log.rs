@@ -6,7 +6,7 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{
-                ConstraintBuilder, StepStateTransition,
+                ConstrainBuilderCommon, StepStateTransition,
                 Transition::{Delta, To},
             },
             memory_gadget::{MemoryAddressGadget, MemoryExpansionGadget},
@@ -21,6 +21,8 @@ use array_init::array_init;
 use bus_mapping::circuit_input_builder::CopyDataType;
 use eth_types::{evm_types::{GasCost, OpcodeId}, Field, StackWord, ToScalar, ToU256, U256};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
+use crate::evm_circuit::util::memory_gadget::CommonMemoryAddressGadget;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmLogGadget<F> {
@@ -43,7 +45,7 @@ impl<F: Field> ExecutionGadget<F> for EvmLogGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::LOG;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let mstart = cb.query_cell_phase2();
         let msize = cb.query_word_rlc();
 

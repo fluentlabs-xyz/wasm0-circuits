@@ -30,8 +30,7 @@ impl Opcode for Returndatacopy {
 
         let call_ctx = state.call_ctx_mut()?;
         let memory = &mut call_ctx.memory;
-        let length = size.as_usize();
-        memory.copy_from(dest_offset.as_u64(), &return_data, offset.as_u64(), length);
+        memory.copy_from(dest_offset, offset, size, &return_data);
 
         let copy_event = gen_copy_event(state, geth_step)?;
         state.push_copy(&mut exec_steps[0], copy_event);
@@ -169,7 +168,7 @@ fn gen_copy_event(
 
 #[cfg(test)]
 mod return_tests {
-    use crate::mocks::BlockData;
+    use crate::mock::BlockData;
     use eth_types::{bytecode, geth_types::GethData, word};
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},

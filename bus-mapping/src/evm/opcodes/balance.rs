@@ -4,12 +4,7 @@ use crate::{
     operation::{AccountField, CallContextField, TxAccessListAccountOp},
     Error,
 };
-use eth_types::{GethExecStep, ToWord, H256, U256, ToBigEndian};
-use eth_types::evm_types::{MemoryAddress};
-
-use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
-
-pub const BALANCE_BYTE_LENGTH: usize = 32;
+use eth_types::{GethExecStep, ToAddress, ToWord, H256, U256};
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Balance;
@@ -23,14 +18,9 @@ impl Opcode for Balance {
         let mut exec_step = state.new_step(geth_step)?;
 
         // Read account address from stack.
-        let balance_offset = geth_step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), balance_offset)?;
-        let address_offset = geth_step.stack.nth_last(1)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), address_offset)?;
-
-        // Read account & balance from memory
-        let address = geth_steps[0].global_memory.read_address(address_offset)?;
-        let balance = geth_steps[1].global_memory.read_u256(balance_offset)?;
+        let address_word = geth_step.stack.last()?;
+        let address = address_word.to_address();
+        state.stack_read(&mut exec_step, geth_step.stack.last_filled(), address_word)?;
 
         // Read transaction ID, rw_counter_end_of_reversion, and is_persistent
         // from call context.
@@ -68,11 +58,13 @@ impl Opcode for Balance {
         // Read account balance.
         let account = state.sdb.get_account(&address).1;
         let exists = !account.is_empty();
+        let balance = account.balance;
         let code_hash = if exists {
             account.code_hash
         } else {
             H256::zero()
         };
+        debug_assert_eq!(balance, geth_steps[1].stack.nth_last(0)?);
         state.account_read(
             &mut exec_step,
             address,
@@ -83,17 +75,12 @@ impl Opcode for Balance {
             state.account_read(&mut exec_step, address, AccountField::Balance, balance);
         }
 
-        let address_offset_addr = MemoryAddress::try_from(address_offset)?;
-        for i in 0..ADDRESS_BYTE_LENGTH {
-            state.memory_read(&mut exec_step, address_offset_addr.map(|a| a + i), address[i])?;
-        }
-        let balance_offset_addr = MemoryAddress::try_from(balance_offset)?;
-        let balance_bytes = balance.to_be_bytes();
-        for i in 0..BALANCE_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, balance_offset_addr.map(|a| a + i), balance_bytes[i])?;
-        }
-        let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_step.global_memory.clone();
+        // Write the BALANCE result to stack.
+        state.stack_write(
+            &mut exec_step,
+            geth_steps[1].stack.nth_last_filled(0),
+            geth_steps[1].stack.nth_last(0)?,
+        )?;
 
         Ok(vec![exec_step])
     }
@@ -104,47 +91,52 @@ mod balance_tests {
     use super::*;
     use crate::{
         circuit_input_builder::ExecState,
-        mocks::BlockData,
+        mock::BlockData,
         operation::{AccountOp, CallContextOp, StackOp, RW},
+        state_db::CodeDB,
     };
-    use eth_types::{address, bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Bytecode, ToWord, Word, U256, StackWord};
-    use eth_types::bytecode::WasmBinaryBytecode;
+    use eth_types::{
+        address, bytecode,
+        evm_types::{OpcodeId, StackAddress},
+        geth_types::GethData,
+        Bytecode, ToWord, Word, U256,
+    };
     use mock::TestContext;
-    use crate::operation::MemoryOp;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_balance_of_non_existing_address() {
-        test_ok(false, true);
+        test_ok(false, false, None);
     }
 
     #[test]
     fn test_balance_of_cold_address() {
-        test_ok(true, true);
+        test_ok(true, false, None);
+        test_ok(true, false, Some(vec![1, 2, 3]))
     }
 
     #[test]
     fn test_balance_of_warm_address() {
-        test_ok(true, true);
+        test_ok(true, true, None);
+        test_ok(true, true, Some(vec![2, 3, 4]))
     }
 
-    fn test_ok(exists: bool, is_warm: bool) {
-        let address_offset: u32 = 0x00;
-        let balance_offset: u32 = 0x7f;
+    // account_code = None should be the same as exists = false, so we can remove
+    // it.
+    fn test_ok(exists: bool, is_warm: bool, account_code: Option<Vec<u8>>) {
         let address = address!("0xaabbccddee000000000000000000000000000000");
 
         // Pop balance first for warm account.
         let mut code = Bytecode::default();
         if is_warm {
             code.append(&bytecode! {
-                I32Const[address_offset]
-                I32Const[balance_offset]
-                BALANCE
+                .op_balance(address)
+                POP
             });
         }
         code.append(&bytecode! {
-            I32Const[address_offset]
-            I32Const[balance_offset]
-            BALANCE
+            .op_balance(address)
+            STOP
         });
 
         let balance = if exists {
@@ -153,37 +145,36 @@ mod balance_tests {
             Word::zero()
         };
 
-        code.with_global_data(0, address_offset, address.0.to_vec());
-        let wasm_binary_vec = code.wasm_binary();
         // Get the execution steps from the external tracer.
         let block: GethData = TestContext::<3, 1>::new(
             None,
             |accs| {
-                let balance_to_set = Word::from(1u64 << 20);
                 accs[0]
                     .address(address!("0x0000000000000000000000000000000000000010"))
-                    .balance(balance_to_set.clone())
-                    .code(wasm_binary_vec);
+                    .balance(Word::from(1u64 << 20))
+                    .code(code.clone());
                 if exists {
-                    accs[1].address(address).balance(balance);
+                    if let Some(code) = account_code.clone() {
+                        accs[1].address(address).balance(balance).code(code);
+                    } else {
+                        accs[1].address(address).balance(balance);
+                    }
                 } else {
                     accs[1]
                         .address(address!("0x0000000000000000000000000000000000000020"))
-                        .balance(balance_to_set.clone());
+                        .balance(Word::from(1u64 << 20));
                 }
                 accs[2]
                     .address(address!("0x0000000000000000000000000000000000cafe01"))
-                    .balance(balance_to_set.clone());
+                    .balance(Word::from(1u64 << 20));
             },
             |mut txs, accs| {
                 txs[0].to(accs[0].address).from(accs[2].address);
             },
-            |block, _tx| {
-                block.number(0xcafeu64)
-            },
+            |block, _tx| block.number(0xcafeu64),
         )
-            .unwrap()
-            .into();
+        .unwrap()
+        .into();
 
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
         builder
@@ -196,11 +187,6 @@ mod balance_tests {
         let tx_id = 1;
         let transaction = &builder.block.txs()[tx_id - 1];
         let call_id = transaction.calls()[0].call_id;
-        let address_balance = builder.sdb.get_account(&address).1.balance;
-        let address_balance_bytes = address_balance.to_be_bytes();
-        let (account_exists, account) = builder.sdb.get_account(&address);
-        assert_eq!(account_exists, true);
-        let account_code_hash = if exists { account.code_hash } else { H256::zero() };
 
         let indices = transaction
             .steps()
@@ -211,148 +197,105 @@ mod balance_tests {
             .bus_mapping_instance
             .clone();
 
-        let container = &builder.block.container;
+        let container = builder.block.container;
 
-        let mut indices_index = 0;
-
-        let operation = &container.stack[indices[indices_index].as_usize()];
-        assert_eq!(operation.rw(), RW::READ);
-        assert_eq!(
-            operation.op(),
-            &StackOp {
-                call_id,
-                address: StackAddress::from(1022u32),
-                value: StackWord::from(balance_offset),
-                local_index: 0,
-            }
-        );
-
-        indices_index += 1;
-        let operation = &container.stack[indices[indices_index].as_usize()];
+        let operation = &container.stack[indices[0].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
         assert_eq!(
             operation.op(),
             &StackOp {
                 call_id,
                 address: StackAddress::from(1023u32),
-                value: StackWord::from(address_offset),
-                local_index: 0,
+                value: address.to_word()
             }
         );
 
-        indices_index += 1;
-        let operation = &container.call_context[indices[indices_index].as_usize()];
+        let operation = &container.call_context[indices[1].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
         assert_eq!(
             operation.op(),
             &CallContextOp {
                 call_id,
                 field: CallContextField::TxId,
-                value: U256::one(),
+                value: tx_id.into()
             }
         );
 
-        indices_index += 1;
-        let operation = &container.call_context[indices[indices_index].as_usize()];
+        let operation = &container.call_context[indices[2].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
         assert_eq!(
             operation.op(),
             &CallContextOp {
                 call_id,
                 field: CallContextField::RwCounterEndOfReversion,
-                value: U256::zero(),
+                value: U256::zero()
             }
         );
 
-        indices_index += 1;
-        let operation = &container.call_context[indices[indices_index].as_usize()];
+        let operation = &container.call_context[indices[3].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
         assert_eq!(
             operation.op(),
             &CallContextOp {
                 call_id,
                 field: CallContextField::IsPersistent,
-                value: U256::one(),
+                value: U256::one()
             }
         );
 
-        indices_index += 1;
-        let operation = &container.tx_access_list_account[indices[indices_index].as_usize()];
+        let operation = &container.tx_access_list_account[indices[4].as_usize()];
         assert_eq!(operation.rw(), RW::WRITE);
         assert_eq!(
             operation.op(),
             &TxAccessListAccountOp {
                 tx_id,
                 address,
-                is_warm,
-                is_warm_prev: is_warm,
+                is_warm: true,
+                is_warm_prev: is_warm
             }
         );
 
-        indices_index += 1;
-        let operation = &container.account[indices[indices_index].as_usize()];
+        let code_hash = if let Some(code) = account_code {
+            CodeDB::hash(&code).to_word()
+        } else if exists {
+            CodeDB::empty_code_hash().to_word()
+        } else {
+            U256::zero()
+        };
+        let operation = &container.account[indices[5].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
         assert_eq!(
             operation.op(),
             &AccountOp {
                 address,
                 field: AccountField::CodeHash,
-                value: account_code_hash.to_word(),
-                value_prev: account_code_hash.to_word(),
+                value: if exists { code_hash } else { U256::zero() },
+                value_prev: if exists { code_hash } else { U256::zero() },
             }
         );
-
         if exists {
-            indices_index += 1;
-            let operation = &container.account[indices[indices_index].as_usize()];
+            let operation = &container.account[indices[6].as_usize()];
             assert_eq!(operation.rw(), RW::READ);
             assert_eq!(
                 operation.op(),
                 &AccountOp {
                     address,
                     field: AccountField::Balance,
-                    value: balance.to_word(),
-                    value_prev: balance.to_word(),
+                    value: balance,
+                    value_prev: balance,
                 }
             );
         }
 
-        for idx in 0..ADDRESS_BYTE_LENGTH {
-            indices_index += 1;
-            assert_eq!(
-                {
-                    let operation =
-                        &container.memory[indices[indices_index].as_usize()];
-                    (operation.rw(), operation.op())
-                },
-                (
-                    RW::READ,
-                    &MemoryOp::new(
-                        1,
-                        MemoryAddress::from(address_offset + idx as u32),
-                        address[idx],
-                    )
-                )
-            );
-        }
-
-        for idx in 0..BALANCE_BYTE_LENGTH {
-            indices_index += 1;
-            assert_eq!(
-                {
-                    let operation =
-                        &container.memory[indices[indices_index].as_usize()];
-                    (operation.rw(), operation.op())
-                },
-                (
-                    RW::WRITE,
-                    &MemoryOp::new(
-                        1,
-                        MemoryAddress::from(balance_offset + idx as u32),
-                        address_balance_bytes[idx],
-                    )
-                )
-            );
-        }
+        let operation = &container.stack[indices[6 + if exists { 1 } else { 0 }].as_usize()];
+        assert_eq!(operation.rw(), RW::WRITE);
+        assert_eq!(
+            operation.op(),
+            &StackOp {
+                call_id,
+                address: 1023u32.into(),
+                value: balance,
+            }
+        );
     }
 }

@@ -1,7 +1,6 @@
 use bus_mapping::evm::OpcodeId;
 use eth_types::{Field, ToLittleEndian, Word};
 use halo2_proofs::circuit::Value;
-use sha3::{Digest, Keccak256};
 
 use crate::{evm_circuit::util::rlc, table::BytecodeFieldTag, util::Challenges};
 
@@ -15,12 +14,6 @@ pub struct Bytecode {
 }
 
 impl Bytecode {
-    /// Construct from bytecode bytes
-    pub fn new(bytes: Vec<u8>) -> Self {
-        let hash = Word::from_big_endian(Keccak256::digest(&bytes).as_slice());
-        Self { hash, bytes }
-    }
-
     /// Assignments for bytecode table
     pub fn table_assignments<F: Field>(
         &self,
@@ -28,9 +21,16 @@ impl Bytecode {
     ) -> Vec<[Value<F>; 5]> {
         let n = 1 + self.bytes.len();
         let mut rows = Vec::with_capacity(n);
-        let hash = challenges
-            .evm_word()
-            .map(|challenge| rlc::value(&self.hash.to_le_bytes(), challenge));
+        let hash = if cfg!(feature = "poseidon-codehash") {
+            challenges
+                .evm_word()
+                .map(|_challenge| rlc::value(&self.hash.to_le_bytes(), F::from(256u64)))
+            //Value::known(rlc::value(&self.hash.to_le_bytes(), F::from(256u64)))
+        } else {
+            challenges
+                .evm_word()
+                .map(|challenge| rlc::value(&self.hash.to_le_bytes(), challenge))
+        };
 
         rows.push([
             hash,
@@ -81,11 +81,5 @@ impl Bytecode {
 
         // here dest > bytecodes len
         panic!("can not find byte in the bytecodes list")
-    }
-}
-
-impl From<&eth_types::bytecode::Bytecode> for Bytecode {
-    fn from(b: &eth_types::bytecode::Bytecode) -> Self {
-        Bytecode::new(b.to_vec())
     }
 }

@@ -3,8 +3,8 @@
 use itertools::Itertools;
 
 use eth_types::{
-    Block,
-    Error, geth_types::{Account, BlockConstants, GethData}, GethExecTrace, Transaction, Word,
+    geth_types::{Account, BlockConstants, GethData},
+    BigEndianHash, Block, Error, GethExecTrace, Transaction, Word, H256,
 };
 use eth_types::bytecode::WasmBinaryBytecode;
 use external_tracer::{trace, TraceConfig};
@@ -157,6 +157,11 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
 
         // Build Block modifiers
         let mut block = MockBlock::default();
+        let parent_hash = history_hashes
+            .as_ref()
+            .and_then(|hashes| hashes.last().copied())
+            .unwrap_or_default();
+        block.parent_hash(H256::from_uint(&parent_hash));
         block.transactions.extend_from_slice(&transactions);
         func_block(&mut block, transactions).build();
 
@@ -223,7 +228,7 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
             None,
             account_0_code_account_1_no_code(bytecode),
             tx_from_1_to_0,
-            |block, _txs| block,
+            |block, _txs| block.number(0xcafeu64),
         )
     }
 }
@@ -251,6 +256,10 @@ pub fn gen_geth_traces(
             .map(eth_types::geth_types::Transaction::from)
             .collect(),
         logger_config,
+        #[cfg(feature = "shanghai")]
+        chain_config: Some(external_tracer::ChainConfig::shanghai()),
+        #[cfg(not(feature = "shanghai"))]
+        chain_config: None,
     };
     let traces = trace(&trace_config)?;
     Ok(traces)

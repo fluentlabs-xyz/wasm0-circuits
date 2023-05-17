@@ -5,7 +5,7 @@ use crate::{
         util::{
             common_gadget::{SameContextGadget, SloadGasGadget},
             constraint_builder::{
-                ConstraintBuilder, ReversionInfo, StepStateTransition, Transition::Delta,
+                ConstrainBuilderCommon, ReversionInfo, StepStateTransition, Transition::Delta,
             },
             CachedRegion, Cell,
         },
@@ -16,6 +16,7 @@ use crate::{
 };
 use eth_types::{Field, ToScalar, ToU256};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmSloadGadget<F> {
@@ -34,7 +35,7 @@ impl<F: Field> ExecutionGadget<F> for EvmSloadGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::SLOAD;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);

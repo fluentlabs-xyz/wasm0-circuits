@@ -45,7 +45,7 @@ mod chainid_tests {
     use eth_types::evm_types::MemoryAddress;
     use mock::test_ctx::{helpers::*, TestContext};
 
-    use crate::{circuit_input_builder::ExecState, mocks::BlockData, operation::StackOp};
+    use crate::{circuit_input_builder::ExecState, mock::BlockData, operation::StackOp};
     use crate::evm::opcodes::chainid::CHAIN_ID_BYTE_LENGTH;
     use crate::operation::{CallContextField, CallContextOp, MemoryOp, RW};
 

@@ -52,6 +52,7 @@ impl<F: Field> IsZeroConfig<F> {
 }
 
 /// Wrapper arround [`IsZeroConfig`] for which [`Chip`] is implemented.
+#[derive(Clone, Debug)]
 pub struct IsZeroChip<F> {
     config: IsZeroConfig<F>,
 }
@@ -115,7 +116,9 @@ impl<F: Field> IsZeroInstruction<F> for IsZeroChip<F> {
         value: Value<F>,
     ) -> Result<(), Error> {
         let config = self.config();
-        let value_invert = value.map(|value| value.invert().unwrap_or(F::zero()));
+        // postpone the invert to prover which has batch_invert function to
+        // amortize among all is_zero_chip assignments.
+        let value_invert = value.into_field().invert();
         region.assign_advice(
             || "witness inverse of value",
             config.value_inv,
@@ -143,6 +146,7 @@ impl<F: Field> Chip<F> for IsZeroChip<F> {
 #[cfg(test)]
 mod test {
     use super::{IsZeroChip, IsZeroConfig, IsZeroInstruction};
+
     use eth_types::Field;
     use halo2_proofs::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -166,7 +170,7 @@ mod test {
                 _marker: PhantomData,
             };
             let prover = MockProver::<Fp>::run(k, &circuit, vec![]).unwrap();
-            prover.assert_satisfied_par()
+            prover.assert_satisfied()
         }};
     }
 

@@ -59,7 +59,7 @@ mod address_tests {
     use mock::test_ctx::{helpers::*, TestContext};
 
     use crate::{
-        circuit_input_builder::ExecState, mocks::BlockData, operation::CallContextOp,
+        circuit_input_builder::ExecState, mock::BlockData, operation::CallContextOp,
         operation::RW, operation::StackOp,
     };
     use crate::operation::MemoryOp;

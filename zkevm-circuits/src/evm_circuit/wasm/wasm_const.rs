@@ -10,13 +10,14 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
 use crate::evm_circuit::util::{Cell};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmConstGadget<F> {
@@ -29,7 +30,7 @@ impl<F: Field> ExecutionGadget<F> for WasmConstGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_CONST;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
         let value = cb.query_cell();
 
@@ -89,7 +90,6 @@ mod test {
     fn push_gadget_simple() {
         test_ok(bytecode! {
             I32Const[12]
-            .write_memarg(OpcodeId::I32Load, 0u64, 0u32, 0u32)
             Drop
         });
     }

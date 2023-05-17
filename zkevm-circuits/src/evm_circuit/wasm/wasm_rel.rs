@@ -11,7 +11,7 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -56,7 +56,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_REL;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut ConstrainBuilderCommon<F>) -> Self {
 
         let diff_inv = cb.alloc_unlimited_value();
         let res_is_eq = cb.alloc_bit_value();

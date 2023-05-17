@@ -104,7 +104,7 @@ mod balance_tests {
     use super::*;
     use crate::{
         circuit_input_builder::ExecState,
-        mocks::BlockData,
+        mock::BlockData,
         operation::{AccountOp, CallContextOp, StackOp, RW},
     };
     use eth_types::{address, bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Bytecode, ToWord, Word, U256, StackWord};

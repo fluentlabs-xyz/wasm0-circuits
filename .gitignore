@@ -3,8 +3,6 @@
 .DS_Store
 .vscode
 .idea
-/tmp
-/first-prover
-/dev
-/delphinus-zkwasm
-/common
+*.log
+*.json
+*.sh

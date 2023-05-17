@@ -8,12 +8,14 @@ use crate::evm_circuit::{
     step::ExecutionState,
     util::{
         common_gadget::SameContextGadget,
-        constraint_builder::{ConstraintBuilder, StepStateTransition, Transition},
+        constraint_builder::{StepStateTransition, Transition},
         memory_gadget::{MemoryAddressGadget, MemoryCopierGasGadget, MemoryExpansionGadget},
         rlc, CachedRegion, Cell, Word,
     },
     witness::{Block, Call, ExecStep, Transaction},
 };
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
+use crate::evm_circuit::util::memory_gadget::CommonMemoryAddressGadget;
 
 use super::ExecutionGadget;
 
@@ -33,7 +35,7 @@ impl<F: Field> ExecutionGadget<F> for EvmKeccak256Gadget<F> {
 
     const NAME: &'static str = "SHA3";
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let offset = cb.query_cell_phase2();

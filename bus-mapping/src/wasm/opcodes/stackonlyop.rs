@@ -12,9 +12,15 @@ use eth_types::GethExecStep;
 /// - N = 2: BinaryOpcode
 /// - N = 3: TernaryOpcode
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct StackOnlyOpcode<const N_POP: usize, const N_PUSH: usize>;
+pub(crate) struct StackOnlyOpcode<
+    const N_POP: usize,
+    const N_PUSH: usize,
+    const IS_ERR: bool = { false },
+>;
 
-impl<const N_POP: usize, const N_PUSH: usize> Opcode for StackOnlyOpcode<N_POP, N_PUSH> {
+impl<const N_POP: usize, const N_PUSH: usize, const IS_ERR: bool> Opcode
+for StackOnlyOpcode<N_POP, N_PUSH, IS_ERR>
+{
     fn gen_associated_ops(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
@@ -39,6 +45,13 @@ impl<const N_POP: usize, const N_PUSH: usize> Opcode for StackOnlyOpcode<N_POP, 
             )?;
         }
 
+        if IS_ERR {
+            let next_step = geth_steps.get(1);
+            exec_step.error = state.get_step_err(geth_step, next_step).unwrap();
+
+            state.handle_return(&mut exec_step, geth_steps, true)?;
+        }
+
         Ok(vec![exec_step])
     }
 }
@@ -47,7 +60,7 @@ impl<const N_POP: usize, const N_PUSH: usize> Opcode for StackOnlyOpcode<N_POP, 
 mod stackonlyop_tests {
     use crate::{
         circuit_input_builder::ExecState,
-        mocks::BlockData,
+        mock::BlockData,
         operation::{StackOp, RW},};
     use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, word, Bytecode, Word, StackWord, stack_word};
     use itertools::Itertools;
@@ -72,8 +85,8 @@ mod stackonlyop_tests {
             tx_from_1_to_0,
             |block, _tx| block.number(0xcafeu64),
         )
-        .unwrap()
-        .into();
+            .unwrap()
+            .into();
 
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
         builder

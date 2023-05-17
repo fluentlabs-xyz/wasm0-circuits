@@ -11,13 +11,14 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
 use crate::evm_circuit::util::Cell;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmSelectGadget<F> {
@@ -35,7 +36,7 @@ impl<F: Field> ExecutionGadget<F> for WasmSelectGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_SELECT;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let cond = cb.alloc_u64_on_u8();
         let cond_inv = cb.alloc_unlimited_value();
         let val1 = cb.alloc_u64();

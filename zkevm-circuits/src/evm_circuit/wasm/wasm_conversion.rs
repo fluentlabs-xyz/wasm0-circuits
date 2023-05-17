@@ -11,13 +11,14 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
 use crate::evm_circuit::util::Cell;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmConversionGadget<F> {
@@ -47,7 +48,7 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_CONVERSION;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let value = cb.alloc_u64_on_u8();
         let value_type = cb.alloc_common_range_value();
         let res = cb.alloc_u64();

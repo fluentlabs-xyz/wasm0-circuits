@@ -6,7 +6,7 @@ use crate::{
         util::{
             and,
             common_gadget::CommonErrorGadget,
-            constraint_builder::ConstraintBuilder,
+            constraint_builder::ConstrainBuilderCommon,
             from_bytes,
             math_gadget::{IsEqualGadget, IsZeroGadget, LtGadget},
             select, sum, CachedRegion, Cell, Word,
@@ -18,6 +18,7 @@ use crate::{
 use eth_types::{evm_types::OpcodeId, Field, StackWord, ToLittleEndian, ToU256};
 
 use halo2_proofs::{circuit::Value, plonk::Error};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ErrorInvalidJumpGadget<F> {
@@ -40,7 +41,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidJumpGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::ErrorInvalidJump;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let dest_word = cb.query_word_rlc();
         let dest_not_overflow =
             IsZeroGadget::construct(cb, sum::expr(&dest_word.cells[N_BYTES_PROGRAM_COUNTER..]));

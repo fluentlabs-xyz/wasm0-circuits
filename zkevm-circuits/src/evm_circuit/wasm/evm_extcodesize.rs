@@ -6,7 +6,7 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{
-                ConstraintBuilder, ReversionInfo, StepStateTransition, Transition::Delta,
+                ReversionInfo, StepStateTransition, Transition::Delta,
             },
             from_bytes,
             math_gadget::IsZeroGadget,
@@ -19,6 +19,7 @@ use crate::{
 };
 use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmExtCodeSizeGadget<F> {
@@ -39,7 +40,7 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeSizeGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::EXTCODESIZE;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let address_word = cb.query_word_rlc();
         let address = from_bytes::expr(&address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]);
         let codesize_offset = cb.query_cell();

@@ -4,7 +4,7 @@ use crate::{
         step::ExecutionState,
         table::{FixedTableTag, Lookup},
         util::{
-            common_gadget::CommonErrorGadget, constraint_builder::ConstraintBuilder, CachedRegion,
+            common_gadget::CommonErrorGadget, constraint_builder::ConstrainBuilderCommon, CachedRegion,
             Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
@@ -13,6 +13,7 @@ use crate::{
 };
 use eth_types::Field;
 use halo2_proofs::{circuit::Value, plonk::Error};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ErrorStackGadget<F> {
@@ -25,7 +26,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorStackGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::ErrorStack;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         cb.add_lookup(

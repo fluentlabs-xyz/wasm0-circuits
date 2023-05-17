@@ -5,9 +5,10 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::{CommonCallGadget, CommonErrorGadget},
-            constraint_builder::ConstraintBuilder,
+            constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
             math_gadget::{IsZeroGadget, LtGadget},
-            CachedRegion, Cell,
+            memory_gadget::MemoryExpandedAddressGadget,
+            or, CachedRegion, Cell,
         },
     },
     table::CallContextFieldTag,
@@ -15,7 +16,7 @@ use crate::{
     witness::{Block, Call, ExecStep, Transaction},
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, StackWord, ToU256, U64};
+use eth_types::{Field, StackWord, ToU256, U256, U64};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 /// Gadget to implement the corresponding out of gas errors for
@@ -30,8 +31,8 @@ pub(crate) struct ErrorOOGCallGadget<F> {
     is_staticcall: IsZeroGadget<F>,
     tx_id: Cell<F>,
     is_static: Cell<F>,
-    call: CommonCallGadget<F, false>,
     is_warm: Cell<F>,
+    call: CommonCallGadget<F, MemoryExpandedAddressGadget<F>, false>,
     insufficient_gas: LtGadget<F, N_BYTES_GAS>,
     common_error_gadget: CommonErrorGadget<F>,
 }
@@ -41,7 +42,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCallGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::ErrorOutOfGasCall;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let is_call = IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::CALL.expr());
@@ -54,13 +55,14 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCallGadget<F> {
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let is_static = cb.call_context(None, CallContextFieldTag::IsStatic);
 
-        let call_gadget = CommonCallGadget::construct(
-            cb,
-            is_call.expr(),
-            is_callcode.expr(),
-            is_delegatecall.expr(),
-            is_staticcall.expr(),
-        );
+        let call_gadget: CommonCallGadget<F, MemoryExpandedAddressGadget<F>, false> =
+            CommonCallGadget::construct(
+                cb,
+                is_call.expr(),
+                is_callcode.expr(),
+                is_delegatecall.expr(),
+                is_staticcall.expr(),
+            );
 
         // Add callee to access list
         let is_warm = cb.query_bool();
@@ -70,7 +72,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCallGadget<F> {
             is_warm.expr(),
         );
 
-        cb.condition(call_gadget.has_value.expr(), |cb| {
+        cb.condition(is_call.expr() * call_gadget.has_value.expr(), |cb| {
             cb.require_zero(
                 "CALL with value must not be in static call stack",
                 is_static.expr(),
@@ -82,9 +84,14 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCallGadget<F> {
 
         // Check if the amount of gas available is less than the amount of gas required
         let insufficient_gas = LtGadget::construct(cb, cb.curr.state.gas_left.expr(), gas_cost);
+
         cb.require_equal(
-            "gas left is less than gas required",
-            insufficient_gas.expr(),
+            "Either Memory address is overflow or gas left is less than cost",
+            or::expr([
+                call_gadget.cd_address.overflow(),
+                call_gadget.rd_address.overflow(),
+                insufficient_gas.expr(),
+            ]),
             1.expr(),
         );
 
@@ -104,8 +111,8 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCallGadget<F> {
             is_staticcall,
             tx_id,
             is_static,
-            call: call_gadget,
             is_warm,
+            call: call_gadget,
             insufficient_gas,
             common_error_gadget,
         }
@@ -130,7 +137,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCallGadget<F> {
             step.rw_indices[stack_index],
             step.rw_indices[stack_index + 1],
         ]
-        .map(|idx| block.rws[idx].stack_value());
+            .map(|idx| block.rws[idx].stack_value());
         let value = if is_call_or_callcode == 1 {
             block.rws[step.rw_indices[stack_index + 2]].stack_value()
         } else {
@@ -142,7 +149,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCallGadget<F> {
             step.rw_indices[stack_index + is_call_or_callcode + 4],
             step.rw_indices[stack_index + is_call_or_callcode + 5],
         ]
-        .map(|idx| block.rws[idx].stack_value());
+            .map(|idx| block.rws[idx].stack_value());
 
         let callee_code_hash = block.rws[step.rw_indices[9 + is_call_or_callcode]]
             .account_value_pair()
@@ -275,7 +282,7 @@ mod test {
             .write_op(opcode)
             PUSH1(0)
             PUSH1(0)
-            .write_op(OpcodeId::REVERT)
+            REVERT
         });
 
         bytecode
@@ -331,7 +338,7 @@ mod test {
             },
             |block, _tx| block.number(0xcafeu64),
         )
-        .unwrap();
+            .unwrap();
 
         CircuitTestBuilder::new_from_test_ctx(ctx).run();
     }
@@ -402,5 +409,47 @@ mod test {
             STOP
         });
         test_oog(&caller(OpcodeId::CALL, stack), &callee, true);
+    }
+
+    #[test]
+    fn test_oog_call_max_expanded_address() {
+        // 0xffffffff1 + 0xffffffff0 = 0x1fffffffe1
+        // > MAX_EXPANDED_MEMORY_ADDRESS (0x1fffffffe0)
+        let stack = Stack {
+            gas: Word::MAX,
+            cd_offset: 0xffffffff1,
+            cd_length: 0xffffffff0,
+            rd_offset: 0xffffffff1,
+            rd_length: 0xffffffff0,
+            ..Default::default()
+        };
+        let callee = callee(bytecode! {
+            PUSH32(Word::from(0))
+            PUSH32(Word::from(0))
+            STOP
+        });
+        for opcode in TEST_CALL_OPCODES {
+            test_oog(&caller(*opcode, stack), &callee, true);
+        }
+    }
+
+    #[test]
+    fn test_oog_call_max_u64_address() {
+        let stack = Stack {
+            gas: Word::MAX,
+            cd_offset: u64::MAX,
+            cd_length: u64::MAX,
+            rd_offset: u64::MAX,
+            rd_length: u64::MAX,
+            ..Default::default()
+        };
+        let callee = callee(bytecode! {
+            PUSH32(Word::from(0))
+            PUSH32(Word::from(0))
+            STOP
+        });
+        for opcode in TEST_CALL_OPCODES {
+            test_oog(&caller(*opcode, stack), &callee, true);
+        }
     }
 }

@@ -20,13 +20,13 @@ impl Opcode for Calldatacopy {
         let mut exec_steps = vec![gen_calldatacopy_step(state, geth_step)?];
 
         // reconstruction
-        let memory_offset = geth_step.stack.nth_last(0)?.as_u64();
-        let data_offset = geth_step.stack.nth_last(1)?.as_u64();
-        let length = geth_step.stack.nth_last(2)?.as_usize();
+        let memory_offset = geth_step.stack.nth_last(0)?;
+        let data_offset = geth_step.stack.nth_last(1)?;
+        let length = geth_step.stack.nth_last(2)?;
         let call_ctx = state.call_ctx_mut()?;
         let memory = &mut call_ctx.memory;
 
-        memory.copy_from(memory_offset, &call_ctx.call_data, data_offset, length);
+        memory.copy_from(memory_offset, data_offset, length, &call_ctx.call_data);
 
         let copy_event = gen_copy_event(state, geth_step)?;
         state.push_copy(&mut exec_steps[0], copy_event);
@@ -176,7 +176,7 @@ fn gen_copy_event(
 mod calldatacopy_tests {
     use crate::{
         circuit_input_builder::{ExecState, NumberOrHash},
-        mocks::BlockData,
+        mock::BlockData,
         operation::{CallContextField, CallContextOp, MemoryOp, StackOp, RW},
     };
     use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToWord, Word};

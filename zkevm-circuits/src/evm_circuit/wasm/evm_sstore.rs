@@ -6,7 +6,7 @@ use crate::{
         util::{
             common_gadget::{SameContextGadget, SstoreGasGadget},
             constraint_builder::{
-                ConstraintBuilder, ReversionInfo, StepStateTransition, Transition::Delta,
+                ConstrainBuilderCommon, ReversionInfo, StepStateTransition, Transition::Delta,
             },
             math_gadget::{IsEqualGadget, IsZeroGadget, LtGadget},
             not, CachedRegion, Cell,
@@ -22,6 +22,7 @@ use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
 };
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmSstoreGadget<F> {
@@ -47,7 +48,7 @@ impl<F: Field> ExecutionGadget<F> for EvmSstoreGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::SSTORE;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
@@ -244,7 +245,7 @@ pub(crate) struct SstoreTxRefundGadget<F> {
 
 impl<F: Field> SstoreTxRefundGadget<F> {
     pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
+        cb: &mut EVMConstraintBuilder<F>,
         tx_refund_old: Cell<F>,
         value: Cell<F>,
         value_prev: Cell<F>,

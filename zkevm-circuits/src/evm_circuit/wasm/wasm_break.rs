@@ -10,13 +10,14 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::To, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::To, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
 use crate::evm_circuit::util::Cell;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmBreakGadget<F> {
@@ -29,7 +30,7 @@ impl<F: Field> ExecutionGadget<F> for WasmBreakGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_BREAK;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let program_counter = cb.query_cell();
 
         let step_state_transition = StepStateTransition {

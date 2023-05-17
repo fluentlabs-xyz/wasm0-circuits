@@ -13,7 +13,7 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta}, from_bytes, RandomLinearCombination,
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta}, from_bytes, RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -21,6 +21,7 @@ use crate::{
     util::Expr,
 };
 use crate::evm_circuit::util::Cell;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmCallerGadget<F> {
@@ -37,7 +38,7 @@ impl<F: Field> ExecutionGadget<F> for EvmCallerGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::CALLER;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let caller_address = cb.query_word_rlc();
         let dest_offset = cb.query_cell();
 

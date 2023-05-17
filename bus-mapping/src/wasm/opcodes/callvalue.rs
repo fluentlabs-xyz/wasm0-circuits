@@ -52,7 +52,7 @@ impl Opcode for Callvalue {
 mod callvalue_tests {
     use crate::{
         circuit_input_builder::ExecState,
-        mocks::BlockData,
+        mock::BlockData,
         operation::{CallContextField, CallContextOp, StackOp, RW},
     };
     use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord, ToLittleEndian, ToWord};

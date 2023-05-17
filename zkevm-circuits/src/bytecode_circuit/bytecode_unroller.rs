@@ -1,8 +1,6 @@
-use crate::{
-    table::BytecodeFieldTag,
-    util::{get_push_size, keccak},
-};
-use eth_types::{Field, Word};
+use crate::{table::BytecodeFieldTag, util::get_push_size};
+use bus_mapping::state_db::CodeDB;
+use eth_types::{Field, ToWord, Word, U256};
 use std::vec;
 
 /// Public data for the bytecode
@@ -16,7 +14,7 @@ pub(crate) struct BytecodeRow<F: Field> {
 }
 
 /// Unrolled bytecode
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct UnrolledBytecode<F: Field> {
     pub(crate) bytes: Vec<u8>,
     pub(crate) rows: Vec<BytecodeRow<F>>,
@@ -24,7 +22,12 @@ pub struct UnrolledBytecode<F: Field> {
 
 /// Get unrolled bytecode from raw bytes
 pub fn unroll<F: Field>(bytes: Vec<u8>) -> UnrolledBytecode<F> {
-    let code_hash = keccak(&bytes[..]);
+    let code_hash = CodeDB::hash(&bytes[..]);
+    unroll_with_codehash(code_hash.to_word(), bytes)
+}
+
+/// Get unrolled bytecode from raw bytes and codehash
+pub fn unroll_with_codehash<F: Field>(code_hash: U256, bytes: Vec<u8>) -> UnrolledBytecode<F> {
     let mut rows = vec![BytecodeRow::<F> {
         code_hash,
         tag: F::from(BytecodeFieldTag::Header as u64),
@@ -52,4 +55,16 @@ pub fn unroll<F: Field>(bytes: Vec<u8>) -> UnrolledBytecode<F> {
         });
     }
     UnrolledBytecode { bytes, rows }
+}
+
+/// re-export bytes wrapped in hash field
+pub use super::circuit::to_poseidon_hash::HASHBLOCK_BYTES_IN_FIELD;
+use crate::table::PoseidonTable;
+
+/// Apply default constants in mod
+pub fn unroll_to_hash_input_default<F: Field>(
+    code: impl ExactSizeIterator<Item = u8>,
+) -> Vec<[F; PoseidonTable::INPUT_WIDTH]> {
+    use super::circuit::to_poseidon_hash::unroll_to_hash_input;
+    unroll_to_hash_input::<F, HASHBLOCK_BYTES_IN_FIELD, { PoseidonTable::INPUT_WIDTH }>(code)
 }

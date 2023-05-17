@@ -5,7 +5,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::CommonErrorGadget,
-            constraint_builder::ConstraintBuilder,
+            constraint_builder::ConstrainBuilderCommon,
             math_gadget::{ByteSizeGadget, LtGadget},
             CachedRegion, Cell, Word,
         },
@@ -15,6 +15,7 @@ use crate::{
 };
 use eth_types::{evm_types::{GasCost, OpcodeId}, Field, ToLittleEndian, ToU256};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 /// Gadget to implement the corresponding out of gas errors for
 /// [`OpcodeId::EXP`].
@@ -33,7 +34,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGExpGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::ErrorOutOfGasEXP;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         cb.require_equal(

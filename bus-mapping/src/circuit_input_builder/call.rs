@@ -104,9 +104,26 @@ impl Call {
         self.kind.is_create()
     }
 
+    /// ..
+    pub fn is_success(&self) -> bool {
+        self.is_success
+    }
+
     /// This call is call with op DELEGATECALL
     pub fn is_delegatecall(&self) -> bool {
         matches!(self.kind, CallKind::DelegateCall)
+    }
+
+    /// Get the code address if possible
+    pub fn code_address(&self) -> Option<Address> {
+        match self.kind {
+            CallKind::Call | CallKind::StaticCall => Some(self.address),
+            CallKind::CallCode | CallKind::DelegateCall => match self.code_source {
+                CodeSource::Address(address) => Some(address),
+                _ => None,
+            },
+            CallKind::Create | CallKind::Create2 => None,
+        }
     }
 }
 
@@ -126,6 +143,13 @@ pub struct CallContext {
     pub memory: Memory,
     /// return data buffer
     pub return_data: Vec<u8>,
+}
+
+impl CallContext {
+    /// Memory size in words, rounded up
+    pub fn memory_word_size(&self) -> u64 {
+        u64::try_from(self.memory.len()).expect("failed to convert usize to u64") / 32
+    }
 }
 
 /// A reversion group is the collection of calls and the operations which are

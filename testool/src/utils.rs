@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 use eth_types::{bytecode::OpcodeWithData, Bytecode, GethExecTrace, U256, U64};
 use log::{error, info};
 use prettytable::Table;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Eq, PartialEq, PartialOrd)]
 pub enum MainnetFork {
@@ -137,7 +137,7 @@ pub fn print_trace(trace: GethExecTrace) -> Result<()> {
             format!("{}", step.gas.0),
             format!("{}", step.gas_cost.0),
             format!("{}", step.depth),
-            step.error.unwrap_or_else(|| "".to_string()),
+            step.error.unwrap_or_default(),
             split(step.stack.0.iter().map(u64_to_str).collect(), 30),
             split(step.memory.iter().map(|m| hex::encode(m.0.as_slice())).collect(), 30),
             split(kv(step.storage.0), 30)
@@ -153,12 +153,28 @@ pub fn print_trace(trace: GethExecTrace) -> Result<()> {
 
 pub fn current_git_commit() -> Result<String> {
     let output = Command::new("git")
-        .args(&["rev-parse", "HEAD"])
+        .args(["rev-parse", "HEAD"])
         .output()
         .unwrap();
     let git_hash = String::from_utf8(output.stdout).unwrap();
     let git_hash = git_hash[..7].to_string();
     Ok(git_hash)
+}
+
+pub fn current_submodule_git_commit() -> Result<String> {
+    let git_cmd = Command::new("git")
+        .args(["ls-tree", "HEAD"])
+        .stdout(Stdio::piped())
+        .output()?;
+
+    match String::from_utf8(git_cmd.stdout)?
+        .lines()
+        .filter_map(|l| l.strip_suffix("\ttests").and_then(|l| l.split(' ').nth(2)))
+        .next()
+    {
+        Some(git_hash) => Ok(git_hash.to_string()),
+        None => bail!("unknown submodule hash"),
+    }
 }
 
 pub fn bytecode_of(code: &str) -> anyhow::Result<Bytecode> {
@@ -194,4 +210,11 @@ mod test {
         assert!(MainnetFork::in_network_range(&[String::from(">=Istanbul")])
             .expect("can parse network"));
     }
+}
+
+#[cfg(test)]
+#[ctor::ctor]
+fn init_env_logger() {
+    // Enable RUST_LOG during tests
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error")).init();
 }

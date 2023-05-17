@@ -4,9 +4,12 @@ use crate::{
         param::N_BYTES_GAS,
         step::ExecutionState,
         util::{
-            common_gadget::{SameContextGadget, SstoreGasGadget},
+            common_gadget::{
+                cal_sstore_gas_cost_for_assignment, SameContextGadget, SstoreGasGadget,
+            },
             constraint_builder::{
-                ConstraintBuilder, ReversionInfo, StepStateTransition, Transition::Delta,
+                ConstrainBuilderCommon, EVMConstraintBuilder, ReversionInfo, StepStateTransition,
+                Transition::Delta,
             },
             math_gadget::{IsEqualGadget, IsZeroGadget, LtGadget},
             not, CachedRegion, Cell,
@@ -17,7 +20,7 @@ use crate::{
     util::Expr,
 };
 
-use eth_types::{evm_types::GasCost, Field, ToScalar, ToU256};
+use eth_types::{evm_types::GasCost, Field, ToScalar};
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
@@ -47,7 +50,7 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::SSTORE;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
@@ -80,6 +83,12 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
         );
 
         let is_warm = cb.query_bool();
+        cb.account_storage_access_list_read(
+            tx_id.expr(),
+            callee_address.expr(),
+            phase2_key.expr(),
+            is_warm.expr(),
+        );
         cb.account_storage_access_list_write(
             tx_id.expr(),
             callee_address.expr(),
@@ -125,7 +134,7 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
         );
 
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(10.expr()),
+            rw_counter: Delta(11.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(2.expr()),
             reversible_write_counter: Delta(3.expr()),
@@ -186,9 +195,9 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
         let [key, value] =
             [step.rw_indices[5], step.rw_indices[6]].map(|idx| block.rws[idx].stack_value());
         self.phase2_key
-            .assign(region, offset, region.word_rlc(key.to_u256()))?;
+            .assign(region, offset, region.word_rlc(key))?;
         self.phase2_value
-            .assign(region, offset, region.word_rlc(value.to_u256()))?;
+            .assign(region, offset, region.word_rlc(value))?;
 
         let (_, value_prev, _, original_value) = block.rws[step.rw_indices[7]].storage_value_aux();
         self.phase2_value_prev
@@ -200,7 +209,7 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
         self.is_warm
             .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
 
-        let (tx_refund, tx_refund_prev) = block.rws[step.rw_indices[9]].tx_refund_value_pair();
+        let (tx_refund, tx_refund_prev) = block.rws[step.rw_indices[10]].tx_refund_value_pair();
         self.tx_refund_prev
             .assign(region, offset, Value::known(F::from(tx_refund_prev)))?;
 
@@ -212,14 +221,20 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
         )?;
 
         self.gas_cost
-            .assign(region, offset, value.to_u256(), value_prev, original_value, is_warm)?;
+            .assign(region, offset, value, value_prev, original_value, is_warm)?;
+        debug_assert_eq!(
+            cal_sstore_gas_cost_for_assignment(value, value_prev, original_value, is_warm),
+            step.gas_cost,
+            "invalid gas cost in sstore value {:?} value_prev {:?} original_value {:?} is_warm {:?} contract addr {:?} storage key {:?}",
+            value, value_prev, original_value, is_warm, call.callee_address, key
+        );
 
         self.tx_refund.assign(
             region,
             offset,
             tx_refund,
             tx_refund_prev,
-            value.to_u256(),
+            value,
             value_prev,
             original_value,
         )?;
@@ -244,7 +259,7 @@ pub(crate) struct SstoreTxRefundGadget<F> {
 
 impl<F: Field> SstoreTxRefundGadget<F> {
     pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
+        cb: &mut EVMConstraintBuilder<F>,
         tx_refund_old: Cell<F>,
         value: Cell<F>,
         value_prev: Cell<F>,

@@ -3,6 +3,9 @@ use eth_types::{evm_types::OpcodeId, Address, GethExecStep, GethExecTrace, ToAdd
 use ethers_core::utils::get_contract_address;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
+use AccessValue::{Account, Code, Storage};
+use RW::{READ, WRITE};
+
 /// State and Code Access with "keys/index" used in the access operation.
 #[derive(Debug, PartialEq, Eq)]
 pub enum AccessValue {
@@ -54,7 +57,7 @@ fn get_call_result(trace: &[GethExecStep]) -> Option<StackWord> {
 }
 
 /// State and Code Access set.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Default)]
 pub struct AccessSet {
     /// Set of accounts
     pub state: HashMap<Address, HashSet<Word>>,
@@ -62,10 +65,10 @@ pub struct AccessSet {
     pub code: HashSet<Address>,
 }
 
-impl From<Vec<Access>> for AccessSet {
-    fn from(list: Vec<Access>) -> Self {
-        let mut state: HashMap<Address, HashSet<Word>> = HashMap::new();
-        let mut code: HashSet<Address> = HashSet::new();
+impl AccessSet {
+    pub(crate) fn add(&mut self, list: Vec<Access>) {
+        let state = &mut self.state;
+        let code = &mut self.code;
         for access in list {
             match access.value {
                 AccessValue::Account { address } => {
@@ -87,7 +90,14 @@ impl From<Vec<Access>> for AccessSet {
                 }
             }
         }
-        Self { state, code }
+    }
+}
+
+impl From<Vec<Access>> for AccessSet {
+    fn from(list: Vec<Access>) -> Self {
+        let mut access_set = AccessSet::default();
+        access_set.add(list);
+        access_set
     }
 }
 
@@ -116,9 +126,6 @@ pub fn gen_state_access_trace<TX>(
     tx: &eth_types::Transaction,
     geth_trace: &GethExecTrace,
 ) -> Result<Vec<Access>, Error> {
-    use AccessValue::{Account, Code};
-    use RW::{READ, WRITE};
-
     let mut call_stack: Vec<(Address, CodeSource)> = Vec::new();
     let mut accs = vec![Access::new(None, WRITE, Account { address: tx.from })];
     if let Some(to) = tx.to {
@@ -145,16 +152,17 @@ pub fn gen_state_access_trace<TX>(
             pop_call_stack = step.depth - 1 == next_step.depth;
         }
 
-        match step.op {
-            OpcodeId::SSTORE => {
-                unreachable!("not implemented");
+        let result: Result<(), Error> = (|| {
+            match step.op {
+                OpcodeId::SSTORE => {
+                    unreachable!("not implemented");
                 // let address = contract_address;
                 // let key = step.stack.nth_last(0)?;
                 // accs.push(Access::new(i, WRITE, Storage { address, key }));
             }
             OpcodeId::SLOAD => {
                 unreachable!("not implemented");
-                // let address = contract_address;
+                    // let address = contract_address;
                 // let key = step.stack.nth_last(0)?;
                 // accs.push(Access::new(i, READ, Storage { address, key }));
             }
@@ -199,61 +207,67 @@ pub fn gen_state_access_trace<TX>(
                     // Find CREATE result
                     let address = get_call_result(&geth_trace.struct_logs[index..])
                         .unwrap_or_else(StackWord::zero)
-                        .to_address();
-                    if !address.is_zero() {
-                        accs.push(Access::new(i, WRITE, Account { address }));
-                        accs.push(Access::new(i, WRITE, Code { address }));
+                            .to_address();
+                        if !address.is_zero() {
+                            accs.push(Access::new(i, WRITE, Account { address }));
+                            accs.push(Access::new(i, WRITE, Code { address }));
+                        }
+                        call_stack.push((address, CodeSource::Address(address)));
                     }
-                    call_stack.push((address, CodeSource::Address(address)));
                 }
-            }
-            OpcodeId::CREATE2 => {
-                if push_call_stack {
-                    // Find CREATE2 result
-                    let address = get_call_result(&geth_trace.struct_logs[index..])
-                        .unwrap_or_else(StackWord::zero)
-                        .to_address();
-                    if !address.is_zero() {
-                        accs.push(Access::new(i, WRITE, Account { address }));
-                        accs.push(Access::new(i, WRITE, Code { address }));
+                OpcodeId::CREATE2 => {
+                    if push_call_stack {
+                        // Find CREATE2 result
+                        let address = get_call_result(&geth_trace.struct_logs[index..])
+                            .unwrap_or_else(StackWord::zero)
+                            .to_address();
+                        if !address.is_zero() {
+                            accs.push(Access::new(i, WRITE, Account { address }));
+                            accs.push(Access::new(i, WRITE, Code { address }));
+                        }
+                        call_stack.push((address, CodeSource::Address(address)));
                     }
-                    call_stack.push((address, CodeSource::Address(address)));
                 }
-            }
-            OpcodeId::CALL | OpcodeId::CALLCODE => {
+                OpcodeId::CALL | OpcodeId::CALLCODE => {
                 let address = contract_address;
                 accs.push(Access::new(i, WRITE, Account { address }));
 
-                let address_offset = step.stack.nth_last(6)?;
+                    let address_offset = step.stack.nth_last(6)?;
                 let address = geth_trace.global_memory.read_address(address_offset)?;
 
-                accs.push(Access::new(i, WRITE, Account { address }));
-                accs.push(Access::new(i, READ, Code { address }));
-                if push_call_stack {
-                    call_stack.push((address, CodeSource::Address(address)));
+                    accs.push(Access::new(i, WRITE, Account { address }));
+                    accs.push(Access::new(i, READ, Code { address }));
+                    if push_call_stack {
+                        call_stack.push((address, CodeSource::Address(address)));
+                    }
                 }
-            }
-            OpcodeId::DELEGATECALL => {
-                let address = step.stack.nth_last(5)?.to_address();
-                accs.push(Access::new(i, READ, Code { address }));
-                if push_call_stack {
-                    call_stack.push((contract_address, CodeSource::Address(address)));
+                OpcodeId::DELEGATECALL => {
+                    let address = step.stack.nth_last(5)?.to_address();
+                    accs.push(Access::new(i, READ, Code { address }));
+                    if push_call_stack {
+                        call_stack.push((contract_address, CodeSource::Address(address)));
+                    }
                 }
-            }
-            OpcodeId::STATICCALL => {
-                let address = step.stack.nth_last(5)?.to_address();
-                accs.push(Access::new(i, READ, Code { address }));
-                if push_call_stack {
-                    call_stack.push((address, CodeSource::Address(address)));
+                OpcodeId::STATICCALL => {
+                    let address = step.stack.nth_last(5)?.to_address();
+                    accs.push(Access::new(i, READ, Code { address }));
+                    if push_call_stack {
+                        call_stack.push((address, CodeSource::Address(address)));
+                    }
                 }
+                _ => {}
             }
-            _ => {}
+            Ok(())
+        })();
+        if let Err(e) = result {
+            log::warn!("err when parsing access: {:?}, step {:?}", e, step);
         }
+
         if pop_call_stack {
             if call_stack.len() == 1 {
                 return Err(Error::InvalidGethExecStep(
                     "gen_state_access_trace: call stack will be empty",
-                    step.clone(),
+                    Box::new(step.clone()),
                 ));
             }
             call_stack.pop().expect("call stack is empty");

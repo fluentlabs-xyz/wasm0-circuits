@@ -6,14 +6,25 @@ use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
 };
-use log::debug;
+use log::{debug, trace};
+use rayon::{iter::IntoParallelRefIterator, prelude::ParallelIterator};
 use std::{env::var, vec};
+
+const MAX_DEGREE: usize = 9;
 
 pub(crate) fn get_num_rows_per_round() -> usize {
     var("KECCAK_ROWS")
-        .unwrap_or_else(|_| "5".to_string())
+        .unwrap_or_else(|_| format!("{DEFAULT_KECCAK_ROWS}"))
         .parse()
         .expect("Cannot parse KECCAK_ROWS env var as usize")
+}
+
+pub(crate) fn keccak_unusable_rows() -> usize {
+    const UNUSABLE_ROWS_BY_KECCAK_ROWS: [usize; 24] = [
+        53, 67, 63, 59, 45, 79, 77, 75, 73, 71, 69, 67, 65, 63, 61, 59, 57, 71, 89, 107, 107, 107,
+        107, 107,
+    ];
+    UNUSABLE_ROWS_BY_KECCAK_ROWS[get_num_rows_per_round() - NUM_BYTES_PER_WORD - 1]
 }
 
 pub(crate) fn get_num_bits_per_absorb_lookup() -> usize {
@@ -48,7 +59,7 @@ pub(crate) struct SqueezeData<F: Field> {
 
 /// KeccakRow
 #[derive(Clone, Debug)]
-pub(crate) struct KeccakRow<F: Field> {
+pub struct KeccakRow<F: Field> {
     pub(crate) q_enable: bool,
     pub(crate) q_round: bool,
     pub(crate) q_absorb: bool,
@@ -125,7 +136,7 @@ pub(crate) mod decode {
 pub(crate) mod split {
     use super::{decode, CellManager, KeccakRegion, Part, PartValue};
     use crate::{
-        evm_circuit::util::constraint_builder::BaseConstraintBuilder,
+        evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
         keccak_circuit::util::{pack, pack_part, unpack, WordParts},
         util::Expr,
     };
@@ -188,7 +199,7 @@ pub(crate) mod split {
 pub(crate) mod split_uniform {
     use super::{decode, target_part_sizes, Cell, CellManager, KeccakRegion, Part, PartValue};
     use crate::{
-        evm_circuit::util::constraint_builder::BaseConstraintBuilder,
+        evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
         keccak_circuit::{
             param::BIT_COUNT,
             util::{pack, pack_part, rotate, rotate_rev, unpack, WordParts},
@@ -478,6 +489,12 @@ pub(crate) mod transform_to {
     }
 }
 
+fn keccak_rows<F: Field>(bytes: &[u8], challenges: Challenges<Value<F>>) -> Vec<KeccakRow<F>> {
+    let mut rows = Vec::new();
+    keccak(&mut rows, bytes, challenges);
+    rows
+}
+
 pub(crate) fn keccak<F: Field>(
     rows: &mut Vec<KeccakRow<F>>,
     bytes: &[u8],
@@ -574,10 +591,9 @@ pub(crate) fn keccak<F: Field>(
                 transform::value(&mut cell_manager, &mut region, packed, false, |v| *v, true);
             cell_manager.start_region();
             let mut is_paddings = Vec::new();
-            let mut data_rlcs = Vec::new();
+            let mut data_rlcs = vec![Value::known(F::zero()); get_num_rows_per_round()];
             for _ in input_bytes.iter() {
                 is_paddings.push(cell_manager.query_cell_value());
-                data_rlcs.push(cell_manager.query_cell_value());
             }
             if round < NUM_WORDS_TO_ABSORB {
                 let mut paddings = Vec::new();
@@ -593,17 +609,20 @@ pub(crate) fn keccak<F: Field>(
                     is_padding.assign(&mut region, 0, if padding { F::one() } else { F::zero() });
                 }
 
-                data_rlcs[0].assign_value(&mut region, 0, data_rlc);
+                data_rlcs[NUM_BYTES_PER_WORD] = data_rlc; // Start at 0 or forward the previous value.
                 for (idx, (byte, padding)) in input_bytes.iter().zip(paddings.iter()).enumerate() {
                     if !*padding {
                         let byte_value = Value::known(byte.value);
                         data_rlc = data_rlc * challenges.keccak_input() + byte_value;
                     }
-                    if idx < data_rlcs.len() - 1 {
-                        data_rlcs[idx + 1].assign_value(&mut region, 0, data_rlc);
-                    }
+                    data_rlcs[NUM_BYTES_PER_WORD - (idx + 1)] = data_rlc; // data_rlc_after_this_byte
                 }
+            } else {
+                // In rounds without inputs, forward the previous value.
+                data_rlcs[0] = data_rlc;
             }
+            // Other positions of data_rlcs are not constrained and we leave them at 0.
+
             cell_manager.start_region();
 
             if round != NUM_ROUNDS {
@@ -755,7 +774,7 @@ pub(crate) fn keccak<F: Field>(
             // The words to squeeze out
             hash_words = s.into_iter().take(4).map(|a| a[0]).take(4).collect();
             round_lengths.push(length);
-            round_data_rlcs.push(data_rlc);
+            round_data_rlcs.push(data_rlcs);
 
             cell_managers.push(cell_manager);
             regions.push(region);
@@ -790,7 +809,7 @@ pub(crate) fn keccak<F: Field>(
                     round_cst,
                     is_final: is_final_block && round == NUM_ROUNDS && row_idx == 0,
                     length: round_lengths[round],
-                    data_rlc: round_data_rlcs[round],
+                    data_rlc: round_data_rlcs[round][row_idx],
                     hash_rlc,
                     cell_values: regions[round].rows[row_idx].clone(),
                 });
@@ -811,17 +830,22 @@ pub(crate) fn keccak<F: Field>(
                     .to_vec()
             })
             .collect::<Vec<_>>();
-        debug!("hash: {:x?}", &(hash_bytes[0..4].concat()));
-        debug!("data rlc: {:x?}", data_rlc);
+        trace!("hash: {:x?}", &(hash_bytes[0..4].concat()));
+        trace!("data rlc: {:x?}", data_rlc);
     }
 }
 
-pub(crate) fn multi_keccak<F: Field>(
+/// ...
+pub fn multi_keccak<F: Field>(
     bytes: &[Vec<u8>],
     challenges: Challenges<Value<F>>,
     capacity: Option<usize>,
 ) -> Result<Vec<KeccakRow<F>>, Error> {
+    log::info!("multi_keccak assign with capacity: {:?}", capacity);
     let mut rows: Vec<KeccakRow<F>> = Vec::new();
+    if let Some(capacity) = capacity {
+        rows.reserve((1 + capacity * (NUM_ROUNDS + 1)) * get_num_rows_per_round());
+    }
     // Dummy first row so that the initial data is absorbed
     // The initial data doesn't really matter, `is_final` just needs to be disabled.
     for idx in 0..get_num_rows_per_round() {
@@ -840,10 +864,26 @@ pub(crate) fn multi_keccak<F: Field>(
             cell_values: Vec::new(),
         });
     }
-    // Actual keccaks
-    for bytes in bytes {
-        keccak(&mut rows, bytes, challenges);
-    }
+
+    // Dedup actual keccaks
+    // let inputs_len: usize = bytes.iter().map(|k| k.len()).sum();
+    // let inputs_num = bytes.len();
+    // for (idx, bytes) in bytes.iter().enumerate() {
+    // debug!("{}th keccak is of len {}", idx, bytes.len());
+    // }
+    // let bytes: Vec<_> = bytes.iter().unique().collect();
+    // let inputs_len2: usize = bytes.iter().map(|k| k.len()).sum();
+    // let inputs_num2 = bytes.len();
+    // debug!("after dedup inputs, input num {inputs_num}->{inputs_num2}, input total len
+    // {inputs_len}->{inputs_len2}");
+
+    // TODO: optimize the `extend` using Iter?
+    let real_rows: Vec<_> = bytes
+        .par_iter()
+        .flat_map_iter(|bytes| keccak_rows(bytes, challenges))
+        .collect();
+    rows.extend(real_rows.into_iter());
+    debug!("keccak rows len without padding: {}", rows.len());
     if let Some(capacity) = capacity {
         let padding_rows = {
             let mut rows = Vec::new();
@@ -859,5 +899,6 @@ pub(crate) fn multi_keccak<F: Field>(
             return Err(Error::BoundsFailure);
         }
     }
+    debug!("keccak witgen done");
     Ok(rows)
 }

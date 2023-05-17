@@ -9,7 +9,7 @@ use itertools::Itertools;
 use strum_macros::EnumIter;
 
 /// Opcode enum. One-to-one corresponding to an `u8` value.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Hash, EnumIter)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Hash, EnumIter, PartialOrd, Ord)]
 pub enum OpcodeId {
     CALLDATALOAD,
     CALLDATASIZE,
@@ -378,6 +378,16 @@ impl OpcodeId {
             OpcodeId::SELFDESTRUCT => true,
             _ => false
         }
+    }
+
+    /// ..
+    pub fn is_call_with_value(&self) -> bool {
+        matches!(self, Self::CALL | Self::CALLCODE)
+    }
+
+    /// ..
+    pub fn is_call_without_value(&self) -> bool {
+        matches!(self, Self::DELEGATECALL | Self::STATICCALL)
     }
 
     /// Returns `true` if the `OpcodeId` is a `DUPn`.
@@ -1104,6 +1114,7 @@ impl From<u8> for OpcodeId {
             0xec => OpcodeId::CALLCODE,
             0xed => OpcodeId::DELEGATECALL,
             0xee => OpcodeId::STATICCALL,
+            #[cfg(not(feature = "scroll"))]
             0xef => OpcodeId::SELFDESTRUCT,
             // invalid opcode
             _ => OpcodeId::INVALID(value)
@@ -1333,6 +1344,9 @@ impl FromStr for OpcodeId {
             "evm_callcode" => OpcodeId::CALLCODE,
             "evm_delegatecall" => OpcodeId::DELEGATECALL,
             "evm_create2" => OpcodeId::CREATE2,
+            #[cfg(feature = "scroll")]
+            "SELFDESTRUCT" => OpcodeId::INVALID(0xffu8),
+            #[cfg(not(feature = "scroll"))]
             "evm_staticcall" => OpcodeId::STATICCALL,
             "evm_revert" => OpcodeId::REVERT,
             "evm_selfdestruct" => OpcodeId::SELFDESTRUCT,

@@ -11,12 +11,13 @@ use crate::{
         util::{
             CachedRegion,
             Cell,
-            common_gadget::SameContextGadget, constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            common_gadget::SameContextGadget, constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::Expr,
 };
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmDropGadget<F> {
@@ -29,7 +30,7 @@ impl<F: Field> ExecutionGadget<F> for WasmDropGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_DROP;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let phase2_value = cb.query_cell_phase2();
 
         // Pop the value from the stack

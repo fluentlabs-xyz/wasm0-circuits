@@ -4,7 +4,7 @@ use crate::{
         step::ExecutionState,
         util::{
             constraint_builder::{
-                ConstraintBuilder, StepStateTransition,
+                ConstrainBuilderCommon, StepStateTransition,
                 Transition::{Delta, Same},
             },
             math_gadget::IsZeroGadget,
@@ -18,6 +18,7 @@ use crate::{
 use bus_mapping::evm::OpcodeId;
 use eth_types::Field;
 use halo2_proofs::{circuit::Value, plonk::Error};
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmEndGadget<F> {
@@ -32,7 +33,7 @@ impl<F: Field> ExecutionGadget<F> for WasmEndGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_END;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let code_length = cb.query_cell();
         cb.bytecode_length(cb.curr.state.code_hash.expr(), code_length.expr());
         let is_out_of_range = IsZeroGadget::construct(

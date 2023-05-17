@@ -5,7 +5,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
+            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
             from_bytes, CachedRegion, RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},
@@ -19,6 +19,7 @@ use halo2_proofs::plonk::Error;
 use std::convert::TryInto;
 use halo2_proofs::circuit::Value;
 use crate::evm_circuit::util::Cell;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmAddressGadget<F> {
@@ -32,7 +33,7 @@ impl<F: Field> ExecutionGadget<F> for EvmAddressGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::ADDRESS;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let address_offset = cb.query_cell();
         let callee_address = cb.query_word_rlc();
 

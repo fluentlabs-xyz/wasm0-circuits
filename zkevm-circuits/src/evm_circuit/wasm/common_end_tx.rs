@@ -6,14 +6,14 @@ use crate::{
         util::{
             common_gadget::UpdateBalanceGadget,
             constraint_builder::{
-                ConstraintBuilder, StepStateTransition,
+                ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition,
                 Transition::{Delta, Same},
             },
             math_gadget::{
                 AddWordsGadget, ConstantDivisionGadget, IsEqualGadget, MinMaxGadget,
                 MulWordByU64Gadget,
             },
-            CachedRegion, Cell,
+            CachedRegion, Cell, Word,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -22,7 +22,7 @@ use crate::{
     },
     util::Expr,
 };
-use eth_types::{evm_types::MAX_REFUND_QUOTIENT_OF_GAS_USED, Field, ToScalar};
+use eth_types::{evm_types::MAX_REFUND_QUOTIENT_OF_GAS_USED, Field, ToLittleEndian, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
 use strum::EnumCount;
 
@@ -33,6 +33,7 @@ pub(crate) struct CommonEndTxGadget<F> {
     max_refund: ConstantDivisionGadget<F, N_BYTES_GAS>,
     refund: Cell<F>,
     effective_refund: MinMaxGadget<F, N_BYTES_GAS>,
+    effective_fee: Word<F>,
     mul_gas_price_by_refund: MulWordByU64Gadget<F>,
     tx_caller_address: Cell<F>,
     gas_fee_refund: UpdateBalanceGadget<F, 2, true>,
@@ -50,7 +51,7 @@ impl<F: Field> ExecutionGadget<F> for CommonEndTxGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::EndTx;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let is_persistent = cb.call_context(None, CallContextFieldTag::IsPersistent);
 
@@ -90,19 +91,28 @@ impl<F: Field> ExecutionGadget<F> for CommonEndTxGadget<F> {
             (BlockContextFieldTag::Coinbase, coinbase.expr()),
             (BlockContextFieldTag::BaseFee, base_fee.expr()),
         ] {
-            cb.block_lookup(tag.expr(), None, value);
+            cb.block_lookup(tag.expr(), cb.curr.state.block_number.expr(), value);
         }
         let effective_tip = cb.query_word_rlc();
         let sub_gas_price_by_base_fee =
             AddWordsGadget::construct(cb, [effective_tip.clone(), base_fee], tx_gas_price);
-        let mul_effective_tip_by_gas_used =
-            MulWordByU64Gadget::construct(cb, effective_tip, gas_used.clone());
-        let coinbase_reward = UpdateBalanceGadget::construct(
+        let mul_effective_tip_by_gas_used = MulWordByU64Gadget::construct(
             cb,
-            coinbase.expr(),
-            vec![mul_effective_tip_by_gas_used.product().clone()],
-            None,
+            effective_tip,
+            gas_used.clone() - effective_refund.min(),
         );
+
+        let effective_fee = cb.query_word_rlc();
+        // TODO: contraint l1 fee
+        #[cfg(not(feature = "scroll"))]
+        cb.require_equal(
+            "tx_fee == l1_fee + l2_fee, l1_fee == 0",
+            mul_effective_tip_by_gas_used.product().expr(),
+            effective_fee.expr(),
+        );
+
+        let coinbase_reward =
+            UpdateBalanceGadget::construct(cb, coinbase.expr(), vec![effective_fee.clone()], None);
 
         // constrain tx receipt fields
         cb.tx_receipt_lookup(
@@ -180,6 +190,7 @@ impl<F: Field> ExecutionGadget<F> for CommonEndTxGadget<F> {
             max_refund,
             refund,
             effective_refund,
+            effective_fee,
             mul_gas_price_by_refund,
             tx_caller_address,
             gas_fee_refund,
@@ -245,36 +256,40 @@ impl<F: Field> ExecutionGadget<F> for CommonEndTxGadget<F> {
             vec![gas_fee_refund],
             caller_balance,
         )?;
-        let effective_tip = tx.gas_price - block.context.base_fee;
+        let context = &block.context.ctxs[&tx.block_number];
+        let effective_tip = tx.gas_price - context.base_fee;
         self.sub_gas_price_by_base_fee.assign(
             region,
             offset,
-            [effective_tip, block.context.base_fee],
+            [effective_tip, context.base_fee],
             tx.gas_price,
         )?;
+        let coinbase_reward = effective_tip * (gas_used - effective_refund);
         self.mul_effective_tip_by_gas_used.assign(
             region,
             offset,
             effective_tip,
-            gas_used,
-            effective_tip * gas_used,
+            gas_used - effective_refund,
+            coinbase_reward,
         )?;
         self.coinbase.assign(
             region,
             offset,
             Value::known(
-                block
-                    .context
+                context
                     .coinbase
                     .to_scalar()
                     .expect("unexpected Address -> Scalar conversion failure"),
             ),
         )?;
+        let effective_fee = coinbase_balance - coinbase_balance_prev;
+        self.effective_fee
+            .assign(region, offset, Some(effective_fee.to_le_bytes()))?;
         self.coinbase_reward.assign(
             region,
             offset,
             coinbase_balance_prev,
-            vec![effective_tip * gas_used],
+            vec![effective_fee],
             coinbase_balance,
         )?;
 
@@ -362,7 +377,7 @@ mod test {
                 },
                 |block, _tx| block.number(0xcafeu64),
             )
-            .unwrap(),
+                .unwrap(),
         );
     }
 }
