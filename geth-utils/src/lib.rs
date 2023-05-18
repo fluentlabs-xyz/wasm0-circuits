@@ -27,6 +27,8 @@ pub fn trace(config: &str) -> Result<String, Error> {
         .expect("Error translating EVM trace from library")
         .to_string();
 
+    println!("trace result: {:?}", c_result.to_str().unwrap().to_string().replace("\n", "").replace("\\\"", "\"").replace("  ", ""));
+
     // We can now free the returned string (memory managed by Go)
     unsafe { FreeString(c_result.as_ptr()) };
 
