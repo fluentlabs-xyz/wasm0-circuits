@@ -15,8 +15,6 @@ array-init = "2.0.0"
 bus-mapping = { path = "../bus-mapping" }
 eth-types = { path = "../eth-types" }
 gadgets = { path = "../gadgets" }
-#specs = { path = "../delphinus-zkwasm/specs" }
-#wasm-tracer = { path = "../wasm-tracer" }
 ethers-core = "0.17.0"
 ethers-signers = { version = "0.17.0", optional = true }
 mock = { path = "../mock" }

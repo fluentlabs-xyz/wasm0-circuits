@@ -11,9 +11,7 @@ members = [
     "eth-types",
     "external-tracer",
     "mock",
-#    "wasm-tracer",
     "testool",
-#    "first-prover",
     "golang_utils",
 ]
 
