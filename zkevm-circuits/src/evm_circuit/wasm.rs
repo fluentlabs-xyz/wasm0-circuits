@@ -184,7 +184,7 @@ use once_cell::sync::Lazy;
 use bus_mapping::util::read_env_var;
 
 pub(crate) static CHECK_RW_LOOKUP: Lazy<bool> =
-    Lazy::new(|| read_env_var("CHECK_RW_LOOKUP", true));
+    Lazy::new(|| read_env_var("CHECK_RW_LOOKUP", false));
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;

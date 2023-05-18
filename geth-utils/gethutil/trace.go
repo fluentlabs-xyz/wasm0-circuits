@@ -3,16 +3,16 @@ package gethutil
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/tracers/logger"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/imdario/mergo"
+	"github.com/scroll-tech/go-ethereum/common"
+	"github.com/scroll-tech/go-ethereum/common/hexutil"
+	"github.com/scroll-tech/go-ethereum/core"
+	"github.com/scroll-tech/go-ethereum/core/rawdb"
+	"github.com/scroll-tech/go-ethereum/core/state"
+	"github.com/scroll-tech/go-ethereum/core/types"
+	"github.com/scroll-tech/go-ethereum/core/vm"
+	"github.com/scroll-tech/go-ethereum/eth/tracers/logger"
+	"github.com/scroll-tech/go-ethereum/params"
 	"math/big"
 	"os"
 )
@@ -113,9 +113,6 @@ func Trace(config TraceConfig, printFile bool) ([]*logger.WasmExecutionResult, e
 		return nil, fmt.Errorf("txs total gas: %d Exceeds block gas limit: %d", txsGasLimit, blockGasLimit)
 	}
 
-	// For opcode PREVRANDAO
-	randao := common.BigToHash(toBigInt(config.Block.Difficulty)) // TODO: fix
-
 	blockCtx := vm.BlockContext{
 		CanTransfer: core.CanTransfer,
 		Transfer:    core.Transfer,
@@ -131,7 +128,6 @@ func Trace(config TraceConfig, printFile bool) ([]*logger.WasmExecutionResult, e
 		BlockNumber: toBigInt(config.Block.Number),
 		Time:        toBigInt(config.Block.Timestamp),
 		Difficulty:  toBigInt(config.Block.Difficulty),
-		Random:      &randao,
 		BaseFee:     toBigInt(config.Block.BaseFee),
 		GasLimit:    blockGasLimit,
 	}

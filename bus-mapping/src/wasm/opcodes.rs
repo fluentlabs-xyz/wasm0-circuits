@@ -797,6 +797,34 @@ pub fn gen_begin_tx_ops(
         GasCost(state.tx.gas - geth_trace.struct_logs[0].gas.0)
     };
 
+    // Initialize WASM global memory and global variables section
+    for (i, byte) in geth_trace.global_memory.0.iter().enumerate() {
+        // TODO: "I think there is easier way to proof init memory"
+        state.memory_write(&mut exec_step, MemoryAddress::from(i), *byte)?;
+    }
+    for global in &geth_trace.globals {
+        // TODO: "proof const evaluation"
+        state.global_write(&mut exec_step, global.index, StackWord::from(global.value))?;
+    }
+
+    let first_function_call = geth_trace.function_calls.first().unwrap();
+    // state.call_context_write(
+    //     &mut exec_step,
+    //     state.call()?.call_id,
+    //     CallContextField::InternalFunctionId,
+    //     U256::from(first_function_call.fn_index),
+    // );
+
+    for i in 0..first_function_call.num_locals {
+        // TODO: "function body can be empty"
+        state.stack_write(&mut exec_step, geth_trace.struct_logs[0].stack.nth_last_filled((first_function_call.num_locals - i - 1) as usize), StackWord::zero())?;
+    }
+    exec_step.function_index = first_function_call.fn_index;
+    exec_step.max_stack_height = first_function_call.max_stack_height;
+    exec_step.num_locals = first_function_call.num_locals;
+    // increase reserved stack size with num locals
+    exec_step.stack_size += first_function_call.num_locals as usize;
+
     log::trace!("begin_tx_step: {:?}", exec_step);
     state.tx.steps_mut().push(exec_step);
 

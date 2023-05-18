@@ -5,10 +5,10 @@ import (
 	"math/big"
 	"unsafe"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/holiman/uint256"
+	"github.com/scroll-tech/go-ethereum/common"
+	"github.com/scroll-tech/go-ethereum/common/hexutil"
+	"github.com/scroll-tech/go-ethereum/core/vm"
 )
 
 var (
@@ -16,7 +16,7 @@ var (
 	longonInstructionSet = newLondonInstructionSet()
 )
 
-//go:linkname newLondonInstructionSet github.com/ethereum/go-ethereum/core/vm.newLondonInstructionSet
+//go:linkname newLondonInstructionSet github.com/scroll-tech/go-ethereum/core/vm.newLondonInstructionSet
 func newLondonInstructionSet() vm.JumpTable
 
 func opPushRangeCheck(op vm.OpCode, n int) {

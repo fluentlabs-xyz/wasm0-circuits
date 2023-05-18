@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/scroll-tech/go-ethereum/core/vm"
 )
 
 type Asm struct {
@@ -76,7 +76,7 @@ func (a *Asm) Byte(v ...interface{}) *Asm   { return a.opWithPush(vm.BYTE, v...)
 func (a *Asm) Shl(v ...interface{}) *Asm    { return a.opWithPush(vm.SHL, v...) }
 func (a *Asm) Shr(v ...interface{}) *Asm    { return a.opWithPush(vm.SHR, v...) }
 func (a *Asm) Sar(v ...interface{}) *Asm    { return a.opWithPush(vm.SAR, v...) }
-func (a *Asm) Sha3(v ...interface{}) *Asm   { return a.opWithPush(vm.KECCAK256, v...) }
+func (a *Asm) Sha3(v ...interface{}) *Asm   { return a.opWithPush(vm.SHA3, v...) }
 
 // 0x30 range
 func (a *Asm) Address() *Asm                        { return a.appendByte(vm.ADDRESS) }
