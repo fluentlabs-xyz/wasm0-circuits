@@ -37,18 +37,18 @@ impl<F: Field> ExecutionGadget<F> for WasmCallGadget<F> {
         let function_index = cb.query_cell();
         let program_counter = cb.query_cell();
 
-        cb.call_context_lookup(
-            1.expr(),
-            None,
-            CallContextFieldTag::InternalFunctionId,
-            function_index.expr(),
-        );
-        cb.call_context_lookup(
-            1.expr(),
-            None,
-            CallContextFieldTag::ProgramCounter,
-            program_counter.expr(),
-        );
+        // cb.call_context_lookup(
+        //     1.expr(),
+        //     None,
+        //     CallContextFieldTag::InternalFunctionId,
+        //     function_index.expr(),
+        // );
+        // cb.call_context_lookup(
+        //     1.expr(),
+        //     None,
+        //     CallContextFieldTag::ProgramCounter,
+        //     program_counter.expr(),
+        // );
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(2.expr()),

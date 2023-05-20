@@ -140,84 +140,17 @@ mod test {
     use itertools::Itertools;
     use mock::TestContext;
 
-    fn test_ok(bytecode: Bytecode, is_root: bool) {
-        if is_root {
-            let ctx = TestContext::<2, 1>::new(
-                None,
-                |accs| {
-                    accs[0]
-                        .address(address!("0x0000000000000000000000000000000000000123"))
-                        .balance(Word::from(1u64 << 30));
-                    accs[1]
-                        .address(address!("0x0000000000000000000000000000000000000010"))
-                        .balance(Word::from(1u64 << 20))
-                        .code(bytecode);
-                },
-                |mut txs, accs| {
-                    txs[0]
-                        .from(accs[0].address)
-                        .to(accs[1].address)
-                        .gas(Word::from(30000));
-                },
-                |block, _tx| block.number(0xcafeu64),
-            )
-            .unwrap();
-
-            CircuitTestBuilder::new_from_test_ctx(ctx).run();
-        } else {
-            let ctx = TestContext::<3, 1>::new(
-                None,
-                |accs| {
-                    accs[0]
-                        .address(address!("0x0000000000000000000000000000000000000123"))
-                        .balance(Word::from(1u64 << 30));
-                    accs[1]
-                        .address(address!("0x0000000000000000000000000000000000000010"))
-                        .balance(Word::from(1u64 << 20))
-                        .code(bytecode! {
-                            PUSH1(0)
-                            PUSH1(0)
-                            PUSH1(0)
-                            PUSH1(0)
-                            PUSH1(0)
-                            PUSH1(0x20)
-                            GAS
-                            CALL
-                            STOP
-                        });
-                    accs[2]
-                        .address(address!("0x0000000000000000000000000000000000000020"))
-                        .balance(Word::from(1u64 << 20))
-                        .code(bytecode);
-                },
-                |mut txs, accs| {
-                    txs[0]
-                        .from(accs[0].address)
-                        .to(accs[1].address)
-                        .gas(Word::from(30000));
-                },
-                |block, _tx| block.number(0xcafeu64),
-            )
-            .unwrap();
-
-            CircuitTestBuilder::new_from_test_ctx(ctx).run();
-        };
+    fn run_test(bytecode: Bytecode) {
+        CircuitTestBuilder::new_from_test_ctx(
+            TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
+        ).run()
     }
 
     #[test]
-    fn stop_gadget_simple() {
-        let bytecodes = vec![
-            bytecode! {
-                PUSH1(0)
-                STOP
-            },
-            bytecode! {
-                PUSH1(0)
-            },
-        ];
-        let is_roots = vec![true, false];
-        for (bytecode, is_root) in bytecodes.into_iter().cartesian_product(is_roots) {
-            test_ok(bytecode, is_root);
-        }
+    fn test_end() {
+        let code = bytecode! {
+            // end is always injected by default
+        };
+        run_test(code);
     }
 }

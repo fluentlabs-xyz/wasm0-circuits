@@ -85,7 +85,7 @@ mod test {
     }
 
     #[test]
-    fn test_different_locals() {
+    fn test_drop() {
         let code = bytecode! {
             I32Const[1]
             I32Const[2]
