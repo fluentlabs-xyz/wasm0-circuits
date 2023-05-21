@@ -35,7 +35,7 @@ pub(crate) struct ErrorOOGCreate2Gadget<F> {
 impl<F: Field> ExecutionGadget<F> for ErrorOOGCreate2Gadget<F> {
     const NAME: &'static str = "ErrorOutOfGasCREATE2";
 
-    const EXECUTION_STATE: ExecutionState = ExecutionState::ErrorOutOfGasCREATE2;
+    const EXECUTION_STATE: ExecutionState = ExecutionState::ErrorOutOfGasCREATE;
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();

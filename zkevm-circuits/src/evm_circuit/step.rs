@@ -137,7 +137,7 @@ pub enum ExecutionState {
     ErrorOutOfGasSHA3,
     ErrorOutOfGasCall,
     ErrorOutOfGasSloadSstore,
-    ErrorOutOfGasCREATE2,
+    ErrorOutOfGasCREATE,
     ErrorOutOfGasSELFDESTRUCT,
 }
 
@@ -182,7 +182,7 @@ impl ExecutionState {
                 | Self::ErrorOutOfGasSHA3
                 | Self::ErrorOutOfGasCall
                 | Self::ErrorOutOfGasSloadSstore
-                | Self::ErrorOutOfGasCREATE2
+                | Self::ErrorOutOfGasCREATE
                 | Self::ErrorOutOfGasSELFDESTRUCT
         )
     }

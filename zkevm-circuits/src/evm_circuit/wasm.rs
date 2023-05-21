@@ -248,7 +248,7 @@ pub(crate) struct ExecutionConfig<F> {
     error_oog_log: Box<ErrorOOGLogGadget<F>>,
     error_oog_account_access: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasAccountAccess }>>,
     error_oog_sha3: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasSHA3 }>>,
-    error_oog_create2: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasCREATE2 }>>,
+    error_oog_create2: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasCREATE }>>,
     error_code_store: Box<ErrorCodeStoreGadget<F>>,
     #[cfg(not(feature = "scroll"))]
     error_oog_self_destruct: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasSELFDESTRUCT }>>,
@@ -1339,7 +1339,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::ErrorOutOfGasEXP => {
                 assign_exec_step!(self.error_oog_exp)
             }
-            ExecutionState::ErrorOutOfGasCREATE2 => {
+            ExecutionState::ErrorOutOfGasCREATE => {
                 assign_exec_step!(self.error_oog_create2)
             }
             ExecutionState::ErrorOutOfGasSELFDESTRUCT => {

@@ -30,4 +30,5 @@ wasm-encoder = "0.22.1"
 [features]
 default = ["warn-unimplemented"]
 warn-unimplemented = []
+shanghai = []
 scroll = []
