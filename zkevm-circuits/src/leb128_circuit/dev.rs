@@ -60,7 +60,6 @@ impl<'a, F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> Circuit<F> for
 #[cfg(test)]
 mod tests {
     use std::env;
-    use std::env::VarError;
     use std::marker::PhantomData;
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;

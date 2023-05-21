@@ -390,7 +390,7 @@ impl Bytecode {
             OpcodeId::EXTCODEHASH => ("_evm_extcodehash", 2),
             OpcodeId::RETURNDATASIZE => ("_evm_returndatasize", 1),
             OpcodeId::RETURNDATACOPY => ("_evm_returndatacopy", 3),
-            OpcodeId::BLOCKHASH => ("_evm_blockhash", 1),
+            OpcodeId::BLOCKHASH => ("_evm_blockhash", 2),
             OpcodeId::COINBASE => ("_evm_coinbase", 1),
             OpcodeId::TIMESTAMP => ("_evm_timestamp", 1),
             OpcodeId::NUMBER => ("_evm_number", 1),

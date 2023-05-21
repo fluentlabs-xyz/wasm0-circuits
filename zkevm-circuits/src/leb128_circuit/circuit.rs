@@ -7,7 +7,7 @@ use halo2_proofs::plonk::{Constraints, Expression, Selector};
 use halo2_proofs::poly::Rotation;
 use eth_types::Field;
 use gadgets::util::Expr;
-use crate::leb128_circuit::consts::{BITS_IN_BYTE, BYTES_IN_BASE64_WORD, EIGHT_LS_BITS_MASK, LEB128_BITS_CHUNK_SIZE};
+use crate::leb128_circuit::consts::{BYTES_IN_BASE64_WORD, EIGHT_LS_BITS_MASK, LEB128_BITS_CHUNK_SIZE};
 
 
 /// LEB128NumberConfig

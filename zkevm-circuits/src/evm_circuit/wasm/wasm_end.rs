@@ -135,9 +135,8 @@ impl<F: Field> ExecutionGadget<F> for WasmEndGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::test_util::CircuitTestBuilder;
-    use eth_types::{address, bytecode, Bytecode, Word};
+    use eth_types::{bytecode, Bytecode};
 
-    use itertools::Itertools;
     use mock::TestContext;
 
     fn run_test(bytecode: Bytecode) {

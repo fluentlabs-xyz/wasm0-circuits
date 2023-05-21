@@ -113,7 +113,7 @@ mod wasm_test;
 mod wasm_unary;
 
 use common_begin_tx::CommonBeginTxGadget;
-use common_block_ctx::CommonBlockCtxGadget;
+// use common_block_ctx::CommonBlockCtxGadget;
 use common_dummy::CommonDummyGadget;
 use common_end_block::CommonEndBlockGadget;
 use common_end_tx::CommonEndTxGadget;
@@ -124,7 +124,7 @@ use error_oog_constant::ErrorOOGConstantGadget;
 use error_oog_exp::ErrorOOGExpGadget;
 use error_oog_log::ErrorOOGLogGadget;
 use error_oog_sload_sstore::ErrorOOGSloadSstoreGadget;
-use error_oog_static_memory::ErrorOOGStaticMemoryGadget;
+// use error_oog_static_memory::ErrorOOGStaticMemoryGadget;
 use error_return_data_oo_bound::ErrorReturnDataOutOfBoundGadget;
 use error_stack::ErrorStackGadget;
 use error_write_protection::ErrorWriteProtectionGadget;

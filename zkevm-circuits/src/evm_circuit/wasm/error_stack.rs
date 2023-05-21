@@ -4,7 +4,7 @@ use crate::{
         step::ExecutionState,
         table::{FixedTableTag, Lookup},
         util::{
-            common_gadget::CommonErrorGadget, constraint_builder::ConstrainBuilderCommon, CachedRegion,
+            common_gadget::CommonErrorGadget, CachedRegion,
             Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},

@@ -19,7 +19,7 @@ use crate::{
     table::CallContextFieldTag,
     util::Expr,
 };
-use eth_types::{evm_types::{GasCost, OpcodeId}, Field, StackWord, ToLittleEndian, U256};
+use eth_types::{evm_types::{GasCost, OpcodeId}, Field, StackWord, ToLittleEndian};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 /// Gadget to implement the corresponding out of gas errors for

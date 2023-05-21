@@ -6,7 +6,7 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{
-                ConstrainBuilderCommon, ReversionInfo, StepStateTransition, Transition::Delta,
+                ReversionInfo, StepStateTransition, Transition::Delta,
             },
             from_bytes,
             math_gadget::IsZeroGadget,

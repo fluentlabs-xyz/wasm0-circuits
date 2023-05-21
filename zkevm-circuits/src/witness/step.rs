@@ -221,9 +221,6 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::BrIf |
                     OpcodeId::BrTable => ExecutionState::WASM_BREAK,
 
-                    OpcodeId::I32Eqz |
-                    OpcodeId::I64Eqz => ExecutionState::WASM_TEST,
-
                     OpcodeId::End => ExecutionState::WASM_END,
 
                     // EVM opcodes

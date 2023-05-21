@@ -10,7 +10,7 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::To, Transition::Delta},
+            constraint_builder::{StepStateTransition, Transition::To, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -67,11 +67,8 @@ impl<F: Field> ExecutionGadget<F> for WasmBreakGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use std::fs;
-    use wabt::wasm2wat;
     use wasm_encoder::ValType;
     use eth_types::{bytecode, Bytecode};
-    use eth_types::bytecode::WasmBinaryBytecode;
     use mock::test_ctx::TestContext;
 
     use crate::test_util::CircuitTestBuilder;

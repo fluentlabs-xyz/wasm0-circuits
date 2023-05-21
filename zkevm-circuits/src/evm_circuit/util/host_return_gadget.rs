@@ -6,7 +6,7 @@ use eth_types::{Field, ToScalar, U64};
 use gadgets::util::Expr;
 
 use crate::evm_circuit::util::{CachedRegion, Cell, RandomLinearCombination};
-use crate::evm_circuit::util::constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder};
+use crate::evm_circuit::util::constraint_builder::{EVMConstraintBuilder};
 
 #[derive(Clone, Debug)]
 pub(crate) struct HostReturnGadget<F, const N_SIZE: usize> {

@@ -5,7 +5,7 @@ use crate::{
     operation::CallContextField,
     Error,
 };
-use eth_types::{GethExecStep, StackWord, Word};
+use eth_types::{GethExecStep, StackWord};
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct ErrorReturnDataOutOfBound;

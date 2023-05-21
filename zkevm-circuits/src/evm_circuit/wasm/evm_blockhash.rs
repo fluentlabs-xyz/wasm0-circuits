@@ -1,17 +1,22 @@
+use halo2_proofs::{circuit::Value, plonk::Error};
+
+use bus_mapping::evm::OpcodeId;
+use eth_types::{Field, ToLittleEndian, ToScalar};
+use gadgets::util::not;
+
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
         param::N_BYTES_U64,
         step::ExecutionState,
         util::{
-            and,
-            common_gadget::{SameContextGadget, WordByteCapGadget},
+            CachedRegion,
+            Cell,
+            common_gadget::{SameContextGadget},
             constraint_builder::{
-                ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition,
+                EVMConstraintBuilder, StepStateTransition,
                 Transition::Delta,
-            },
-            math_gadget::LtGadget,
-            CachedRegion, Cell, Word,
+            }, math_gadget::LtGadget, Word,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -19,18 +24,15 @@ use crate::{
     util::Expr,
     witness::NUM_PREV_BLOCK_ALLOWED,
 };
-use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian, ToScalar, ToU256};
-use gadgets::util::not;
-use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmBlockHashGadget<F> {
     same_context: SameContextGadget<F>,
-    block_number: WordByteCapGadget<F, N_BYTES_U64>,
+    block_number: Cell<F>,
     current_block_number: Cell<F>,
     block_hash: Word<F>,
     diff_lt: LtGadget<F, N_BYTES_U64>,
+    dest_offset: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
@@ -40,8 +42,10 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let current_block_number = cb.query_cell();
-        let block_number = WordByteCapGadget::construct(cb, current_block_number.expr());
-        cb.stack_pop(block_number.original_word());
+        let block_number = cb.query_cell();
+        cb.stack_pop(block_number.expr());
+        let dest_offset = cb.query_cell();
+        cb.stack_pop(dest_offset.expr());
 
         // FIXME
         // cb.block_lookup(
@@ -55,15 +59,15 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
         let diff_lt = LtGadget::construct(
             cb,
             current_block_number.expr(),
-            (NUM_PREV_BLOCK_ALLOWED + 1).expr() + block_number.valid_value(),
+            (NUM_PREV_BLOCK_ALLOWED + 1).expr() + block_number.expr(),
         );
 
-        let is_valid = and::expr([block_number.lt_cap(), diff_lt.expr()]);
+        let is_valid = diff_lt.expr();
 
         cb.condition(is_valid.expr(), |cb| {
             cb.block_lookup(
                 BlockContextFieldTag::BlockHash.expr(),
-                block_number.valid_value(),
+                block_number.expr(),
                 block_hash.expr(),
             );
         });
@@ -75,10 +79,10 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
             );
         });
 
-        cb.stack_push(block_hash.expr());
+        cb.memory_rlc_lookup(1.expr(), &dest_offset, &block_hash);
 
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(2.expr()),
+            rw_counter: Delta(34.expr()),
             program_counter: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::BLOCKHASH.constant_gas_cost().expr()),
             ..Default::default()
@@ -92,6 +96,7 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
             current_block_number,
             block_hash,
             diff_lt,
+            dest_offset,
         }
     }
 
@@ -112,8 +117,11 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
             .expect("unexpected U256 -> Scalar conversion failure");
 
         let block_number = block.rws[step.rw_indices[0]].stack_value();
+        let dest_offset = block.rws[step.rw_indices[1]].stack_value();
         self.block_number
-            .assign(region, offset, block_number.to_u256(), current_block_number)?;
+            .assign(region, offset, Value::known(block_number.to_scalar().unwrap()))?;
+        self.dest_offset
+            .assign(region, offset, Value::<F>::known(dest_offset.to_scalar().unwrap()))?;
 
         self.current_block_number
             .assign(region, offset, Value::known(current_block_number))?;
@@ -142,16 +150,19 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::test_util::CircuitTestBuilder;
-    use eth_types::{bytecode, U256};
+    use eth_types::{Bytecode, bytecode_internal, U256};
     use mock::test_ctx::{helpers::*, TestContext};
 
+    use crate::test_util::CircuitTestBuilder;
+
     fn test_ok(block_number: U256, current_block_number: u64) {
-        let code = bytecode! {
-            PUSH32(block_number)
+        let mut code = Bytecode::default();
+        let dest = code.alloc_default_global_data(32);
+        bytecode_internal! {code,
+            I32Const[block_number.low_u32()]
+            I32Const[dest]
             BLOCKHASH
-            STOP
-        };
+        }
 
         // simple U256 values for history hashes
         let mut history_hashes = Vec::new();
@@ -168,8 +179,7 @@ mod test {
             account_0_code_account_1_no_code(code),
             tx_from_1_to_0,
             |block, _tx| block.number(current_block_number),
-        )
-            .unwrap();
+        ).unwrap();
 
         CircuitTestBuilder::new_from_test_ctx(ctx).run()
     }

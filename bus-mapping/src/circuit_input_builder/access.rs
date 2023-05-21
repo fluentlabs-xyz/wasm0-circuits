@@ -3,7 +3,7 @@ use eth_types::{evm_types::OpcodeId, Address, GethExecStep, GethExecTrace, ToAdd
 use ethers_core::utils::get_contract_address;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
-use AccessValue::{Account, Code, Storage};
+use AccessValue::{Account, Code};
 use RW::{READ, WRITE};
 
 /// State and Code Access with "keys/index" used in the access operation.

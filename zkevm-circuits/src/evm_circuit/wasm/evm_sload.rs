@@ -5,7 +5,7 @@ use crate::{
         util::{
             common_gadget::{SameContextGadget, SloadGasGadget},
             constraint_builder::{
-                ConstrainBuilderCommon, ReversionInfo, StepStateTransition, Transition::Delta,
+                ReversionInfo, StepStateTransition, Transition::Delta,
             },
             CachedRegion, Cell,
         },

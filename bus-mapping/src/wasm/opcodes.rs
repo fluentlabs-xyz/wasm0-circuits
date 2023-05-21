@@ -20,7 +20,7 @@ use error_oog_log::ErrorOOGLog;
 use error_oog_sload_sstore::OOGSloadSstore;
 use error_return_data_outofbound::ErrorReturnDataOutOfBound;
 use error_write_protection::ErrorWriteProtection;
-use eth_types::{evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED}, evm_unimplemented, GethExecStep, GethExecTrace, StackWord, ToAddress, ToWord, U256, Word};
+use eth_types::{evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED}, evm_unimplemented, GethExecStep, GethExecTrace, StackWord, ToAddress, ToWord, Word};
 use eth_types::evm_types::MemoryAddress;
 use extcodecopy::Extcodecopy;
 use extcodesize::Extcodesize;
@@ -337,16 +337,16 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::RETURNDATASIZE => Returndatasize::gen_associated_ops,
         OpcodeId::RETURNDATACOPY => Returndatacopy::gen_associated_ops,
         // OpcodeId::EXTCODEHASH => Extcodehash::gen_associated_ops,
-        OpcodeId::BLOCKHASH => StackOnlyOpcode::<1, 1>::gen_associated_ops,
-        OpcodeId::COINBASE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::TIMESTAMP => StackOnlyOpcode::<0, 1>::gen_associated_ops,
-        // OpcodeId::NUMBER => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::BLOCKHASH => StackToMemoryOpcode::<1>::gen_associated_ops,
+        OpcodeId::COINBASE => StackToMemoryOpcode::<0>::gen_associated_ops,
+        OpcodeId::TIMESTAMP => StackToMemoryOpcode::<0>::gen_associated_ops,
+        // OpcodeId::NUMBER => StackToMemoryOpcode::gen_associated_ops,
         OpcodeId::NUMBER => Number::gen_associated_ops,
-        OpcodeId::DIFFICULTY => StackToMemoryOpcode::gen_associated_ops,
-        OpcodeId::GASLIMIT => StackToMemoryOpcode::gen_associated_ops,
+        OpcodeId::DIFFICULTY => StackToMemoryOpcode::<0>::gen_associated_ops,
+        OpcodeId::GASLIMIT => StackToMemoryOpcode::<0>::gen_associated_ops,
         OpcodeId::CHAINID => ChainId::gen_associated_ops,
         OpcodeId::SELFBALANCE => Selfbalance::gen_associated_ops,
-        OpcodeId::BASEFEE => StackToMemoryOpcode::gen_associated_ops,
+        OpcodeId::BASEFEE => StackToMemoryOpcode::<0>::gen_associated_ops,
         // OpcodeId::MLOAD => Mload::gen_associated_ops,
         // OpcodeId::MSTORE => Mstore::<false>::gen_associated_ops,
         // OpcodeId::MSTORE8 => Mstore::<true>::gen_associated_ops,

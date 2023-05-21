@@ -14,7 +14,7 @@ use crate::{
             Cell,
             common_gadget::SameContextGadget,
             constraint_builder::{
-                ConstrainBuilderCommon, ReversionInfo, StepStateTransition, Transition,
+                ReversionInfo, StepStateTransition, Transition,
             },
             from_bytes, memory_gadget::{MemoryAddressGadget, MemoryCopierGasGadget}, MemoryAddress, not, select,
         },

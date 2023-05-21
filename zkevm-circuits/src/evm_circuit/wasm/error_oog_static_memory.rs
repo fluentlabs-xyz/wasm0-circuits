@@ -4,7 +4,6 @@ use crate::{
         param::{N_BYTES_GAS, N_BYTES_MEMORY_WORD_SIZE},
         step::ExecutionState,
         util::{
-            constraint_builder::ConstrainBuilderCommon,
             math_gadget::{IsEqualGadget, IsZeroGadget, RangeCheckGadget},
             memory_gadget::{address_high, address_low, MemoryExpansionGadget},
             CachedRegion, Cell, Word,

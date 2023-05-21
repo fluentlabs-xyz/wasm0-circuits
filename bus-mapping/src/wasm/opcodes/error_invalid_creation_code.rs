@@ -4,7 +4,7 @@ use crate::{
     evm::Opcode,
     Error,
 };
-use eth_types::{GethExecStep, StackWord, U256};
+use eth_types::{GethExecStep, StackWord};
 
 #[derive(Debug, Copy, Clone)]
 pub struct ErrorCreationCode;

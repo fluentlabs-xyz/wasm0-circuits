@@ -13,7 +13,7 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta}, from_bytes, RandomLinearCombination,
+            constraint_builder::{StepStateTransition, Transition::Delta}, from_bytes, RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },

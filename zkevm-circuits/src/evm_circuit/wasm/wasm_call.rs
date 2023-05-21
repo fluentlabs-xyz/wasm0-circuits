@@ -11,7 +11,7 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta, Transition::To},
+            constraint_builder::{StepStateTransition, Transition::Delta, Transition::To},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -19,7 +19,6 @@ use crate::{
 };
 use crate::evm_circuit::util::Cell;
 use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
-use crate::table::CallContextFieldTag;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmCallGadget<F> {

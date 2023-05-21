@@ -1,5 +1,5 @@
 use halo2_proofs::circuit::Value;
-use halo2_proofs::plonk::{Error, Expression};
+use halo2_proofs::plonk::{Error};
 
 use bus_mapping::evm::OpcodeId;
 use eth_types::{Field, ToScalar};
@@ -11,7 +11,7 @@ use crate::{
         util::{
             CachedRegion,
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
+            constraint_builder::{StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },

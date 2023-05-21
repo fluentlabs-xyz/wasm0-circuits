@@ -5,7 +5,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
+            constraint_builder::{StepStateTransition, Transition::Delta},
             from_bytes, CachedRegion, RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},

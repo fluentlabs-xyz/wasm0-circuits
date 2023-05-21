@@ -3,7 +3,7 @@ use crate::evm_circuit::{
     step::ExecutionState,
     table::{FixedTableTag, Lookup},
     util::{
-        common_gadget::CommonErrorGadget, constraint_builder::ConstrainBuilderCommon, CachedRegion, Cell,
+        common_gadget::CommonErrorGadget, CachedRegion, Cell,
     },
     witness::{Block, Call, ExecStep, Transaction},
 };

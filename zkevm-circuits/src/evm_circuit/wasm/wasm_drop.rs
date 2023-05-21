@@ -11,7 +11,7 @@ use crate::{
         util::{
             CachedRegion,
             Cell,
-            common_gadget::SameContextGadget, constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
+            common_gadget::SameContextGadget, constraint_builder::{StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },

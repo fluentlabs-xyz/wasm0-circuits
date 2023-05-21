@@ -13,7 +13,7 @@ use crate::{
     witness::{Block, Call, ExecStep, Transaction},
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, StackWord, ToLittleEndian, U256};
+use eth_types::{Field, StackWord, ToLittleEndian};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]

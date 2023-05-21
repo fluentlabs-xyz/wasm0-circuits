@@ -16,7 +16,7 @@ use crate::{
     witness::{Block, Call, ExecStep, Transaction},
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, StackWord, ToU256, U256, U64};
+use eth_types::{Field, StackWord, ToU256, U64};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 /// Gadget to implement the corresponding out of gas errors for

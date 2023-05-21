@@ -5,7 +5,7 @@ use crate::{
     operation::{AccountField, AccountOp, CallContextField, MemoryOp, RW},
     Error,
 };
-use eth_types::{Bytecode, GethExecStep, ToWord, Word, H256};
+use eth_types::{Bytecode, GethExecStep, ToWord, H256};
 use ethers_core::utils::keccak256;
 
 #[derive(Debug, Copy, Clone)]

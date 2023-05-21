@@ -13,15 +13,26 @@ use super::Opcode;
 /// - N = 2: BinaryOpcode
 /// - N = 3: TernaryOpcode
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct StackToMemoryOpcode;
+pub(crate) struct StackToMemoryOpcode<
+    const N_POP: usize,
+>;
 
-impl Opcode for StackToMemoryOpcode {
+impl<const N_POP: usize> Opcode for StackToMemoryOpcode<N_POP> {
     fn gen_associated_ops(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
         let geth_step = &geth_steps[0];
         let mut exec_step = state.new_step(geth_step)?;
+
+        // Pop elements from stack
+        for i in 0..N_POP {
+            state.stack_read(
+                &mut exec_step,
+                geth_step.stack.nth_last_filled(i),
+                geth_step.stack.nth_last(i)?,
+            )?;
+        }
 
         // Read dest offset as the last stack element
         let dest_offset = geth_step.stack.nth_last(0)?;
