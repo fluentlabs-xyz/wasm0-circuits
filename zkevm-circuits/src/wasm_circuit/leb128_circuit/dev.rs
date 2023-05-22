@@ -5,15 +5,13 @@ use std::{marker::PhantomData};
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::{Circuit};
 use eth_types::Field;
-use crate::leb128_circuit::circuit::{LEB128NumberChip, LEB128NumberConfig};
+use crate::wasm_circuit::leb128_circuit::circuit::{LEB128NumberChip, LEB128NumberConfig};
 
 #[derive(Default)]
 struct TestCircuit<'a, F, const BIT_DEPTH: usize, const IS_SIGNED: bool> {
     leb_base64_words: &'a [u64],
     leb_bytes: &'a [u8],
     leb_last_byte_index: u64,
-    // solid_number_is_positive: bool,
-    // solid_number: u64,
     _marker: PhantomData<F>,
 }
 
@@ -35,7 +33,6 @@ impl<'a, F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> Circuit<F> for
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let leb128_number_chip = LEB128NumberChip::construct(config);
-        // let is_zero_chip = IsZeroChip::construct(leb128_number_chip.config.is_zero_config.clone());
 
         layouter.assign_region(
             || "leb128 region",
@@ -44,8 +41,6 @@ impl<'a, F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> Circuit<F> for
                     &mut region,
                     self.leb_bytes,
                     self.leb_last_byte_index,
-                    // self.solid_number_is_positive,
-                    // self.solid_number,
                     self.leb_base64_words,
                 );
 
@@ -65,8 +60,8 @@ mod tests {
     use halo2_proofs::halo2curves::bn256::Fr;
     use rand::Rng;
     use eth_types::Field;
-    use crate::leb128_circuit::consts::{BYTES_IN_BASE64_WORD, EIGHT_LS_BITS_MASK, EIGHT_MS_BIT_MASK, SEVEN_LS_BITS_MASK};
-    use crate::leb128_circuit::dev::TestCircuit;
+    use crate::wasm_circuit::leb128_circuit::consts::{BYTES_IN_BASE64_WORD, EIGHT_LS_BITS_MASK, EIGHT_MS_BIT_MASK, SEVEN_LS_BITS_MASK};
+    use crate::wasm_circuit::leb128_circuit::dev::TestCircuit;
 
     const ALL_BIT_DEPTHS_BYTES: &[usize] = &[1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -227,8 +222,6 @@ mod tests {
             leb_base64_words: base64_words.as_slice(),
             leb_bytes: input_number_leb128.as_slice(),
             leb_last_byte_index: last_byte_index as u64,
-            // solid_number: NUMBER,
-            // solid_number_is_positive: !IS_SIGNED,
             _marker: PhantomData
         };
         self::test(circuit, true);
@@ -257,7 +250,6 @@ mod tests {
             numbers_to_check.push((IS_SIGNED, 0));
         }
         numbers_to_check.push((IS_SIGNED, 1));
-        // TODO is it possible to represent 0 as signed?
         for i in 0..(BIT_DEPTH - 1) {
             let mut val: u64 = 2 << i;
             numbers_to_check.push((IS_SIGNED, val));
@@ -287,8 +279,6 @@ mod tests {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
                 leb_last_byte_index: last_byte_index as u64,
-                // solid_number_is_positive: !input_number.0,
-                // solid_number: input_number.1,
                 _marker: PhantomData
             };
             self::test(circuit, true);
@@ -353,8 +343,6 @@ mod tests {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
                 leb_last_byte_index: last_byte_index as u64,
-                // solid_number_is_positive: !IS_SIGNED,
-                // solid_number,
                 _marker: PhantomData
             };
             self::test(circuit, false);
@@ -418,8 +406,6 @@ mod tests {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
                 leb_last_byte_index: last_byte_index as u64,
-                // solid_number_is_positive: !IS_SIGNED,
-                // solid_number,
                 _marker: PhantomData
             };
             self::test(circuit, false);
@@ -448,68 +434,6 @@ mod tests {
         leb_broken_random_bit::<{ 8 * 6 }, true>();
         leb_broken_random_bit::<{ 8 * 7 }, true>();
     }
-
-    // pub fn broken_solid_number<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
-    //     let mut rng = rand::thread_rng();
-    //     let mut solid_numbers_to_check = Vec::<u64>::new();
-    //     solid_numbers_to_check.push(0);
-    //     solid_numbers_to_check.push(1);
-    //     for i in 0..(BIT_DEPTH - 1) {
-    //         let mut val: u64 = 2 << i;
-    //         solid_numbers_to_check.push(val);
-    //
-    //         if i > 0 {
-    //             let val_rnd: u64 = rng.gen();
-    //             val = val_rnd % val;
-    //             solid_numbers_to_check.push(val);
-    //         }
-    //     }
-    //     for (_i, &solid_number) in solid_numbers_to_check.iter().enumerate() {
-    //         let (input_number_leb128, last_byte_index) = convert_to_leb_bytes(!IS_SIGNED, solid_number, ((BIT_DEPTH + 6) / 7) as u8);
-    //
-    //         // break solid number
-    //         let mut broken_solid_number: u64;
-    //         loop {
-    //             broken_solid_number = rng.gen::<u64>();
-    //             if broken_solid_number != solid_number { break }
-    //         }
-    //
-    //         // println!("{}. input_number {} leb128 {:x?}", i, broken_solid_number, input_number_leb128);
-    //         let base64_words = convert_leb128_to_base64_words(&input_number_leb128);
-    //         let circuit = TestCircuit::<'_, Fr, BIT_DEPTH, IS_SIGNED> {
-    //             leb_base64_words: base64_words.as_slice(),
-    //             leb_bytes: input_number_leb128.as_slice(),
-    //             leb_last_byte_index: last_byte_index as u64,
-    //             // solid_number_is_positive: !IS_SIGNED,
-    //             // solid_number: broken_solid_number,
-    //             _marker: PhantomData
-    //         };
-    //         self::test(circuit, false);
-    //     }
-    // }
-    //
-    // #[test]
-    // pub fn test_broken_solid_number_unsigned() {
-    //     broken_solid_number::<{ 8 * 1 }, false>();
-    //     broken_solid_number::<{ 8 * 2 }, false>();
-    //     broken_solid_number::<{ 8 * 3 }, false>();
-    //     broken_solid_number::<{ 8 * 4 }, false>();
-    //     broken_solid_number::<{ 8 * 5 }, false>();
-    //     broken_solid_number::<{ 8 * 6 }, false>();
-    //     broken_solid_number::<{ 8 * 7 }, false>();
-    //     broken_solid_number::<{ 8 * 8 }, false>();
-    // }
-    //
-    // #[test]
-    // pub fn test_broken_solid_number_signed() {
-    //     broken_solid_number::<{ 8 * 1 }, true>();
-    //     broken_solid_number::<{ 8 * 2 }, true>();
-    //     broken_solid_number::<{ 8 * 3 }, true>();
-    //     broken_solid_number::<{ 8 * 4 }, true>();
-    //     broken_solid_number::<{ 8 * 5 }, true>();
-    //     broken_solid_number::<{ 8 * 6 }, true>();
-    //     broken_solid_number::<{ 8 * 7 }, true>();
-    // }
 
     pub fn broken_base64_word<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
         let mut rng = rand::thread_rng();
@@ -554,8 +478,6 @@ mod tests {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
                 leb_last_byte_index: last_byte_index as u64,
-                // solid_number_is_positive: !IS_SIGNED,
-                // solid_number,
                 _marker: PhantomData
             };
             self::test(circuit, false);
