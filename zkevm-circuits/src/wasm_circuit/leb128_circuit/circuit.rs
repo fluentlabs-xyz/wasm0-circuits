@@ -7,7 +7,7 @@ use halo2_proofs::plonk::{Constraints, Expression, Selector};
 use halo2_proofs::poly::Rotation;
 use eth_types::Field;
 use gadgets::util::Expr;
-use crate::leb128_circuit::consts::{BITS_IN_BYTE, BYTES_IN_BASE64_WORD, EIGHT_LS_BITS_MASK, LEB128_BITS_CHUNK_SIZE};
+use crate::wasm_circuit::leb128_circuit::consts::{BITS_IN_BYTE, BYTES_IN_BASE64_WORD, EIGHT_LS_BITS_MASK, LEB128_BITS_CHUNK_SIZE};
 
 
 /// LEB128NumberConfig
@@ -22,7 +22,6 @@ pub struct LEB128NumberConfig<F, const BIT_DEPTH: usize, const IS_SIGNED: bool> 
     ///
     pub byte_has_continuation_bit: Column<Advice>,
     /// solid number represented in leb128. TODO maybe we dont need it anymore
-    // pub solid_number: Column<Advice>,
     _marker: PhantomData<F>,
 }
 
@@ -65,11 +64,9 @@ impl<F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> LEB128NumberChip<F
     ) -> LEB128NumberConfig<F, BIT_DEPTH, IS_SIGNED> {
         Self::validate_static_state();
         let selector = cs.selector();
-        // let base64_words_count = (BIT_DEPTH / LEB128_BITS_CHUNK_SIZE + BYTES_IN_BASE64_WORD - 1) / BYTES_IN_BASE64_WORD;
         let leb_base64_words = cs.advice_column();
         let leb_bytes = cs.advice_column();
         let byte_has_continuation_bit = cs.advice_column();
-        // let solid_number = cs.advice_column();
 
         let mut continuation_bits_constraints = Vec::<Expression<F>>::new();
         let mut continuation_bit_transition_constraints = Vec::<Expression<F>>::new();
@@ -80,7 +77,7 @@ impl<F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> LEB128NumberChip<F
             for i in (0..Self::LEB_BYTES_N).rev() {
                 let leb_byte_expr = vc.query_advice(leb_bytes, Rotation(i as i32));
                 let has_continuation_bit_expr = vc.query_advice(byte_has_continuation_bit, Rotation(i as i32));
-                // continuation bit must have 0 or 1 value (TODO replace with lookup)
+                // continuation bit must be 0 or 1 value (boolean) (TODO replace with lookup)
                 continuation_bits_constraints.push(has_continuation_bit_expr.clone() * (has_continuation_bit_expr.clone() - 1.expr()));
                 if i < Self::LEB_BYTES_N - 1 {
                     let has_continuation_bit_next_expr = vc.query_advice(byte_has_continuation_bit, Rotation((i + 1) as i32));
@@ -141,7 +138,6 @@ impl<F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> LEB128NumberChip<F
             leb_base64_words,
             leb_bytes,
             byte_has_continuation_bit,
-            // solid_number,
             _marker: PhantomData,
         };
 
@@ -154,8 +150,6 @@ impl<F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> LEB128NumberChip<F
         region: &mut Region<F>,
         leb_bytes: &[u8],
         leb_last_byte_index: u64,
-        // is_signed: bool,
-        // solid_number: u64,
         leb_base64_words: &[u64],
     ) {
         self.config.selector.enable(region, 0).unwrap();
@@ -177,13 +171,6 @@ impl<F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> LEB128NumberChip<F
                 || Value::known(F::from(leb_bytes[i] as u64)),
             ).unwrap();
         }
-
-        // region.assign_advice(
-        //     || "solid_number",
-        //     self.config.solid_number,
-        //     0,
-        //     || Value::known(F::from(solid_number)),
-        // ).unwrap();
 
         let base64_words_count = (BIT_DEPTH / LEB128_BITS_CHUNK_SIZE + BYTES_IN_BASE64_WORD - 1) / BYTES_IN_BASE64_WORD;
         for i in 0..base64_words_count {
