@@ -13,6 +13,7 @@ members = [
     "mock",
     "testool",
     "golang_utils",
+    "zkevm-circuits/instr_unroll_circuit",
 ]
 
 [patch."https://github.com/privacy-scaling-explorations/halo2.git"]
