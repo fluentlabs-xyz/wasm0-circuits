@@ -9,7 +9,7 @@ use eth_types::Field;
 use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip, LEB128Config};
 
 #[derive(Default)]
-struct TestCircuit<'a, F, const BIT_DEPTH: usize, const IS_SIGNED: bool> {
+struct TestCircuit<'a, F, const LEB_BYTES_N: usize, const IS_SIGNED: bool> {
     leb_base64_words: &'a [u64],
     leb_bytes: &'a [u8],
     leb_bytes_last_byte_index: u64,
@@ -19,14 +19,14 @@ struct TestCircuit<'a, F, const BIT_DEPTH: usize, const IS_SIGNED: bool> {
 }
 
 #[derive(Clone)]
-struct TestCircuitConfig<F, const BIT_DEPTH: usize, const IS_SIGNED: bool> {
+struct TestCircuitConfig<F, const LEB_BYTES_N: usize, const IS_SIGNED: bool> {
     solid_number: Column<Advice>,
     leb_bytes: Column<Advice>,
-    leb128_config: LEB128Config<F, BIT_DEPTH, IS_SIGNED>,
+    leb128_config: LEB128Config<F, LEB_BYTES_N, IS_SIGNED>,
 }
 
-impl<'a, F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, BIT_DEPTH, IS_SIGNED> {
-    type Config = TestCircuitConfig<F, BIT_DEPTH, IS_SIGNED>;
+impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, LEB_BYTES_N, IS_SIGNED> {
+    type Config = TestCircuitConfig<F, LEB_BYTES_N, IS_SIGNED>;
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self { Self::default() }
@@ -36,7 +36,7 @@ impl<'a, F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> Circuit<F> for
     ) -> Self::Config {
         let solid_number = cs.advice_column();
         let leb_bytes = cs.advice_column();
-        let leb128_config = LEB128Chip::<F, BIT_DEPTH, IS_SIGNED>::configure(
+        let leb128_config = LEB128Chip::<F, LEB_BYTES_N, IS_SIGNED>::configure(
             cs,
             |vc| vc.query_advice(solid_number, Rotation::cur()),
             &leb_bytes,
@@ -75,7 +75,7 @@ impl<'a, F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> Circuit<F> for
                     || format!("assign solid number to {} at {}", val, i),
                     config.solid_number,
                     0,
-                    || Value::known(if self.is_negative {-F::from(self.solid_number)} else {F::from(self.solid_number)}),
+                    || Value::known(if self.is_negative { -F::from(self.solid_number) } else { F::from(self.solid_number) }),
                 )?;
 
                 for (i, &leb_byte) in self.leb_bytes.iter().enumerate() {
@@ -91,7 +91,7 @@ impl<'a, F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool> Circuit<F> for
                         // self.leb_bytes[i] as u64,
                         i == 0,
                         i < (self.leb_bytes_last_byte_index as usize),
-                        if i < self.leb_base64_words.len() {self.leb_base64_words[i]} else {0},
+                        if i < self.leb_base64_words.len() { self.leb_base64_words[i] } else { 0 },
                     );
                 }
 
@@ -121,10 +121,10 @@ mod tests {
     }
 
     /// unsigned leb repr and last byte index
-    fn convert_to_leb_bytes_unsigned(number: u64, exact_bytes_count: u8) -> (Vec<u8>, usize) {
-        let mut res = Vec::new();
+    fn convert_to_leb_bytes_unsigned(input_number: u64, align_to_bytes_count: usize) -> (Vec<u8>, usize) {
+        let mut bytes = Vec::new();
         let mut last_byte_index: usize = 0;
-        let mut number = number;
+        let mut number = input_number;
         while number > 0 {
             let mut byte = number & 0b1111111;
             number >>= 7;
@@ -132,31 +132,31 @@ mod tests {
                 byte |= 0b10000000;
                 last_byte_index += 1;
             }
-            res.push(byte as u8);
+            bytes.push(byte as u8);
         }
 
-        let res = res.as_mut_slice();
-        if res.len() == exact_bytes_count as usize {
-            return (res.to_vec(), last_byte_index);
+        let bytes = bytes.as_mut_slice();
+        if bytes.len() == align_to_bytes_count {
+            return (bytes.to_vec(), last_byte_index);
         }
-        if res.len() > exact_bytes_count as usize {
-            panic!("result too long")
+        if bytes.len() > align_to_bytes_count {
+            panic!("bytes count is greater than required. input_number {} align_to_bytes_count {} bytes.len() {}", input_number, align_to_bytes_count, bytes.len())
         }
-        let mut res_vec = vec![0; exact_bytes_count as usize];
-        for (i, &item) in res.iter().enumerate() {
+        let mut res_vec = vec![0; align_to_bytes_count];
+        for (i, &item) in bytes.iter().enumerate() {
             res_vec[i] = item;
         }
         (res_vec, last_byte_index)
     }
 
     /// singed leb repr and last byte index
-    fn convert_to_leb_bytes_signed(number: i64, exact_bytes_count: u8) -> (Vec<u8>, usize) {
-        if number >= 0 {
+    fn convert_to_leb_bytes_signed(input_number: i64, align_to_bytes_count: usize) -> (Vec<u8>, usize) {
+        if input_number >= 0 {
             panic!("only negative numbers can be converted into signed repr")
         }
-        let mut res = Vec::new();
+        let mut bytes = Vec::new();
         let mut last_byte_index: usize = 0;
-        let mut number = number;
+        let mut number = input_number;
         if number < 0 {
             number = -number;
         }
@@ -179,20 +179,20 @@ mod tests {
                 byte |= 0b10000000;
                 last_byte_index += 1;
             }
-            res.push(byte as u8);
+            bytes.push(byte as u8);
         }
         if overflow == 1 {
-            res.push(!(0b1 & SEVEN_LS_BITS_MASK) & SEVEN_LS_BITS_MASK);
+            bytes.push(!(0b1 & SEVEN_LS_BITS_MASK) & SEVEN_LS_BITS_MASK);
         }
 
-        let res = res.as_mut_slice();
-        if res.len() == exact_bytes_count as usize {
+        let res = bytes.as_mut_slice();
+        if res.len() == align_to_bytes_count {
             return (res.to_vec(), last_byte_index);
         }
-        if res.len() > exact_bytes_count as usize {
-            panic!("result too long")
+        if res.len() > align_to_bytes_count {
+            panic!("bytes count is greater than required. input_number {} align_to_bytes_count {} bytes.len() {}", input_number, align_to_bytes_count, bytes.len())
         }
-        let mut res_vec = vec![EIGHT_LS_BITS_MASK; exact_bytes_count as usize];
+        let mut res_vec = vec![EIGHT_LS_BITS_MASK; align_to_bytes_count];
         for (i, &item) in res.iter().enumerate() {
             res_vec[i] = item;
         }
@@ -200,7 +200,7 @@ mod tests {
     }
 
     ///
-    pub fn convert_to_leb_bytes(is_signed: bool, number: u64, exact_bytes_count: u8) -> (Vec<u8>, usize) {
+    pub fn convert_to_leb_bytes(is_signed: bool, number: u64, exact_bytes_count: usize) -> (Vec<u8>, usize) {
         if !is_signed || number == 0 {
             return convert_to_leb_bytes_unsigned(number, exact_bytes_count);
         }
@@ -246,8 +246,26 @@ mod tests {
         break_bit(&mut leb128[byte_to_break_number], bit_to_break_mask);
     }
 
-    fn test<'a, F: Field, const BIT_DEPTH: usize, const IS_SIGNED: bool>(
-        test_circuit: TestCircuit<'_, F, BIT_DEPTH, IS_SIGNED>,
+    pub fn leb_bytes_n_to_max_bit_depth(is_signed: bool, leb_bytes_n: usize) -> usize {
+        // max bit depth for u64 solid number
+        let max_bit_depth: usize = 7 * 9 + 1 - if is_signed {1} else {0};
+        let max_bit_depth_threshold: usize = 7 * (10 - if is_signed {1} else {0});
+        let mut max_bit_depth_computed = leb_bytes_n * 7;
+        if is_signed {
+            // TODO recheck
+            max_bit_depth_computed -= 1
+        }
+        if max_bit_depth_computed > max_bit_depth_threshold {
+            panic!("computed max bit depth {} is greater threshold {}. there may be problem in program logic", max_bit_depth_computed, max_bit_depth_threshold)
+        }
+        if max_bit_depth_computed > max_bit_depth {
+            return max_bit_depth
+        }
+        max_bit_depth_computed
+    }
+
+    fn test<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool>(
+        test_circuit: TestCircuit<'_, F, LEB_BYTES_N, IS_SIGNED>,
         is_ok: bool,
     ) {
         let k = 5;
@@ -259,11 +277,11 @@ mod tests {
         }
     }
 
-    pub fn exact_number<const BIT_DEPTH: usize, const IS_SIGNED: bool>(solid_number: u64) {
+    pub fn exact_number<const LEB_BYTES_N: usize, const IS_SIGNED: bool>(solid_number: u64) {
         let (input_number_leb128, last_byte_index) = convert_to_leb_bytes(
             IS_SIGNED,
             solid_number,
-            ((BIT_DEPTH + 6) / 7) as u8,
+            LEB_BYTES_N,
         );
         let base64_words = convert_leb_to_leb_base64_words(&input_number_leb128, last_byte_index);
         if rust_log_is_debug() {
@@ -275,7 +293,7 @@ mod tests {
                 input_number_leb128,
             );
         }
-        let circuit = TestCircuit::<Fr, BIT_DEPTH, IS_SIGNED> {
+        let circuit = TestCircuit::<Fr, LEB_BYTES_N, IS_SIGNED> {
             leb_base64_words: base64_words.as_slice(),
             leb_bytes: input_number_leb128.as_slice(),
             leb_bytes_last_byte_index: last_byte_index as u64,
@@ -287,29 +305,37 @@ mod tests {
     }
 
     #[test]
-    pub fn test_debug_exact_number() {
-        // exact_number::<64, false>(123456789);
-        // exact_number::<64, false>(123456);
-        // exact_number::<64, false>(16383);
-        // exact_number::<64, false>(16382);
-        // exact_number::<64, false>(32);
-        // exact_number::<64, false>(1);
-        exact_number::<64, true>(32);
-        // exact_number::<64, true>(123456789);
-        // exact_number::<64, true>(123456);
-        // exact_number::<64, true>(16383);
-        // exact_number::<64, true>(16382);
-        // exact_number::<64, true>(1);
+    pub fn test_debug_exact_number_unsigned() {
+        const IS_SIGNED: bool = false;
+        exact_number::<1, { IS_SIGNED }>(0);
+        exact_number::<1, { IS_SIGNED }>(1);
+        exact_number::<1, { IS_SIGNED }>(32);
+        exact_number::<2, { IS_SIGNED }>(16382);
+        exact_number::<2, { IS_SIGNED }>(16383);
+        exact_number::<3, { IS_SIGNED }>(123456);
+        exact_number::<4, { IS_SIGNED }>(123456789);
     }
 
-    pub fn test_ok<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
+    #[test]
+    pub fn test_debug_exact_number_signed() {
+        const IS_SIGNED: bool = true;
+        exact_number::<1, { IS_SIGNED }>(0);
+        exact_number::<1, { IS_SIGNED }>(1);
+        exact_number::<1, { IS_SIGNED }>(32);
+        exact_number::<3, { IS_SIGNED }>(16382);
+        exact_number::<3, { IS_SIGNED }>(16383);
+        exact_number::<3, { IS_SIGNED }>(123456);
+        exact_number::<4, { IS_SIGNED }>(123456789);
+    }
+
+    pub fn eligible_numbers<const LEB_BYTES_N: usize, const IS_SIGNED: bool>() {
         let mut rng = rand::thread_rng();
         let mut numbers_to_check = Vec::<(bool, u64)>::new();
         if !IS_SIGNED { // 0 cannot be SIGNED
             numbers_to_check.push((IS_SIGNED, 0));
         }
         numbers_to_check.push((IS_SIGNED, 1));
-        for i in 0..(BIT_DEPTH - 1) {
+        for i in 0..leb_bytes_n_to_max_bit_depth(IS_SIGNED, LEB_BYTES_N) - 1 {
             let mut val: u64 = 2 << i;
             numbers_to_check.push((IS_SIGNED, val));
 
@@ -325,7 +351,7 @@ mod tests {
             let (input_number_leb128, last_byte_index) = convert_to_leb_bytes(
                 is_signed,
                 solid_number,
-                ((BIT_DEPTH + 6) / 7) as u8,
+                LEB_BYTES_N,
             );
             let base64_words = convert_leb_to_leb_base64_words(&input_number_leb128, last_byte_index);
             if rust_log_is_debug() {
@@ -338,7 +364,7 @@ mod tests {
                     input_number_leb128,
                 );
             }
-            let circuit = TestCircuit::<'_, Fr, BIT_DEPTH, IS_SIGNED> {
+            let circuit = TestCircuit::<'_, Fr, LEB_BYTES_N, IS_SIGNED> {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
                 leb_bytes_last_byte_index: last_byte_index as u64,
@@ -352,33 +378,39 @@ mod tests {
 
     #[test]
     pub fn test_ok_unsigned() {
-        test_ok::<{ 8 * 1 }, false>();
-        test_ok::<{ 8 * 2 }, false>();
-        test_ok::<{ 8 * 3 }, false>();
-        test_ok::<{ 8 * 4 }, false>();
-        test_ok::<{ 8 * 5 }, false>();
-        test_ok::<{ 8 * 6 }, false>();
-        test_ok::<{ 8 * 7 }, false>();
-        test_ok::<{ 8 * 8 }, false>();
+        const IS_SIGNED: bool = false;
+        eligible_numbers::<1, IS_SIGNED>();
+        eligible_numbers::<2, IS_SIGNED>();
+        eligible_numbers::<3, IS_SIGNED>();
+        eligible_numbers::<4, IS_SIGNED>();
+        eligible_numbers::<5, IS_SIGNED>();
+        eligible_numbers::<6, IS_SIGNED>();
+        eligible_numbers::<7, IS_SIGNED>();
+        eligible_numbers::<8, IS_SIGNED>();
+        eligible_numbers::<9, IS_SIGNED>();
+        eligible_numbers::<10, IS_SIGNED>();
     }
 
     #[test]
     pub fn test_ok_signed() {
-        test_ok::<{ 8 * 1 }, true>();
-        test_ok::<{ 8 * 2 }, true>();
-        test_ok::<{ 8 * 3 }, true>();
-        test_ok::<{ 8 * 4 }, true>();
-        test_ok::<{ 8 * 5 }, true>();
-        test_ok::<{ 8 * 6 }, true>();
-        test_ok::<{ 8 * 7 }, true>();
+        const IS_SIGNED: bool = true;
+        eligible_numbers::<1, { IS_SIGNED }>();
+        eligible_numbers::<2, { IS_SIGNED }>();
+        eligible_numbers::<3, { IS_SIGNED }>();
+        eligible_numbers::<4, { IS_SIGNED }>();
+        eligible_numbers::<5, { IS_SIGNED }>();
+        eligible_numbers::<6, { IS_SIGNED }>();
+        eligible_numbers::<7, { IS_SIGNED }>();
+        eligible_numbers::<8, { IS_SIGNED }>();
+        eligible_numbers::<9, { IS_SIGNED }>();
     }
 
-    pub fn leb_broken_continuation_bit<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
+    pub fn leb_broken_continuation_bit<const LEB_BYTES_N: usize, const IS_SIGNED: bool>() {
         let mut rng = rand::thread_rng();
         let mut solid_numbers_to_check = Vec::<u64>::new();
         solid_numbers_to_check.push(0);
         solid_numbers_to_check.push(1);
-        for i in 0..(BIT_DEPTH - 1) {
+        for i in 0..leb_bytes_n_to_max_bit_depth(IS_SIGNED, LEB_BYTES_N) - 1 {
             let mut val: u64 = 2 << i;
             solid_numbers_to_check.push(val);
 
@@ -392,23 +424,23 @@ mod tests {
             let (mut input_number_leb128, last_byte_index) = convert_to_leb_bytes(
                 IS_SIGNED,
                 solid_number,
-                ((BIT_DEPTH + 6) / 7) as u8,
+                LEB_BYTES_N,
             );
 
             let base64_words = convert_leb_to_leb_base64_words(&input_number_leb128, last_byte_index);
             leb_break_continuation_bit(&mut rng, &mut input_number_leb128);
             if rust_log_is_debug() {
                 println!(
-                    "{}. BIT_DEPTH {} IS_SIGNED:{} solid_number {} base64_words {:x?} leb128 {:x?}",
+                    "{}. LEB_BYTES_N {} IS_SIGNED:{} solid_number {} base64_words {:x?} leb128 {:x?}",
                     i,
-                    BIT_DEPTH,
+                    LEB_BYTES_N,
                     IS_SIGNED,
                     if IS_SIGNED { -(solid_number as i64) } else { solid_number as i64 },
                     base64_words,
                     input_number_leb128,
                 );
             }
-            let circuit = TestCircuit::<'_, Fr, BIT_DEPTH, IS_SIGNED> {
+            let circuit = TestCircuit::<'_, Fr, LEB_BYTES_N, IS_SIGNED> {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
                 leb_bytes_last_byte_index: last_byte_index as u64,
@@ -422,33 +454,39 @@ mod tests {
 
     #[test]
     pub fn test_leb_broken_continuation_bit_unsigned() {
-        leb_broken_continuation_bit::<{ 8 * 1 }, false>();
-        leb_broken_continuation_bit::<{ 8 * 2 }, false>();
-        leb_broken_continuation_bit::<{ 8 * 3 }, false>();
-        leb_broken_continuation_bit::<{ 8 * 4 }, false>();
-        leb_broken_continuation_bit::<{ 8 * 5 }, false>();
-        leb_broken_continuation_bit::<{ 8 * 6 }, false>();
-        leb_broken_continuation_bit::<{ 8 * 7 }, false>();
-        leb_broken_continuation_bit::<{ 8 * 8 }, false>();
+        const IS_SIGNED: bool = false;
+        leb_broken_continuation_bit::<1, IS_SIGNED>();
+        leb_broken_continuation_bit::<2, IS_SIGNED>();
+        leb_broken_continuation_bit::<3, IS_SIGNED>();
+        leb_broken_continuation_bit::<4, IS_SIGNED>();
+        leb_broken_continuation_bit::<5, IS_SIGNED>();
+        leb_broken_continuation_bit::<6, IS_SIGNED>();
+        leb_broken_continuation_bit::<7, IS_SIGNED>();
+        leb_broken_continuation_bit::<8, IS_SIGNED>();
+        leb_broken_continuation_bit::<9, IS_SIGNED>();
+        leb_broken_continuation_bit::<10, IS_SIGNED>();
     }
 
     #[test]
     pub fn test_leb_broken_continuation_bit_signed() {
-        leb_broken_continuation_bit::<{ 8 * 1 }, true>();
-        leb_broken_continuation_bit::<{ 8 * 2 }, true>();
-        leb_broken_continuation_bit::<{ 8 * 3 }, true>();
-        leb_broken_continuation_bit::<{ 8 * 4 }, true>();
-        leb_broken_continuation_bit::<{ 8 * 5 }, true>();
-        leb_broken_continuation_bit::<{ 8 * 6 }, true>();
-        leb_broken_continuation_bit::<{ 8 * 7 }, true>();
+        const IS_SIGNED: bool = true;
+        leb_broken_continuation_bit::<1, { IS_SIGNED }>();
+        leb_broken_continuation_bit::<2, { IS_SIGNED }>();
+        leb_broken_continuation_bit::<3, { IS_SIGNED }>();
+        leb_broken_continuation_bit::<4, { IS_SIGNED }>();
+        leb_broken_continuation_bit::<5, { IS_SIGNED }>();
+        leb_broken_continuation_bit::<6, { IS_SIGNED }>();
+        leb_broken_continuation_bit::<7, { IS_SIGNED }>();
+        leb_broken_continuation_bit::<8, { IS_SIGNED }>();
+        leb_broken_continuation_bit::<9, { IS_SIGNED }>();
     }
 
-    pub fn leb_broken_random_bit<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
+    pub fn leb_broken_random_bit<const LEB_BYTES_N: usize, const IS_SIGNED: bool>() {
         let mut rng = rand::thread_rng();
         let mut solid_numbers_to_check = Vec::<u64>::new();
         solid_numbers_to_check.push(0);
         solid_numbers_to_check.push(1);
-        for i in 0..(BIT_DEPTH - 1) {
+        for i in 0..leb_bytes_n_to_max_bit_depth(IS_SIGNED, LEB_BYTES_N) - 1 {
             let mut val: u64 = 2 << i;
             solid_numbers_to_check.push(val);
 
@@ -462,7 +500,7 @@ mod tests {
             let (mut input_number_leb128, last_byte_index) = convert_to_leb_bytes(
                 IS_SIGNED,
                 solid_number,
-                ((BIT_DEPTH + 6) / 7) as u8,
+                LEB_BYTES_N,
             );
 
             let base64_words = convert_leb_to_leb_base64_words(&input_number_leb128, last_byte_index);
@@ -477,7 +515,7 @@ mod tests {
                     input_number_leb128,
                 );
             }
-            let circuit = TestCircuit::<'_, Fr, BIT_DEPTH, IS_SIGNED> {
+            let circuit = TestCircuit::<'_, Fr, LEB_BYTES_N, IS_SIGNED> {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
                 leb_bytes_last_byte_index: last_byte_index as u64,
@@ -491,33 +529,39 @@ mod tests {
 
     #[test]
     pub fn test_leb_broken_random_bit_unsigned() {
-        leb_broken_random_bit::<{ 8 * 1 }, false>();
-        leb_broken_random_bit::<{ 8 * 2 }, false>();
-        leb_broken_random_bit::<{ 8 * 3 }, false>();
-        leb_broken_random_bit::<{ 8 * 4 }, false>();
-        leb_broken_random_bit::<{ 8 * 5 }, false>();
-        leb_broken_random_bit::<{ 8 * 6 }, false>();
-        leb_broken_random_bit::<{ 8 * 7 }, false>();
-        leb_broken_random_bit::<{ 8 * 8 }, false>();
+        const IS_SIGNED: bool = false;
+        leb_broken_random_bit::<1, IS_SIGNED>();
+        leb_broken_random_bit::<2, IS_SIGNED>();
+        leb_broken_random_bit::<3, IS_SIGNED>();
+        leb_broken_random_bit::<4, IS_SIGNED>();
+        leb_broken_random_bit::<5, IS_SIGNED>();
+        leb_broken_random_bit::<6, IS_SIGNED>();
+        leb_broken_random_bit::<7, IS_SIGNED>();
+        leb_broken_random_bit::<8, IS_SIGNED>();
+        leb_broken_random_bit::<9, IS_SIGNED>();
+        leb_broken_random_bit::<10, IS_SIGNED>();
     }
 
     #[test]
     pub fn test_leb_broken_random_bit_signed() {
-        leb_broken_random_bit::<{ 8 * 1 }, true>();
-        leb_broken_random_bit::<{ 8 * 2 }, true>();
-        leb_broken_random_bit::<{ 8 * 3 }, true>();
-        leb_broken_random_bit::<{ 8 * 4 }, true>();
-        leb_broken_random_bit::<{ 8 * 5 }, true>();
-        leb_broken_random_bit::<{ 8 * 6 }, true>();
-        leb_broken_random_bit::<{ 8 * 7 }, true>();
+        const IS_SIGNED: bool = true;
+        leb_broken_random_bit::<1, IS_SIGNED>();
+        leb_broken_random_bit::<2, IS_SIGNED>();
+        leb_broken_random_bit::<3, IS_SIGNED>();
+        leb_broken_random_bit::<4, IS_SIGNED>();
+        leb_broken_random_bit::<5, IS_SIGNED>();
+        leb_broken_random_bit::<6, IS_SIGNED>();
+        leb_broken_random_bit::<7, IS_SIGNED>();
+        leb_broken_random_bit::<8, IS_SIGNED>();
+        leb_broken_random_bit::<9, IS_SIGNED>();
     }
 
-    pub fn broken_base64_word<const BIT_DEPTH: usize, const IS_SIGNED: bool>() {
+    pub fn broken_base64_word<const LEB_BYTES_N: usize, const IS_SIGNED: bool>() {
         let mut rng = rand::thread_rng();
         let mut solid_numbers_to_check = Vec::<u64>::new();
         solid_numbers_to_check.push(0);
         solid_numbers_to_check.push(1);
-        for i in 0..(BIT_DEPTH - 1) {
+        for i in 0..leb_bytes_n_to_max_bit_depth(IS_SIGNED, LEB_BYTES_N) - 1 {
             let mut val: u64 = 2 << i;
             solid_numbers_to_check.push(val);
 
@@ -531,7 +575,7 @@ mod tests {
             let (input_number_leb128, last_byte_index) = convert_to_leb_bytes(
                 IS_SIGNED,
                 solid_number,
-                ((BIT_DEPTH + 6) / 7) as u8,
+                LEB_BYTES_N,
             );
 
             let mut base64_words = convert_leb_to_leb_base64_words(&input_number_leb128, last_byte_index);
@@ -555,7 +599,7 @@ mod tests {
                     input_number_leb128,
                 );
             }
-            let circuit = TestCircuit::<'_, Fr, BIT_DEPTH, IS_SIGNED> {
+            let circuit = TestCircuit::<'_, Fr, LEB_BYTES_N, IS_SIGNED> {
                 leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
                 leb_bytes_last_byte_index: last_byte_index as u64,
@@ -569,24 +613,30 @@ mod tests {
 
     #[test]
     pub fn test_broken_base64_word_unsigned() {
-        broken_base64_word::<{ 8 * 1 }, false>();
-        broken_base64_word::<{ 8 * 2 }, false>();
-        broken_base64_word::<{ 8 * 3 }, false>();
-        broken_base64_word::<{ 8 * 4 }, false>();
-        broken_base64_word::<{ 8 * 5 }, false>();
-        broken_base64_word::<{ 8 * 6 }, false>();
-        broken_base64_word::<{ 8 * 7 }, false>();
-        broken_base64_word::<{ 8 * 8 }, false>();
+        const IS_SIGNED: bool = false;
+        broken_base64_word::<1, IS_SIGNED>();
+        broken_base64_word::<2, IS_SIGNED>();
+        broken_base64_word::<3, IS_SIGNED>();
+        broken_base64_word::<4, IS_SIGNED>();
+        broken_base64_word::<5, IS_SIGNED>();
+        broken_base64_word::<6, IS_SIGNED>();
+        broken_base64_word::<7, IS_SIGNED>();
+        broken_base64_word::<8, IS_SIGNED>();
+        broken_base64_word::<9, IS_SIGNED>();
+        broken_base64_word::<10, IS_SIGNED>();
     }
 
     #[test]
     pub fn test_broken_base64_word_signed() {
-        broken_base64_word::<{ 8 * 1 }, true>();
-        broken_base64_word::<{ 8 * 2 }, true>();
-        broken_base64_word::<{ 8 * 3 }, true>();
-        broken_base64_word::<{ 8 * 4 }, true>();
-        broken_base64_word::<{ 8 * 5 }, true>();
-        broken_base64_word::<{ 8 * 6 }, true>();
-        broken_base64_word::<{ 8 * 7 }, true>();
+        const IS_SIGNED: bool = true;
+        broken_base64_word::<1, IS_SIGNED>();
+        broken_base64_word::<2, IS_SIGNED>();
+        broken_base64_word::<3, IS_SIGNED>();
+        broken_base64_word::<4, IS_SIGNED>();
+        broken_base64_word::<5, IS_SIGNED>();
+        broken_base64_word::<6, IS_SIGNED>();
+        broken_base64_word::<7, IS_SIGNED>();
+        broken_base64_word::<8, IS_SIGNED>();
+        broken_base64_word::<9, IS_SIGNED>();
     }
 }

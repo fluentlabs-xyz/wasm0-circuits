@@ -28,6 +28,8 @@ pub struct WasmConfig<F: Field> {
     ///
     pub(crate) wasm_bytecode_table: WasmBytecodeTable,
     ///
+    leb_solid_number: Column<Advice>,
+    ///
     q_enable: Column<Fixed>,
     ///
     q_first: Column<Fixed>,
