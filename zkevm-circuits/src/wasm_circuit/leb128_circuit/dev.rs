@@ -22,7 +22,8 @@ struct TestCircuit<'a, F, const LEB_BYTES_N: usize, const IS_SIGNED: bool> {
 struct TestCircuitConfig<F, const LEB_BYTES_N: usize, const IS_SIGNED: bool> {
     solid_number: Column<Advice>,
     leb_bytes: Column<Advice>,
-    leb128_config: LEB128Config<F, LEB_BYTES_N, IS_SIGNED>,
+    leb128_config: LEB128Config<F>,
+    _marker: PhantomData<F>,
 }
 
 impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, LEB_BYTES_N, IS_SIGNED> {
@@ -36,15 +37,18 @@ impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> f
     ) -> Self::Config {
         let solid_number = cs.advice_column();
         let leb_bytes = cs.advice_column();
-        let leb128_config = LEB128Chip::<F, LEB_BYTES_N, IS_SIGNED>::configure(
+        let leb128_config = LEB128Chip::<F>::configure(
             cs,
             |vc| vc.query_advice(solid_number, Rotation::cur()),
             &leb_bytes,
+            IS_SIGNED,
+            LEB_BYTES_N,
         );
         let test_circuit_config = TestCircuitConfig {
             solid_number,
             leb_bytes,
             leb128_config,
+            _marker: Default::default(),
         };
 
         test_circuit_config
@@ -61,22 +65,17 @@ impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> f
             || "leb128 region",
             |mut region| {
                 for i in 0..self.leb_bytes.len() {
-                    let val = 0 as u64;
+                    let mut val = 0 as u64;
+                    if i == 0 {
+                        val = self.solid_number;
+                    }
                     region.assign_advice(
-                        || format!("assign solid number to {} at {}", val, i),
+                        || format!("assign solid_number is_negative {} val {} at {}", self.is_negative, val, i),
                         config.solid_number,
                         i,
-                        || Value::known(F::from(val)),
+                        || Value::known(if self.is_negative { F::from(val).neg() } else { F::from(val) }),
                     )?;
                 }
-                let val = self.solid_number;
-                let i = 0;
-                region.assign_advice(
-                    || format!("assign solid number to {} at {}", val, i),
-                    config.solid_number,
-                    0,
-                    || Value::known(if self.is_negative { -F::from(self.solid_number) } else { F::from(self.solid_number) }),
-                )?;
 
                 for (i, &leb_byte) in self.leb_bytes.iter().enumerate() {
                     region.assign_advice(
