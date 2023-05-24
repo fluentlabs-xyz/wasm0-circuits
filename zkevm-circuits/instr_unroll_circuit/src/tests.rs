@@ -8,7 +8,7 @@ use halo2_proofs::{
 use macro_rules_attribute::apply;
 use std::marker::PhantomData as Ph;
 
-use super::{Chip, Config};
+use crate::chip::{Chip, Config};
 
 #[derive(Default)]
 struct Circuit<'a, F> {

@@ -128,7 +128,7 @@ pub fn configure(cs: &mut ConstraintSystem<F>) -> Config<F> {
     cs.create_gate("instr simple translation", |vc| {
         let se = vc.query_selector(config.selector.main);
         let mut cs = Vec::<Expression<F>>::from([]);
-        let byte = vc.query_advice(config.advice.byte, Rotation::cur());
+        let byte = vc.query_advice(config.advice.bytes, Rotation::cur());
         let kind = vc.query_advice(config.advice.kind, Rotation::cur());
         let unrolled = vc.query_advice(config.advice.unrolled, Rotation::cur());
         cs.push(kind - kind::INSTR_SIMPLE_TRANSLATION.expr());
@@ -141,7 +141,7 @@ pub fn configure(cs: &mut ConstraintSystem<F>) -> Config<F> {
     cs.create_gate("instr simple with uleb 32", |vc| {
         let se = vc.query_selector(config.selector.main);
         let mut cs = Vec::<Expression<F>>::from([]);
-        let byte_op = vc.query_advice(config.advice.byte, Rotation::cur());
+        let byte_op = vc.query_advice(config.advice.bytes, Rotation::cur());
         let kind_op = vc.query_advice(config.advice.kind, Rotation::cur());
         let unrolled_op = vc.query_advice(config.advice.unrolled, Rotation::cur());
         cs.push(kind_op - kind::INSTR_SIMPLE_WITH_ULEB_32.expr());
@@ -155,7 +155,7 @@ pub fn configure(cs: &mut ConstraintSystem<F>) -> Config<F> {
     cs.create_gate("instr simple with sleb 32", |vc| {
         let se = vc.query_selector(config.selector.main);
         let mut cs = Vec::<Expression<F>>::from([]);
-        let byte_op = vc.query_advice(config.advice.byte, Rotation::cur());
+        let byte_op = vc.query_advice(config.advice.bytes, Rotation::cur());
         let kind_op = vc.query_advice(config.advice.kind, Rotation::cur());
         let unrolled_op = vc.query_advice(config.advice.unrolled, Rotation::cur());
         cs.push(kind_op - kind::INSTR_SIMPLE_WITH_SLEB_32.expr());
@@ -166,7 +166,7 @@ pub fn configure(cs: &mut ConstraintSystem<F>) -> Config<F> {
     cs.create_gate("instr first uleb 32", |vc| {
         let se = vc.query_selector(config.selector.main);
         let mut cs = Vec::<Expression<F>>::from([]);
-        let byte_op = vc.query_advice(config.advice.byte, Rotation::cur());
+        let byte_op = vc.query_advice(config.advice.bytes, Rotation::cur());
         let kind = vc.query_advice(config.advice.kind, Rotation::cur());
         cs.push(kind - kind::INSTR_FIRST_ULEB_32.expr());
         Constraints::with_selector(se, cs)
@@ -179,7 +179,7 @@ pub fn configure(cs: &mut ConstraintSystem<F>) -> Config<F> {
     cs.create_gate("instr mem get", |vc| {
         let se = vc.query_selector(config.selector.main);
         let mut cs = Vec::<Expression<F>>::from([]);
-        let byte_op = vc.query_advice(config.advice.byte, Rotation::cur());
+        let byte_op = vc.query_advice(config.advice.bytes, Rotation::cur());
         let kind = vc.query_advice(config.advice.kind, Rotation::cur());
         let unrolled_op = vc.query_advice(config.advice.unrolled, Rotation::cur());
         let unrolled_align = vc.query_advice(config.advice.unrolled, Rotation(1));
