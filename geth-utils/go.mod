@@ -32,8 +32,8 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/tklauser/numcpus v0.4.0 // indirect
-	github.com/wasm0/zkwasm-gas-injector v0.0.0-20230417162546-ab3ab673b1f7 // indirect
-	github.com/wasm0/zkwasm-wasmi v0.0.0-20230518200754-81e4c6bf23ba // indirect
+	github.com/wasm0/zkwasm-gas-injector v0.0.0-20230418040621-01902ff3a6f0 // indirect
+	github.com/wasm0/zkwasm-wasmi v0.0.0-20230523062253-66c5f1b005dc // indirect
 	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
