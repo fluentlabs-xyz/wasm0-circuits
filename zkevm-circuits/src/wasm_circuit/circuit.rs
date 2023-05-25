@@ -11,6 +11,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::common::wasm_compute_section_len;
 use crate::wasm_circuit::consts::{WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH};
+use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip};
 use crate::wasm_circuit::tables::range_table::RangeTableConfig;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 
@@ -27,6 +28,8 @@ pub struct WasmConfig<F: Field> {
     pub(crate) range_table_256_config: RangeTableConfig<F, 256>,
     ///
     pub(crate) wasm_bytecode_table: WasmBytecodeTable,
+    ///
+    leb_solid_number: Column<Advice>,
     ///
     q_enable: Column<Fixed>,
     ///
@@ -45,12 +48,25 @@ pub struct WasmConfig<F: Field> {
     is_section_len: Column<Advice>,
     ///
     is_section_body: Column<Advice>,
+    /// TODO refactor to single value (without array)
+    /// array of LEB128Config's where index+1 represents number of leb bytes
+    // leb128_config_for_byte_n: Vec<LEB128Config<F>>,
+    /// TODO refactor to single value (without array)
+    /// array of LEB128Chip's where index+1 represents number of leb bytes
+    leb128_chip_for_byte_n: Vec<LEB128Chip<F>>,
     ///
     _marker: PhantomData<F>,
 }
 
 impl<F: Field> WasmConfig<F>
-{}
+{
+    // pub fn get_leb_config(&self, leb_bytes_n: usize) -> &LEB128Config<F> {
+    //     &self.leb128_config_for_byte_n[leb_bytes_n - 1]
+    // }
+    pub fn get_leb_chip(&self, leb_bytes_n: usize) -> &LEB128Chip<F> {
+        &self.leb128_chip_for_byte_n[leb_bytes_n - 1]
+    }
+}
 
 
 ///
@@ -63,15 +79,6 @@ pub struct WasmChip<F: Field> {
 
 impl<F: Field> WasmChip<F>
 {
-    ///
-    pub fn construct(config: WasmConfig<F>) -> Self {
-        let instance = Self {
-            config,
-            _marker: PhantomData,
-        };
-        instance
-    }
-
     ///
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
@@ -86,6 +93,21 @@ impl<F: Field> WasmChip<F>
         let is_section_id = cs.advice_column();
         let is_section_len = cs.advice_column();
         let is_section_body = cs.advice_column();
+        let leb_solid_number = cs.advice_column();
+
+        let mut leb_chips = Vec::new();
+        for leb_bytes_n in 1..=10 {
+            let config = LEB128Chip::configure(
+                cs,
+                |vc| vc.query_advice(leb_solid_number, Rotation::cur()),
+                &wasm_bytecode_table.value,
+                // TODO add unsigned
+                false,
+                leb_bytes_n,
+            );
+            let chip = LEB128Chip::construct(config);
+            leb_chips.push(chip);
+        }
 
         cs.create_gate("verify row", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -292,6 +314,7 @@ impl<F: Field> WasmChip<F>
 
         let config = WasmConfig {
             wasm_bytecode_table,
+            leb_solid_number,
             q_enable,
             q_first,
             q_last,
@@ -302,10 +325,20 @@ impl<F: Field> WasmChip<F>
             is_section_id,
             is_section_len,
             is_section_body,
+            leb128_chip_for_byte_n: leb_chips,
             _marker: PhantomData,
         };
 
         config
+    }
+
+    ///
+    pub fn construct(config: WasmConfig<F>) -> Self {
+        let instance = Self {
+            config,
+            _marker: PhantomData,
+        };
+        instance
     }
 
     ///
@@ -314,6 +347,10 @@ impl<F: Field> WasmChip<F>
         region: &mut Region<F>,
         wasm_bytes: &[u8],
     ) -> Result<(), Error> {
+        for chip in &self.config.leb128_chip_for_byte_n {
+            chip.init_assign(region, wasm_bytes.len() - 1);
+        }
+
         let mut index_at_positions: Vec<IsZeroChip<F>> = Vec::new();
         let mut index_at_prev_positions: Vec<IsZeroChip<F>> = Vec::new();
         for i in 0..self.config.index_at_position_count {
@@ -322,6 +359,7 @@ impl<F: Field> WasmChip<F>
         for i in 0..self.config.index_at_position_count {
             index_at_prev_positions.push(IsZeroChip::construct(self.config.index_at_prev_positions[i].clone()));
         }
+
         for (i, &_byte) in wasm_bytes.iter().enumerate() {
             let is_enable = true;
             let is_first = if i == 0 { true } else { false };
@@ -372,35 +410,42 @@ impl<F: Field> WasmChip<F>
             }
         }
         // scan wasm_bytes for sections
-        let mut index = WASM_SECTIONS_START_INDEX;
+        let mut wasm_bytes_index = WASM_SECTIONS_START_INDEX;
         loop {
-            let section_start_index = index;
+            let section_start_index = wasm_bytes_index;
             let section_len_start_index = section_start_index + 1;
-            let section_id = wasm_bytes[index];
-            index += 1;
-            let (section_len, section_len_leb_count) = wasm_compute_section_len(&wasm_bytes, index).unwrap();
-            index += section_len_leb_count as usize;
-            index += section_len as usize;
-            let section_body_start_index = section_len_start_index + (section_len_leb_count as usize);
-            // do not add 1 for section_id to not subtract it
-            let section_end_index = section_start_index + section_len_leb_count as usize + section_len as usize;
+            let section_id = wasm_bytes[wasm_bytes_index];
+            wasm_bytes_index += 1;
+            let (section_len, section_len_leb_bytes_count) = wasm_compute_section_len(&wasm_bytes, wasm_bytes_index).unwrap();
+            wasm_bytes_index += section_len_leb_bytes_count as usize;
+            wasm_bytes_index += section_len;
+            let section_body_start_index = section_len_start_index + (section_len_leb_bytes_count as usize);
+            let section_len_end_index = section_body_start_index - 1;
+            let section_body_end_index = section_start_index + section_len_leb_bytes_count as usize + section_len;
+            let section_end_index = section_body_end_index;
 
-            // println!();
-            // println!("section_id: {}", section_id);
-            // println!("section_start_index: {}", section_start_index);
-            // println!("section_end_index: {}", section_end_index);
-            // println!("section_len_leb_count: {}", section_len_leb_count);
-            // println!("section_len: {}", section_len);
+            println!();
+            println!("section_id: {}", section_id);
+            println!("section_start_index: {}", section_start_index);
+            println!("section_start_index: {}", section_end_index);
+            println!("section_len: {}", section_len);
+            println!("section_len_start_index: {}", section_len_start_index);
+            println!("section_len_end_index: {}", section_len_end_index);
+            println!("section_body_start_index: {}", section_body_start_index);
+            println!("section_body_end_index: {}", section_body_end_index);
+            println!();
 
-            let offset = section_start_index;
-            region.assign_advice(
-                || format!("assign is_section_id at {}", offset),
-                self.config.is_section_id,
-                offset,
-                || Value::known(F::one()),
-            )?;
+            {
+                let offset = section_start_index;
+                region.assign_advice(
+                    || format!("assign is_section_id at {}", offset),
+                    self.config.is_section_id,
+                    offset,
+                    || Value::known(F::one()),
+                )?;
+            }
             // println!("is_section_id at {}", offset);
-            for i in 0..section_len_leb_count {
+            for i in 0..section_len_leb_bytes_count {
                 let offset = section_len_start_index + (i as usize);
                 region.assign_advice(
                     || format!("assign is_section_len at {}", offset),
@@ -421,7 +466,29 @@ impl<F: Field> WasmChip<F>
                 // println!("is_section_body at {}", offset);
             }
 
-            if index >= wasm_bytes.len() { break }
+            // assign to leb chips with real data
+            let chip = self.config.get_leb_chip(section_len_leb_bytes_count as usize);
+            for offset in section_len_start_index..=section_len_end_index {
+                if offset == section_len_start_index {
+                    // TODO assign solid number
+                    region.assign_advice(
+                        || format!("assign leb_solid_number to {} at {}", section_len, offset),
+                        self.config.leb_solid_number,
+                        offset,
+                        || Value::known(F::from(section_len as u64)),
+                    )?;
+                }
+                chip.assign(
+                    region,
+                    offset,
+                    offset == section_len_start_index,
+                    offset != section_len_end_index,
+                    // TODO leb base64 word for signed version
+                    if offset == section_len_start_index { section_len } else { 0 } as u64,
+                );
+            }
+
+            if wasm_bytes_index >= wasm_bytes.len() { break }
         }
         Ok(())
     }
