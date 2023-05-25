@@ -205,7 +205,7 @@ mod tests {
     use mock::TestContext;
 
     fn test_ok(code_offset: u32, memory_offset: u32, size: u32, large: bool) {
-        let mut code = bytecode! {
+        let code = bytecode! {
             I32Const[memory_offset]
             I32Const[code_offset]
             I32Const[size]

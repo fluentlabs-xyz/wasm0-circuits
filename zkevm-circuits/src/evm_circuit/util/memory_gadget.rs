@@ -93,6 +93,7 @@ pub(crate) trait CommonMemoryAddressGadget<F: FieldExt> {
 /// `memory_offset_bytes` to zero when `memory_length` is zero. In this case,
 /// the RLC value for `memory_offset` need not match the bytes.
 #[derive(Clone, Debug)]
+#[deprecated(note = "Use 64-bit version instead, this one doesn't work")]
 pub(crate) struct MemoryAddressGadget<F> {
     memory_offset: Cell<F>,
     memory_offset_bytes: MemoryAddress<F>,
