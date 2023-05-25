@@ -44,25 +44,18 @@ pub enum ExecutionState {
     WASM_UNARY,
     // Opcode successful cases
     STOP,
-    ADD_SUB,
-    // ADD, SUB
-    MUL_DIV_MOD,
-    // MUL, DIV, MOD
-    SDIV_SMOD,
-    // SDIV, SMOD
-    SHL_SHR,
-    // SHL, SHR
+    ADD_SUB, // ADD, SUB
+    MUL_DIV_MOD, // MUL, DIV, MOD
+    SDIV_SMOD, // SDIV, SMOD
+    SHL_SHR, // SHL, SHR
     ADDMOD,
     MULMOD,
     EXP,
     SIGNEXTEND,
-    CMP,
-    // LT, GT, EQ
-    SCMP,
-    // SLT, SGT
+    CMP, // LT, GT, EQ
+    SCMP, // SLT, SGT
     ISZERO,
-    BITWISE,
-    // AND, OR, XOR
+    BITWISE, // AND, OR, XOR
     NOT,
     BYTE,
     SAR,
@@ -84,17 +77,13 @@ pub enum ExecutionState {
     RETURNDATACOPY,
     EXTCODEHASH,
     BLOCKHASH,
-    BLOCKCTXU64,
-    // TIMESTAMP, NUMBER, GASLIMIT
-    BLOCKCTXU160,
-    // COINBASE
-    BLOCKCTXU256,
-    // DIFFICULTY, BASEFEE
+    BLOCKCTXU64, // TIMESTAMP, NUMBER, GASLIMIT
+    BLOCKCTXU160, // COINBASE
+    BLOCKCTXU256, // DIFFICULTY, BASEFEE
     CHAINID,
     SELFBALANCE,
     POP,
-    MEMORY,
-    // MLOAD, MSTORE, MSTORE8
+    MEMORY, // MLOAD, MSTORE, MSTORE8
     SLOAD,
     SSTORE,
     JUMP,
@@ -102,20 +91,14 @@ pub enum ExecutionState {
     PC,
     MSIZE,
     GAS,
-    JUMPDEST,
-    // PUSH, // PUSH1, PUSH2, ..., PUSH32
-    DUP,
-    // DUP1, DUP2, ..., DUP16
-    SWAP,
-    // SWAP1, SWAP2, ..., SWAP16
-    LOG,
-    // LOG0, LOG1, ..., LOG4
+    JUMPDEST, // PUSH, // PUSH1, PUSH2, ..., PUSH32
+    DUP, // DUP1, DUP2, ..., DUP16
+    SWAP, // SWAP1, SWAP2, ..., SWAP16
+    LOG, // LOG0, LOG1, ..., LOG4
     CREATE,
     CREATE2,
-    CALL_OP,
-    // CALL, CALLCODE, DELEGATECALL, STATICCALL
-    RETURN_REVERT,
-    // RETURN, REVERT
+    CALL_OP, // CALL, CALLCODE, DELEGATECALL, STATICCALL
+    RETURN_REVERT, // RETURN, REVERT
     SELFDESTRUCT,
     // Error cases
     ErrorInvalidOpcode,

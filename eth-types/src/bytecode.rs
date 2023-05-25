@@ -859,30 +859,7 @@ impl<'a> Iterator for BytecodeIterator<'a> {
 
 impl From<Vec<u8>> for Bytecode {
     fn from(input: Vec<u8>) -> Self {
-        let mut code = Bytecode::default();
-
-        let mut input_iter = input.iter();
-        while let Some(byte) = input_iter.next() {
-            let op = OpcodeId::from(*byte);
-            code.write_op(op);
-            if op.is_push_with_data() {
-                let n = op.postfix().expect("opcode with postfix");
-                for _ in 0..n {
-                    match input_iter.next() {
-                        Some(v) => {
-                            code.write(*v, false);
-                        }
-                        None => {
-                            // out of boundary is allowed
-                            // see also: https://github.com/ethereum/go-ethereum/blob/997f1c4f0abcd78f645e6e7ced6db4b42ad59c9d/core/vm/analysis.go#L65
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        code
+        Bytecode::from_raw_unchecked(input)
     }
 }
 
