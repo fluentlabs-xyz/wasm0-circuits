@@ -202,15 +202,21 @@ impl<F: Field> ExecutionGadget<F> for EvmCodeCopyGadget<F> {
 mod tests {
     use crate::test_util::CircuitTestBuilder;
     use eth_types::{bytecode};
+    use eth_types::evm_types::OpcodeId;
     use mock::TestContext;
 
     fn test_ok(code_offset: u32, memory_offset: u32, size: u32, large: bool) {
-        let code = bytecode! {
+        let mut code = bytecode! {
             I32Const[memory_offset]
             I32Const[code_offset]
             I32Const[size]
             CODECOPY
         };
+        if large {
+            for _ in 0..128 {
+                code.write_op(OpcodeId::Nop);
+            }
+        }
 
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),

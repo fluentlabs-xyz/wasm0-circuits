@@ -439,6 +439,7 @@ impl Bytecode {
         }
         let op = match op {
             // WASM opcode mapping
+            OpcodeId::Nop => Instruction::Nop,
 
             OpcodeId::I32GtU => Instruction::I32GtU,
             OpcodeId::I32GeU => Instruction::I32GeU,

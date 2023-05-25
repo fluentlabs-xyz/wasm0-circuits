@@ -111,26 +111,23 @@ impl<F: Field> ExecutionGadget<F> for EvmCodeSizeGadget<F> {
 mod tests {
     use crate::test_util::CircuitTestBuilder;
     use eth_types::{bytecode, Word};
+    use eth_types::evm_types::OpcodeId;
     use mock::TestContext;
 
     fn test_ok(large: bool) {
         let res_mem_address = 0x7f;
-        let mut code = bytecode! {};
-        if large {
-            for _ in 0..128 {
-                code.push(1, Word::from(0));
-            }
-        }
-        let tail = bytecode! {
+        let mut code = bytecode! {
             I32Const[res_mem_address]
             CODESIZE
         };
-        code.append(&tail);
-
+        if large {
+            for _ in 0..128 {
+                code.write_op(OpcodeId::Nop);
+            }
+        }
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
-        )
-        .run();
+        ).run();
     }
 
     #[test]
@@ -138,8 +135,8 @@ mod tests {
         test_ok(false);
     }
 
-    // #[test]
-    // fn test_codesize_gadget_large() {
-    //     test_ok(true);
-    // }
+    #[test]
+    fn test_codesize_gadget_large() {
+        test_ok(true);
+    }
 }
