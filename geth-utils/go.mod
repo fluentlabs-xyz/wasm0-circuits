@@ -33,7 +33,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/tklauser/numcpus v0.4.0 // indirect
 	github.com/wasm0/zkwasm-gas-injector v0.0.0-20230417162546-ab3ab673b1f7 // indirect
-	github.com/wasm0/zkwasm-wasmi v0.0.0-20230519211126-c8af40ea9038 // indirect
+	github.com/wasm0/zkwasm-wasmi v0.0.0-20230524183146-f963391c3617 // indirect
 	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
