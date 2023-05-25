@@ -1,5 +1,5 @@
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian};
+use eth_types::{Field};
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
@@ -12,9 +12,8 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{ConstrainBuilderCommon, StepStateTransition, Transition::Delta},
-            from_bytes,
             memory_gadget::BufferReaderGadget,
-            not, CachedRegion, Cell, MemoryAddress,
+            not, CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -256,7 +255,7 @@ impl<F: Field> ExecutionGadget<F> for EvmCallDataLoadGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::{evm_circuit::test::rand_bytes, test_util::CircuitTestBuilder};
-    use eth_types::{bytecode, Bytecode, bytecode_internal, ToWord, Word};
+    use eth_types::{bytecode, Bytecode, bytecode_internal, Word};
     use mock::TestContext;
 
     fn test_root_ok(calldata_offset: u32) {
