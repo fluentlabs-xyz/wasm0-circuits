@@ -87,7 +87,7 @@ mod tests {
     pub fn test_wasm_bytecode_from_file_must_succeed() {
         let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
-        let mut data = wat2wasm(data).unwrap();
+        let data = wat2wasm(data).unwrap();
         println!("data.len: {}", data.len());
         println!("data.len hex: {:x?}", data.len());
         println!("data last_index: {}", data.len() - 1);

@@ -9,6 +9,7 @@ import (
 	"github.com/scroll-tech/go-ethereum/core/vm"
 )
 
+
 type Asm struct {
 	bytecode         []byte
 	labelMap         map[string]int

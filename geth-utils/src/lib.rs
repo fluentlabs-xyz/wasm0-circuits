@@ -16,6 +16,12 @@ pub fn trace(config: &str) -> Result<String, Error> {
     // Create a string we can pass into Go
     let c_config = CString::new(config).expect("invalid config");
 
+    let trace = c_config.to_str().unwrap().to_string()
+        .replace("\n", "")
+        .replace("\\\"", "\"")
+        .replace("  ", "");
+    println!("\ntrace config: {}", trace);
+
     // Generate the trace externally
     let result = unsafe { CreateTrace(c_config.as_ptr()) };
 
@@ -27,7 +33,11 @@ pub fn trace(config: &str) -> Result<String, Error> {
         .expect("Error translating EVM trace from library")
         .to_string();
 
-    println!("trace result: {:?}", c_result.to_str().unwrap().to_string().replace("\n", "").replace("\\\"", "\"").replace("  ", ""));
+    let trace = c_result.to_str().unwrap().to_string()
+        .replace("\n", "")
+        .replace("\\\"", "\"")
+        .replace("  ", "");
+    println!("\ntrace result: {}", trace);
 
     // We can now free the returned string (memory managed by Go)
     unsafe { FreeString(c_result.as_ptr()) };

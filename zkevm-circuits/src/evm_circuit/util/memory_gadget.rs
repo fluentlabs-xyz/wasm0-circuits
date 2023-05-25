@@ -16,7 +16,7 @@ use crate::{
     util::Expr,
 };
 use array_init::array_init;
-use eth_types::{evm_types::{GasCost, MAX_EXPANDED_MEMORY_ADDRESS}, Field, ToLittleEndian, ToU256, U256, U64};
+use eth_types::{evm_types::{GasCost, MAX_EXPANDED_MEMORY_ADDRESS}, Field, ToLittleEndian, ToScalar, ToU256, U256, U64};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::Value,
@@ -204,6 +204,96 @@ impl<F: Field> MemoryAddressGadget<F> {
 
     pub(crate) fn offset(&self) -> Expression<F> {
         self.has_length() * from_bytes::expr(&self.memory_offset_bytes.cells)
+    }
+}
+
+/// Convert the dynamic memory offset and length from random linear combination
+/// to integer. It handles the "no expansion" feature by setting the
+/// `memory_offset_bytes` to zero when `memory_length` is zero. In this case,
+/// the RLC value for `memory_offset` need not match the bytes.
+#[derive(Clone, Debug)]
+pub(crate) struct MemoryAddress64Gadget<F> {
+    memory_offset: Cell<F>,
+    memory_length: Cell<F>,
+    memory_length_is_zero: IsZeroGadget<F>,
+}
+
+impl<F: Field> CommonMemoryAddressGadget<F> for MemoryAddress64Gadget<F> {
+    fn construct_self(cb: &mut EVMConstraintBuilder<F>) -> Self {
+        let offset = cb.query_cell_phase2();
+        let length = cb.query_cell();
+        Self::construct(cb, offset, length)
+    }
+
+    fn assign(
+        &self,
+        region: &mut CachedRegion<'_, '_, F>,
+        offset: usize,
+        memory_offset: U64,
+        memory_length: U64,
+    ) -> Result<u64, Error> {
+        let memory_length_is_zero = memory_length.is_zero();
+        self.memory_offset.assign(
+            region,
+            offset,
+            Value::known(F::from(memory_offset.as_u64())),
+        )?;
+        self.memory_length.assign(
+            region,
+            offset,
+            Value::known(F::from(memory_length.as_u64())),
+        )?;
+        self.memory_length_is_zero
+            .assign(region, offset, F::from(memory_length.as_u64()))?;
+        Ok(if memory_length_is_zero {
+            0
+        } else {
+            memory_offset.as_u64() + memory_length.as_u64()
+        })
+    }
+
+    fn offset_rlc(&self) -> Expression<F> {
+        self.memory_offset.expr()
+    }
+
+    fn length_rlc(&self) -> Expression<F> {
+        self.memory_length.expr()
+    }
+
+    fn length(&self) -> Expression<F> {
+        self.memory_length.expr()
+    }
+
+    fn address(&self) -> Expression<F> {
+        self.offset() + self.length()
+    }
+}
+
+impl<F: Field> MemoryAddress64Gadget<F> {
+    pub(crate) fn construct(
+        cb: &mut EVMConstraintBuilder<F>,
+        memory_offset: Cell<F>,
+        memory_length: Cell<F>,
+    ) -> Self {
+        debug_assert_eq!(
+            CellType::StoragePhase2,
+            cb.curr.cell_manager.columns()[memory_offset.cell_column_index].cell_type
+        );
+        let memory_length_is_zero = IsZeroGadget::construct(cb, memory_length.expr());
+
+        Self {
+            memory_offset,
+            memory_length,
+            memory_length_is_zero,
+        }
+    }
+
+    pub(crate) fn has_length(&self) -> Expression<F> {
+        1.expr() - self.memory_length_is_zero.expr()
+    }
+
+    pub(crate) fn offset(&self) -> Expression<F> {
+        self.has_length() * self.memory_offset.expr()
     }
 }
 

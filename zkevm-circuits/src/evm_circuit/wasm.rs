@@ -33,9 +33,10 @@ use halo2_proofs::{
     poly::Rotation,
 };
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{HashMap},
     iter,
 };
+use std::collections::BTreeMap;
 use halo2_proofs::plonk::Assigned;
 use strum::EnumCount;
 
@@ -182,9 +183,10 @@ use crate::table::{RwTableTag, TxReceiptFieldTag};
 
 use once_cell::sync::Lazy;
 use bus_mapping::util::read_env_var;
+use crate::witness::{Rw};
 
 pub(crate) static CHECK_RW_LOOKUP: Lazy<bool> =
-    Lazy::new(|| read_env_var("CHECK_RW_LOOKUP", false));
+    Lazy::new(|| read_env_var("CHECK_RW_LOOKUP", true));
 
 pub(crate) trait ExecutionGadget<F: FieldExt> {
     const NAME: &'static str;
@@ -1257,9 +1259,9 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::BALANCE => assign_exec_step!(self.evm_balance),
 
             ExecutionState::CALL_OP => assign_exec_step!(self.evm_callop),
-            // ExecutionState::CALLDATACOPY => assign_exec_step!(self.calldatacopy_gadget),
-            // ExecutionState::CALLDATALOAD => assign_exec_step!(self.calldataload_gadget),
-            // ExecutionState::CALLDATASIZE => assign_exec_step!(self.calldatasize_gadget),
+            ExecutionState::CALLDATACOPY => assign_exec_step!(self.evm_calldatacopy),
+            ExecutionState::CALLDATALOAD => assign_exec_step!(self.evm_calldataload),
+            ExecutionState::CALLDATASIZE => assign_exec_step!(self.evm_calldatasize),
             ExecutionState::CALLER => assign_exec_step!(self.evm_caller),
             ExecutionState::CALLVALUE => assign_exec_step!(self.evm_callvalue),
             ExecutionState::CHAINID => assign_exec_step!(self.evm_chainid),
@@ -1446,16 +1448,14 @@ impl<F: Field> ExecutionConfig<F> {
             }
         }
 
-        let rlc_assignments: BTreeSet<_> = step
+        let rlc_assignments: BTreeMap<F, Rw> = step
             .rw_indices
             .iter()
             .map(|rw_idx| block.rws[*rw_idx])
-            .map(|rw| {
-                rw.table_assignment_aux(evm_randomness)
-                    .rlc(lookup_randomness)
-            })
-            .fold(BTreeSet::<F>::new(), |mut set, value| {
-                set.insert(value);
+            .fold(BTreeMap::<F, Rw>::new(), |mut set, value| {
+                let rlc = value.table_assignment_aux(evm_randomness)
+                    .rlc(lookup_randomness);
+                set.insert(rlc, value);
                 set
             });
 
@@ -1503,17 +1503,17 @@ impl<F: Field> ExecutionConfig<F> {
             // Check that the number of rw operations generated from the bus-mapping
             // correspond to the number of assigned rw lookups by the EVM Circuit
             // plus the number of rw lookups done by the copy circuit.
-            if step.rw_indices.len()
-                != assigned_rw_values.len() + step.copy_rw_counter_delta as usize
-            {
-                log::error!(
-                "step.rw_indices.len: {} != assigned_rw_values.len: {} + step.copy_rw_counter_delta: {} in step: {:?}",
-                step.rw_indices.len(),
-                assigned_rw_values.len(),
-                step.copy_rw_counter_delta,
-                step
-            );
-            }
+            // if step.rw_indices.len()
+            //     != assigned_rw_values.len() + step.copy_rw_counter_delta as usize
+            // {
+            //     log::error!(
+            //     "step.rw_indices.len: {} != assigned_rw_values.len: {} + step.copy_rw_counter_delta: {} in step: {:?}",
+            //     step.rw_indices.len(),
+            //     assigned_rw_values.len(),
+            //     step.copy_rw_counter_delta,
+            //     step
+            //     );
+            // }
             let mut rev_count = 0;
             let is_rev = if assigned_rw_value.0.contains(" with reversion") {
                 rev_count += 1;
@@ -1540,7 +1540,7 @@ impl<F: Field> ExecutionConfig<F> {
             let table_assignments = rw.table_assignment_aux(evm_randomness);
             let rlc = table_assignments.rlc(lookup_randomness);
 
-            if !rlc_assignments.contains(value) {
+            if !rlc_assignments.contains_key(value) {
                 log_ctx(&assigned_rw_values);
                 log::error!(
                     "incorrect rw witness. input_value {:?}, name \"{}\". table_value {:?}, table_assignments {:?}, rw {:?}, index {:?}, {}th rw of step",
@@ -1551,10 +1551,10 @@ impl<F: Field> ExecutionConfig<F> {
                     rw,
                     rw_idx, idx);
 
-                // debug_assert_eq!(
-                //    rlc, assigned_rw_values[idx].1,
-                //    "left is witness, right is expression"
-                // );
+                debug_assert_eq!(
+                   rlc, assigned_rw_values[idx].1,
+                   "left is witness, right is expression"
+                );
             }
         }
         // for (idx, assigned_rw_value) in assigned_rw_values.iter().enumerate()

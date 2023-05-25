@@ -21,7 +21,7 @@ impl WasmBytecode {
 
         for (idx, byte) in self.bytes.iter().enumerate() {
             let idx_val = Value::known(F::from(idx as u64));
-            let mut byte_val = Value::known(F::from(*byte as u64));
+            let byte_val = Value::known(F::from(*byte as u64));
             rows.push([
                 idx_val,
                 byte_val,

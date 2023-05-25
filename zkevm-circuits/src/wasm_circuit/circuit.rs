@@ -9,7 +9,6 @@ use eth_types::Field;
 use gadgets::is_zero::{IsZeroChip, IsZeroConfig, IsZeroInstruction};
 use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::evm_circuit::util::from_bytes::expr;
 use crate::wasm_circuit::common::wasm_compute_section_len;
 use crate::wasm_circuit::consts::{WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH};
 use crate::wasm_circuit::tables::range_table::RangeTableConfig;
