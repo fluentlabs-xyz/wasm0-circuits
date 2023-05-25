@@ -11,7 +11,6 @@ use calldatasize::Calldatasize;
 use caller::Caller;
 use callop::CallOpcode;
 use callvalue::Callvalue;
-use chainid::ChainId;
 use codecopy::Codecopy;
 use codesize::Codesize;
 use error_invalid_jump::InvalidJump;
@@ -72,7 +71,6 @@ mod calldatasize;
 mod caller;
 mod callop;
 mod callvalue;
-mod chainid;
 mod codecopy;
 mod codesize;
 mod create;
@@ -344,7 +342,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::NUMBER => Number::gen_associated_ops,
         OpcodeId::DIFFICULTY => StackToMemoryOpcode::<0>::gen_associated_ops,
         OpcodeId::GASLIMIT => StackToMemoryOpcode::<0>::gen_associated_ops,
-        OpcodeId::CHAINID => ChainId::gen_associated_ops,
+        OpcodeId::CHAINID => StackToMemoryOpcode::<0>::gen_associated_ops,
         OpcodeId::SELFBALANCE => Selfbalance::gen_associated_ops,
         OpcodeId::BASEFEE => StackToMemoryOpcode::<0>::gen_associated_ops,
         // OpcodeId::MLOAD => Mload::gen_associated_ops,
