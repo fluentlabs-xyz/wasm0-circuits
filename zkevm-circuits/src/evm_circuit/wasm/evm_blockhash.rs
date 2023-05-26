@@ -116,8 +116,8 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
             .to_scalar()
             .expect("unexpected U256 -> Scalar conversion failure");
 
-        let block_number = block.rws[step.rw_indices[0]].stack_value();
-        let dest_offset = block.rws[step.rw_indices[1]].stack_value();
+        let block_number = block.rws[step.rw_indices[1]].stack_value();
+        let dest_offset = block.rws[step.rw_indices[0]].stack_value();
         self.block_number
             .assign(region, offset, Value::known(block_number.to_scalar().unwrap()))?;
         self.dest_offset
@@ -126,10 +126,12 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
         self.current_block_number
             .assign(region, offset, Value::known(current_block_number))?;
 
+        let blockhash_bytes = (2..34).map(|i| block.rws[step.rw_indices[i]].memory_value()).collect::<Vec<_>>();
+        let blockhash = eth_types::Word::from_big_endian(blockhash_bytes.as_slice());
         self.block_hash.assign(
             region,
             offset,
-            Some(block.rws[step.rw_indices[1]].stack_value().to_le_bytes()),
+            Some(blockhash.to_le_bytes())
         )?;
 
         // Block number overflow should be constrained by WordByteCapGadget.

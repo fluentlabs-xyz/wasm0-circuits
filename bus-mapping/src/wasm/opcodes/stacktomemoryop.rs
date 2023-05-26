@@ -25,19 +25,19 @@ impl<const N_POP: usize> Opcode for StackToMemoryOpcode<N_POP> {
         let geth_step = &geth_steps[0];
         let mut exec_step = state.new_step(geth_step)?;
 
-        // Pop elements from stack
-        for i in 0..N_POP {
-            state.stack_read(
-                &mut exec_step,
-                geth_step.stack.nth_last_filled(i),
-                geth_step.stack.nth_last(i)?,
-            )?;
-        }
-
         // Read dest offset as the last stack element
         let dest_offset = geth_step.stack.nth_last(0)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
+
+        // Pop elements from stack
+        for i in 0..N_POP {
+            state.stack_read(
+                &mut exec_step,
+                geth_step.stack.nth_last_filled(i + 1),
+                geth_step.stack.nth_last(i + 1)?,
+            )?;
+        }
 
         // Copy result to memory
         let value = &geth_steps[1].memory[0].0;
