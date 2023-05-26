@@ -389,23 +389,23 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             .collect()
         });
 
-        meta.lookup_any("Bytecode lookup", |meta| {
-            let cond = meta.query_fixed(q_enable, Rotation::cur())
-                * tag.value_equals(CopyDataType::Bytecode, Rotation::cur())(meta)
-                * not::expr(meta.query_advice(is_pad, Rotation::cur()));
-            vec![
-                1.expr(),
-                meta.query_advice(id, Rotation::cur()),
-                BytecodeFieldTag::Byte.expr(),
-                meta.query_advice(addr, Rotation::cur()),
-                meta.query_advice(is_code, Rotation::cur()),
-                meta.query_advice(value, Rotation::cur()),
-            ]
-            .into_iter()
-            .zip_eq(bytecode_table.table_exprs(meta).into_iter())
-            .map(|(arg, table)| (cond.clone() * arg, table))
-            .collect()
-        });
+        // meta.lookup_any("Bytecode lookup", |meta| {
+        //     let cond = meta.query_fixed(q_enable, Rotation::cur())
+        //         * tag.value_equals(CopyDataType::Bytecode, Rotation::cur())(meta)
+        //         * not::expr(meta.query_advice(is_pad, Rotation::cur()));
+        //     vec![
+        //         1.expr(),
+        //         meta.query_advice(id, Rotation::cur()),
+        //         BytecodeFieldTag::Byte.expr(),
+        //         meta.query_advice(addr, Rotation::cur()),
+        //         meta.query_advice(is_code, Rotation::cur()),
+        //         meta.query_advice(value, Rotation::cur()),
+        //     ]
+        //     .into_iter()
+        //     .zip_eq(bytecode_table.table_exprs(meta).into_iter())
+        //     .map(|(arg, table)| (cond.clone() * arg, table))
+        //     .collect()
+        // });
 
         meta.lookup_any("Tx calldata lookup", |meta| {
             let cond = meta.query_fixed(q_enable, Rotation::cur())

@@ -272,6 +272,7 @@ pub enum OpcodeId {
     JUMP,
     JUMPI,
     JUMPDEST,
+    PUSH0,
     PUSH1,
     PUSH2,
     PUSH3,
@@ -378,6 +379,11 @@ impl OpcodeId {
             OpcodeId::SELFDESTRUCT => true,
             _ => false
         }
+    }
+
+    /// Returns `true` if the `OpcodeId` is a `PUSH1` .. `PUSH32` (excluding `PUSH0`).
+    pub fn is_push_with_data(&self) -> bool {
+        self.as_u8() >= Self::PUSH1.as_u8() && self.as_u8() <= Self::PUSH32.as_u8()
     }
 
     /// ..
@@ -827,8 +833,10 @@ impl OpcodeId {
 
     /// Returns PUSHn opcode from parameter n.
     pub fn push_n(n: u8) -> Result<Self, Error> {
-        if (1..=32).contains(&n) {
-            Ok(OpcodeId::from(OpcodeId::PUSH1.as_u8() + n - 1))
+        let op = OpcodeId::from(OpcodeId::PUSH0.as_u8().checked_add(n).unwrap_or_default());
+
+        if op.is_push() {
+            Ok(op)
         } else {
             Err(Error::InvalidOpConversion)
         }
@@ -1392,20 +1400,27 @@ mod opcode_ids_tests {
 
     #[test]
     fn push_n() {
+        #[cfg(feature = "shanghai")]
+        assert!(matches!(OpcodeId::push_n(0), Ok(OpcodeId::PUSH0)));
+        #[cfg(not(feature = "shanghai"))]
+        assert!(matches!(
+            OpcodeId::push_n(0),
+            Err(Error::InvalidOpConversion)
+        ));
         assert!(matches!(OpcodeId::push_n(1), Ok(OpcodeId::PUSH1)));
         assert!(matches!(OpcodeId::push_n(10), Ok(OpcodeId::PUSH10)));
         assert!(matches!(
             OpcodeId::push_n(100),
             Err(Error::InvalidOpConversion)
         ));
-        assert!(matches!(
-            OpcodeId::push_n(0),
-            Err(Error::InvalidOpConversion)
-        ));
     }
 
     #[test]
     fn postfix() {
+        #[cfg(feature = "shanghai")]
+        assert_eq!(OpcodeId::PUSH0.postfix(), Some(0));
+        #[cfg(not(feature = "shanghai"))]
+        assert_eq!(OpcodeId::PUSH0.postfix(), None);
         assert_eq!(OpcodeId::PUSH1.postfix(), Some(1));
         assert_eq!(OpcodeId::PUSH10.postfix(), Some(10));
         assert_eq!(OpcodeId::LOG2.postfix(), Some(2));
@@ -1414,6 +1429,7 @@ mod opcode_ids_tests {
 
     #[test]
     fn data_len() {
+        assert_eq!(OpcodeId::PUSH0.data_len(), 0);
         assert_eq!(OpcodeId::PUSH1.data_len(), 1);
         assert_eq!(OpcodeId::PUSH10.data_len(), 10);
         assert_eq!(OpcodeId::LOG2.data_len(), 0);

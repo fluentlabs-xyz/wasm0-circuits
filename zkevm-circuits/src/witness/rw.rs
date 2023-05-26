@@ -266,8 +266,9 @@ pub struct RwRow<F> {
 }
 
 impl<F: Field> RwRow<F> {
-    pub(crate) fn values(&self) -> [F; 11] {
+    pub(crate) fn values(&self) -> [F; 12] {
         [
+            F::one(),
             self.rw_counter,
             self.is_write,
             self.tag,
