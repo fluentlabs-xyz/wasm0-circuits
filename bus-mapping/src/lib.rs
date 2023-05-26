@@ -1,4 +1,3 @@
-#![feature(adt_const_params)]
 //! ![GitHub Workflow Status (branch)](https://img.shields.io/github/workflow/status/appliedzkp/zkevm-circuits/CI%20checks/main?style=for-the-badge)
 //! Bus-Mapping is a crate designed to parse EVM execution traces and manipulate
 //! all of the data they provide in order to obtain structured witness inputs
