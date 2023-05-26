@@ -1295,7 +1295,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::BLOCKCTXU64 => assign_exec_step!(self.block_ctx_u64_gadget),
             // ExecutionState::BLOCKCTXU160 => assign_exec_step!(self.block_ctx_u160_gadget),
             // ExecutionState::BLOCKCTXU256 => assign_exec_step!(self.block_ctx_u256_gadget),
-            // ExecutionState::BLOCKHASH => assign_exec_step!(self.blockhash_gadget),
+            ExecutionState::BLOCKHASH => assign_exec_step!(self.evm_blockhash),
             ExecutionState::SELFBALANCE => assign_exec_step!(self.evm_selfbalance),
             // dummy gadgets
             ExecutionState::EXTCODECOPY => assign_exec_step!(self.evm_extcodecopy),

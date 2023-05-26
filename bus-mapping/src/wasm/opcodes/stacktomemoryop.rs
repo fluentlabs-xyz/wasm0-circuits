@@ -1,10 +1,13 @@
+use eth_types::{GethExecStep, ToBigEndian, ToLittleEndian};
 use eth_types::evm_types::MemoryAddress;
-use eth_types::GethExecStep;
 
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::Error;
 
 use super::Opcode;
+
+pub(crate) const STACK_TO_MEMORY_TYPE_DEFAULT: usize = 0;
+pub(crate) const STACK_TO_MEMORY_TYPE_U256: usize = 1;
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to all the Stack only operations: take N words and return one.
@@ -15,9 +18,10 @@ use super::Opcode;
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct StackToMemoryOpcode<
     const N_POP: usize,
+    const EL_TYPE: usize = { STACK_TO_MEMORY_TYPE_DEFAULT },
 >;
 
-impl<const N_POP: usize> Opcode for StackToMemoryOpcode<N_POP> {
+impl<const N_POP: usize, const EL_TYPE: usize> Opcode for StackToMemoryOpcode<N_POP, EL_TYPE> {
     fn gen_associated_ops(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
@@ -25,22 +29,28 @@ impl<const N_POP: usize> Opcode for StackToMemoryOpcode<N_POP> {
         let geth_step = &geth_steps[0];
         let mut exec_step = state.new_step(geth_step)?;
 
-        // Pop elements from stack
-        for i in 0..N_POP {
-            state.stack_read(
-                &mut exec_step,
-                geth_step.stack.nth_last_filled(i),
-                geth_step.stack.nth_last(i)?,
-            )?;
-        }
-
         // Read dest offset as the last stack element
         let dest_offset = geth_step.stack.nth_last(0)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
         let offset_addr = MemoryAddress::try_from(dest_offset)?;
 
+        // Pop elements from stack
+        for i in 0..N_POP {
+            state.stack_read(
+                &mut exec_step,
+                geth_step.stack.nth_last_filled(i + 1),
+                geth_step.stack.nth_last(i + 1)?,
+            )?;
+        }
+
         // Copy result to memory
-        let value = &geth_steps[1].memory[0].0;
+        let value = if EL_TYPE == STACK_TO_MEMORY_TYPE_DEFAULT {
+            geth_steps[1].memory[0].0.clone()
+        } else if EL_TYPE == STACK_TO_MEMORY_TYPE_U256 {
+            geth_steps[1].global_memory.read_u256(dest_offset)?.to_be_bytes().to_vec()
+        } else {
+            unreachable!("not possible EL_TYPE specified");
+        };
         for (i, b) in value.iter().enumerate() {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), *b)?;
         }
