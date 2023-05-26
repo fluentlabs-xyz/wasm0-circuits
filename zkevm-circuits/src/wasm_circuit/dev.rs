@@ -36,8 +36,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         let chip = WasmChip::construct(config);
         let wasm_bytecode = WasmBytecode::new(self.bytes.clone());
 
-        chip.config.wasm_bytecode_table.load(&mut layouter, &wasm_bytecode)?;
-        chip.config.range_table_256_config.load(&mut layouter)?;
+        chip.load(&mut layouter, &wasm_bytecode)?;
 
         layouter.assign_region(
             || "wasm chip region",
@@ -56,7 +55,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
 }
 
 #[cfg(test)]
-mod tests {
+mod wasm_circuit_tests {
     use std::marker::PhantomData;
     use ethers_core::k256::pkcs8::der::Encode;
     use halo2_proofs::dev::MockProver;

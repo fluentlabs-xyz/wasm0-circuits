@@ -22,6 +22,7 @@
 
 extern crate core;
 
+#[allow(missing_docs)]
 pub mod wasm_circuit;
 pub mod bytecode_circuit;
 pub mod copy_circuit;
