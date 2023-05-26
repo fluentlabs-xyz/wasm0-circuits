@@ -33,7 +33,7 @@ pub struct WasmConfig<F: Field> {
     ///
     pub(crate) wasm_bytecode_table: WasmBytecodeTable,
     ///
-    leb_solid_number: Column<Advice>,
+    section_len_leb_solid_number: Column<Advice>,
     ///
     q_enable: Column<Fixed>,
     ///
@@ -113,15 +113,15 @@ impl<F: Field> WasmChip<F>
         let id_of_section = cs.advice_column();
         let is_section_len = cs.advice_column();
         let is_section_body = cs.advice_column();
-        let leb_solid_number = cs.advice_column();
+        let section_len_leb_solid_number = cs.advice_column();
 
         let mut leb_chips = Vec::new();
         for leb_bytes_n in 1..=10 {
             let config = LEB128Chip::configure(
                 cs,
-                |vc| vc.query_advice(leb_solid_number, Rotation::cur()),
+                |vc| vc.query_advice(section_len_leb_solid_number, Rotation::cur()),
                 &wasm_bytecode_table.value,
-                // TODO add unsigned
+                // TODO add support for signed
                 false,
                 leb_bytes_n,
             );
@@ -161,7 +161,6 @@ impl<F: Field> WasmChip<F>
                 "is_section_body is boolean",
                 vc.query_advice(is_section_body, Rotation::cur()),
             );
-            // TODO recheck
             cb.require_zero(
                 "index == 0 when q_first == 1",
                 and::expr([
@@ -215,7 +214,7 @@ impl<F: Field> WasmChip<F>
             let mut cb = BaseConstraintBuilder::default();
             let bytecode_value = vc.query_advice(wasm_bytecode_table.value, Rotation::cur());
 
-            // first bytes contain '\0asm'
+            // first bytes equal to '\0asm'
             for (i, char) in WASM_PREAMBLE_MAGIC_PREFIX.chars().enumerate() {
                 cb.require_zero(
                     "bytecode.value == ord(char) at index",
@@ -225,7 +224,6 @@ impl<F: Field> WasmChip<F>
                     ])
                 );
             }
-            // and 4 bytes for version (1, 0, 0, 0)
             for i in WASM_VERSION_PREFIX_BASE_INDEX..WASM_VERSION_PREFIX_BASE_INDEX + WASM_VERSION_PREFIX_LENGTH {
                 let version_val = if i == WASM_VERSION_PREFIX_BASE_INDEX { 1 } else { 0 };
                 cb.require_zero(
@@ -242,14 +240,6 @@ impl<F: Field> WasmChip<F>
             ]))
         });
 
-        // eligible sections transitions:
-        // 1. (checked this step in the previous gate) !is_section_id && !is_section_len && !is_section_body -(N)> !is_section_id && !is_section_len && !is_section_body
-        // 2. (only once, if previous bytecode index is 7) !is_section_id && !is_section_len && !is_section_body -(1)> is_section_id
-        // 3. is_section_id -(1)> is_section_len
-        // 4. is_section_len -(N)> is_section_len || is_section_len -(1)> is_section_body
-        // 5. is_section_body -(N)> is_section_body || (shouldn't work for 'is_last') is_section_body -(N)> is_section_id
-        // 6. is_section_body && is_last -(N)> is_section_body
-        // for the rest: repeat steps 3..5
         cs.create_gate("wasm gate: sections transitions check for magic prefix", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
@@ -258,7 +248,6 @@ impl<F: Field> WasmChip<F>
             let is_section_len_expr = vc.query_advice(is_section_len, Rotation::cur());
             let is_section_body_expr = vc.query_advice(is_section_body, Rotation::cur());
 
-            // for index=0..7: !is_section_id && !is_section_len && !is_section_body
             for i in 0..WASM_SECTIONS_START_INDEX {
                 cb.require_zero(
                     "bytecode[0]...bytecode[7] -> !is_section_id && !is_section_len && !is_section_body",
@@ -289,7 +278,9 @@ impl<F: Field> WasmChip<F>
             let is_section_body_expr = vc.query_advice(is_section_body, Rotation::cur());
             let is_prev_section_body_expr = vc.query_advice(is_section_body, Rotation::prev());
 
-            // 2
+            let section_len_leb_solid_number_expr = vc.query_advice(section_len_leb_solid_number, Rotation::cur());
+            let section_len_leb_solid_number_prev_expr = vc.query_advice(section_len_leb_solid_number, Rotation::prev());
+
             cb.require_zero(
                 "(only once, if previous bytecode index is 7) !is_section_id && !is_section_len && !is_section_body -(1)> is_section_id",
                 and::expr([
@@ -301,28 +292,24 @@ impl<F: Field> WasmChip<F>
                     ])
                 ]),
             );
-            // 3
             cb.condition(is_prev_section_id_expr.clone(), |bcb| {
                 bcb.require_zero(
                     "is_section_id -(1)> is_section_len",
                     is_prev_section_id_expr.clone() - is_section_len_expr.clone(),
                 );
             });
-            // 4
             cb.condition(is_prev_section_len_expr.clone(), |bcb| {
                 bcb.require_zero(
                     "is_section_len -(N)> is_section_len || is_section_len -(1)> is_section_body",
                     is_prev_section_len_expr.clone() - is_section_len_expr.clone() - is_section_body_expr.clone(),
                 );
             });
-            // 5
             cb.condition(is_prev_section_body_expr.clone(), |bcb| {
                 bcb.require_zero(
                     "is_section_body -(N)> is_section_body || (shouldn't work for 'is_last') is_section_body -(N)> is_section_id",
                     is_prev_section_body_expr.clone() - is_section_body_expr.clone() - is_section_id_expr.clone(),
                 );
             });
-            // 6
             cb.condition(q_last_expr.clone(), |bcb| {
                 bcb.require_zero(
                     "is_section_body -(N)> is_section_body",
@@ -330,7 +317,6 @@ impl<F: Field> WasmChip<F>
                 );
             });
 
-            // at 'is_section_id' - 'id_of_section' must equal to 'bytecode.value'
             cb.condition(
                 is_section_id_expr.clone(),
                 |bcb| {
@@ -342,13 +328,45 @@ impl<F: Field> WasmChip<F>
                 }
             );
 
+            cb.condition(
+                is_section_len_expr.clone() * is_prev_section_len_expr.clone(),
+                |bcb| {
+                    bcb.require_zero(
+                        "section_len_leb_solid_number must be equal for all section_len_leb_solid_number inside the same len block block",
+                        section_len_leb_solid_number_expr.clone() - section_len_leb_solid_number_prev_expr.clone(),
+                    );
+                }
+            );
+
+            cb.condition(
+                is_section_body_expr.clone(),
+                |bcb| {
+                    bcb.require_zero(
+                        "section_len_leb_solid_number decreases by 1 for section_body",
+                        section_len_leb_solid_number_prev_expr.clone() - section_len_leb_solid_number_expr.clone() - 1.expr(),
+                    );
+                }
+            );
+            cb.condition(
+                or::expr([
+                    is_section_id_expr.clone() * is_prev_section_body_expr.expr(),
+                    q_last_expr.expr()
+                ]),
+                |bcb| {
+                    bcb.require_zero(
+                        "section_len_leb_solid_number_expr must equal 0 at the end of the body",
+                        section_len_leb_solid_number_expr.clone(),
+                    );
+                }
+            );
+
             cb.gate(and::expr(vec![
                 not::expr(vc.query_fixed(q_first, Rotation::cur())),
                 vc.query_fixed(q_enable, Rotation::cur()),
             ]))
         });
 
-        cs.create_gate("at first 8 bytes 'id_of_section' is -1", |vc| {
+        cs.create_gate("at first 8 bytes 'id_of_section' equals to DEFAULT val", |vc| {
             let id_of_section_expr = vc.query_advice(id_of_section, Rotation::cur());
 
             let mut constraints = Vec::new();
@@ -392,8 +410,8 @@ impl<F: Field> WasmChip<F>
 
             constraints.push(
                 ("prev.id_of_section <= cur.id_of_section",
-                    (is_id_of_section_grows_lt_chip.config().is_lt(vc, None) - 1.expr())
-                    * (id_of_section_expr.clone() - id_of_section_prev_expr.clone())
+                 (is_id_of_section_grows_lt_chip.config().is_lt(vc, None) - 1.expr())
+                     * (id_of_section_expr.clone() - id_of_section_prev_expr.clone())
                 )
             );
 
@@ -414,7 +432,7 @@ impl<F: Field> WasmChip<F>
 
         let config = WasmConfig {
             wasm_bytecode_table,
-            leb_solid_number,
+            section_len_leb_solid_number,
             q_enable,
             q_first,
             q_last,
@@ -586,19 +604,15 @@ impl<F: Field> WasmChip<F>
                 )?;
             }
 
-            // assign to leb chips with real data
-            let chip = self.config.get_leb_chip(section_len_leb_bytes_count as usize);
+            let leb128_chip = self.config.get_leb_chip(section_len_leb_bytes_count as usize);
             for offset in section_len_start_index..=section_len_end_index {
-                if offset == section_len_start_index {
-                    // TODO assign solid number
-                    region.assign_advice(
-                        || format!("assign leb_solid_number to {} at {}", section_len, offset),
-                        self.config.leb_solid_number,
-                        offset,
-                        || Value::known(F::from(section_len as u64)),
-                    )?;
-                }
-                chip.assign(
+                region.assign_advice(
+                    || format!("assign section_len_leb_solid_number to {} at {}", section_len, offset),
+                    self.config.section_len_leb_solid_number,
+                    offset,
+                    || Value::known(F::from(section_len as u64)),
+                )?;
+                leb128_chip.assign(
                     region,
                     offset,
                     offset == section_len_start_index,
@@ -606,6 +620,16 @@ impl<F: Field> WasmChip<F>
                     // TODO leb base64 word for signed version
                     if offset == section_len_start_index { section_len } else { 0 } as u64,
                 );
+            }
+            let mut section_len_prev = section_len;
+            for offset in section_body_start_index..=section_body_end_index {
+                section_len_prev -= 1;
+                region.assign_advice(
+                    || format!("assign section_len_leb_solid_number to {} at {}", section_len_prev, offset),
+                    self.config.section_len_leb_solid_number,
+                    offset,
+                    || Value::known(F::from(section_len_prev as u64)),
+                )?;
             }
 
             // assign id_of_section
@@ -621,7 +645,7 @@ impl<F: Field> WasmChip<F>
                 self.config.is_id_of_section_grows_lt_chip.assign(
                     region,
                     offset,
-                    if section_id_prev < 0 {-F::from(section_id_prev.abs() as u64)} else {F::from(section_id_prev as u64)},
+                    if section_id_prev < 0 { -F::from(section_id_prev.abs() as u64) } else { F::from(section_id_prev as u64) },
                     F::from(section_id as u64),
                 )?;
                 section_id_prev = section_id as i64;
