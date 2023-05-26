@@ -2,17 +2,19 @@ use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
 use std::{marker::PhantomData};
-use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Advice, Error, Fixed};
+use halo2_proofs::circuit::{Chip, Layouter, Region, Value};
+use halo2_proofs::plonk::{Advice, Constraints, Error, Fixed};
 use halo2_proofs::poly::Rotation;
 use eth_types::Field;
 use gadgets::is_zero::{IsZeroChip, IsZeroConfig, IsZeroInstruction};
+use gadgets::less_than::{LtChip, LtInstruction};
 use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::common::wasm_compute_section_len;
-use crate::wasm_circuit::consts::{WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH};
+use crate::wasm_circuit::consts::{ID_OF_SECTION_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH};
 use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip};
 use crate::wasm_circuit::tables::range_table::RangeTableConfig;
+use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 
 ///
@@ -25,7 +27,9 @@ pub struct WasmSectionConfig<F: Field> {
 #[derive(Debug, Clone)]
 pub struct WasmConfig<F: Field> {
     ///
-    pub(crate) range_table_256_config: RangeTableConfig<F, 256>,
+    pub(crate) byte_value_range_table_config: RangeTableConfig<F, 256>,
+    ///
+    pub(crate) section_id_range_table_config: RangeTableConfig<F, { WASM_SECTION_ID_MAX + 1 }>,
     ///
     pub(crate) wasm_bytecode_table: WasmBytecodeTable,
     ///
@@ -43,17 +47,18 @@ pub struct WasmConfig<F: Field> {
     ///
     index_at_position_count: usize,
     ///
+    id_of_section: Column<Advice>,
+    ///
     is_section_id: Column<Advice>,
     ///
     is_section_len: Column<Advice>,
     ///
     is_section_body: Column<Advice>,
     /// TODO refactor to single value (without array)
-    /// array of LEB128Config's where index+1 represents number of leb bytes
-    // leb128_config_for_byte_n: Vec<LEB128Config<F>>,
-    /// TODO refactor to single value (without array)
     /// array of LEB128Chip's where index+1 represents number of leb bytes
-    leb128_chip_for_byte_n: Vec<LEB128Chip<F>>,
+    leb128_chip_for_byte_count: Vec<LEB128Chip<F>>,
+    ///
+    is_id_of_section_grows_lt_chip: LtChip<F, 1>,
     ///
     _marker: PhantomData<F>,
 }
@@ -64,7 +69,7 @@ impl<F: Field> WasmConfig<F>
     //     &self.leb128_config_for_byte_n[leb_bytes_n - 1]
     // }
     pub fn get_leb_chip(&self, leb_bytes_n: usize) -> &LEB128Chip<F> {
-        &self.leb128_chip_for_byte_n[leb_bytes_n - 1]
+        &self.leb128_chip_for_byte_count[leb_bytes_n - 1]
     }
 }
 
@@ -80,17 +85,32 @@ pub struct WasmChip<F: Field> {
 impl<F: Field> WasmChip<F>
 {
     ///
+    pub fn load(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        wasm_bytecode: &WasmBytecode,
+    ) -> Result<(), Error> {
+        self.config.wasm_bytecode_table.load(layouter, wasm_bytecode)?;
+        self.config.byte_value_range_table_config.load(layouter)?;
+        self.config.section_id_range_table_config.load(layouter)?;
+
+        Ok(())
+    }
+
+    ///
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
         wasm_bytecode_table: WasmBytecodeTable,
     ) -> WasmConfig<F> {
-        let range_table_256_config = RangeTableConfig::configure(cs);
+        let byte_value_range_table_config = RangeTableConfig::configure(cs);
+        let section_id_range_table_config = RangeTableConfig::configure(cs);
         let index_at_position_count = WASM_PREAMBLE_MAGIC_PREFIX.len() + WASM_VERSION_PREFIX_LENGTH;
 
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
         let q_last = cs.fixed_column();
         let is_section_id = cs.advice_column();
+        let id_of_section = cs.advice_column();
         let is_section_len = cs.advice_column();
         let is_section_body = cs.advice_column();
         let leb_solid_number = cs.advice_column();
@@ -109,6 +129,11 @@ impl<F: Field> WasmChip<F>
             leb_chips.push(chip);
         }
 
+        cs.lookup("all bytecode values are byte values", |vc| {
+            let bytecode_value = vc.query_advice(wasm_bytecode_table.value, Rotation::cur());
+
+            vec![(bytecode_value, byte_value_range_table_config.value)]
+        });
         cs.create_gate("verify row", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
@@ -144,10 +169,11 @@ impl<F: Field> WasmChip<F>
                     vc.query_advice(wasm_bytecode_table.index, Rotation::cur()),
                 ]),
             );
+
             cb.gate(vc.query_fixed(q_enable, Rotation::cur()))
         });
 
-        cs.create_gate("index grow 1 by 1", |vc| {
+        cs.create_gate("index grows by 1", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
             cb.require_equal(
@@ -160,13 +186,6 @@ impl<F: Field> WasmChip<F>
                 vc.query_fixed(q_enable, Rotation::cur()),
                 not::expr(vc.query_fixed(q_last, Rotation::cur())),
             ]))
-        });
-        cs.lookup("all bytecode values are byte values", |vc| {
-            // let q_lookup = index_at_positions[i].expr();
-            let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let value = vc.query_advice(wasm_bytecode_table.value, Rotation::cur());
-
-            vec![(value, range_table_256_config.value)]
         });
 
         let mut index_at_positions: Vec<IsZeroConfig<F>> = Vec::new();
@@ -194,6 +213,7 @@ impl<F: Field> WasmChip<F>
 
         cs.create_gate("wasm gate: magic prefix check", |vc| {
             let mut cb = BaseConstraintBuilder::default();
+            let bytecode_value = vc.query_advice(wasm_bytecode_table.value, Rotation::cur());
 
             // first bytes contain '\0asm'
             for (i, char) in WASM_PREAMBLE_MAGIC_PREFIX.chars().enumerate() {
@@ -201,7 +221,7 @@ impl<F: Field> WasmChip<F>
                     "bytecode.value == ord(char) at index",
                     and::expr([
                         index_at_positions[i].expr(),
-                        vc.query_advice(wasm_bytecode_table.value, Rotation::cur()) - (char as i32).expr(),
+                        bytecode_value.clone() - (char as i32).expr(),
                     ])
                 );
             }
@@ -258,6 +278,10 @@ impl<F: Field> WasmChip<F>
 
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
 
+            let bytecode_value = vc.query_advice(wasm_bytecode_table.value, Rotation::cur());
+
+            let id_of_section_expr = vc.query_advice(id_of_section, Rotation::cur());
+
             let is_section_id_expr = vc.query_advice(is_section_id, Rotation::cur());
             let is_prev_section_id_expr = vc.query_advice(is_section_id, Rotation::prev());
             let is_section_len_expr = vc.query_advice(is_section_len, Rotation::cur());
@@ -306,10 +330,86 @@ impl<F: Field> WasmChip<F>
                 );
             });
 
+            // at 'is_section_id' - 'id_of_section' must equal to 'bytecode.value'
+            cb.condition(
+                is_section_id_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "at 'is_section_id' - 'id_of_section' equal to 'bytecode.value'",
+                        id_of_section_expr.clone(),
+                        bytecode_value.clone(),
+                    )
+                }
+            );
+
             cb.gate(and::expr(vec![
                 not::expr(vc.query_fixed(q_first, Rotation::cur())),
                 vc.query_fixed(q_enable, Rotation::cur()),
             ]))
+        });
+
+        cs.create_gate("at first 8 bytes 'id_of_section' is -1", |vc| {
+            let id_of_section_expr = vc.query_advice(id_of_section, Rotation::cur());
+
+            let mut constraints = Vec::new();
+            for i in 0..WASM_SECTIONS_START_INDEX {
+                let constraint = index_at_positions[i].expr() * (id_of_section_expr.clone() - ID_OF_SECTION_DEFAULT.expr());
+                constraints.push(
+                    ("id of section equals to default at magic prefix indexes", constraint)
+                );
+            }
+            Constraints::with_selector(
+                vc.query_fixed(q_enable, Rotation::cur()),
+                constraints,
+            )
+        });
+        let is_id_of_section_grows_lt_chip_config = LtChip::configure(
+            cs,
+            |vc| {
+                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+                let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+                let not_q_first_expr = not::expr(q_first_expr.clone());
+
+                and::expr([
+                    not_q_first_expr.clone(),
+                    q_enable_expr.clone(),
+                ])
+            },
+            |vc| {
+                vc.query_advice(id_of_section, Rotation::prev())
+            },
+            |vc| {
+                vc.query_advice(id_of_section, Rotation::cur())
+            },
+        );
+        let is_id_of_section_grows_lt_chip = LtChip::construct(is_id_of_section_grows_lt_chip_config);
+        cs.create_gate("prev.id_of_section <= cur.id_of_section", |vc| {
+            let id_of_section_prev_expr = vc.query_advice(id_of_section, Rotation::prev());
+            let id_of_section_expr = vc.query_advice(id_of_section, Rotation::cur());
+
+            let mut constraints = Vec::new();
+
+            constraints.push(
+                ("prev.id_of_section <= cur.id_of_section",
+                    (is_id_of_section_grows_lt_chip.config().is_lt(vc, None) - 1.expr())
+                    * (id_of_section_expr.clone() - id_of_section_prev_expr.clone())
+                )
+            );
+
+            Constraints::with_selector(
+                and::expr([
+                    not::expr(vc.query_fixed(q_first, Rotation::cur())),
+                    vc.query_fixed(q_enable, Rotation::cur()),
+                ]),
+                constraints,
+            )
+        });
+
+        cs.lookup("id_of_section is a valid value", |vc| {
+            let id_of_section_expr = vc.query_advice(id_of_section, Rotation::cur());
+
+            vec![(id_of_section_expr.clone(), section_id_range_table_config.value)]
         });
 
         let config = WasmConfig {
@@ -318,14 +418,17 @@ impl<F: Field> WasmChip<F>
             q_enable,
             q_first,
             q_last,
-            range_table_256_config,
+            byte_value_range_table_config,
+            section_id_range_table_config,
             index_at_positions,
             index_at_prev_positions,
             index_at_position_count,
+            id_of_section,
             is_section_id,
             is_section_len,
             is_section_body,
-            leb128_chip_for_byte_n: leb_chips,
+            leb128_chip_for_byte_count: leb_chips,
+            is_id_of_section_grows_lt_chip,
             _marker: PhantomData,
         };
 
@@ -347,7 +450,7 @@ impl<F: Field> WasmChip<F>
         region: &mut Region<F>,
         wasm_bytes: &[u8],
     ) -> Result<(), Error> {
-        for chip in &self.config.leb128_chip_for_byte_n {
+        for chip in &self.config.leb128_chip_for_byte_count {
             chip.init_assign(region, wasm_bytes.len() - 1);
         }
 
@@ -402,6 +505,24 @@ impl<F: Field> WasmChip<F>
                 || Value::known(F::zero()),
             )?;
 
+            // init id_of_section
+            let val: i64 = ID_OF_SECTION_DEFAULT as i64;
+            region.assign_advice(
+                || format!("assign id_of_section val {} at {}", val, i),
+                self.config.id_of_section,
+                i,
+                || Value::known(if val < 0 { -F::from(val.abs() as u64) } else { F::from(val as u64) })
+            )?;
+            // init is_id_of_section_grows_lt_chip
+            if i > 0 {
+                self.config.is_id_of_section_grows_lt_chip.assign(
+                    region,
+                    i,
+                    F::zero(),
+                    F::zero(),
+                )?;
+            }
+
             for (index, index_at_position) in index_at_positions.iter().enumerate() {
                 index_at_position.assign(region, i, Value::known(F::from(i as u64) - F::from(index as u64)))?;
             }
@@ -411,6 +532,7 @@ impl<F: Field> WasmChip<F>
         }
         // scan wasm_bytes for sections
         let mut wasm_bytes_index = WASM_SECTIONS_START_INDEX;
+        let mut section_id_prev: i64 = ID_OF_SECTION_DEFAULT as i64;
         loop {
             let section_start_index = wasm_bytes_index;
             let section_len_start_index = section_start_index + 1;
@@ -424,16 +546,17 @@ impl<F: Field> WasmChip<F>
             let section_body_end_index = section_start_index + section_len_leb_bytes_count as usize + section_len;
             let section_end_index = section_body_end_index;
 
-            println!();
-            println!("section_id: {}", section_id);
-            println!("section_start_index: {}", section_start_index);
-            println!("section_start_index: {}", section_end_index);
-            println!("section_len: {}", section_len);
-            println!("section_len_start_index: {}", section_len_start_index);
-            println!("section_len_end_index: {}", section_len_end_index);
-            println!("section_body_start_index: {}", section_body_start_index);
-            println!("section_body_end_index: {}", section_body_end_index);
-            println!();
+            // println!();
+            // println!("section_id_prev: {}", section_id_prev);
+            // println!("section_id: {}", section_id);
+            // println!("section_start_index: {}", section_start_index);
+            // println!("section_start_index: {}", section_end_index);
+            // println!("section_len: {}", section_len);
+            // println!("section_len_start_index: {}", section_len_start_index);
+            // println!("section_len_end_index: {}", section_len_end_index);
+            // println!("section_body_start_index: {}", section_body_start_index);
+            // println!("section_body_end_index: {}", section_body_end_index);
+            // println!();
 
             {
                 let offset = section_start_index;
@@ -444,7 +567,6 @@ impl<F: Field> WasmChip<F>
                     || Value::known(F::one()),
                 )?;
             }
-            // println!("is_section_id at {}", offset);
             for i in 0..section_len_leb_bytes_count {
                 let offset = section_len_start_index + (i as usize);
                 region.assign_advice(
@@ -453,7 +575,6 @@ impl<F: Field> WasmChip<F>
                     offset,
                     || Value::known(F::one()),
                 )?;
-                // println!("is_section_len at {}", offset);
             }
             for i in 0..section_len {
                 let offset = section_body_start_index + (i as usize);
@@ -463,7 +584,6 @@ impl<F: Field> WasmChip<F>
                     offset,
                     || Value::known(F::one()),
                 )?;
-                // println!("is_section_body at {}", offset);
             }
 
             // assign to leb chips with real data
@@ -486,6 +606,25 @@ impl<F: Field> WasmChip<F>
                     // TODO leb base64 word for signed version
                     if offset == section_len_start_index { section_len } else { 0 } as u64,
                 );
+            }
+
+            // assign id_of_section
+            for offset in section_start_index..=section_end_index {
+                let val = section_id;
+                region.assign_advice(
+                    || format!("assign id_of_section val {} at {}", val, offset),
+                    self.config.id_of_section,
+                    offset,
+                    || Value::known(F::from(section_id as u64))
+                )?;
+                // assign is_id_of_section_grows_lt_chip
+                self.config.is_id_of_section_grows_lt_chip.assign(
+                    region,
+                    offset,
+                    if section_id_prev < 0 {-F::from(section_id_prev.abs() as u64)} else {F::from(section_id_prev as u64)},
+                    F::from(section_id as u64),
+                )?;
+                section_id_prev = section_id as i64;
             }
 
             if wasm_bytes_index >= wasm_bytes.len() { break }

@@ -103,7 +103,7 @@ impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> f
 }
 
 #[cfg(test)]
-mod tests {
+mod leb128_circuit_tests {
     use std::env;
     use std::marker::PhantomData;
     use halo2_proofs::dev::MockProver;

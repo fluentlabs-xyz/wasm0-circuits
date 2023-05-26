@@ -1,3 +1,6 @@
+use std::convert::Into;
+use crate::wasm_circuit::consts::WasmSectionId::DataCount;
+
 ///
 pub static WASM_VERSION_PREFIX_BASE_INDEX: usize = 4;
 ///
@@ -35,3 +38,8 @@ pub enum WasmSectionId {
     ///
     DataCount,
 }
+
+pub const WASM_SECTION_ID_MAX: usize = DataCount as usize;
+
+// TODO better to make it differ from custom section id (which is 0 too) or
+pub const ID_OF_SECTION_DEFAULT: i32 = 0;
