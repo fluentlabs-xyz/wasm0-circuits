@@ -55,7 +55,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
 }
 
 #[cfg(test)]
-mod wasm_circuit_tests {
+mod mods {
     use std::marker::PhantomData;
     use ethers_core::k256::pkcs8::der::Encode;
     use halo2_proofs::dev::MockProver;
