@@ -223,6 +223,8 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
 
                     OpcodeId::End => ExecutionState::WASM_END,
 
+                    OpcodeId::Select => ExecutionState::WASM_SELECT,
+
                     // EVM opcodes
                     OpcodeId::ADDMOD => ExecutionState::ADDMOD,
                     OpcodeId::ADDRESS => ExecutionState::ADDRESS,
