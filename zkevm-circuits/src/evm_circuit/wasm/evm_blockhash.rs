@@ -42,10 +42,11 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let current_block_number = cb.query_cell();
-        let block_number = cb.query_cell();
-        cb.stack_pop(block_number.expr());
+
         let dest_offset = cb.query_cell();
         cb.stack_pop(dest_offset.expr());
+        let block_number = cb.query_cell();
+        cb.stack_pop(block_number.expr());
 
         // FIXME
         // cb.block_lookup(
@@ -116,8 +117,8 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
             .to_scalar()
             .expect("unexpected U256 -> Scalar conversion failure");
 
-        let block_number = block.rws[step.rw_indices[1]].stack_value();
         let dest_offset = block.rws[step.rw_indices[0]].stack_value();
+        let block_number = block.rws[step.rw_indices[1]].stack_value();
         self.block_number
             .assign(region, offset, Value::known(block_number.to_scalar().unwrap()))?;
         self.dest_offset

@@ -1,10 +1,13 @@
+use eth_types::{GethExecStep, ToBigEndian, ToLittleEndian};
 use eth_types::evm_types::MemoryAddress;
-use eth_types::GethExecStep;
 
 use crate::circuit_input_builder::{CircuitInputStateRef, ExecStep};
 use crate::Error;
 
 use super::Opcode;
+
+pub(crate) const STACK_TO_MEMORY_TYPE_DEFAULT: usize = 0;
+pub(crate) const STACK_TO_MEMORY_TYPE_WORD: usize = 1;
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to all the Stack only operations: take N words and return one.
@@ -15,9 +18,10 @@ use super::Opcode;
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct StackToMemoryOpcode<
     const N_POP: usize,
+    const EL_TYPE: usize = { STACK_TO_MEMORY_TYPE_DEFAULT },
 >;
 
-impl<const N_POP: usize> Opcode for StackToMemoryOpcode<N_POP> {
+impl<const N_POP: usize, const EL_TYPE: usize> Opcode for StackToMemoryOpcode<N_POP, EL_TYPE> {
     fn gen_associated_ops(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
@@ -40,7 +44,13 @@ impl<const N_POP: usize> Opcode for StackToMemoryOpcode<N_POP> {
         }
 
         // Copy result to memory
-        let value = &geth_steps[1].memory[0].0;
+        let value = if EL_TYPE == STACK_TO_MEMORY_TYPE_DEFAULT {
+            geth_steps[1].memory[0].0.clone()
+        } else if EL_TYPE == STACK_TO_MEMORY_TYPE_WORD {
+            geth_steps[1].global_memory.read_u256(dest_offset)?.to_be_bytes().to_vec()
+        } else {
+            unreachable!("not possible EL_TYPE specified");
+        };
         for (i, b) in value.iter().enumerate() {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), *b)?;
         }

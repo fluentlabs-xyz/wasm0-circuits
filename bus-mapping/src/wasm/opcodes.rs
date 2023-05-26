@@ -31,7 +31,7 @@ use returndatacopy::Returndatacopy;
 use returndatasize::Returndatasize;
 use selfbalance::Selfbalance;
 use stackonlyop::StackOnlyOpcode;
-use stacktomemoryop::StackToMemoryOpcode;
+use stacktomemoryop::{StackToMemoryOpcode, STACK_TO_MEMORY_TYPE_DEFAULT, STACK_TO_MEMORY_TYPE_WORD};
 use stop::Stop;
 use wasm_break::WasmBreakOpcode;
 use wasm_call::WasmCallOpcode;
@@ -335,7 +335,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::RETURNDATASIZE => Returndatasize::gen_associated_ops,
         OpcodeId::RETURNDATACOPY => Returndatacopy::gen_associated_ops,
         // OpcodeId::EXTCODEHASH => Extcodehash::gen_associated_ops,
-        OpcodeId::BLOCKHASH => StackToMemoryOpcode::<1>::gen_associated_ops,
+        OpcodeId::BLOCKHASH => StackToMemoryOpcode::<1, STACK_TO_MEMORY_TYPE_WORD>::gen_associated_ops,
         OpcodeId::COINBASE => StackToMemoryOpcode::<0>::gen_associated_ops,
         OpcodeId::TIMESTAMP => StackToMemoryOpcode::<0>::gen_associated_ops,
         // OpcodeId::NUMBER => StackToMemoryOpcode::gen_associated_ops,
