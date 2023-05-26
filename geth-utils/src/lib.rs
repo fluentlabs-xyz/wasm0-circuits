@@ -16,11 +16,10 @@ pub fn trace(config: &str) -> Result<String, Error> {
     // Create a string we can pass into Go
     let c_config = CString::new(config).expect("invalid config");
 
-    let trace = c_config.to_str().unwrap().to_string()
+    println!("\ntrace config: {}", c_config.to_str().unwrap().to_string()
         .replace("\n", "")
         .replace("\\\"", "\"")
-        .replace("  ", "");
-    println!("\ntrace config: {}", trace);
+        .replace("  ", ""));
 
     // Generate the trace externally
     let result = unsafe { CreateTrace(c_config.as_ptr()) };

@@ -1315,6 +1315,7 @@ impl FromStr for OpcodeId {
             "evm_stop" => OpcodeId::STOP,
             "evm_return" => OpcodeId::RETURN,
             "evm_keccak256" => OpcodeId::SHA3,
+            "evm_sha3" => OpcodeId::SHA3,
             "evm_address" => OpcodeId::ADDRESS,
             "evm_balance" => OpcodeId::BALANCE,
             "evm_selfbalance" => OpcodeId::SELFBALANCE,

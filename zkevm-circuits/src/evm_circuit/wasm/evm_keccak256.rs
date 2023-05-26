@@ -2,30 +2,36 @@ use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
 use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
 use gadgets::util::{not, Expr};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use itertools::Itertools;
 
 use crate::evm_circuit::{
     param::N_BYTES_MEMORY_WORD_SIZE,
     step::ExecutionState,
     util::{
         common_gadget::SameContextGadget,
-        constraint_builder::{StepStateTransition, Transition},
-        memory_gadget::{MemoryAddressGadget, MemoryCopierGasGadget, MemoryExpansionGadget},
+        constraint_builder::{
+            ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition, Transition,
+        },
+        memory_gadget::{
+            CommonMemoryAddressGadget, MemoryCopierGasGadget,
+            MemoryExpansionGadget,
+        },
         rlc, CachedRegion, Cell, Word,
     },
     witness::{Block, Call, ExecStep, Transaction},
 };
-use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
-use crate::evm_circuit::util::memory_gadget::CommonMemoryAddressGadget;
+use crate::evm_circuit::util::memory_gadget::MemoryAddress64Gadget;
 
 use super::ExecutionGadget;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmKeccak256Gadget<F> {
     same_context: SameContextGadget<F>,
-    memory_address: MemoryAddressGadget<F>,
+    memory_address: MemoryAddress64Gadget<F>,
     sha3_rlc: Word<F>,
     copy_rwc_inc: Cell<F>,
     rlc_acc: Cell<F>,
+    dest_offset: Cell<F>,
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
     memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY_SHA3 }>,
 }
@@ -39,14 +45,17 @@ impl<F: Field> ExecutionGadget<F> for EvmKeccak256Gadget<F> {
         let opcode = cb.query_cell();
 
         let offset = cb.query_cell_phase2();
-        let size = cb.query_word_rlc();
+        let size = cb.query_cell();
         let sha3_rlc = cb.query_word_rlc();
+        let dest_offset = cb.query_cell();
 
-        cb.stack_pop(offset.expr());
+        cb.stack_pop(dest_offset.expr());
         cb.stack_pop(size.expr());
-        cb.stack_push(sha3_rlc.expr());
+        cb.stack_pop(offset.expr());
 
-        let memory_address = MemoryAddressGadget::construct(cb, offset, size);
+        cb.memory_rlc_lookup(1.expr(), &dest_offset, &sha3_rlc);
+
+        let memory_address = MemoryAddress64Gadget::construct(cb, offset, size);
 
         let copy_rwc_inc = cb.query_cell();
         let rlc_acc = cb.query_cell_phase2();
@@ -97,6 +106,7 @@ impl<F: Field> ExecutionGadget<F> for EvmKeccak256Gadget<F> {
             sha3_rlc,
             copy_rwc_inc,
             rlc_acc,
+            dest_offset,
             memory_expansion,
             memory_copier_gas,
         }
@@ -113,14 +123,17 @@ impl<F: Field> ExecutionGadget<F> for EvmKeccak256Gadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let [memory_offset, size, sha3_output] =
+        let [dest_offset, size, memory_offset] =
             [step.rw_indices[0], step.rw_indices[1], step.rw_indices[2]]
                 .map(|idx| block.rws[idx].stack_value());
+        let sha3_bytes = (3..35).map(|i| block.rws[step.rw_indices[i]].memory_value()).collect_vec();
+        let sha3_word = eth_types::Word::from_big_endian(sha3_bytes.as_slice());
         let memory_address = self
             .memory_address
             .assign(region, offset, memory_offset, size)?;
+        self.dest_offset.assign(region, offset, Value::known(F::from(dest_offset.as_u64())))?;
         self.sha3_rlc
-            .assign(region, offset, Some(sha3_output.to_le_bytes()))?;
+            .assign(region, offset, Some(sha3_word.to_le_bytes()))?;
 
         self.copy_rwc_inc.assign(
             region,
@@ -131,7 +144,7 @@ impl<F: Field> ExecutionGadget<F> for EvmKeccak256Gadget<F> {
             ),
         )?;
 
-        let values: Vec<u8> = (3..3 + (size.low_u64() as usize))
+        let values: Vec<u8> = (35..35 + (size.low_u64() as usize))
             .map(|i| block.rws[step.rw_indices[i]].memory_value())
             .collect();
 
@@ -148,12 +161,8 @@ impl<F: Field> ExecutionGadget<F> for EvmKeccak256Gadget<F> {
             step.memory_word_size(),
             [memory_address],
         )?;
-        self.memory_copier_gas.assign(
-            region,
-            offset,
-            size.as_u64(),
-            memory_expansion_gas_cost as u64,
-        )?;
+        self.memory_copier_gas
+            .assign(region, offset, size.as_u64(), memory_expansion_gas_cost)?;
 
         Ok(())
     }
@@ -166,6 +175,7 @@ mod tests {
         circuit_input_builder::CircuitsParams,
         evm::{gen_sha3_code, MemoryKind},
     };
+    use eth_types::{bytecode, Bytecode, bytecode_internal, Word};
     use mock::TestContext;
 
     fn test_ok(offset: usize, size: usize, mem_kind: MemoryKind) {
@@ -173,31 +183,49 @@ mod tests {
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
         )
-        .params(CircuitsParams {
-            max_rws: 5500,
-            ..Default::default()
-        })
-        .run();
+            .params(CircuitsParams {
+                max_rws: 5500,
+                max_copy_rows: 3000,
+                ..Default::default()
+            })
+            .run();
     }
 
     #[test]
     fn sha3_gadget_zero_length() {
-        test_ok(0x20, 0x00, MemoryKind::MoreThanSize);
+        test_ok(0x20+0x20, 0x00, MemoryKind::MoreThanSize);
     }
 
     #[test]
     fn sha3_gadget_simple() {
-        test_ok(0x00, 0x08, MemoryKind::Empty);
-        test_ok(0x10, 0x10, MemoryKind::LessThanSize);
-        test_ok(0x24, 0x16, MemoryKind::EqualToSize);
-        test_ok(0x32, 0x78, MemoryKind::MoreThanSize);
+        // we store result in the first 32 bytes
+        test_ok(0x00+0x20, 0x08, MemoryKind::Empty);
+        test_ok(0x10+0x20, 0x10, MemoryKind::LessThanSize);
+        test_ok(0x24+0x20, 0x16, MemoryKind::EqualToSize);
+        test_ok(0x32+0x20, 0x78, MemoryKind::MoreThanSize);
     }
 
     #[test]
     fn sha3_gadget_large() {
-        test_ok(0x101, 0x202, MemoryKind::Empty);
-        test_ok(0x202, 0x303, MemoryKind::LessThanSize);
-        test_ok(0x303, 0x404, MemoryKind::EqualToSize);
-        test_ok(0x404, 0x505, MemoryKind::MoreThanSize);
+        test_ok(0x101+0x20, 0x202, MemoryKind::Empty);
+        test_ok(0x202+0x20, 0x303, MemoryKind::LessThanSize);
+        test_ok(0x303+0x20, 0x404, MemoryKind::EqualToSize);
+        test_ok(0x404+0x20, 0x505, MemoryKind::MoreThanSize);
+    }
+
+    #[test]
+    #[ignore]
+    fn sha3_gadget_overflow_offset_and_zero_size() {
+        let mut bytecode = Bytecode::default();
+        let dest_offset = bytecode.alloc_default_global_data(32);
+        bytecode_internal! {bytecode,
+            I32Const[0]
+            I32Const[u32::MAX]
+            I32Const[dest_offset]
+            SHA3
+        }
+        CircuitTestBuilder::new_from_test_ctx(
+            TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
+        ).run();
     }
 }

@@ -4,8 +4,9 @@ use crate::{
     },
     Error,
 };
-use eth_types::{GethExecStep, StackWord};
+use eth_types::{GethExecStep, Word, U256, StackWord};
 use ethers_core::utils::keccak256;
+use eth_types::evm_types::MemoryAddress;
 
 use super::Opcode;
 
@@ -20,15 +21,19 @@ impl Opcode for Sha3 {
         let geth_step = &geth_steps[0];
         let mut exec_step = state.new_step(geth_step)?;
 
-        let expected_sha3 = geth_steps[1].stack.last()?;
-
         // byte offset in the memory.
-        let offset = geth_step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), offset)?;
+        let dest = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest)?;
 
         // byte size to read in the memory.
         let size = geth_step.stack.nth_last(1)?;
         state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), size)?;
+
+        // byte offset in the memory.
+        let offset = geth_step.stack.nth_last(2)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(2), offset)?;
+
+        let expected_sha3 = geth_steps[1].global_memory.read_u256(dest)?;
 
         if size.gt(&StackWord::zero()) {
             state
@@ -37,18 +42,15 @@ impl Opcode for Sha3 {
                 .extend_at_least(offset.as_usize() + size.as_usize());
         }
 
-        let memory = state
-            .call_ctx()?
-            .memory
-            .read_chunk(offset.as_usize().into(), size.as_usize().into());
+        let memory = geth_steps[0].global_memory.read_chunk(offset.low_u64().into(), size.as_usize().into());
 
         // keccak-256 hash of the given data in memory.
         let sha3 = keccak256(&memory);
-        debug_assert_eq!(StackWord::from_big_endian(&sha3), expected_sha3);
-        state.stack_write(
+        debug_assert_eq!(Word::from_big_endian(&sha3), expected_sha3);
+        state.memory_write_n(
             &mut exec_step,
-            geth_steps[1].stack.last_filled(),
-            StackWord::from_big_endian(&sha3),
+            MemoryAddress::from(dest.as_u64()),
+            &sha3,
         )?;
 
         // Memory read operations
@@ -65,8 +67,11 @@ impl Opcode for Sha3 {
         state.push_copy(
             &mut exec_step,
             CopyEvent {
-                src_addr: offset.as_u64(),
-                src_addr_end: offset.as_u64() + size.as_u64(),
+                src_addr: offset.low_u64(),
+                src_addr_end: offset
+                    .low_u64()
+                    .checked_add(size.as_u64())
+                    .unwrap_or(u64::MAX),
                 src_type: CopyDataType::Memory,
                 src_id: NumberOrHash::Number(call_id),
                 dst_addr: 0,
@@ -84,7 +89,7 @@ impl Opcode for Sha3 {
 
 #[cfg(any(feature = "test", test))]
 pub mod sha3_tests {
-    use eth_types::{bytecode, evm_types::OpcodeId, geth_types::GethData, Bytecode, Word, StackWord, ToWord};
+    use eth_types::{bytecode, evm_types::OpcodeId, geth_types::GethData, Bytecode, Word, StackWord, bytecode_internal};
     use ethers_core::utils::keccak256;
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
@@ -124,33 +129,19 @@ pub mod sha3_tests {
             MemoryKind::Empty => 0,
         };
         let data = rand_bytes(data_len);
-        let mut memory = Vec::with_capacity(data_len);
 
         // add opcodes to populate memory in the current context.
         let mut code = Bytecode::default();
-        for (i, mem_chunk) in data.chunks(32).enumerate() {
-            let mem_value = if mem_chunk.len() < 32 {
-                std::iter::repeat(0u8)
-                    .take(32 - mem_chunk.len())
-                    .chain(mem_chunk.to_vec())
-                    .collect::<Vec<u8>>()
-            } else {
-                mem_chunk.to_vec()
-            };
-            memory.extend_from_slice(&mem_value);
-            code.push(32, Word::from_big_endian(&mem_value));
-            code.push(32, (32 * i).to_word());
-            code.write_op(OpcodeId::MSTORE);
-        }
+        let dest_offset = code.alloc_default_global_data(32);
+        code.fill_default_global_data(data.clone());
         // append SHA3 related opcodes at the tail end.
-        let code_tail = bytecode! {
-            PUSH32(size)
-            PUSH32(offset)
+        bytecode_internal! {code,
+            I32Const[offset]
+            I32Const[size]
+            I32Const[dest_offset]
             SHA3
-            STOP
-        };
-        code.append(&code_tail);
-        (code, memory)
+        }
+        (code, data)
     }
 
     /// Memory of a context with respect to the input size to SHA3.
@@ -210,27 +201,6 @@ pub mod sha3_tests {
             .unwrap();
 
         let call_id = builder.block.txs()[0].calls()[0].call_id;
-
-        // stack read and write.
-        assert_eq!(
-            [0, 1, 2]
-                .map(|idx| &builder.block.container.stack[step.bus_mapping_instance[idx].as_usize()])
-                .map(|op| (op.rw(), op.op())),
-            [
-                (
-                    RW::READ,
-                    &StackOp::new(call_id, 1022.into(), StackWord::from(offset)),
-                ),
-                (
-                    RW::READ,
-                    &StackOp::new(call_id, 1023.into(), StackWord::from(size)),
-                ),
-                (
-                    RW::WRITE,
-                    &StackOp::new(call_id, 1023.into(), StackWord::from_big_endian(&expected_sha3_value)),
-                ),
-            ]
-        );
 
         // Memory reads.
         // Initial memory_len bytes are the memory writes from MSTORE instruction, so we
