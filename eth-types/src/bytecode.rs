@@ -344,6 +344,7 @@ impl Bytecode {
     }
 
     /// Append
+    #[deprecated(note = "This function might not work properly")]
     pub fn append(&mut self, other: &Bytecode) {
         self.bytecode_items.extend_from_slice(&other.bytecode_items);
         for (key, val) in other.markers.iter() {
@@ -373,7 +374,7 @@ impl Bytecode {
         let (fn_name, args_num) = match op {
             OpcodeId::STOP => ("_evm_stop", 0),
             OpcodeId::RETURN => ("_evm_return", 2),
-            OpcodeId::SHA3 => ("_evm_keccak", 2),
+            OpcodeId::SHA3 => ("_evm_keccak256", 3),
             OpcodeId::ADDRESS => ("_evm_address", 1),
             OpcodeId::BALANCE => ("_evm_balance", 2),
             OpcodeId::ORIGIN => ("_evm_origin", 1),
@@ -520,6 +521,7 @@ impl Bytecode {
             OpcodeId::Return => Instruction::Return,
             OpcodeId::Block => Instruction::Block(Empty),
             OpcodeId::Loop => Instruction::Loop(Empty),
+            OpcodeId::Select => Instruction::Select,
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }
@@ -631,6 +633,7 @@ impl Bytecode {
     }
 
     /// Push, value is useless for `PUSH0`
+    #[deprecated(note = "This function is not supported")]
     pub fn push<T: ToWord>(&mut self, n: u8, value: T) -> &mut Self {
         debug_assert!((..=32).contains(&n), "invalid push");
         let value = value.to_word();

@@ -31,7 +31,7 @@ use returndatacopy::Returndatacopy;
 use returndatasize::Returndatasize;
 use selfbalance::Selfbalance;
 use stackonlyop::StackOnlyOpcode;
-use stacktomemoryop::StackToMemoryOpcode;
+use stacktomemoryop::{StackToMemoryOpcode, STACK_TO_MEMORY_TYPE_U256};
 use stop::Stop;
 use wasm_break::WasmBreakOpcode;
 use wasm_call::WasmCallOpcode;
@@ -59,6 +59,7 @@ use crate::wasm::opcodes::error_oog_account_access::ErrorOOGAccountAccess;
 use crate::wasm::opcodes::error_oog_dynamic_memory::OOGDynamicMemory;
 use crate::wasm::opcodes::error_oog_memory_copy::OOGMemoryCopy;
 use crate::wasm::opcodes::error_precompile_failed::PrecompileFailed;
+use crate::wasm::opcodes::sha3::Sha3;
 
 #[cfg(any(feature = "test", test))]
 pub use self::sha3::sha3_tests::{gen_sha3_code, MemoryKind};
@@ -318,7 +319,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
 
         // EVM opcodes
         OpcodeId::STOP => Stop::gen_associated_ops,
-        // OpcodeId::SHA3 => Sha3::gen_associated_ops,
+        OpcodeId::SHA3 => Sha3::gen_associated_ops,
         OpcodeId::ADDRESS => Address::gen_associated_ops,
         OpcodeId::BALANCE => Balance::gen_associated_ops,
         OpcodeId::ORIGIN => Origin::gen_associated_ops,
@@ -335,7 +336,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::RETURNDATASIZE => Returndatasize::gen_associated_ops,
         OpcodeId::RETURNDATACOPY => Returndatacopy::gen_associated_ops,
         // OpcodeId::EXTCODEHASH => Extcodehash::gen_associated_ops,
-        OpcodeId::BLOCKHASH => StackToMemoryOpcode::<1>::gen_associated_ops,
+        OpcodeId::BLOCKHASH => StackToMemoryOpcode::<1, STACK_TO_MEMORY_TYPE_U256>::gen_associated_ops,
         OpcodeId::COINBASE => StackToMemoryOpcode::<0>::gen_associated_ops,
         OpcodeId::TIMESTAMP => StackToMemoryOpcode::<0>::gen_associated_ops,
         // OpcodeId::NUMBER => StackToMemoryOpcode::gen_associated_ops,

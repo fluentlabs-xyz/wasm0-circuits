@@ -1255,9 +1255,9 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::WASM_BREAK => assign_exec_step!(self.wasm_break),
             ExecutionState::WASM_CALL => assign_exec_step!(self.wasm_call),
             // opcode
+            ExecutionState::SHA3 => assign_exec_step!(self.evm_keccak256),
             ExecutionState::ADDRESS => assign_exec_step!(self.evm_address),
             ExecutionState::BALANCE => assign_exec_step!(self.evm_balance),
-
             ExecutionState::CALL_OP => assign_exec_step!(self.evm_callop),
             ExecutionState::CALLDATACOPY => assign_exec_step!(self.evm_calldatacopy),
             ExecutionState::CALLDATALOAD => assign_exec_step!(self.evm_calldataload),
@@ -1295,7 +1295,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::BLOCKCTXU64 => assign_exec_step!(self.block_ctx_u64_gadget),
             // ExecutionState::BLOCKCTXU160 => assign_exec_step!(self.block_ctx_u160_gadget),
             // ExecutionState::BLOCKCTXU256 => assign_exec_step!(self.block_ctx_u256_gadget),
-            // ExecutionState::BLOCKHASH => assign_exec_step!(self.blockhash_gadget),
+            ExecutionState::BLOCKHASH => assign_exec_step!(self.evm_blockhash),
             ExecutionState::SELFBALANCE => assign_exec_step!(self.evm_selfbalance),
             // dummy gadgets
             ExecutionState::EXTCODECOPY => assign_exec_step!(self.evm_extcodecopy),

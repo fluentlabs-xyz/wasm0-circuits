@@ -89,12 +89,21 @@ impl<F: Field> ExecutionGadget<F> for WasmSelectGadget<F> {
         _call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
+        use eth_types::ToScalar;
+        use halo2_proofs::circuit::Value;
+
         self.same_context.assign_exec_step(region, offset, step)?;
 
         let opcode = step.opcode.unwrap();
 
         let [cond, val2, val1, res] = [step.rw_indices[0], step.rw_indices[1], step.rw_indices[2], step.rw_indices[3]]
             .map(|idx| block.rws[idx].stack_value());
+
+        self.cond.assign(region, offset, Value::known(cond.to_scalar().unwrap()))?;
+        self.cond_inv.assign(region, offset, Value::known(F::from(cond.as_u64()).invert().unwrap_or(F::zero())))?;
+        self.val2.assign(region, offset, Value::known(val2.to_scalar().unwrap()))?;
+        self.val1.assign(region, offset, Value::known(val1.to_scalar().unwrap()))?;
+        self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
 
 /*
         self.value.assign(region, offset, Value::known(value.to_scalar().unwrap()))?;
