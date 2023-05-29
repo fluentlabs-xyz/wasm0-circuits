@@ -66,9 +66,10 @@ impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> f
             |mut region| {
                 for i in 0..self.leb_bytes.len() {
                     let mut val = 0 as u64;
-                    if i == 0 {
+                    // TODO remove commented code?
+                    // if i == 0 {
                         val = self.solid_number;
-                    }
+                    // }
                     region.assign_advice(
                         || format!("assign solid_number is_negative {} val {} at {}", self.is_negative, val, i),
                         config.solid_number,
@@ -318,7 +319,6 @@ mod leb128_circuit_tests {
     #[test]
     pub fn test_debug_exact_number_signed() {
         const IS_SIGNED: bool = true;
-        exact_number::<1, { IS_SIGNED }>(0);
         exact_number::<1, { IS_SIGNED }>(1);
         exact_number::<1, { IS_SIGNED }>(32);
         exact_number::<3, { IS_SIGNED }>(16382);

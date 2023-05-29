@@ -6,7 +6,7 @@ use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::{Constraints, Expression, Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
 use eth_types::Field;
-use gadgets::util::Expr;
+use gadgets::util::{Expr, not};
 use crate::wasm_circuit::leb128_circuit::consts::{BYTES_IN_BASE64_WORD, EIGHT_LS_BITS_MASK};
 
 /// LEB128Config
@@ -17,14 +17,13 @@ pub struct LEB128Config<F> {
     ///
     pub is_first_leb_byte: Column<Fixed>,
     ///
-    pub byte_has_continuation_bit: Column<Advice>,
+    pub byte_has_cb: Column<Advice>,
     _marker: PhantomData<F>,
 }
 
 ///
 impl<F: Field> LEB128Config<F>
-{
-}
+{}
 
 ///
 #[derive(Debug, Clone)]
@@ -59,36 +58,50 @@ impl<F: Field> LEB128Chip<F>
         }
         let is_first_leb_byte = cs.fixed_column();
         let leb_base64_words = cs.advice_column();
-        let byte_has_continuation_bit = cs.advice_column();
+        let byte_has_cb = cs.advice_column();
 
-        let mut continuation_bits_constraints = Vec::<Expression<F>>::new();
-        let mut continuation_bits_transitions_constraints = Vec::<Expression<F>>::new();
+        let mut cbs_constraints = Vec::<Expression<F>>::new();
+        let mut cbs_transitions_constraints = Vec::<Expression<F>>::new();
         cs.create_gate("leb128 gate", |vc| {
             let is_first_leb_byte_expr = vc.query_fixed(is_first_leb_byte, Rotation::cur());
-            let solid_number_expr = solid_number(vc);
-            // TODO recover solid number from bytes
-            //  add constraint [solid_number_expr = solid_number_recovered_expr]
-            let mut solid_number_recovered_expr = 0.expr();
+            let sn_expr = solid_number(vc);
+            let mut sn_recovered_expr = 0.expr();
+            let mut number_for_signed_inversion_expr = 0.expr();
             for i in (0..leb_bytes_n).rev() {
                 let leb_byte_expr = vc.query_advice(*leb_bytes, Rotation(i as i32));
-                let byte_has_continuation_bit_expr = vc.query_advice(byte_has_continuation_bit, Rotation(i as i32));
+                let byte_has_cb_expr = vc.query_advice(byte_has_cb, Rotation(i as i32));
+                let not_byte_has_cb_expr = not::expr(byte_has_cb_expr.clone());
                 // continuation bit must be 0 or 1 value (boolean) (TODO replace with lookup)
-                continuation_bits_constraints.push(byte_has_continuation_bit_expr.clone() * (byte_has_continuation_bit_expr.clone() - 1.expr()));
+                cbs_constraints.push(byte_has_cb_expr.clone() * (byte_has_cb_expr.clone() - 1.expr()));
                 if i < leb_bytes_n - 1 {
-                    let has_continuation_bit_next_expr = vc.query_advice(byte_has_continuation_bit, Rotation((i + 1) as i32));
-                    // continuation bit (CB) eligible transitions: 1->1 or 1->0 or 0->0 not 0->1 (TODO replace CB with lookup mappings)
-                    continuation_bits_transitions_constraints.push((byte_has_continuation_bit_expr.clone() - 1.expr()) * has_continuation_bit_next_expr);
+                    let has_cb_next_expr = vc.query_advice(byte_has_cb, Rotation((i + 1) as i32));
+                    // continuation bit (CB) eligible transitions: 1->1 or 1->0 or 0->0 not 0->1 (TODO replace with lookup)
+                    cbs_transitions_constraints.push((byte_has_cb_expr.clone() - 1.expr()) * has_cb_next_expr);
                 }
-                // TODO recovery for [IS_SIGNED]
-                solid_number_recovered_expr = solid_number_recovered_expr * 0b10000000.expr() + leb_byte_expr - byte_has_continuation_bit_expr * 0b10000000.expr();
+                if is_signed {
+                    let has_cb_expr = vc.query_advice(byte_has_cb, Rotation(i as i32));
+                    let mut is_consider_expr = 1.expr();
+                    if i > 0 {
+                        let has_cb_prev_expr = vc.query_advice(byte_has_cb, Rotation((i-1) as i32));
+                        is_consider_expr = has_cb_prev_expr.clone() + has_cb_expr.clone() - has_cb_prev_expr * has_cb_expr;
+                    }
+                    number_for_signed_inversion_expr = number_for_signed_inversion_expr * 0b10000000.expr() + 0b1111111.expr() * is_consider_expr.clone();
+                    sn_recovered_expr = sn_recovered_expr * 0b10000000.expr()
+                        + (leb_byte_expr.clone() - 0b10000000.expr() * byte_has_cb_expr.expr()) * is_consider_expr.clone();
+                } else {
+                    sn_recovered_expr = sn_recovered_expr * 0b10000000.expr() + leb_byte_expr.clone() - byte_has_cb_expr * 0b10000000.expr();
+                }
+            }
+            if is_signed {
+                sn_recovered_expr = sn_recovered_expr.clone() - 1.expr() - number_for_signed_inversion_expr.clone();
             }
 
-            let mut base64_words_recovered = Vec::<Expression<F>>::new();
+            let mut leb_base64_words_recovered = Vec::<Expression<F>>::new();
             let mut rot_idx = 0;
             let leb_bytes_index_max = leb_bytes_n - 1;
             for i in 0..=leb_bytes_index_max {
                 if i % BYTES_IN_BASE64_WORD == 0 {
-                    base64_words_recovered.push(0.expr());
+                    leb_base64_words_recovered.push(0.expr());
                     rot_idx = i + 7;
                     if rot_idx > leb_bytes_index_max { rot_idx = leb_bytes_index_max }
                 } else {
@@ -96,31 +109,28 @@ impl<F: Field> LEB128Chip<F>
                 }
                 let mut leb_byte_expr = vc.query_advice(*leb_bytes, Rotation(rot_idx as i32));
                 if rot_idx > 0 && is_signed {
-                    let has_cb_prev_expr = vc.query_advice(byte_has_continuation_bit, Rotation((rot_idx - 1) as i32));
-                    let has_cb_expr = vc.query_advice(byte_has_continuation_bit, Rotation(rot_idx as i32));
-                    let consider_expr = has_cb_prev_expr.clone() + has_cb_expr.clone() - has_cb_prev_expr * has_cb_expr;
-                    let do_not_consider = 1.expr() - consider_expr.clone();
-                    leb_byte_expr = leb_byte_expr - do_not_consider.clone() * EIGHT_LS_BITS_MASK.expr();
+                    let has_cb_prev_expr = vc.query_advice(byte_has_cb, Rotation((rot_idx - 1) as i32));
+                    let has_cb_expr = vc.query_advice(byte_has_cb, Rotation(rot_idx as i32));
+                    let is_consider_expr = has_cb_prev_expr.clone() + has_cb_expr.clone() - has_cb_prev_expr * has_cb_expr;
+                    let is_not_consider_expr = not::expr(is_consider_expr.clone());
+                    leb_byte_expr = leb_byte_expr - is_not_consider_expr.clone() * EIGHT_LS_BITS_MASK.expr();
                 }
-                let base64_words_last_index = base64_words_recovered.len() - 1;
-                let leb_base64_word = base64_words_recovered[base64_words_last_index].clone();
-                base64_words_recovered[base64_words_last_index] = leb_byte_expr + leb_base64_word * 0b100000000.expr();
+                let base64_words_last_index = leb_base64_words_recovered.len() - 1;
+                let leb_base64_word = leb_base64_words_recovered[base64_words_last_index].clone();
+                leb_base64_words_recovered[base64_words_last_index] = leb_byte_expr + leb_base64_word * 0b100000000.expr();
             }
 
             let mut constraints = Vec::new();
-            // TODO implement for [IS_SIGNED]
-            if !is_signed {
-                constraints.push(
-                    ("solid number equals to recovered solid number", solid_number_expr.clone() - solid_number_recovered_expr.clone()),
-                );
-            }
-            for continuation_bits_constraint in continuation_bits_constraints {
+            constraints.push(
+                ("solid number equals to recovered", sn_expr.clone() - sn_recovered_expr.clone()),
+            );
+            for continuation_bits_constraint in cbs_constraints {
                 constraints.push(("continuation bit check", continuation_bits_constraint));
             }
-            for continuation_bit_transition_constraint in continuation_bits_transitions_constraints {
-                constraints.push(("continuation bits may transit from 1 to 0 only", continuation_bit_transition_constraint));
+            for continuation_bit_transition_constraint in cbs_transitions_constraints {
+                constraints.push(("continuation bits transitions checks", continuation_bit_transition_constraint));
             }
-            for (i, leb_base64_word_recovered) in base64_words_recovered.iter().enumerate() {
+            for (i, leb_base64_word_recovered) in leb_base64_words_recovered.iter().enumerate() {
                 let leb_base64_word = vc.query_advice(leb_base64_words, Rotation(i as i32));
                 constraints.push((
                     "base64 word equals to recovered base64 word",
@@ -136,7 +146,7 @@ impl<F: Field> LEB128Chip<F>
         let config = LEB128Config {
             is_first_leb_byte,
             leb_base64_words,
-            byte_has_continuation_bit,
+            byte_has_cb,
             _marker: PhantomData,
         };
 
@@ -170,8 +180,8 @@ impl<F: Field> LEB128Chip<F>
         leb_base64_word: u64,
     ) {
         region.assign_advice(
-            || format!("assign byte_has_continuation_bit val {} at {}", leb_byte_has_continuation_bit, offset),
-            self.config.byte_has_continuation_bit,
+            || format!("assign byte_has_cb val {} at {}", leb_byte_has_continuation_bit, offset),
+            self.config.byte_has_cb,
             offset,
             || Value::known(F::from(leb_byte_has_continuation_bit as u64)),
         ).unwrap();
