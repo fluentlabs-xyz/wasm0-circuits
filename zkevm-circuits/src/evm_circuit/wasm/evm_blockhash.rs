@@ -159,11 +159,11 @@ mod test {
 
     use crate::test_util::CircuitTestBuilder;
 
-    fn test_ok(block_number: U256, current_block_number: u64) {
+    fn test_ok(block_number: u32, current_block_number: u64) {
         let mut code = Bytecode::default();
         let dest = code.alloc_default_global_data(32);
         bytecode_internal! {code,
-            I32Const[block_number.low_u32()]
+            I32Const[block_number]
             I32Const[dest]
             BLOCKHASH
         }
@@ -197,23 +197,23 @@ mod test {
             test_ok(2.into(), 5);
             test_ok(3.into(), 5);
         }
-        test_ok(4.into(), 5);
-        test_ok(5.into(), 5);
-        test_ok(6.into(), 5);
+        test_ok(4, 5);
+        test_ok(5, 5);
+        test_ok(6, 5);
     }
 
     #[test]
     fn blockhash_gadget_large() {
-        test_ok((0xcafe - 257).into(), 0xcafeu64);
+        test_ok(0xcafe - 257, 0xcafeu64);
         #[cfg(not(feature = "scroll"))]
         test_ok((0xcafe - 256).into(), 0xcafeu64);
-        test_ok((0xcafe - 1).into(), 0xcafeu64);
-        test_ok(0xcafe.into(), 0xcafeu64);
-        test_ok((0xcafe + 1).into(), 0xcafeu64);
+        test_ok(0xcafe - 1, 0xcafeu64);
+        test_ok(0xcafe, 0xcafeu64);
+        test_ok(0xcafe + 1, 0xcafeu64);
     }
 
     #[test]
     fn blockhash_gadget_block_number_overflow() {
-        test_ok(U256::MAX, 0xcafeu64);
+        test_ok(u32::MAX, 0xcafeu64);
     }
 }
