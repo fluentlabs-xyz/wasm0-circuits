@@ -66,10 +66,7 @@ impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> f
             |mut region| {
                 for i in 0..self.leb_bytes.len() {
                     let mut val = 0 as u64;
-                    // TODO remove commented code?
-                    // if i == 0 {
-                        val = self.solid_number;
-                    // }
+                    val = self.solid_number;
                     region.assign_advice(
                         || format!("assign solid_number is_negative {} val {} at {}", self.is_negative, val, i),
                         config.solid_number,
@@ -248,8 +245,8 @@ mod leb128_circuit_tests {
 
     pub fn leb_bytes_n_to_max_bit_depth(is_signed: bool, leb_bytes_n: usize) -> usize {
         // max bit depth for u64 solid number
-        let max_bit_depth: usize = 7 * 9 + 1 - if is_signed {1} else {0};
-        let max_bit_depth_threshold: usize = 7 * (10 - if is_signed {1} else {0});
+        let max_bit_depth: usize = 7 * 9 + 1 - if is_signed { 1 } else { 0 };
+        let max_bit_depth_threshold: usize = 7 * (10 - if is_signed { 1 } else { 0 });
         let mut max_bit_depth_computed = leb_bytes_n * 7;
         if is_signed {
             // TODO recheck
