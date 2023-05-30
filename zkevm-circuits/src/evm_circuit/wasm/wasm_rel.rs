@@ -49,6 +49,7 @@ pub(crate) struct WasmRelGadget<F> {
     op_is_le: Cell<F>,
     op_is_ge: Cell<F>,
     op_is_sign: Cell<F>,
+
 }
 
 impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
@@ -264,8 +265,49 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
 
         let opcode = step.opcode.unwrap();
 
-        let [rhs, lhs, value] = [step.rw_indices[0], step.rw_indices[1], step.rw_indices[2]]
+        let [rhs, lhs, res] = [step.rw_indices[0], step.rw_indices[1], step.rw_indices[2]]
             .map(|idx| block.rws[idx].stack_value());
+
+        self.rhs.assign(region, offset, Value::known(rhs.to_scalar().unwrap()))?;
+        self.lhs.assign(region, offset, Value::known(lhs.to_scalar().unwrap()))?;
+        self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
+
+        match opcode {
+            Opcode::I32GtU => {
+              self.op_is_gt.assign(region, offset, Value::known(1))?;
+            }
+            Opcode::I32GeU => {
+              self.op_is_ge.assign(region, offset, Value::known(1))?;
+            }
+            Opcode::I32LtU => {
+              self.op_is_lt.assign(region, offset, Value::known(1))?;
+            }
+            Opcode::I32LeU => {
+              self.op_is_le.assign(region, offset, Value::known(1))?;
+            }
+            Opcode::I32Eq => {
+              self.op_is_eq.assign(region, offset, Value::known(1))?;
+            }
+            Opcode::I32Ne => {
+              self.op_is_ne.assign(region, offset, Value::known(1))?;
+            }
+            Opcode::I32GtS => {
+              self.op_is_sign.assign(region, offset, Value::known(1))?;
+              self.op_is_gt.assign(region, offset, Value::known(1))?;
+            }
+            Opcode::I32GeS => {
+              self.op_is_sign.assign(region, offset, Value::known(1))?;
+              self.op_is_ge.assign(region, offset, Value::known(1))?;
+            }
+            Opcode::I32LtS => {
+              self.op_is_sign.assign(region, offset, Value::known(1))?;
+              self.op_is_lt.assign(region, offset, Value::known(1))?;
+            }
+            Opcode::I32LeS => {
+              self.op_is_sign.assign(region, offset, Value::known(1))?;
+              self.op_is_le.assign(region, offset, Value::known(1))?;
+            }
+        }
 
 /*
         self.value.assign(region, offset, Value::known(value.to_scalar().unwrap()))?;
