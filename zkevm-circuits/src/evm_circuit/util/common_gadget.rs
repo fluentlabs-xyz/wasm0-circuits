@@ -1132,6 +1132,7 @@ impl<F: Field> CommonErrorGadget<F> {
 /// Check if the passed in word is within the specified byte range
 /// (not overflow) and less than a maximum cap.
 #[derive(Clone, Debug)]
+#[deprecated(note = "This circuit might not work properly for stack operands")]
 pub(crate) struct WordByteCapGadget<F, const VALID_BYTES: usize> {
     word: WordByteRangeGadget<F, VALID_BYTES>,
     lt_cap: LtGadget<F, VALID_BYTES>,
@@ -1188,6 +1189,58 @@ impl<F: Field, const VALID_BYTES: usize> WordByteCapGadget<F, VALID_BYTES> {
 
     pub(crate) fn not_overflow(&self) -> Expression<F> {
         self.word.not_overflow()
+    }
+}
+
+/// Check if the passed in word is within the specified byte range
+/// (not overflow) and less than a maximum cap.
+#[derive(Clone, Debug)]
+pub(crate) struct Word64ByteCapGadget<F, const VALID_BYTES: usize> {
+    word: Cell<F>,
+    lt_cap: LtGadget<F, VALID_BYTES>,
+}
+
+impl<F: Field, const VALID_BYTES: usize> Word64ByteCapGadget<F, VALID_BYTES> {
+    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, cap: Expression<F>) -> Self {
+        let word = cb.query_cell();
+        let lt_cap = LtGadget::construct(cb, word.expression.clone(), cap);
+        Self { word, lt_cap }
+    }
+
+    /// Return true if within the specified byte range (not overflow), false if
+    /// overflow. No matter whether it is less than the cap.
+    pub(crate) fn assign(
+        &self,
+        region: &mut CachedRegion<'_, '_, F>,
+        offset: usize,
+        original: U64,
+        cap: F,
+    ) -> Result<(), Error> {
+        self.word.assign(region, offset, Value::known(F::from(original.as_u64())))?;
+
+        let mut bytes = [0; 32];
+        bytes[0..VALID_BYTES].copy_from_slice(&original.to_le_bytes()[0..VALID_BYTES]);
+        let value = F::from_repr(bytes).unwrap();
+
+        self.lt_cap.assign(region, offset, value, cap)?;
+
+        Ok(())
+    }
+
+    pub(crate) fn lt_cap(&self) -> Expression<F> {
+        self.lt_cap.expr()
+    }
+
+    pub(crate) fn original_word(&self) -> Expression<F> {
+        self.word.expr()
+    }
+
+    pub(crate) fn valid_value(&self) -> Expression<F> {
+        self.word.expr()
+    }
+
+    pub(crate) fn not_overflow(&self) -> Expression<F> {
+        self.word.expr()
     }
 }
 
