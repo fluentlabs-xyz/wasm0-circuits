@@ -86,7 +86,6 @@ mod evm_gas;
 mod evm_gasprice;
 mod evm_keccak256;
 mod evm_log;
-mod evm_memory;
 mod evm_msize;
 mod evm_origin;
 mod evm_pc;
@@ -148,7 +147,6 @@ use evm_gas::EvmGasGadget;
 use evm_gasprice::EvmGasPriceGadget;
 use evm_keccak256::EvmKeccak256Gadget;
 use evm_log::EvmLogGadget;
-use evm_memory::EvmMemoryGadget;
 use evm_msize::EvmMsizeGadget;
 use evm_origin::EvmOriginGadget;
 use evm_pc::EvmPcGadget;
@@ -280,7 +278,6 @@ pub(crate) struct ExecutionConfig<F> {
     evm_gasprice: Box<EvmGasPriceGadget<F>>,
     evm_keccak256: Box<EvmKeccak256Gadget<F>>,
     evm_log: Box<EvmLogGadget<F>>,
-    evm_memory: Box<EvmMemoryGadget<F>>,
     evm_msize: Box<EvmMsizeGadget<F>>,
     evm_origin: Box<EvmOriginGadget<F>>,
     evm_pc: Box<EvmPcGadget<F>>,
@@ -530,7 +527,6 @@ impl<F: Field> ExecutionConfig<F> {
             evm_gasprice: configure_gadget!(),
             evm_keccak256: configure_gadget!(),
             evm_log: configure_gadget!(),
-            evm_memory: configure_gadget!(),
             evm_msize: configure_gadget!(),
             evm_origin: configure_gadget!(),
             evm_pc: configure_gadget!(),
