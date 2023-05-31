@@ -106,7 +106,7 @@ mod wasm_end;
 mod wasm_global;
 // mod wasm_load;
 mod wasm_local;
-// mod wasm_rel;
+mod wasm_rel;
 mod wasm_select;
 // mod wasm_store;
 mod wasm_test;
