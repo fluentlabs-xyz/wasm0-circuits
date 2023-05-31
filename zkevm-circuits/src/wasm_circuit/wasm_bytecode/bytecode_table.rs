@@ -15,15 +15,20 @@ pub struct WasmBytecodeTable {
     pub index: Column<Advice>,
     ///
     pub value: Column<Advice>,
+    ///
+    pub code_hash: Column<Advice>,
 }
 
 impl WasmBytecodeTable {
     ///
-    pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
-        let [index, value] = array::from_fn(|_| meta.advice_column());
+    pub fn construct<F: Field>(cs: &mut ConstraintSystem<F>) -> Self {
+        let [index, value, code_hash] = array::from_fn(|_| cs.advice_column());
+        // TODO need this for prod ?
+        // let code_hash = cs.advice_column_in(SecondPhase);
         Self {
             index,
             value,
+            code_hash,
         }
     }
 
@@ -36,23 +41,18 @@ impl WasmBytecodeTable {
         layouter.assign_region(
             || "wasm bytecode table",
             |mut region| {
-                let mut offset = 0;
-
                 let bytecode_table_columns =
                     <WasmBytecodeTable as LookupTable<F>>::advice_columns(self);
-                // for bytecode in bytecodes.clone() {
-                for row in bytecode.table_assignments::<F>() {
+                for (offset, &row) in bytecode.table_assignments::<F>().iter().enumerate() {
                     for (&column, value) in bytecode_table_columns.iter().zip_eq(row) {
                         region.assign_advice(
-                            || format!("wasm bytecode table row {}", offset),
+                            || format!("assign wasm bytecode table row at {}", offset),
                             column,
                             offset,
                             || value,
                         )?;
                     }
-                    offset += 1;
                 }
-                // }
                 Ok(())
             },
         )
@@ -64,6 +64,7 @@ impl<F: Field> LookupTable<F> for WasmBytecodeTable {
         vec![
             self.index.into(),
             self.value.into(),
+            self.code_hash.into(),
         ]
     }
 
@@ -71,6 +72,7 @@ impl<F: Field> LookupTable<F> for WasmBytecodeTable {
         vec![
             String::from("index"),
             String::from("value"),
+            String::from("code_hash"),
         ]
     }
 }

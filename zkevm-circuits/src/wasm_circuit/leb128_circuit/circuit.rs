@@ -124,8 +124,8 @@ impl<F: Field> LEB128Chip<F>
             constraints.push(
                 ("solid number equals to recovered", sn_expr.clone() - sn_recovered_expr.clone()),
             );
-            for continuation_bits_constraint in cbs_constraints {
-                constraints.push(("continuation bit check", continuation_bits_constraint));
+            for cb_constraint in cbs_constraints {
+                constraints.push(("continuation bit check", cb_constraint));
             }
             for continuation_bit_transition_constraint in cbs_transitions_constraints {
                 constraints.push(("continuation bits transitions checks", continuation_bit_transition_constraint));

@@ -2,6 +2,7 @@ use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
 use std::{marker::PhantomData};
+use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Chip, Layouter, Region, Value};
 use halo2_proofs::plonk::{Advice, Constraints, Error, Fixed};
 use halo2_proofs::poly::Rotation;
@@ -10,6 +11,7 @@ use gadgets::is_zero::{IsZeroChip, IsZeroConfig, IsZeroInstruction};
 use gadgets::less_than::{LtChip, LtInstruction};
 use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::table::PoseidonTable;
 use crate::wasm_circuit::common::wasm_compute_section_len;
 use crate::wasm_circuit::consts::{ID_OF_SECTION_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH};
 use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip};
@@ -26,6 +28,8 @@ pub struct WasmSectionConfig<F: Field> {
 ///
 #[derive(Debug, Clone)]
 pub struct WasmConfig<F: Field> {
+    ///
+    pub(crate) poseidon_table: PoseidonTable,
     ///
     pub(crate) byte_value_range_table_config: RangeTableConfig<F, 256>,
     ///
@@ -54,7 +58,7 @@ pub struct WasmConfig<F: Field> {
     is_section_len: Column<Advice>,
     ///
     is_section_body: Column<Advice>,
-    /// TODO refactor to single value (without array)
+    /// TODO refactor to a single column
     /// array of LEB128Chip's where index+1 represents number of leb bytes
     leb128_chip_for_byte_count: Vec<LEB128Chip<F>>,
     ///
@@ -94,6 +98,10 @@ impl<F: Field> WasmChip<F>
         self.config.byte_value_range_table_config.load(layouter)?;
         self.config.section_id_range_table_config.load(layouter)?;
 
+        self.config
+            .poseidon_table
+            .dev_load(layouter, &[wasm_bytecode.bytes.clone()])?;
+
         Ok(())
     }
 
@@ -105,6 +113,7 @@ impl<F: Field> WasmChip<F>
         let byte_value_range_table_config = RangeTableConfig::configure(cs);
         let section_id_range_table_config = RangeTableConfig::configure(cs);
         let index_at_position_count = WASM_PREAMBLE_MAGIC_PREFIX.len() + WASM_VERSION_PREFIX_LENGTH;
+        let poseidon_table = PoseidonTable::dev_construct(cs);
 
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -360,6 +369,12 @@ impl<F: Field> WasmChip<F>
                 }
             );
 
+            cb.require_equal(
+                "prev.hash == cur.hash",
+                vc.query_advice(wasm_bytecode_table.code_hash, Rotation::prev()),
+                vc.query_advice(wasm_bytecode_table.code_hash, Rotation::cur()),
+            );
+
             cb.gate(and::expr(vec![
                 not::expr(vc.query_fixed(q_first, Rotation::cur())),
                 vc.query_fixed(q_enable, Rotation::cur()),
@@ -386,7 +401,6 @@ impl<F: Field> WasmChip<F>
             |vc| {
                 let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
                 let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
-                let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
                 let not_q_first_expr = not::expr(q_first_expr.clone());
 
                 and::expr([
@@ -424,6 +438,27 @@ impl<F: Field> WasmChip<F>
             )
         });
 
+        cs.create_gate("code_hash check", |vc| {
+            let mut cb = BaseConstraintBuilder::default();
+
+            let wasm_bytecode_table_code_hash = vc.query_advice(wasm_bytecode_table.code_hash, Rotation::cur());
+            let poseidon_table_hash_id = vc.query_advice(poseidon_table.hash_id, Rotation::cur());
+
+            cb.require_zero(
+                "code hashes match",
+                wasm_bytecode_table_code_hash.clone() - poseidon_table_hash_id.clone(),
+            );
+
+            cb.gate(
+                and::expr([
+                    index_at_positions[2].expr(),
+                    // vc.query_fixed(q_last, Rotation::cur()),
+                    // not::expr(vc.query_fixed(q_first, Rotation::cur())),
+                    vc.query_fixed(q_enable, Rotation::cur()),
+                ]),
+            )
+        });
+
         cs.lookup("id_of_section is a valid value", |vc| {
             let id_of_section_expr = vc.query_advice(id_of_section, Rotation::cur());
 
@@ -431,6 +466,7 @@ impl<F: Field> WasmChip<F>
         });
 
         let config = WasmConfig {
+            poseidon_table,
             wasm_bytecode_table,
             section_len_leb_solid_number,
             q_enable,
@@ -653,6 +689,7 @@ impl<F: Field> WasmChip<F>
 
             if wasm_bytes_index >= wasm_bytes.len() { break }
         }
+
         Ok(())
     }
 }
