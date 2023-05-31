@@ -1679,14 +1679,12 @@ impl<'a> CircuitInputStateRef<'a> {
     pub(crate) fn gen_copy_steps_for_log(
         &mut self,
         exec_step: &mut ExecStep,
+        geth_step: &GethExecStep,
         src_addr: u64,
         bytes_left: u64,
     ) -> Result<Vec<(u8, bool)>, Error> {
         // Get memory data
-        let mem = self
-            .call_ctx()?
-            .memory
-            .read_chunk(src_addr.into(), bytes_left.into());
+        let mem = geth_step.global_memory.read_chunk(src_addr.into(), bytes_left.into());
 
         let mut copy_steps = Vec::with_capacity(bytes_left as usize);
         for (idx, byte) in mem.iter().enumerate() {

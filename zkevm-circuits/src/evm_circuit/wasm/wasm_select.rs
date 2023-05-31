@@ -159,8 +159,8 @@ mod test {
     #[test]
     fn test_select_i64() {
         run_test(bytecode! {
-            I32Const[1]
-            I32Const[2]
+            I64Const[1]
+            I64Const[2]
             I64Const[0]
             Select
             Drop

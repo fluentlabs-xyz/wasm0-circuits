@@ -91,7 +91,7 @@ impl Default for CircuitsParams {
     /// Default values for most of the unit tests of the Circuit Parameters
     fn default() -> Self {
         CircuitsParams {
-            max_rws: 1000,
+            max_rws: 10000,
             max_txs: 1,
             max_calldata: 256,
             max_inner_blocks: 64,
