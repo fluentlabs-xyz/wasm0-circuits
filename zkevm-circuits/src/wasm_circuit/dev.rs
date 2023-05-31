@@ -4,7 +4,7 @@ use halo2_proofs::{
 use std::{marker::PhantomData};
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
-use eth_types::{Field, Hash, ToWord, U256};
+use eth_types::{Field, Hash, ToWord};
 use crate::wasm_circuit::circuit::{WasmChip, WasmConfig};
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
@@ -105,7 +105,7 @@ mod wasm_circuit_tests {
         // invalid code_hash data
         {
             let mut code_hash = code_hash.clone();
-            code_hash.as_mut()[0] = 0;
+            code_hash.as_mut()[28] = 0;
             let circuit = TestCircuit::<Fr> {
                 bytes: wasm_binary.clone(),
                 code_hash,
@@ -124,6 +124,47 @@ mod wasm_circuit_tests {
             };
             self::test(circuit, false);
         }
+    }
+
+    #[test]
+    pub fn test_wasm_bytecode_from_file2_must_succeed() {
+        let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
+        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+        let wasm_binary = wat2wasm(data).unwrap();
+        println!("wasm_binary.len: {}", wasm_binary.len());
+        println!("wasm_binary.len hex: {:x?}", wasm_binary.len());
+        println!("wasm_binary last_index: {}", wasm_binary.len() - 1);
+        println!("wasm_binary last_index hex: {:x?}", wasm_binary.len() - 1);
+        println!("wasm_binary: {:x?}", wasm_binary);
+        let mut code_hash = CodeDB::hash(&wasm_binary);
+        let circuit = TestCircuit::<Fr> {
+            bytes: wasm_binary.clone(),
+            code_hash,
+            _marker: PhantomData,
+        };
+        self::test(circuit, true);
+        // // invalid code_hash data
+        // {
+        //     let mut code_hash = code_hash.clone();
+        //     code_hash.as_mut()[28] = 0;
+        //     let circuit = TestCircuit::<Fr> {
+        //         bytes: wasm_binary.clone(),
+        //         code_hash,
+        //         _marker: PhantomData,
+        //     };
+        //     self::test(circuit, false);
+        // }
+        // // invalid bytecode data
+        // {
+        //     let mut wasm_binary = wasm_binary.clone();
+        //     wasm_binary[12] = 12;
+        //     let circuit = TestCircuit::<Fr> {
+        //         bytes: wasm_binary.clone(),
+        //         code_hash,
+        //         _marker: PhantomData,
+        //     };
+        //     self::test(circuit, false);
+        // }
     }
 
     #[test]

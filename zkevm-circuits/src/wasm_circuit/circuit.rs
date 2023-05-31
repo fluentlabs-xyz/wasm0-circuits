@@ -641,6 +641,7 @@ impl<F: Field> WasmChip<F>
             }
 
             let leb128_chip = self.config.get_leb_chip(section_len_leb_bytes_count as usize);
+            let mut leb_base64_word: u64 = 0;
             for offset in section_len_start_index..=section_len_end_index {
                 region.assign_advice(
                     || format!("assign section_len_leb_solid_number to {} at {}", section_len, offset),
@@ -648,13 +649,15 @@ impl<F: Field> WasmChip<F>
                     offset,
                     || Value::known(F::from(section_len as u64)),
                 )?;
+                leb_base64_word = leb_base64_word * 0b100000000 + wasm_bytes[section_len_start_index + (section_len_end_index-offset)] as u64;
+            }
+            for offset in section_len_start_index..=section_len_end_index {
                 leb128_chip.assign(
                     region,
                     offset,
                     offset == section_len_start_index,
                     offset != section_len_end_index,
-                    // TODO leb base64 word for signed version
-                    if offset == section_len_start_index { section_len } else { 0 } as u64,
+                    leb_base64_word as u64,
                 );
             }
             let mut section_len_prev = section_len;

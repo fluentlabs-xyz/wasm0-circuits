@@ -82,13 +82,14 @@ impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> f
                         i,
                         || Value::known(F::from(leb_byte as u64)),
                     ).unwrap();
+                    let leb_base64_word = if i < self.leb_base64_words.len() { self.leb_base64_words[i] } else { 0 };
                     leb128_number_chip.assign(
                         &mut region,
                         i,
                         // self.leb_bytes[i] as u64,
                         i == 0,
                         i < (self.leb_bytes_last_byte_index as usize),
-                        if i < self.leb_base64_words.len() { self.leb_base64_words[i] } else { 0 },
+                        leb_base64_word,
                     );
                 }
 
