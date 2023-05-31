@@ -1,3 +1,4 @@
+use halo2_proofs::circuit::Value;
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
@@ -14,12 +15,13 @@ use crate::{
 };
 use eth_types::{evm_types::OpcodeId, Field};
 use halo2_proofs::plonk::Error;
+use crate::evm_circuit::util::Cell;
 use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmGasGadget<F> {
     same_context: SameContextGadget<F>,
-    gas_left: RandomLinearCombination<F, N_BYTES_GAS>,
+    gas_left: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for EvmGasGadget<F> {
@@ -29,18 +31,19 @@ impl<F: Field> ExecutionGadget<F> for EvmGasGadget<F> {
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         // The gas passed to a transaction is a 64-bit number.
-        let gas_left = cb.query_word_rlc();
+        let gas_left = cb.query_cell();
 
         // The `gas_left` in the current state has to be deducted by the gas
         // used by the `GAS` opcode itself.
         cb.require_equal(
             "Constraint: gas left equal to stack value",
-            from_bytes::expr(&gas_left.cells),
+            gas_left.expr(),
             cb.curr.state.gas_left.expr() - OpcodeId::GAS.constant_gas_cost().expr(),
         );
 
         // Construct the value and push it to stack.
-        cb.stack_push(gas_left.expr());
+        // cb.stack_push(gas_left.expr());
+        // cb.memory_rlc_lookup();
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(1.expr()),
@@ -74,11 +77,7 @@ impl<F: Field> ExecutionGadget<F> for EvmGasGadget<F> {
         self.gas_left.assign(
             region,
             offset,
-            Some(
-                step.gas_left
-                    .saturating_sub(OpcodeId::GAS.constant_gas_cost().as_u64())
-                    .to_le_bytes(),
-            ),
+            Value::known(F::from(step.gas_left.saturating_sub(OpcodeId::GAS.constant_gas_cost().as_u64()))),
         )?;
 
         Ok(())
@@ -93,8 +92,8 @@ mod test {
 
     fn test_ok() {
         let bytecode = bytecode! {
+            I32Const[0]
             GAS
-            STOP
         };
 
         CircuitTestBuilder::new_from_test_ctx(

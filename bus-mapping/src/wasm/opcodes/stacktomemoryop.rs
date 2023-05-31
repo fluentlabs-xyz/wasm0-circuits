@@ -8,6 +8,7 @@ use super::Opcode;
 
 pub(crate) const STACK_TO_MEMORY_TYPE_DEFAULT: usize = 0;
 pub(crate) const STACK_TO_MEMORY_TYPE_U256: usize = 1;
+pub(crate) const STACK_TO_MEMORY_TYPE_U64: usize = 2;
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to all the Stack only operations: take N words and return one.
@@ -48,6 +49,8 @@ impl<const N_POP: usize, const EL_TYPE: usize> Opcode for StackToMemoryOpcode<N_
             geth_steps[1].memory[0].0.clone()
         } else if EL_TYPE == STACK_TO_MEMORY_TYPE_U256 {
             geth_steps[1].global_memory.read_u256(dest_offset)?.to_be_bytes().to_vec()
+        } else if EL_TYPE == STACK_TO_MEMORY_TYPE_U64 {
+            geth_steps[1].global_memory.read_u64(dest_offset)?.to_be_bytes().to_vec()
         } else {
             unreachable!("not possible EL_TYPE specified");
         };

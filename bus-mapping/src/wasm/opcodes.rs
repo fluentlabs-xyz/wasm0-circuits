@@ -31,7 +31,7 @@ use returndatacopy::Returndatacopy;
 use returndatasize::Returndatasize;
 use selfbalance::Selfbalance;
 use stackonlyop::StackOnlyOpcode;
-use stacktomemoryop::{StackToMemoryOpcode, STACK_TO_MEMORY_TYPE_U256};
+use stacktomemoryop::{StackToMemoryOpcode, STACK_TO_MEMORY_TYPE_U256, STACK_TO_MEMORY_TYPE_U64};
 use stop::Stop;
 use wasm_break::WasmBreakOpcode;
 use wasm_call::WasmCallOpcode;
@@ -375,9 +375,9 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         // OpcodeId::MSTORE8 => Mstore::<true>::gen_associated_ops,
         // OpcodeId::SLOAD => Sload::gen_associated_ops,
         // OpcodeId::SSTORE => Sstore::gen_associated_ops,
-        OpcodeId::PC => StackOnlyOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::MSIZE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::GAS => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::PC => StackToMemoryOpcode::<0, STACK_TO_MEMORY_TYPE_U64>::gen_associated_ops,
+        OpcodeId::MSIZE => StackToMemoryOpcode::<0, STACK_TO_MEMORY_TYPE_U64>::gen_associated_ops,
+        OpcodeId::GAS => StackToMemoryOpcode::<0, STACK_TO_MEMORY_TYPE_U64>::gen_associated_ops,
         OpcodeId::JUMPDEST => Dummy::gen_associated_ops,
         OpcodeId::LOG0 => Log::<0>::gen_associated_ops,
         OpcodeId::LOG1 => Log::<1>::gen_associated_ops,
