@@ -2,7 +2,6 @@ use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
 use std::{marker::PhantomData};
-use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Chip, Layouter, Region, Value};
 use halo2_proofs::plonk::{Advice, Constraints, Error, Fixed};
 use halo2_proofs::poly::Rotation;
@@ -13,11 +12,12 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::table::PoseidonTable;
 use crate::wasm_circuit::common::wasm_compute_section_len;
-use crate::wasm_circuit::consts::{ID_OF_SECTION_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH};
+use crate::wasm_circuit::consts::{WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH};
 use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip};
 use crate::wasm_circuit::tables::range_table::RangeTableConfig;
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::wasm_sections::consts::{ID_OF_SECTION_DEFAULT, WASM_SECTION_ID_MAX};
 
 ///
 pub struct WasmSectionConfig<F: Field> {
@@ -51,11 +51,11 @@ pub struct WasmConfig<F: Field> {
     ///
     index_at_position_count: usize,
     ///
-    id_of_section: Column<Advice>,
-    ///
     is_section_id: Column<Advice>,
     ///
     is_section_len: Column<Advice>,
+    ///
+    id_of_section: Column<Advice>,
     ///
     is_section_body: Column<Advice>,
     /// TODO refactor to a single column
@@ -459,7 +459,7 @@ impl<F: Field> WasmChip<F>
             )
         });
 
-        cs.lookup("id_of_section is a valid value", |vc| {
+        cs.lookup("id_of_section is valid", |vc| {
             let id_of_section_expr = vc.query_advice(id_of_section, Rotation::cur());
 
             vec![(id_of_section_expr.clone(), section_id_range_table_config.value)]
@@ -559,7 +559,6 @@ impl<F: Field> WasmChip<F>
                 || Value::known(F::zero()),
             )?;
 
-            // init id_of_section
             let val: i64 = ID_OF_SECTION_DEFAULT as i64;
             region.assign_advice(
                 || format!("assign id_of_section val {} at {}", val, i),
@@ -567,7 +566,6 @@ impl<F: Field> WasmChip<F>
                 i,
                 || Value::known(if val < 0 { -F::from(val.abs() as u64) } else { F::from(val as u64) })
             )?;
-            // init is_id_of_section_grows_lt_chip
             if i > 0 {
                 self.config.is_id_of_section_grows_lt_chip.assign(
                     region,
@@ -671,7 +669,6 @@ impl<F: Field> WasmChip<F>
                 )?;
             }
 
-            // assign id_of_section
             for offset in section_start_index..=section_end_index {
                 let val = section_id;
                 region.assign_advice(
@@ -680,11 +677,10 @@ impl<F: Field> WasmChip<F>
                     offset,
                     || Value::known(F::from(section_id as u64))
                 )?;
-                // assign is_id_of_section_grows_lt_chip
                 self.config.is_id_of_section_grows_lt_chip.assign(
                     region,
                     offset,
-                    if section_id_prev < 0 { -F::from(section_id_prev.abs() as u64) } else { F::from(section_id_prev as u64) },
+                    F::from(section_id_prev as u64),
                     F::from(section_id as u64),
                 )?;
                 section_id_prev = section_id as i64;

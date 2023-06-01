@@ -12,8 +12,8 @@ use crate::wasm_circuit::leb128_circuit::consts::{BYTES_IN_BASE64_WORD, EIGHT_LS
 /// LEB128Config
 #[derive(Debug, Clone)]
 pub struct LEB128Config<F> {
-    /// base64 repr of leb128 (each row represents a part of leb)
-    pub leb_base64_words: Column<Advice>,
+    /// base64 repr of leb128 (TODO maybe we don't need this, cause we have solid number)
+    pub leb_base64_word: Column<Advice>,
     ///
     pub is_first_leb_byte: Column<Fixed>,
     ///
@@ -133,7 +133,7 @@ impl<F: Field> LEB128Chip<F>
             for (i, leb_base64_word_recovered) in leb_base64_words_recovered.iter().enumerate() {
                 let leb_base64_word = vc.query_advice(leb_base64_words, Rotation(i as i32));
                 constraints.push((
-                    "base64 word equals to recovered base64 word",
+                    "base64 word equals to recoered base64 word",
                     leb_base64_word_recovered.clone() - leb_base64_word.clone()
                 ));
             }
@@ -145,7 +145,7 @@ impl<F: Field> LEB128Chip<F>
 
         let config = LEB128Config {
             is_first_leb_byte,
-            leb_base64_words,
+            leb_base64_word: leb_base64_words,
             byte_has_cb,
             _marker: PhantomData,
         };
@@ -195,7 +195,7 @@ impl<F: Field> LEB128Chip<F>
 
         region.assign_advice(
             || format!("assign leb_base64_word val {} at {}", leb_base64_word, offset),
-            self.config.leb_base64_words,
+            self.config.leb_base64_word,
             offset,
             || Value::known(F::from(leb_base64_word)),
         ).unwrap();
