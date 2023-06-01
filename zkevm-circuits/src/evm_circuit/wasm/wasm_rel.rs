@@ -18,6 +18,12 @@ use crate::{
     util::Expr,
 };
 use crate::evm_circuit::util::Cell;
+use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
+
+const REM_SHIFT: usize = 3usize;
+const REM_MASK: u64 = (1u64 << REM_SHIFT) - 1u64;
+const I64_REM_SHIFT: usize = 60usize;
+const I32_REM_SHIFT: usize = 28usize;
 
 #[derive(Clone, Debug)]
 pub(crate) struct WasmRelGadget<F> {
@@ -57,7 +63,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_REL;
 
-    fn configure(cb: &mut ConstrainBuilderCommon<F>) -> Self {
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
 
         let diff_inv = cb.alloc_unlimited_value();
         let res_is_eq = cb.alloc_bit_value();
@@ -88,7 +94,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
 
         cb.stack_pop(rhs.expr());
         cb.stack_pop(lhs.expr());
-        cb.stack_push(value.expr());
+        cb.stack_push(res.expr());
 
         cb.require_zeros("op_rel: compare diff", vec![
             (lhs.expr() + res_is_lt.expr() * diff.expr()
@@ -166,47 +172,45 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             ]
         });
 
-        constraint_builder.push(
-            "compare op res",
-            Box::new(move |meta| {
+        cb.require_zeros("compare op res", {
 
-                let l_pos_r_pos = (1.expr() - lhs_leading_bit.expr(meta))
-                    * (1.expr() - rhs_leading_bit.expr(meta));
+                let l_pos_r_pos = (1.expr() - lhs_leading_bit.expr())
+                    * (1.expr() - rhs_leading_bit.expr());
                 let l_pos_r_neg =
-                    (1.expr() - lhs_leading_bit.expr(meta)) * rhs_leading_bit.expr(meta);
+                    (1.expr() - lhs_leading_bit.expr()) * rhs_leading_bit.expr();
                 let l_neg_r_pos =
-                    lhs_leading_bit.expr(meta) * (1.expr() - rhs_leading_bit.expr(meta));
-                let l_neg_r_neg = lhs_leading_bit.expr(meta) * rhs_leading_bit.expr(meta);
+                    lhs_leading_bit.expr() * (1.expr() - rhs_leading_bit.expr());
+                let l_neg_r_neg = lhs_leading_bit.expr() * rhs_leading_bit.expr();
 
                 vec![
-                    op_is_eq.expr(meta) * (res.expr(meta) - res_is_eq.expr(meta)),
-                    op_is_ne.expr(meta)
-                        * (res.expr(meta) - 1.expr() + res_is_eq.expr(meta)),
-                    op_is_lt.expr(meta)
-                        * (res.expr(meta)
+                    op_is_eq.expr() * (res.expr() - res_is_eq.expr()),
+                    op_is_ne.expr()
+                        * (res.expr() - 1.expr() + res_is_eq.expr()),
+                    op_is_lt.expr()
+                        * (res.expr()
                             - l_neg_r_pos.clone()
-                            - l_pos_r_pos.clone() * res_is_lt.expr(meta)
-                            - l_neg_r_neg.clone() * res_is_lt.expr(meta)),
-                    op_is_le.expr(meta)
-                        * (res.expr(meta)
+                            - l_pos_r_pos.clone() * res_is_lt.expr()
+                            - l_neg_r_neg.clone() * res_is_lt.expr()),
+                    op_is_le.expr()
+                        * (res.expr()
                             - l_neg_r_pos.clone()
-                            - l_pos_r_pos.clone() * res_is_lt.expr(meta)
-                            - l_neg_r_neg.clone() * res_is_lt.expr(meta)
-                            - res_is_eq.expr(meta)),
-                    op_is_gt.expr(meta)
-                        * (res.expr(meta)
+                            - l_pos_r_pos.clone() * res_is_lt.expr()
+                            - l_neg_r_neg.clone() * res_is_lt.expr()
+                            - res_is_eq.expr()),
+                    op_is_gt.expr()
+                        * (res.expr()
                             - l_pos_r_neg.clone()
-                            - l_pos_r_pos.clone() * res_is_gt.expr(meta)
-                            - l_neg_r_neg.clone() * res_is_gt.expr(meta)),
-                    op_is_ge.expr(meta)
-                        * (res.expr(meta)
+                            - l_pos_r_pos.clone() * res_is_gt.expr()
+                            - l_neg_r_neg.clone() * res_is_gt.expr()),
+                    op_is_ge.expr()
+                        * (res.expr()
                             - l_pos_r_neg.clone()
-                            - l_pos_r_pos.clone() * res_is_gt.expr(meta)
-                            - l_neg_r_neg.clone() * res_is_gt.expr(meta)
-                            - res_is_eq.expr(meta)),
+                            - l_pos_r_pos.clone() * res_is_gt.expr()
+                            - l_neg_r_neg.clone() * res_is_gt.expr()
+                            - res_is_eq.expr()),
 
                 ]
-            }),
+            },
         );
  
         let opcode = cb.query_cell();
@@ -231,9 +235,9 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             lhs,
             rhs,
             diff,
-            lookup_stack_read_lhs,
-            lookup_stack_read_rhs,
-            lookup_stack_write_res,
+            //lookup_stack_read_lhs,
+            //lookup_stack_read_rhs,
+            //lookup_stack_write_res,
             res,
             op_is_eq,
             op_is_ne,
@@ -272,42 +276,61 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         self.lhs.assign(region, offset, Value::known(lhs.to_scalar().unwrap()))?;
         self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
 
+        let mut is_32 = true;
+
         match opcode {
-            Opcode::I32GtU => {
-              self.op_is_gt.assign(region, offset, Value::known(1))?;
+            OpcodeId::I32GtU => {
+              self.op_is_gt.assign(region, offset, Value::known(1.into()))?;
             }
-            Opcode::I32GeU => {
-              self.op_is_ge.assign(region, offset, Value::known(1))?;
+            OpcodeId::I32GeU => {
+              self.op_is_ge.assign(region, offset, Value::known(1.into()))?;
             }
-            Opcode::I32LtU => {
-              self.op_is_lt.assign(region, offset, Value::known(1))?;
+            OpcodeId::I32LtU => {
+              self.op_is_lt.assign(region, offset, Value::known(1.into()))?;
             }
-            Opcode::I32LeU => {
-              self.op_is_le.assign(region, offset, Value::known(1))?;
+            OpcodeId::I32LeU => {
+              self.op_is_le.assign(region, offset, Value::known(1.into()))?;
             }
-            Opcode::I32Eq => {
-              self.op_is_eq.assign(region, offset, Value::known(1))?;
+            OpcodeId::I32Eq => {
+              self.op_is_eq.assign(region, offset, Value::known(1.into()))?;
             }
-            Opcode::I32Ne => {
-              self.op_is_ne.assign(region, offset, Value::known(1))?;
+            OpcodeId::I32Ne => {
+              self.op_is_ne.assign(region, offset, Value::known(1.into()))?;
             }
-            Opcode::I32GtS => {
-              self.op_is_sign.assign(region, offset, Value::known(1))?;
-              self.op_is_gt.assign(region, offset, Value::known(1))?;
+            OpcodeId::I32GtS => {
+              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
+              self.op_is_gt.assign(region, offset, Value::known(1.into()))?;
             }
-            Opcode::I32GeS => {
-              self.op_is_sign.assign(region, offset, Value::known(1))?;
-              self.op_is_ge.assign(region, offset, Value::known(1))?;
+            OpcodeId::I32GeS => {
+              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
+              self.op_is_ge.assign(region, offset, Value::known(1.into()))?;
             }
-            Opcode::I32LtS => {
-              self.op_is_sign.assign(region, offset, Value::known(1))?;
-              self.op_is_lt.assign(region, offset, Value::known(1))?;
+            OpcodeId::I32LtS => {
+              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
+              self.op_is_lt.assign(region, offset, Value::known(1.into()))?;
             }
-            Opcode::I32LeS => {
-              self.op_is_sign.assign(region, offset, Value::known(1))?;
-              self.op_is_le.assign(region, offset, Value::known(1))?;
+            OpcodeId::I32LeS => {
+              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
+              self.op_is_le.assign(region, offset, Value::known(1.into()))?;
             }
+            _ => unreachable!()
         }
+
+        let shift: usize = if is_32 {
+            I64_REM_SHIFT
+        } else {
+            I32_REM_SHIFT
+        };
+
+        let left_leading_u4: u64 = lhs.0[0] >> (shift as u64);
+        let right_leading_u4: u64 = rhs.0[0] >> (shift as u64);
+
+        self.lhs_leading_bit.assign(region, offset, Value::known((left_leading_u4 >> REM_SHIFT != 0).to_scalar().unwrap()))?;
+        self.rhs_leading_bit.assign(region, offset, Value::known((right_leading_u4 >> REM_SHIFT != 0).to_scalar().unwrap()))?;
+        self.lhs_rem_value.assign(region, offset, Value::known((left_leading_u4 & REM_MASK).to_scalar().unwrap()))?;
+        self.lhs_rem_diff.assign(region, offset, Value::known(((left_leading_u4 & REM_MASK) ^ REM_MASK).to_scalar().unwrap()))?;
+        self.rhs_rem_value.assign(region, offset, Value::known((right_leading_u4 & REM_MASK).to_scalar().unwrap()))?;
+        self.rhs_rem_diff.assign(region, offset, Value::known(((right_leading_u4 & REM_MASK) ^ REM_MASK).to_scalar().unwrap()))?;
 
 /*
         self.value.assign(region, offset, Value::known(value.to_scalar().unwrap()))?;

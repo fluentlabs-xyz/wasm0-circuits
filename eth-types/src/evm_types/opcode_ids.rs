@@ -358,10 +358,11 @@ impl OpcodeId {
             OpcodeId::GASPRICE | OpcodeId::EXTCODESIZE | OpcodeId::EXTCODECOPY | OpcodeId::EXTCODEHASH |
             OpcodeId::RETURNDATASIZE | OpcodeId::RETURNDATACOPY | OpcodeId::BLOCKHASH | OpcodeId::COINBASE |
             OpcodeId::TIMESTAMP | OpcodeId::NUMBER | OpcodeId::DIFFICULTY | OpcodeId::GASLIMIT |
-            OpcodeId::CHAINID | OpcodeId::BASEFEE | OpcodeId::SLOAD | OpcodeId::SSTORE | OpcodeId::LOG0 |
-            OpcodeId::LOG1 | OpcodeId::LOG2 | OpcodeId::LOG3 | OpcodeId::LOG4 | OpcodeId::CREATE |
-            OpcodeId::CALL | OpcodeId::CALLCODE | OpcodeId::DELEGATECALL | OpcodeId::CREATE2 |
-            OpcodeId::STATICCALL | OpcodeId::REVERT | OpcodeId::SELFBALANCE => {
+            OpcodeId::CHAINID | OpcodeId::BASEFEE | OpcodeId::SLOAD | OpcodeId::SSTORE | OpcodeId::GAS |
+            OpcodeId::PC | OpcodeId::MSIZE | OpcodeId::LOG0 | OpcodeId::LOG1 | OpcodeId::LOG2 |
+            OpcodeId::LOG3 | OpcodeId::LOG4 | OpcodeId::CREATE | OpcodeId::CALL | OpcodeId::CALLCODE |
+            OpcodeId::DELEGATECALL | OpcodeId::CREATE2 | OpcodeId::STATICCALL | OpcodeId::REVERT |
+            OpcodeId::SELFBALANCE => {
                 true
             }
             _ => false
@@ -1343,6 +1344,9 @@ impl FromStr for OpcodeId {
             "evm_basefee" => OpcodeId::BASEFEE,
             "evm_sload" => OpcodeId::SLOAD,
             "evm_sstore" => OpcodeId::SSTORE,
+            "evm_gas" => OpcodeId::GAS,
+            "evm_msize" => OpcodeId::MSIZE,
+            "evm_pc" => OpcodeId::PC,
             "evm_log0" => OpcodeId::LOG0,
             "evm_log1" => OpcodeId::LOG1,
             "evm_log2" => OpcodeId::LOG2,

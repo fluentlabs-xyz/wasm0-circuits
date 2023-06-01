@@ -86,7 +86,6 @@ mod evm_gas;
 mod evm_gasprice;
 mod evm_keccak256;
 mod evm_log;
-mod evm_memory;
 mod evm_msize;
 mod evm_origin;
 mod evm_pc;
@@ -107,7 +106,7 @@ mod wasm_end;
 mod wasm_global;
 // mod wasm_load;
 mod wasm_local;
-// mod wasm_rel;
+mod wasm_rel;
 mod wasm_select;
 // mod wasm_store;
 mod wasm_test;
@@ -148,7 +147,6 @@ use evm_gas::EvmGasGadget;
 use evm_gasprice::EvmGasPriceGadget;
 use evm_keccak256::EvmKeccak256Gadget;
 use evm_log::EvmLogGadget;
-use evm_memory::EvmMemoryGadget;
 use evm_msize::EvmMsizeGadget;
 use evm_origin::EvmOriginGadget;
 use evm_pc::EvmPcGadget;
@@ -280,7 +278,6 @@ pub(crate) struct ExecutionConfig<F> {
     evm_gasprice: Box<EvmGasPriceGadget<F>>,
     evm_keccak256: Box<EvmKeccak256Gadget<F>>,
     evm_log: Box<EvmLogGadget<F>>,
-    evm_memory: Box<EvmMemoryGadget<F>>,
     evm_msize: Box<EvmMsizeGadget<F>>,
     evm_origin: Box<EvmOriginGadget<F>>,
     evm_pc: Box<EvmPcGadget<F>>,
@@ -530,7 +527,6 @@ impl<F: Field> ExecutionConfig<F> {
             evm_gasprice: configure_gadget!(),
             evm_keccak256: configure_gadget!(),
             evm_log: configure_gadget!(),
-            evm_memory: configure_gadget!(),
             evm_msize: configure_gadget!(),
             evm_origin: configure_gadget!(),
             evm_pc: configure_gadget!(),
@@ -1267,31 +1263,18 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::CHAINID => assign_exec_step!(self.evm_chainid),
             ExecutionState::CODECOPY => assign_exec_step!(self.evm_codecopy),
             ExecutionState::CODESIZE => assign_exec_step!(self.evm_codesize),
-            // ExecutionState::CMP => assign_exec_step!(self.comparator_gadget),
-            // ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
-            // ExecutionState::EXP => assign_exec_step!(self.exp_gadget),
             // ExecutionState::EXTCODEHASH => assign_exec_step!(self.extcodehash_gadget),
             ExecutionState::EXTCODESIZE => assign_exec_step!(self.evm_extcodesize),
             // ExecutionState::GAS => assign_exec_step!(self.gas_gadget),
             ExecutionState::GASPRICE => assign_exec_step!(self.evm_gasprice),
-            // ExecutionState::ISZERO => assign_exec_step!(self.iszero_gadget),
-            // ExecutionState::JUMP => assign_exec_step!(self.jump_gadget),
-            // ExecutionState::JUMPDEST => assign_exec_step!(self.jumpdest_gadget),
-            // ExecutionState::JUMPI => assign_exec_step!(self.jumpi_gadget),
-            // ExecutionState::LOG => assign_exec_step!(self.log_gadget),
+            ExecutionState::LOG => assign_exec_step!(self.evm_log),
             // ExecutionState::MEMORY => assign_exec_step!(self.memory_gadget),
             // ExecutionState::MSIZE => assign_exec_step!(self.msize_gadget),
-            // ExecutionState::MUL_DIV_MOD => assign_exec_step!(self.mul_div_mod_gadget),
-            // ExecutionState::MULMOD => assign_exec_step!(self.mulmod_gadget),
-            // ExecutionState::NOT => assign_exec_step!(self.not_gadget),
             ExecutionState::ORIGIN => assign_exec_step!(self.evm_origin),
             // ExecutionState::PC => assign_exec_step!(self.pc_gadget),
             ExecutionState::RETURN_REVERT => assign_exec_step!(self.evm_return_revert),
             // ExecutionState::RETURNDATASIZE => assign_exec_step!(self.returndatasize_gadget),
             // ExecutionState::RETURNDATACOPY => assign_exec_step!(self.returndatacopy_gadget),
-            // ExecutionState::SAR => assign_exec_step!(self.sar_gadget),
-            // ExecutionState::SCMP => assign_exec_step!(self.signed_comparator_gadget),
-            // ExecutionState::SDIV_SMOD => assign_exec_step!(self.sdiv_smod_gadget),
             // ExecutionState::BLOCKCTXU64 => assign_exec_step!(self.block_ctx_u64_gadget),
             // ExecutionState::BLOCKCTXU160 => assign_exec_step!(self.block_ctx_u160_gadget),
             // ExecutionState::BLOCKCTXU256 => assign_exec_step!(self.block_ctx_u256_gadget),

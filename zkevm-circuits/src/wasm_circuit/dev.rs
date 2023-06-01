@@ -94,7 +94,7 @@ mod wasm_circuit_tests {
         println!("wasm_binary last_index: {}", wasm_binary.len() - 1);
         println!("wasm_binary last_index hex: {:x?}", wasm_binary.len() - 1);
         println!("wasm_binary: {:x?}", wasm_binary);
-        let mut code_hash = CodeDB::hash(&wasm_binary);
+        let code_hash = CodeDB::hash(&wasm_binary);
         let circuit = TestCircuit::<Fr> {
             bytes: wasm_binary.clone(),
             code_hash,

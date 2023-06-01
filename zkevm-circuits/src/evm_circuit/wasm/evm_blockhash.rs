@@ -24,12 +24,12 @@ use crate::{
     util::Expr,
     witness::NUM_PREV_BLOCK_ALLOWED,
 };
-use crate::evm_circuit::util::common_gadget::WordByteCapGadget;
+use crate::evm_circuit::util::common_gadget::{Word64ByteCapGadget, WordByteCapGadget};
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmBlockHashGadget<F> {
     same_context: SameContextGadget<F>,
-    block_number: WordByteCapGadget<F, N_BYTES_U64>,
+    block_number: Word64ByteCapGadget<F, N_BYTES_U64>,
     current_block_number: Cell<F>,
     block_hash: Word<F>,
     diff_lt: LtGadget<F, N_BYTES_U64>,
@@ -46,7 +46,7 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
 
         let dest_offset = cb.query_cell();
         cb.stack_pop(dest_offset.expr());
-        let block_number = WordByteCapGadget::construct(cb, current_block_number.expr());
+        let block_number = Word64ByteCapGadget::construct(cb, current_block_number.expr());
         cb.stack_pop(block_number.original_word());
 
         // FIXME
@@ -121,7 +121,7 @@ impl<F: Field> ExecutionGadget<F> for EvmBlockHashGadget<F> {
         let dest_offset = block.rws[step.rw_indices[0]].stack_value();
         let block_number = block.rws[step.rw_indices[1]].stack_value();
         self.block_number
-            .assign(region, offset, block_number.to_u256(), current_block_number)?;
+            .assign(region, offset, block_number, current_block_number)?;
         self.dest_offset
             .assign(region, offset, Value::<F>::known(dest_offset.to_scalar().unwrap()))?;
 

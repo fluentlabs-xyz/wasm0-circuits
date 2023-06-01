@@ -246,6 +246,12 @@ impl Memory {
         Ok(U256::from_big_endian(&res))
     }
 
+    pub fn read_u64(&self, offset: StackWord) -> Result<StackWord, Error> {
+        let mut res = [0u8; 8];
+        self.read_buffer(offset.as_u64(), res.as_mut_ptr(), 8)?;
+        Ok(StackWord::from_big_endian(&res))
+    }
+
     pub fn read_u32(&self, offset: StackWord) -> Result<StackWord, Error> {
         let mut res = [0u8; 4];
         self.read_buffer(offset.as_u64(), res.as_mut_ptr(), 4)?;

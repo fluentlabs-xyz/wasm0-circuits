@@ -31,7 +31,7 @@ use returndatacopy::Returndatacopy;
 use returndatasize::Returndatasize;
 use selfbalance::Selfbalance;
 use stackonlyop::StackOnlyOpcode;
-use stacktomemoryop::{StackToMemoryOpcode, STACK_TO_MEMORY_TYPE_U256};
+use stacktomemoryop::{StackToMemoryOpcode, STACK_TO_MEMORY_TYPE_U256, STACK_TO_MEMORY_TYPE_U64};
 use stop::Stop;
 use wasm_break::WasmBreakOpcode;
 use wasm_call::WasmCallOpcode;
@@ -59,6 +59,7 @@ use crate::wasm::opcodes::error_oog_account_access::ErrorOOGAccountAccess;
 use crate::wasm::opcodes::error_oog_dynamic_memory::OOGDynamicMemory;
 use crate::wasm::opcodes::error_oog_memory_copy::OOGMemoryCopy;
 use crate::wasm::opcodes::error_precompile_failed::PrecompileFailed;
+use crate::wasm::opcodes::logs::Log;
 use crate::wasm::opcodes::sha3::Sha3;
 
 #[cfg(any(feature = "test", test))]
@@ -81,7 +82,7 @@ mod extcodecopy;
 // mod extcodehash;
 mod extcodesize;
 mod gasprice;
-// mod logs;
+mod logs;
 // mod mload;
 // mod mstore;
 mod number;
@@ -125,6 +126,29 @@ mod wasm_break;
 /// or multiple [`ExecStep`](crate::circuit_input_builder::ExecStep) depending
 /// of the [`OpcodeId`] it contains.
 pub trait Opcode: Debug {
+
+    fn gen_associated_ops2(
+        state: &mut CircuitInputStateRef,
+        geth_steps: &[GethExecStep],
+    ) -> Result<Vec<ExecStep>, Error> {
+        let mut geth_steps = geth_steps.to_vec();
+        let mut step = &mut geth_steps[0];
+        let reverse_stack_input = match step.op {
+            OpcodeId::LOG0 => 2,
+            OpcodeId::LOG1 => 3,
+            OpcodeId::LOG2 => 4,
+            OpcodeId::LOG3 => 5,
+            OpcodeId::LOG4 => 6,
+            _ => 0,
+        };
+        if reverse_stack_input > 0 {
+            step.stack.reverse_last(reverse_stack_input as usize)?;
+            let res = Self::gen_associated_ops(state, geth_steps.as_slice())?;
+            return Ok(res);
+        }
+        Self::gen_associated_ops(state, geth_steps.as_slice())
+    }
+
     /// Generate the associated [`MemoryOp`](crate::operation::MemoryOp)s,
     /// [`StackOp`](crate::operation::StackOp)s, and
     /// [`StorageOp`](crate::operation::StorageOp)s associated to the Opcode
@@ -351,15 +375,15 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         // OpcodeId::MSTORE8 => Mstore::<true>::gen_associated_ops,
         // OpcodeId::SLOAD => Sload::gen_associated_ops,
         // OpcodeId::SSTORE => Sstore::gen_associated_ops,
-        OpcodeId::PC => StackOnlyOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::MSIZE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::GAS => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::PC => StackToMemoryOpcode::<0, STACK_TO_MEMORY_TYPE_U64>::gen_associated_ops,
+        OpcodeId::MSIZE => StackToMemoryOpcode::<0, STACK_TO_MEMORY_TYPE_U64>::gen_associated_ops,
+        OpcodeId::GAS => StackToMemoryOpcode::<0, STACK_TO_MEMORY_TYPE_U64>::gen_associated_ops,
         OpcodeId::JUMPDEST => Dummy::gen_associated_ops,
-        // OpcodeId::LOG0 => Log::gen_associated_ops,
-        // OpcodeId::LOG1 => Log::gen_associated_ops,
-        // OpcodeId::LOG2 => Log::gen_associated_ops,
-        // OpcodeId::LOG3 => Log::gen_associated_ops,
-        // OpcodeId::LOG4 => Log::gen_associated_ops,
+        OpcodeId::LOG0 => Log::<0>::gen_associated_ops,
+        OpcodeId::LOG1 => Log::<1>::gen_associated_ops,
+        OpcodeId::LOG2 => Log::<2>::gen_associated_ops,
+        OpcodeId::LOG3 => Log::<3>::gen_associated_ops,
+        OpcodeId::LOG4 => Log::<4>::gen_associated_ops,
         OpcodeId::CALL | OpcodeId::CALLCODE => CallOpcode::<true>::gen_associated_ops,
         OpcodeId::DELEGATECALL | OpcodeId::STATICCALL => CallOpcode::<false>::gen_associated_ops,
         OpcodeId::RETURN | OpcodeId::REVERT => ReturnRevert::gen_associated_ops,

@@ -140,6 +140,22 @@ impl<W : Clone + Sized + Serialize + ToBigEndian> Stack<W> {
         StackAddress::from(1024 - self.0.len() + nth)
     }
 
+    ///
+    pub fn reverse_last(&mut self, nth: usize) -> Result<(), Error> {
+        if self.0.len() < nth {
+            return Err(Error::InvalidStackPointer);
+        }
+        let len = self.0.len();
+        if len == nth {
+            self.0.reverse();
+            return Ok(());
+        }
+        (0..nth).for_each(|i| {
+            self.0.swap(len - 1 - i, nth - 1 - i)
+        });
+        Ok(())
+    }
+
     /// Returns the last [`Word`] allocated in the `Stack`.
     pub fn last(&self) -> Result<W, Error> {
         self.0.last().cloned().ok_or(Error::InvalidStackPointer)

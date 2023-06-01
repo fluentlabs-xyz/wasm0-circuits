@@ -1,3 +1,4 @@
+use revm_precompile::primitives::bitvec::macros::internal::funty::Fundamental;
 use super::Opcode;
 use crate::{
     circuit_input_builder::{
@@ -6,62 +7,50 @@ use crate::{
     operation::{CallContextField, TxLogField},
     Error,
 };
-use eth_types::{GethExecStep, ToWord, Word};
+use eth_types::{GethExecStep, ToBigEndian, ToWord, Word};
+use eth_types::evm_types::MemoryAddress;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Log;
+pub(crate) struct Log<const N_LOGS: usize>;
 
-impl Opcode for Log {
+impl<const N_LOGS: usize> Opcode for Log<N_LOGS> {
     fn gen_associated_ops(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
         let geth_step = &geth_steps[0];
-        let mut exec_step = gen_log_step(state, geth_step)?;
+        let mut exec_step = gen_log_step::<N_LOGS>(state, geth_step)?;
         if state.call()?.is_persistent {
-            let copy_event = gen_copy_event(state, geth_step, &mut exec_step)?;
+            let copy_event = gen_copy_event::<N_LOGS>(state, geth_step, &mut exec_step)?;
             state.push_copy(&mut exec_step, copy_event);
             state.tx_ctx.log_id += 1;
         }
 
         // reconstruction
-        let offset = geth_step.stack.nth_last(0)?.as_usize();
-        let length = geth_step.stack.nth_last(1)?.as_usize();
+        let length = geth_step.stack.nth_last(2 + N_LOGS - 2)?.as_u64();
+        let offset = geth_step.stack.nth_last(2 + N_LOGS - 1)?;
 
         if length != 0 {
-            state
-                .call_ctx_mut()?
-                .memory
-                .extend_at_least(offset + length);
+            // Offset should be within range of Uint64 if length is non-zero.
+            let memory_length = offset
+                .as_u64()
+                .checked_add(length)
+                .and_then(|val| usize::try_from(val).ok())
+                .unwrap();
+
+            state.call_ctx_mut()?.memory.extend_at_least(memory_length);
         }
 
         Ok(vec![exec_step])
     }
 }
 
-fn gen_log_step(
+fn gen_log_step<const N_LOGS: usize>(
     state: &mut CircuitInputStateRef,
     geth_step: &GethExecStep,
 ) -> Result<ExecStep, Error> {
     let mut exec_step = state.new_step(geth_step)?;
-
-    let mstart = geth_step.stack.nth_last(0)?;
-    let msize = geth_step.stack.nth_last(1)?;
-
     let call_id = state.call()?.call_id;
-    let mut stack_index = 0;
-    state.stack_read(
-        &mut exec_step,
-        geth_step.stack.nth_last_filled(stack_index),
-        mstart,
-    )?;
-    state.stack_read(
-        &mut exec_step,
-        geth_step.stack.nth_last_filled(stack_index + 1),
-        msize,
-    )?;
-
-    stack_index += 1;
 
     state.call_context_read(
         &mut exec_step,
@@ -105,12 +94,21 @@ fn gen_log_step(
         _ => panic!("currently only handle successful log state"),
     };
 
+    let mut stack_index = 2;
+
     for i in 0..topic_count {
-        let topic = geth_step.stack.nth_last(2 + i)?;
+        let topic_offset = geth_step.stack.nth_last(2 + i)?;
+        let topic = geth_step.global_memory.read_u256(topic_offset)?;
         state.stack_read(
             &mut exec_step,
-            geth_step.stack.nth_last_filled(stack_index + 1),
-            topic,
+            geth_step.stack.nth_last_filled(2 + N_LOGS - stack_index - 1),
+            topic_offset,
+        )?;
+        let topic_bytes = topic.to_be_bytes();
+        state.memory_write_n(
+            &mut exec_step,
+            MemoryAddress::from(topic_offset.as_u64()),
+            &topic_bytes,
         )?;
         stack_index += 1;
 
@@ -126,45 +124,24 @@ fn gen_log_step(
         }
     }
 
+    let mstart = geth_step.stack.nth_last(2 + N_LOGS - 1)?;
+    let msize = geth_step.stack.nth_last(2 + N_LOGS - 2)?;
+
+    state.stack_read(
+        &mut exec_step,
+        geth_step.stack.nth_last_filled(2 + N_LOGS - 1),
+        mstart,
+    )?;
+    state.stack_read(
+        &mut exec_step,
+        geth_step.stack.nth_last_filled(2 + N_LOGS - 2),
+        msize,
+    )?;
+
     Ok(exec_step)
 }
 
-fn gen_copy_steps(
-    state: &mut CircuitInputStateRef,
-    exec_step: &mut ExecStep,
-    src_addr: u64,
-    bytes_left: usize,
-) -> Result<Vec<(u8, bool)>, Error> {
-    // Get memory data
-    let mem = state
-        .call_ctx()?
-        .memory
-        .read_chunk(src_addr.into(), bytes_left.into());
-
-    let mut copy_steps = Vec::with_capacity(bytes_left);
-    for (idx, byte) in mem.iter().enumerate() {
-        let addr = src_addr + idx as u64;
-
-        // Read memory
-        state.memory_read(exec_step, (addr as usize).into(), *byte)?;
-
-        copy_steps.push((*byte, false));
-
-        // Write log
-        state.tx_log_write(
-            exec_step,
-            state.tx_ctx.id(),
-            state.tx_ctx.log_id + 1,
-            TxLogField::Data,
-            idx,
-            Word::from(*byte),
-        )?;
-    }
-
-    Ok(copy_steps)
-}
-
-fn gen_copy_event(
+fn gen_copy_event<const N_LOGS: usize>(
     state: &mut CircuitInputStateRef,
     geth_step: &GethExecStep,
     exec_step: &mut ExecStep,
@@ -172,12 +149,15 @@ fn gen_copy_event(
     let rw_counter_start = state.block_ctx.rwc;
 
     assert!(state.call()?.is_persistent, "Error: Call is not persistent");
-    let memory_start = geth_step.stack.nth_last(0)?.as_u64();
-    let msize = geth_step.stack.nth_last(1)?.as_usize();
 
-    let (src_addr, src_addr_end) = (memory_start, memory_start + msize as u64);
+    // Get low Uint64 for memory start as below reference. Memory size must be
+    // within range of Uint64, otherwise returns ErrGasUintOverflow.
+    // https://github.com/ethereum/go-ethereum/blob/b80f05bde2c4e93ae64bb3813b6d67266b5fc0e6/core/vm/instructions.go#L850
+    let memory_start = geth_step.stack.nth_last(2 + N_LOGS - 1)?.low_u64();
+    let msize = geth_step.stack.nth_last(2 + N_LOGS - 2)?.as_u64();
 
-    let steps = gen_copy_steps(state, exec_step, src_addr, msize)?;
+    let (src_addr, src_addr_end) = (memory_start, memory_start.checked_add(msize).unwrap());
+    let steps = state.gen_copy_steps_for_log(exec_step, geth_step, src_addr, msize)?;
 
     Ok(CopyEvent {
         src_type: CopyDataType::Memory,
@@ -197,15 +177,10 @@ fn gen_copy_event(
 mod log_tests {
     use crate::{
         circuit_input_builder::{CopyDataType, ExecState, NumberOrHash},
-        mocks::BlockData,
+        mock::BlockData,
         operation::{CallContextField, CallContextOp, MemoryOp, StackOp, TxLogField, TxLogOp, RW},
     };
-    use eth_types::{
-        bytecode,
-        evm_types::{OpcodeId, StackAddress},
-        geth_types::GethData,
-        Bytecode, ToWord, Word,
-    };
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Bytecode, ToWord, Word, StackWord};
 
     use mock::test_ctx::{helpers::*, TestContext};
     use pretty_assertions::assert_eq;
@@ -252,7 +227,7 @@ mod log_tests {
         code.push(32, Word::from(msize));
         code.push(32, Word::from(mstart));
         code.write_op(cur_op_code);
-        code.write_op(OpcodeId::STOP);
+        code.op_stop();
 
         // prepare memory data
         let pushdata = hex::decode("1234567890abcdef1234567890abcdef").unwrap();
@@ -278,7 +253,7 @@ mod log_tests {
         // Get the execution steps from the external tracer
         let block: GethData = TestContext::<2, 1>::new(
             None,
-            account_0_code_account_1_no_code(code_prepare, None),
+            account_0_code_account_1_no_code(code_prepare),
             tx_from_1_to_0,
             |block, _tx| block.number(0xcafeu64),
         )
@@ -308,11 +283,11 @@ mod log_tests {
             [
                 (
                     RW::READ,
-                    &StackOp::new(1, StackAddress::from((1022 - topic_count) as u32), Word::from(mstart))
+                    &StackOp::new(1, StackAddress::from((1022 - topic_count) as u32), StackWord::from(mstart))
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(1, StackAddress::from((1023 - topic_count) as u32), Word::from(msize))
+                    &StackOp::new(1, StackAddress::from((1023 - topic_count) as u32), StackWord::from(msize))
                 )
             ]
         );
