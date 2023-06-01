@@ -276,6 +276,14 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         self.lhs.assign(region, offset, Value::known(lhs.to_scalar().unwrap()))?;
         self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
 
+        let diff = if lhs < rhs { rhs - lhs } else { lhs - rhs };
+        self.diff.assign(region, offset, Value::known(diff.to_scalar().unwrap()))?;
+        self.diff_inv.assign(region, offset, Value::known(F::from(diff.as_u64()).invert().unwrap_or(F::zero())))?;
+
+        self.res_is_eq.assign(region, offset, Value::known((lhs == rhs).into()))?;
+        self.res_is_gt.assign(region, offset, Value::known((lhs > rhs).into()))?;
+        self.res_is_lt.assign(region, offset, Value::known((lhs < rhs).into()))?;
+
         let mut is_32 = true;
 
         match opcode {
@@ -372,15 +380,40 @@ mod test {
         ).run()
     }
 
-    macro_rules! tests_from_data { ($($t:tt)*) => {} }
+    macro_rules! tests_from_data_lhs_rhs_matrix {
+        ([$Const:ident] [$op:ident] [$($lhs:expr),*] [$($rhs:expr),*]) => {
+            run_test(bytecode! {
+                $Const[0]
+                $Const[0]
+                $op
+                Drop
+            });
+        }
+    }
+
+    macro_rules! tests_from_data {
+        ([$( [$Const:ident [$($op:ident),*] [$($t:tt)*]] )*]) => {
+            mod generated_tests {
+                use super::*;
+                $(mod $Const {
+                    use super::*;
+                    $(fn $op() {
+                        tests_from_data_lhs_rhs_matrix! { [$Const] [$op] [] [] }
+                    })*
+                })*
+            }
+        }
+    }
 
     tests_from_data! {
       [
-        [I32Const [0, 1, 2, -1, -2, 0x80000000]
+        [I32Const
           [I32GtU, I32GeU, I32LtU, I32LeU, I32Eq, I32Ne, I32GtS, I32GeS, I32LtS, I32LeS]
+          [0, 1, 2, -1, -2, 0x80000000]
         ]
-        [I64Const [0, 1, 2, -1, -2, -0x100000001, -0x100000002, 0x100000001, 0x100000002]
+        [I64Const
           [I64GtU, I64GeU, I64LtU, I64LeU, I64Eq, I64Ne, I64GtS, I64GeS, I64LtS, I64LeS]
+          [0, 1, 2, -1, -2, -0x100000001, -0x100000002, 0x100000001, 0x100000002]
         ]
       ]
     }
