@@ -1265,7 +1265,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::CODESIZE => assign_exec_step!(self.evm_codesize),
             // ExecutionState::EXTCODEHASH => assign_exec_step!(self.extcodehash_gadget),
             ExecutionState::EXTCODESIZE => assign_exec_step!(self.evm_extcodesize),
-            // ExecutionState::GAS => assign_exec_step!(self.gas_gadget),
+            ExecutionState::GAS => assign_exec_step!(self.evm_gas),
             ExecutionState::GASPRICE => assign_exec_step!(self.evm_gasprice),
             ExecutionState::LOG => assign_exec_step!(self.evm_log),
             // ExecutionState::MEMORY => assign_exec_step!(self.memory_gadget),

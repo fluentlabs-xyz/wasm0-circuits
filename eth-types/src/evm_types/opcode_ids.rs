@@ -1141,7 +1141,7 @@ impl FromStr for OpcodeId {
             "unreachable" => OpcodeId::Unreachable,
             "nop" => OpcodeId::Nop,
             // TODO temporal? need a fix?
-            "gas" => OpcodeId::GAS,
+            "evm_gas" => OpcodeId::GAS,
             "block" => OpcodeId::Block,
             "loop" => OpcodeId::Loop,
             "if" => OpcodeId::If,

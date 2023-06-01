@@ -84,9 +84,9 @@ mod test {
 
     fn test_ok() {
         let bytecode = bytecode! {
-            PUSH32(0)
+            I32Const[0]
             PC
-            STOP
+            Drop
         };
 
         CircuitTestBuilder::new_from_test_ctx(
