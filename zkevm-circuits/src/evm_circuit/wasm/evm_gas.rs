@@ -87,17 +87,21 @@ impl<F: Field> ExecutionGadget<F> for EvmGasGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::test_util::CircuitTestBuilder;
-    use eth_types::{address, bytecode, Word};
+    use eth_types::{address, bytecode, Bytecode, bytecode_internal, Word};
+    use eth_types::bytecode::WasmBinaryBytecode;
     use mock::TestContext;
 
     fn test_ok() {
-        let bytecode = bytecode! {
-            I32Const[0]
+        let mut code = Bytecode::default();
+        let dest = code.alloc_default_global_data(32);
+
+        bytecode_internal! {code,
+            I32Const[dest]
             GAS
         };
 
         CircuitTestBuilder::new_from_test_ctx(
-            TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
+            TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
         )
         .run();
     }
@@ -109,10 +113,15 @@ mod test {
 
     #[test]
     fn gas_gadget_incorrect_deduction() {
-        let bytecode = bytecode! {
+        let mut code = Bytecode::default();
+        let dest = code.alloc_default_global_data(32);
+
+        bytecode_internal! {code,
+            I32Const[dest]
             GAS
-            STOP
         };
+
+        let bytecode = code.wasm_binary();
 
         // Create a custom tx setting Gas to
         let ctx = TestContext::<2, 1>::new(
@@ -142,7 +151,7 @@ mod test {
                 // wrong `gas_left` value for the second step, to assert that
                 // the circuit verification fails for this scenario.
                 assert_eq!(block.txs.len(), 1);
-                assert_eq!(block.txs[0].steps.len(), 4);
+                assert_eq!(block.txs[0].steps.len(), 6);
                 block.txs[0].steps[2].gas_left -= 1;
             }))
             .evm_checks(Box::new(|prover, gate_rows, lookup_rows| {

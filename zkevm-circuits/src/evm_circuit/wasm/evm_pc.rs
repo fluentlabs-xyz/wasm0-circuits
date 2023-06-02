@@ -15,12 +15,14 @@ use crate::{
 use bus_mapping::evm::OpcodeId;
 use eth_types::Field;
 use halo2_proofs::plonk::Error;
+use crate::evm_circuit::util::Cell;
 use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
+use halo2_proofs::circuit::Value;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmPcGadget<F> {
     same_context: SameContextGadget<F>,
-    value: RandomLinearCombination<F, N_BYTES_PROGRAM_COUNTER>,
+    value: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for EvmPcGadget<F> {
@@ -29,17 +31,17 @@ impl<F: Field> ExecutionGadget<F> for EvmPcGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::PC;
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
-        let value = cb.query_word_rlc();
+        let value = cb.query_cell();
 
         // program_counter is limited to 64 bits so we only consider 8 bytes
         cb.require_equal(
             "Constrain program_counter equal to stack value",
-            from_bytes::expr(&value.cells),
+           value.expr(),
             cb.curr.state.program_counter.expr(),
         );
 
         // Push the value on the stack
-        cb.stack_push(value.expr());
+        // cb.stack_push(value.expr());
 
         // State transition
         let step_state_transition = StepStateTransition {
@@ -70,7 +72,7 @@ impl<F: Field> ExecutionGadget<F> for EvmPcGadget<F> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
         self.value
-            .assign(region, offset, Some(step.program_counter.to_le_bytes()))?;
+            .assign(region, offset, Value::known(F::from(step.program_counter)))?;
 
         Ok(())
     }
@@ -79,18 +81,19 @@ impl<F: Field> ExecutionGadget<F> for EvmPcGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::test_util::CircuitTestBuilder;
-    use eth_types::bytecode;
+    use eth_types::{bytecode, Bytecode, bytecode_internal};
     use mock::TestContext;
 
     fn test_ok() {
-        let bytecode = bytecode! {
-            PUSH32(0)
+        let mut code = Bytecode::default();
+        let dest = code.alloc_default_global_data(32);
+        bytecode_internal! {code,
+            I32Const[dest]
             PC
-            STOP
         };
 
         CircuitTestBuilder::new_from_test_ctx(
-            TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
+            TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
         )
         .run();
     }
