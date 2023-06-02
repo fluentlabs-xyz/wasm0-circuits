@@ -275,6 +275,7 @@ impl Bytecode {
         self
     }
 
+    #[deprecated(note = "Use `fill_default_global_data` instead")]
     pub fn with_global_data(&mut self, memory_index: u32, memory_offset: u32, data: Vec<u8>) -> &mut Self {
         self.section_descriptors.push(SectionDescriptor::Data {
             index: memory_index,
