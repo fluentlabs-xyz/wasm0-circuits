@@ -5,6 +5,7 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use AccessValue::{Account, Code};
 use RW::{READ, WRITE};
+use crate::circuit_input_builder::AccessValue::Storage;
 
 /// State and Code Access with "keys/index" used in the access operation.
 #[derive(Debug, PartialEq, Eq)]
@@ -161,10 +162,10 @@ pub fn gen_state_access_trace<TX>(
                 // accs.push(Access::new(i, WRITE, Storage { address, key }));
             }
             OpcodeId::SLOAD => {
-                unreachable!("not implemented");
-                    // let address = contract_address;
-                // let key = step.stack.nth_last(0)?;
-                // accs.push(Access::new(i, READ, Storage { address, key }));
+                let address = contract_address;
+                let key_offset = step.stack.nth_last(1)?;
+                let key = step.global_memory.read_u256(key_offset)?;
+                accs.push(Access::new(i, READ, Storage { address, key }));
             }
             OpcodeId::SELFBALANCE => {
                 let address = contract_address;

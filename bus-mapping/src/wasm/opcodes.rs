@@ -61,6 +61,8 @@ use crate::wasm::opcodes::error_oog_memory_copy::OOGMemoryCopy;
 use crate::wasm::opcodes::error_precompile_failed::PrecompileFailed;
 use crate::wasm::opcodes::logs::Log;
 use crate::wasm::opcodes::sha3::Sha3;
+use crate::wasm::opcodes::sload::Sload;
+// use crate::wasm::opcodes::sstore::Sstore;
 
 #[cfg(any(feature = "test", test))]
 pub use self::sha3::sha3_tests::{gen_sha3_code, MemoryKind};
@@ -76,15 +78,11 @@ mod callvalue;
 mod codecopy;
 mod codesize;
 mod create;
-// mod dup;
-// mod exp;
 mod extcodecopy;
 // mod extcodehash;
 mod extcodesize;
 mod gasprice;
 mod logs;
-// mod mload;
-// mod mstore;
 mod number;
 mod origin;
 mod return_revert;
@@ -92,12 +90,11 @@ mod returndatacopy;
 mod returndatasize;
 mod selfbalance;
 mod sha3;
-// mod sload;
+mod sload;
 // mod sstore;
 mod stackonlyop;
 mod stacktomemoryop;
 mod stop;
-// mod swap;
 
 mod error_codestore;
 mod error_contract_address_collision;
@@ -363,17 +360,13 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::BLOCKHASH => StackToMemoryOpcode::<1, STACK_TO_MEMORY_TYPE_U256>::gen_associated_ops,
         OpcodeId::COINBASE => StackToMemoryOpcode::<0>::gen_associated_ops,
         OpcodeId::TIMESTAMP => StackToMemoryOpcode::<0>::gen_associated_ops,
-        // OpcodeId::NUMBER => StackToMemoryOpcode::gen_associated_ops,
         OpcodeId::NUMBER => Number::gen_associated_ops,
         OpcodeId::DIFFICULTY => StackToMemoryOpcode::<0>::gen_associated_ops,
         OpcodeId::GASLIMIT => StackToMemoryOpcode::<0>::gen_associated_ops,
         OpcodeId::CHAINID => StackToMemoryOpcode::<0>::gen_associated_ops,
         OpcodeId::SELFBALANCE => Selfbalance::gen_associated_ops,
         OpcodeId::BASEFEE => StackToMemoryOpcode::<0>::gen_associated_ops,
-        // OpcodeId::MLOAD => Mload::gen_associated_ops,
-        // OpcodeId::MSTORE => Mstore::<false>::gen_associated_ops,
-        // OpcodeId::MSTORE8 => Mstore::<true>::gen_associated_ops,
-        // OpcodeId::SLOAD => Sload::gen_associated_ops,
+        OpcodeId::SLOAD => Sload::gen_associated_ops,
         // OpcodeId::SSTORE => Sstore::gen_associated_ops,
         OpcodeId::PC => StackToMemoryOpcode::<0, STACK_TO_MEMORY_TYPE_U64>::gen_associated_ops,
         OpcodeId::MSIZE => StackToMemoryOpcode::<0, STACK_TO_MEMORY_TYPE_U64>::gen_associated_ops,

@@ -369,6 +369,17 @@ impl Rw {
         }
     }
 
+    pub fn storage_key_value(&self) -> (Word, Word) {
+        match self {
+            Self::AccountStorage {
+                storage_key,
+                value,
+                ..
+            } => (*storage_key, *value),
+            _ => unreachable!("{:?}", self),
+        }
+    }
+
     pub fn storage_value_aux(&self) -> (Word, Word, usize, Word) {
         match self {
             Self::AccountStorage {

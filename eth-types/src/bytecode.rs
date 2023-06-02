@@ -121,11 +121,7 @@ pub struct Bytecode {
 
 impl From<Bytecode> for Bytes {
     fn from(code: Bytecode) -> Self {
-        code.bytecode_items
-            .iter()
-            .map(|e| e.value)
-            .collect::<Vec<u8>>()
-            .into()
+        code.wasm_binary().into()
     }
 }
 
