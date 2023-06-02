@@ -155,11 +155,11 @@ pub fn gen_state_access_trace<TX>(
 
         let result: Result<(), Error> = (|| {
             match step.op {
-                OpcodeId::SSTORE => {
-                    unreachable!("not implemented");
-                // let address = contract_address;
-                // let key = step.stack.nth_last(0)?;
-                // accs.push(Access::new(i, WRITE, Storage { address, key }));
+            OpcodeId::SSTORE => {
+                let address = contract_address;
+                let key_offset = step.stack.nth_last(1)?;
+                let key = step.global_memory.read_u256(key_offset)?;
+                accs.push(Access::new(i, WRITE, Storage { address, key }));
             }
             OpcodeId::SLOAD => {
                 let address = contract_address;
