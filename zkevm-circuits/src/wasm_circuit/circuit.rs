@@ -5,6 +5,7 @@ use std::{marker::PhantomData};
 use halo2_proofs::circuit::{Chip, Layouter, Region, Value};
 use halo2_proofs::plonk::{Advice, Constraints, Error, Fixed};
 use halo2_proofs::poly::Rotation;
+use num_traits::pow;
 use eth_types::Field;
 use gadgets::is_zero::{IsZeroChip, IsZeroConfig, IsZeroInstruction};
 use gadgets::less_than::{LtChip, LtInstruction};
@@ -13,7 +14,7 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::table::PoseidonTable;
 use crate::wasm_circuit::common::wasm_compute_section_len;
 use crate::wasm_circuit::consts::{WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH};
-use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip};
+use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip, LEB128Config};
 use crate::wasm_circuit::tables::range_table::RangeTableConfig;
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
@@ -58,9 +59,8 @@ pub struct WasmConfig<F: Field> {
     id_of_section: Column<Advice>,
     ///
     is_section_body: Column<Advice>,
-    /// TODO refactor to a single column
-    /// array of LEB128Chip's where index+1 represents number of leb bytes
-    leb128_chip_for_byte_count: Vec<LEB128Chip<F>>,
+    ///
+    leb128_chip: LEB128Chip<F>,
     ///
     is_id_of_section_grows_lt_chip: LtChip<F, 1>,
     ///
@@ -69,12 +69,6 @@ pub struct WasmConfig<F: Field> {
 
 impl<F: Field> WasmConfig<F>
 {
-    // pub fn get_leb_config(&self, leb_bytes_n: usize) -> &LEB128Config<F> {
-    //     &self.leb128_config_for_byte_n[leb_bytes_n - 1]
-    // }
-    pub fn get_leb_chip(&self, leb_bytes_n: usize) -> &LEB128Chip<F> {
-        &self.leb128_chip_for_byte_count[leb_bytes_n - 1]
-    }
 }
 
 
@@ -109,6 +103,7 @@ impl<F: Field> WasmChip<F>
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
         wasm_bytecode_table: WasmBytecodeTable,
+        // leb128_config: &LEB128Config<F>,
     ) -> WasmConfig<F> {
         let byte_value_range_table_config = RangeTableConfig::configure(cs);
         let section_id_range_table_config = RangeTableConfig::configure(cs);
@@ -124,19 +119,12 @@ impl<F: Field> WasmChip<F>
         let is_section_body = cs.advice_column();
         let section_len_leb_solid_number = cs.advice_column();
 
-        let mut leb_chips = Vec::new();
-        for leb_bytes_n in 1..=10 {
-            let config = LEB128Chip::configure(
-                cs,
-                |vc| vc.query_advice(section_len_leb_solid_number, Rotation::cur()),
-                &wasm_bytecode_table.value,
-                // TODO add support for signed
-                false,
-                leb_bytes_n,
-            );
-            let chip = LEB128Chip::construct(config);
-            leb_chips.push(chip);
-        }
+        let leb128_chip_config = LEB128Chip::configure(
+            cs,
+            |vc| vc.query_advice(section_len_leb_solid_number, Rotation::cur()),
+            &wasm_bytecode_table.value,
+        );
+        let mut leb128_chip = LEB128Chip::construct(leb128_chip_config);
 
         cs.lookup("all bytecode values are byte values", |vc| {
             let bytecode_value = vc.query_advice(wasm_bytecode_table.value, Rotation::cur());
@@ -341,7 +329,7 @@ impl<F: Field> WasmChip<F>
                 is_section_len_expr.clone() * is_prev_section_len_expr.clone(),
                 |bcb| {
                     bcb.require_zero(
-                        "section_len_leb_solid_number must be equal for all section_len_leb_solid_number inside the same len block block",
+                        "section_len_leb_solid_number must be equal for all section_len_leb_solid_number inside the same len block",
                         section_len_leb_solid_number_expr.clone() - section_len_leb_solid_number_prev_expr.clone(),
                     );
                 }
@@ -452,8 +440,6 @@ impl<F: Field> WasmChip<F>
             cb.gate(
                 and::expr([
                     index_at_positions[2].expr(),
-                    // vc.query_fixed(q_last, Rotation::cur()),
-                    // not::expr(vc.query_fixed(q_first, Rotation::cur())),
                     vc.query_fixed(q_enable, Rotation::cur()),
                 ]),
             )
@@ -481,7 +467,7 @@ impl<F: Field> WasmChip<F>
             is_section_id,
             is_section_len,
             is_section_body,
-            leb128_chip_for_byte_count: leb_chips,
+            leb128_chip,
             is_id_of_section_grows_lt_chip,
             _marker: PhantomData,
         };
@@ -504,9 +490,7 @@ impl<F: Field> WasmChip<F>
         region: &mut Region<F>,
         wasm_bytes: &[u8],
     ) -> Result<(), Error> {
-        for chip in &self.config.leb128_chip_for_byte_count {
-            chip.init_assign(region, wasm_bytes.len() - 1);
-        }
+        self.config.leb128_chip.assign_init(region, wasm_bytes.len() - 1);
 
         let mut index_at_positions: Vec<IsZeroChip<F>> = Vec::new();
         let mut index_at_prev_positions: Vec<IsZeroChip<F>> = Vec::new();
@@ -630,49 +614,66 @@ impl<F: Field> WasmChip<F>
             }
             for i in 0..section_len {
                 let offset = section_body_start_index + (i as usize);
+                let val = 1;
                 region.assign_advice(
-                    || format!("assign is_section_body at {}", offset),
+                    || format!("assign 'is_section_body' to {} at {}", val, offset),
                     self.config.is_section_body,
                     offset,
-                    || Value::known(F::one()),
+                    || Value::known(F::from(val)),
                 )?;
             }
 
-            let leb128_chip = self.config.get_leb_chip(section_len_leb_bytes_count as usize);
-            let mut leb_base64_word: u64 = 0;
+            // let leb128_chip = self.config.get_leb_chip(section_len_leb_bytes_count as usize);
             for offset in section_len_start_index..=section_len_end_index {
+                let val = section_len;
                 region.assign_advice(
-                    || format!("assign section_len_leb_solid_number to {} at {}", section_len, offset),
+                    || format!("assign 'section_len_leb_solid_number' to {} at {}", val, offset),
                     self.config.section_len_leb_solid_number,
                     offset,
-                    || Value::known(F::from(section_len as u64)),
+                    || Value::known(F::from(val as u64)),
                 )?;
-                leb_base64_word = leb_base64_word * 0b100000000 + wasm_bytes[section_len_start_index + (section_len_end_index-offset)] as u64;
             }
+            let mut sn_recovered_at_pos: u64 = 0;
             for offset in section_len_start_index..=section_len_end_index {
-                leb128_chip.assign(
+                let byte_offset = offset - section_len_start_index;
+                let is_first_leb_byte = offset == section_len_start_index;
+                let is_last_leb_byte = offset == section_len_end_index;
+                let is_byte_has_cb = offset < section_len_end_index;
+                let leb_byte_mul = pow(0b10000000, byte_offset);
+
+                // always unsigned
+                sn_recovered_at_pos = sn_recovered_at_pos + (wasm_bytes[offset] as u64 - if is_byte_has_cb {0b10000000} else {0}) * leb_byte_mul;
+                self.config.leb128_chip.assign(
                     region,
                     offset,
-                    offset == section_len_start_index,
-                    offset != section_len_end_index,
-                    leb_base64_word as u64,
+                    byte_offset,
+                    true,
+                    true,
+                    is_first_leb_byte,
+                    is_last_leb_byte,
+                    is_byte_has_cb,
+                    // always unsigned
+                    false,
+                    section_len as u64,
+                    sn_recovered_at_pos,
                 );
             }
             let mut section_len_prev = section_len;
             for offset in section_body_start_index..=section_body_end_index {
                 section_len_prev -= 1;
+                let val = section_len_prev;
                 region.assign_advice(
-                    || format!("assign section_len_leb_solid_number to {} at {}", section_len_prev, offset),
+                    || format!("assign 'section_len_leb_solid_number' to {} at {}", val, offset),
                     self.config.section_len_leb_solid_number,
                     offset,
-                    || Value::known(F::from(section_len_prev as u64)),
+                    || Value::known(F::from(val as u64)),
                 )?;
             }
 
             for offset in section_start_index..=section_end_index {
                 let val = section_id;
                 region.assign_advice(
-                    || format!("assign id_of_section val {} at {}", val, offset),
+                    || format!("assign 'id_of_section' to {} at {}", val, offset),
                     self.config.id_of_section,
                     offset,
                     || Value::known(F::from(section_id as u64))

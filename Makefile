@@ -65,7 +65,7 @@ stats_state_circuit: # Print a table with State Circuit stats by ExecState/opcod
 stats_evm_circuit: # Print a table with EVM Circuit stats by ExecState/opcode
 	@cargo test -p zkevm-circuits --features=test,warn-unimplemented get_evm_states_stats -- --nocapture --ignored
 clean:
-	cargo clean
+	cargo clean -vv
 
 clean_libc_targets:
 	rm -rf target/debug/build/libc-*
@@ -75,6 +75,9 @@ clean_halo2_targets:
 	rm -rf target/debug/build/halo2*
 	rm -rf target/release/build/halo2*
 
+test_wasm:
+	cargo test --lib leb128_circuit_tests --manifest-path /home/bfday/gitANKR/wasm0/wasm0-circuits2/zkevm-circuits/Cargo.toml
+	cargo test --lib wasm_circuit_tests --manifest-path /home/bfday/gitANKR/wasm0/wasm0-circuits2/zkevm-circuits/Cargo.toml
 
 stats_copy_circuit: # Print a table with Copy Circuit stats by ExecState/opcode
 	@cargo test -p zkevm-circuits --features=test,warn-unimplemented get_copy_states_stats -- --nocapture --ignored
