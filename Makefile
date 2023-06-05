@@ -75,9 +75,12 @@ clean_halo2_targets:
 	rm -rf target/debug/build/halo2*
 	rm -rf target/release/build/halo2*
 
-test_wasm:
-	cargo test --lib leb128_circuit_tests --manifest-path /home/bfday/gitANKR/wasm0/wasm0-circuits2/zkevm-circuits/Cargo.toml
-	cargo test --lib wasm_circuit_tests --manifest-path /home/bfday/gitANKR/wasm0/wasm0-circuits2/zkevm-circuits/Cargo.toml
+MANIFEST_PATH=/home/bfday/gitANKR/wasm0/wasm0-circuits2/zkevm-circuits/Cargo.toml
+test_wasm_circuit:
+	cargo test --lib leb128_circuit_tests --manifest-path ${MANIFEST_PATH}
+	cargo test --lib wasm_circuit_tests --manifest-path ${MANIFEST_PATH}
+	cargo test --lib wasm_type_section_item_tests --manifest-path ${MANIFEST_PATH}
+	cargo test --lib wasm_type_section_body_tests --manifest-path ${MANIFEST_PATH}
 
 stats_copy_circuit: # Print a table with Copy Circuit stats by ExecState/opcode
 	@cargo test -p zkevm-circuits --features=test,warn-unimplemented get_copy_states_stats -- --nocapture --ignored

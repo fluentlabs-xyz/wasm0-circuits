@@ -1,27 +1,36 @@
 use halo2_proofs::{
-    plonk::{Advice, Column, ConstraintSystem},
+    plonk::{Column, ConstraintSystem},
 };
 use std::{marker::PhantomData};
+use std::rc::Rc;
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Constraints, Expression, Fixed, VirtualCells};
+use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
 use eth_types::Field;
-use gadgets::util::{Expr, not};
-use crate::wasm_circuit::leb128_circuit::consts::{BYTES_IN_BASE64_WORD, EIGHT_LS_BITS_MASK};
+use gadgets::util::not;
+use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::error::Error;
+use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
+use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::circuit::WasmTypeSectionItemChip;
 
 ///
 #[derive(Debug, Clone)]
 pub struct WasmTypeSectionBodyConfig<F> {
-    pub is_item_type: Column<Fixed>,
-    pub is_input_params_quantity: Column<Fixed>,
-    pub is_input_param_type: Column<Fixed>,
-    pub is_output_params_quantity: Column<Fixed>,
-    pub is_output_param_type: Column<Fixed>,
+    pub q_enable: Column<Fixed>,
+    pub is_body_items_count: Column<Fixed>,
+    pub is_body: Column<Fixed>,
+
+    pub wasm_type_section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
+    pub leb128_chip: Rc<LEB128Chip<F>>,
+
     _marker: PhantomData<F>,
 }
 
 ///
-impl<F: Field> WasmTypeSectionBodyConfig<F>
+impl<'a, F: Field> WasmTypeSectionBodyConfig<F>
 {}
 
 ///
@@ -47,96 +56,54 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
     ///
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        solid_number: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
+        bytecode_table: &WasmBytecodeTable,
+        leb128_chip: Rc<LEB128Chip<F>>,
+        wasm_type_section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
     ) -> WasmTypeSectionBodyConfig<F> {
-        let is_first_leb_byte = cs.fixed_column();
-        let leb_base64_words = cs.advice_column();
-        let byte_has_cb = cs.advice_column();
+        let q_enable = cs.fixed_column();
+        let is_body_items_count= cs.fixed_column();
+        let is_body= cs.fixed_column();
 
-        let mut cbs_constraints = Vec::<Expression<F>>::new();
-        let mut cbs_transitions_constraints = Vec::<Expression<F>>::new();
         cs.create_gate("WasmTypeSectionBody gate", |vc| {
-            let is_first_leb_byte_expr = vc.query_fixed(is_first_leb_byte, Rotation::cur());
-            let sn_expr = solid_number(vc);
-            let mut sn_recovered_expr = 0.expr();
-            let mut number_for_signed_inversion_expr = 0.expr();
-            for i in (0..bytes_n).rev() {
-                let leb_byte_expr = vc.query_advice(*bytes, Rotation(i as i32));
-                let byte_has_cb_expr = vc.query_advice(byte_has_cb, Rotation(i as i32));
-                let not_byte_has_cb_expr = not::expr(byte_has_cb_expr.clone());
-                // continuation bit must be 0 or 1 value (boolean) (TODO replace with lookup)
-                cbs_constraints.push(byte_has_cb_expr.clone() * (byte_has_cb_expr.clone() - 1.expr()));
-                if i < bytes_n - 1 {
-                    let has_cb_next_expr = vc.query_advice(byte_has_cb, Rotation((i + 1) as i32));
-                    // continuation bit (CB) eligible transitions: 1->1 or 1->0 or 0->0 not 0->1 (TODO replace with lookup)
-                    cbs_transitions_constraints.push((byte_has_cb_expr.clone() - 1.expr()) * has_cb_next_expr);
-                }
-                if is_signed {
-                    let has_cb_expr = vc.query_advice(byte_has_cb, Rotation(i as i32));
-                    let mut is_consider_expr = 1.expr();
-                    if i > 0 {
-                        let has_cb_prev_expr = vc.query_advice(byte_has_cb, Rotation((i-1) as i32));
-                        is_consider_expr = has_cb_prev_expr.clone() + has_cb_expr.clone() - has_cb_prev_expr * has_cb_expr;
-                    }
-                    number_for_signed_inversion_expr = number_for_signed_inversion_expr * 0b10000000.expr() + 0b1111111.expr() * is_consider_expr.clone();
-                    sn_recovered_expr = sn_recovered_expr * 0b10000000.expr()
-                        + (leb_byte_expr.clone() - 0b10000000.expr() * byte_has_cb_expr.expr()) * is_consider_expr.clone();
-                } else {
-                    sn_recovered_expr = sn_recovered_expr * 0b10000000.expr() + leb_byte_expr.clone() - byte_has_cb_expr * 0b10000000.expr();
-                }
-            }
-            if is_signed {
-                sn_recovered_expr = sn_recovered_expr.clone() - 1.expr() - number_for_signed_inversion_expr.clone();
-            }
+            let mut cb = BaseConstraintBuilder::default();
 
-            let mut leb_base64_words_recovered = Vec::<Expression<F>>::new();
-            let mut rot_idx = 0;
-            let leb_bytes_index_max = bytes_n - 1;
-            for i in 0..=leb_bytes_index_max {
-                if i % BYTES_IN_BASE64_WORD == 0 {
-                    leb_base64_words_recovered.push(0.expr());
-                    rot_idx = i + 7;
-                    if rot_idx > leb_bytes_index_max { rot_idx = leb_bytes_index_max }
-                } else {
-                    rot_idx -= 1;
-                }
-                let mut leb_byte_expr = vc.query_advice(*bytes, Rotation(rot_idx as i32));
-                if rot_idx > 0 && is_signed {
-                    let has_cb_prev_expr = vc.query_advice(byte_has_cb, Rotation((rot_idx - 1) as i32));
-                    let has_cb_expr = vc.query_advice(byte_has_cb, Rotation(rot_idx as i32));
-                    let is_consider_expr = has_cb_prev_expr.clone() + has_cb_expr.clone() - has_cb_prev_expr * has_cb_expr;
-                    let is_not_consider_expr = not::expr(is_consider_expr.clone());
-                    leb_byte_expr = leb_byte_expr - is_not_consider_expr.clone() * EIGHT_LS_BITS_MASK.expr();
-                }
-                let base64_words_last_index = leb_base64_words_recovered.len() - 1;
-                let leb_base64_word = leb_base64_words_recovered[base64_words_last_index].clone();
-                leb_base64_words_recovered[base64_words_last_index] = leb_byte_expr + leb_base64_word * 0b100000000.expr();
-            }
+            let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let is_body_items_count_expr = vc.query_fixed(is_body_items_count, Rotation::cur());
+            let is_body_expr = vc.query_fixed(is_body, Rotation::cur());
 
-            let mut constraints = Vec::new();
-            constraints.push(
-                ("solid number equals to recovered", sn_expr.clone() - sn_recovered_expr.clone()),
+            let byte_value_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+
+            cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
+            cb.require_boolean("is_body_items_count is boolean", is_body_items_count_expr.clone());
+            cb.require_boolean("is_body is boolean", is_body_expr.clone());
+
+            cb.condition(
+                is_body_items_count_expr.clone(),
+                |bcb| {
+                    bcb.require_zero(
+                        "if is_body_items_count -> leb128",
+                        not::expr(vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()))
+                    );
+                }
             );
-            for cb_constraint in cbs_constraints {
-                constraints.push(("continuation bit check", cb_constraint));
-            }
-            for continuation_bit_transition_constraint in cbs_transitions_constraints {
-                constraints.push(("continuation bits transitions checks", continuation_bit_transition_constraint));
-            }
-            for (i, leb_base64_word_recovered) in leb_base64_words_recovered.iter().enumerate() {
-                let leb_base64_word = vc.query_advice(leb_base64_words, Rotation(i as i32));
-                constraints.push((
-                    "base64 word equals to recoered base64 word",
-                    leb_base64_word_recovered.clone() - leb_base64_word.clone()
-                ));
-            }
-            Constraints::with_selector(
-                is_first_leb_byte_expr,
-                constraints,
-            )
+
+            cb.require_equal(
+                "if is_body_expr <-> wasm_type_section_item",
+                is_body_expr.clone(),
+                vc.query_fixed(wasm_type_section_item_chip.config.q_enable, Rotation::cur()),
+            );
+
+            // TODO add more
+
+            cb.gate(q_enable_expr.clone())
         });
 
-        let config = WasmTypeSectionBodyConfig {
+        let config = WasmTypeSectionBodyConfig::<F> {
+            q_enable,
+            is_body_items_count,
+            is_body,
+            leb128_chip,
+            wasm_type_section_item_chip,
             _marker: PhantomData,
         };
 
@@ -155,7 +122,11 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
                 offset,
                 false,
                 false,
-                0
+                false,
+                false,
+                0,
+                0,
+                0,
             );
         }
     }
@@ -165,29 +136,108 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         &self,
         region: &mut Region<F>,
         offset: usize,
-        is_first_leb_byte: bool,
-        leb_byte_has_continuation_bit: bool,
-        leb_base64_word: u64,
+        is_body_items_count: bool,
+        is_body_items_count_first_byte: bool,
+        is_body_items_count_last_byte: bool,
+        is_body: bool,
+        leb_byte_offset: usize,
+        leb_sn: u64,
+        leb_sn_recovered_at_pos: u64,
     ) {
-        region.assign_advice(
-            || format!("assign byte_has_cb val {} at {}", leb_byte_has_continuation_bit, offset),
-            self.config.byte_has_cb,
-            offset,
-            || Value::known(F::from(leb_byte_has_continuation_bit as u64)),
-        ).unwrap();
-
+        if is_body_items_count || is_body_items_count {
+            self.config.leb128_chip.assign(
+                region,
+                offset,
+                leb_byte_offset,
+                true,
+                is_body_items_count_first_byte,
+                is_body_items_count_last_byte,
+                !is_body_items_count_last_byte,
+                false,
+                leb_sn,
+                leb_sn_recovered_at_pos,
+            );
+        }
+        let val = is_body_items_count || is_body;
         region.assign_fixed(
-            || format!("assign is_first_leb_byte val {} at {}", is_first_leb_byte, offset),
-            self.config.is_first_leb_byte,
+            || format!("assign 'q_enable' val {} at {}", val, offset),
+            self.config.q_enable,
             offset,
-            || Value::known(F::from(is_first_leb_byte as u64)),
+            || Value::known(F::from(val as u64)),
         ).unwrap();
+        region.assign_fixed(
+            || format!("assign 'is_body_items_count' val {} at {}", is_body_items_count, offset),
+            self.config.is_body_items_count,
+            offset,
+            || Value::known(F::from(is_body_items_count as u64)),
+        ).unwrap();
+        region.assign_fixed(
+            || format!("assign 'is_body' val {} at {}", is_body, offset),
+            self.config.is_body,
+            offset,
+            || Value::known(F::from(is_body as u64)),
+        ).unwrap();
+    }
 
-        region.assign_advice(
-            || format!("assign leb_base64_word val {} at {}", leb_base64_word, offset),
-            self.config.leb_base64_word,
-            offset,
-            || Value::known(F::from(leb_base64_word)),
-        ).unwrap();
+    ///
+    pub fn assign_auto(
+        &self,
+        region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
+        offset_start: usize,
+    ) -> Result<usize, Error> {
+        let mut offset = offset_start;
+        if offset >= wasm_bytecode.bytes.len() {
+            return Err(Error::IndexOutOfBounds(format!("offset {} when max {}", offset, wasm_bytecode.bytes.len())))
+        }
+
+        let (body_items_count_sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), false, offset)?;
+        let mut sn_recovered_at_pos = 0;
+        for byte_offset in offset..=last_byte_offset {
+            let leb_byte_offset = byte_offset - offset;
+            sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
+                sn_recovered_at_pos,
+                false,
+                leb_byte_offset,
+                last_byte_offset - offset,
+                wasm_bytecode.bytes[offset],
+            );
+            self.assign(
+                region,
+                byte_offset,
+                true,
+                byte_offset == offset,
+                byte_offset == last_byte_offset,
+                false,
+                leb_byte_offset,
+                body_items_count_sn,
+                sn_recovered_at_pos,
+            );
+        }
+        offset = last_byte_offset + 1;
+
+        for body_item_number in 1..=body_items_count_sn {
+            let next_body_item_offset = self.config.wasm_type_section_item_chip.assign_auto(
+                region,
+                wasm_bytecode,
+                offset,
+            )?;
+            for offset in offset..next_body_item_offset {
+                self.assign(
+                    region,
+                    offset,
+                    false,
+                    false,
+                    false,
+                    true,
+                    0,
+                    0,
+                    0,
+                );
+            }
+            offset = next_body_item_offset;
+        }
+
+        Ok(offset)
     }
 }

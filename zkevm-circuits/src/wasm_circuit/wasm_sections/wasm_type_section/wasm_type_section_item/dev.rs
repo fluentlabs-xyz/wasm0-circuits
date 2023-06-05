@@ -2,26 +2,32 @@ use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
 use std::{marker::PhantomData};
-use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
-use halo2_proofs::plonk::{Circuit, Column};
-use halo2_proofs::poly::Rotation;
-use eth_types::Field;
-use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip, LEB128Config};
+use std::rc::Rc;
+use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
+use halo2_proofs::plonk::Circuit;
+use eth_types::{Field, Hash, ToWord};
+use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::circuit::{WasmTypeSectionItemChip};
 
 #[derive(Default)]
-struct TestCircuit<'a, F, const LEB_BYTES_N: usize, const IS_SIGNED: bool> {
-    bytes: &'a [u8],
+struct TestCircuit<'a, F> {
+    code_hash: Hash,
+    bytecode_bytes: &'a [u8],
+    offset_start: usize,
     _marker: PhantomData<F>,
 }
 
 #[derive(Clone)]
-struct TestCircuitConfig<F, const LEB_BYTES_N: usize, const IS_SIGNED: bool> {
-    leb128_config: LEB128Config<F>,
+struct TestCircuitConfig<F> {
+    wasm_type_section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
+    wasm_bytecode_table: Rc<WasmBytecodeTable>,
     _marker: PhantomData<F>,
 }
 
-impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, LEB_BYTES_N, IS_SIGNED> {
-    type Config = TestCircuitConfig<F, LEB_BYTES_N, IS_SIGNED>;
+impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
+    type Config = TestCircuitConfig<F>;
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self { Self::default() }
@@ -29,15 +35,22 @@ impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> f
     fn configure(
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
-        let solid_number = cs.advice_column();
         let bytes = cs.advice_column();
+        let wasm_bytecode_table = WasmBytecodeTable::construct(cs);
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
-            |vc| vc.query_advice(solid_number, Rotation::cur()),
             &bytes,
         );
+        let leb128_chip = LEB128Chip::construct(leb128_config);
+        let wasm_type_section_item_config = WasmTypeSectionItemChip::configure(
+            cs,
+            &wasm_bytecode_table,
+            Rc::new(leb128_chip),
+        );
+        let wasm_type_section_item_chip = WasmTypeSectionItemChip::construct(wasm_type_section_item_config);
         let test_circuit_config = TestCircuitConfig {
-            leb128_config,
+            wasm_type_section_item_chip: Rc::new(wasm_type_section_item_chip),
+            wasm_bytecode_table: Rc::new(wasm_bytecode_table),
             _marker: Default::default(),
         };
 
@@ -49,39 +62,17 @@ impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> f
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let leb128_chip = LEB128Chip::construct(config.leb128_config);
-
+        let wasm_bytecode = WasmBytecode::new(self.bytecode_bytes.to_vec().clone(), self.code_hash.to_word());
+        config.wasm_bytecode_table.load(&mut layouter, &wasm_bytecode)?;
         layouter.assign_region(
-            || "leb128 region",
+            || "wasm_type_section_item region",
             |mut region| {
-                for i in 0..self.bytes.len() {
-                    let mut val = 0 as u64;
-                    val = self.solid_number;
-                    region.assign_advice(
-                        || format!("assign 'solid_number' is_negative {} val {} at {}", self.is_negative, val, i),
-                        config.solid_number,
-                        i,
-                        || Value::known(if self.is_negative { F::from(val).neg() } else { F::from(val) }),
-                    )?;
-                }
-
-                for (i, &leb_byte) in self.leb_bytes.iter().enumerate() {
-                    region.assign_advice(
-                        || format!("assign leb_byte val {} at {}", leb_byte, i),
-                        config.leb_bytes,
-                        i,
-                        || Value::known(F::from(leb_byte as u64)),
-                    ).unwrap();
-                    let leb_base64_word = if i < self.leb_base64_words.len() { self.leb_base64_words[i] } else { 0 };
-                    leb128_chip.assign(
-                        &mut region,
-                        i,
-                        // self.leb_bytes[i] as u64,
-                        i == 0,
-                        i < (self.leb_bytes_last_byte_index as usize),
-                        leb_base64_word,
-                    );
-                }
+                config.wasm_type_section_item_chip.assign_init(&mut region, self.bytecode_bytes.len() - 1);
+                config.wasm_type_section_item_chip.assign_auto(
+                    &mut region,
+                    &wasm_bytecode,
+                    self.offset_start,
+                ).unwrap();
 
                 Ok(())
             }
@@ -92,18 +83,17 @@ impl<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool> Circuit<F> f
 }
 
 #[cfg(test)]
-mod leb128_circuit_tests {
-    use std::env;
+mod wasm_type_section_item_tests {
     use halo2_proofs::dev::MockProver;
+    use halo2_proofs::halo2curves::bn256::Fr;
+    use rand::Rng;
+    use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
+    use crate::wasm_circuit::wasm_sections::consts::NumType;
     use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::dev::TestCircuit;
 
-    fn rust_log_is_debug() -> bool {
-        env::var("RUST_LOG").unwrap_or("".to_string()) == "debug"
-    }
-
-    fn test<'a, F: Field, const LEB_BYTES_N: usize, const IS_SIGNED: bool>(
-        test_circuit: TestCircuit<'_, F, LEB_BYTES_N, IS_SIGNED>,
+    fn test<'a, F: Field>(
+        test_circuit: TestCircuit<'_, F>,
         is_ok: bool,
     ) {
         let k = 5;
@@ -116,7 +106,42 @@ mod leb128_circuit_tests {
     }
 
     #[test]
-    pub fn test_debug_exact_number_unsigned() {
-        exact_number::<1, { IS_SIGNED }>(0);
+    pub fn test_type_section_item_bytecode_is_ok() {
+        let section_item_bytecode = [0x60, 0x2, 0x7e, 0x7f, 0x1, 0x7f];
+        let code_hash = CodeDB::hash(&section_item_bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode_bytes: &section_item_bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
+    }
+
+    #[test]
+    pub fn test_type_section_item_arg_type_unsupported() {
+        let mut rng = rand::thread_rng();
+        let arg_type_bytecode_offsets = [2, 3, 5];
+        let section_item_bytecode = [0x60, 0x2, 0x7e, 0x7f, 0x1, 0x7f];
+
+        for offset in arg_type_bytecode_offsets {
+            let mut section_item_bytecode = section_item_bytecode.clone();
+            let mut arg_type_bad_val: u8 = 0;
+            loop {
+                arg_type_bad_val = rng.gen();
+                if arg_type_bad_val != NumType::I32 as u8 && arg_type_bad_val != NumType::I64 as u8 {
+                    break
+                }
+            }
+            section_item_bytecode[offset] = arg_type_bad_val;
+            let code_hash = CodeDB::hash(&section_item_bytecode);
+            let test_circuit = TestCircuit::<Fr> {
+                code_hash,
+                bytecode_bytes: &section_item_bytecode,
+                offset_start: 0,
+                _marker: Default::default(),
+            };
+            test(test_circuit, false);
+        }
     }
 }

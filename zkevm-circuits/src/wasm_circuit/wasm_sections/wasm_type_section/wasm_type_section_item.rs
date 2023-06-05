@@ -1,3 +1,4 @@
 pub mod consts;
 pub mod circuit;
-// pub mod dev;
+#[cfg(any(feature = "test", test))]
+pub mod dev;

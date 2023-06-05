@@ -14,7 +14,7 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::table::PoseidonTable;
 use crate::wasm_circuit::common::wasm_compute_section_len;
 use crate::wasm_circuit::consts::{WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH};
-use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip, LEB128Config};
+use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip};
 use crate::wasm_circuit::tables::range_table::RangeTableConfig;
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
@@ -37,8 +37,6 @@ pub struct WasmConfig<F: Field> {
     pub(crate) section_id_range_table_config: RangeTableConfig<F, { WASM_SECTION_ID_MAX + 1 }>,
     ///
     pub(crate) wasm_bytecode_table: WasmBytecodeTable,
-    ///
-    section_len_leb_solid_number: Column<Advice>,
     ///
     q_enable: Column<Fixed>,
     ///
@@ -103,7 +101,6 @@ impl<F: Field> WasmChip<F>
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
         wasm_bytecode_table: WasmBytecodeTable,
-        // leb128_config: &LEB128Config<F>,
     ) -> WasmConfig<F> {
         let byte_value_range_table_config = RangeTableConfig::configure(cs);
         let section_id_range_table_config = RangeTableConfig::configure(cs);
@@ -117,14 +114,12 @@ impl<F: Field> WasmChip<F>
         let id_of_section = cs.advice_column();
         let is_section_len = cs.advice_column();
         let is_section_body = cs.advice_column();
-        let section_len_leb_solid_number = cs.advice_column();
 
-        let leb128_chip_config = LEB128Chip::configure(
+        let leb128_config = LEB128Chip::configure(
             cs,
-            |vc| vc.query_advice(section_len_leb_solid_number, Rotation::cur()),
             &wasm_bytecode_table.value,
         );
-        let mut leb128_chip = LEB128Chip::construct(leb128_chip_config);
+        let mut leb128_chip = LEB128Chip::construct(leb128_config);
 
         cs.lookup("all bytecode values are byte values", |vc| {
             let bytecode_value = vc.query_advice(wasm_bytecode_table.value, Rotation::cur());
@@ -275,9 +270,6 @@ impl<F: Field> WasmChip<F>
             let is_section_body_expr = vc.query_advice(is_section_body, Rotation::cur());
             let is_prev_section_body_expr = vc.query_advice(is_section_body, Rotation::prev());
 
-            let section_len_leb_solid_number_expr = vc.query_advice(section_len_leb_solid_number, Rotation::cur());
-            let section_len_leb_solid_number_prev_expr = vc.query_advice(section_len_leb_solid_number, Rotation::prev());
-
             cb.require_zero(
                 "(only once, if previous bytecode index is 7) !is_section_id && !is_section_len && !is_section_body -(1)> is_section_id",
                 and::expr([
@@ -325,37 +317,28 @@ impl<F: Field> WasmChip<F>
                 }
             );
 
-            cb.condition(
-                is_section_len_expr.clone() * is_prev_section_len_expr.clone(),
-                |bcb| {
-                    bcb.require_zero(
-                        "section_len_leb_solid_number must be equal for all section_len_leb_solid_number inside the same len block",
-                        section_len_leb_solid_number_expr.clone() - section_len_leb_solid_number_prev_expr.clone(),
-                    );
-                }
-            );
-
-            cb.condition(
-                is_section_body_expr.clone(),
-                |bcb| {
-                    bcb.require_zero(
-                        "section_len_leb_solid_number decreases by 1 for section_body",
-                        section_len_leb_solid_number_prev_expr.clone() - section_len_leb_solid_number_expr.clone() - 1.expr(),
-                    );
-                }
-            );
-            cb.condition(
-                or::expr([
-                    is_section_id_expr.clone() * is_prev_section_body_expr.expr(),
-                    q_last_expr.expr()
-                ]),
-                |bcb| {
-                    bcb.require_zero(
-                        "section_len_leb_solid_number_expr must equal 0 at the end of the body",
-                        section_len_leb_solid_number_expr.clone(),
-                    );
-                }
-            );
+            // TODO recover (do not reuse leb cols)
+            // cb.condition(
+            //     is_section_body_expr.clone(),
+            //     |bcb| {
+            //         bcb.require_zero(
+            //             "section_len_leb_solid_number decreases by 1 for section_body",
+            //             section_len_leb_solid_number_prev_expr.clone() - section_len_leb_solid_number_expr.clone() - 1.expr(),
+            //         );
+            //     }
+            // );
+            // cb.condition(
+            //     or::expr([
+            //         is_section_id_expr.clone() * is_prev_section_body_expr.expr(),
+            //         q_last_expr.expr()
+            //     ]),
+            //     |bcb| {
+            //         bcb.require_zero(
+            //             "section_len_leb_solid_number_expr must equal 0 at the end of the body",
+            //             section_len_leb_solid_number_expr.clone(),
+            //         );
+            //     }
+            // );
 
             cb.require_equal(
                 "prev.hash == cur.hash",
@@ -454,7 +437,6 @@ impl<F: Field> WasmChip<F>
         let config = WasmConfig {
             poseidon_table,
             wasm_bytecode_table,
-            section_len_leb_solid_number,
             q_enable,
             q_first,
             q_last,
@@ -623,16 +605,6 @@ impl<F: Field> WasmChip<F>
                 )?;
             }
 
-            // let leb128_chip = self.config.get_leb_chip(section_len_leb_bytes_count as usize);
-            for offset in section_len_start_index..=section_len_end_index {
-                let val = section_len;
-                region.assign_advice(
-                    || format!("assign 'section_len_leb_solid_number' to {} at {}", val, offset),
-                    self.config.section_len_leb_solid_number,
-                    offset,
-                    || Value::known(F::from(val as u64)),
-                )?;
-            }
             let mut sn_recovered_at_pos: u64 = 0;
             for offset in section_len_start_index..=section_len_end_index {
                 let byte_offset = offset - section_len_start_index;
@@ -648,7 +620,6 @@ impl<F: Field> WasmChip<F>
                     offset,
                     byte_offset,
                     true,
-                    true,
                     is_first_leb_byte,
                     is_last_leb_byte,
                     is_byte_has_cb,
@@ -658,17 +629,18 @@ impl<F: Field> WasmChip<F>
                     sn_recovered_at_pos,
                 );
             }
-            let mut section_len_prev = section_len;
-            for offset in section_body_start_index..=section_body_end_index {
-                section_len_prev -= 1;
-                let val = section_len_prev;
-                region.assign_advice(
-                    || format!("assign 'section_len_leb_solid_number' to {} at {}", val, offset),
-                    self.config.section_len_leb_solid_number,
-                    offset,
-                    || Value::known(F::from(val as u64)),
-                )?;
-            }
+            // TODO recover (do not reuse leb cols)
+            // let mut section_len_prev = section_len;
+            // for offset in section_body_start_index..=section_body_end_index {
+            //     section_len_prev -= 1;
+            //     let val = section_len_prev;
+            //     region.assign_advice(
+            //         || format!("assign 'section_len_leb_solid_number' to {} at {}", val, offset),
+            //         self.config.section_len_leb_solid_number,
+            //         offset,
+            //         || Value::known(F::from(val as u64)),
+            //     )?;
+            // }
 
             for offset in section_start_index..=section_end_index {
                 let val = section_id;

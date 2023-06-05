@@ -8,3 +8,5 @@ pub const EIGHT_MS_BIT_MASK: u8 = 0b10000000;
 pub const BITS_IN_BYTE: usize = 8;
 ///
 pub const LEB128_BITS_CHUNK_SIZE: usize = 7;
+///
+pub const LEB128_MAX_BYTES_COUNT: usize = 10;

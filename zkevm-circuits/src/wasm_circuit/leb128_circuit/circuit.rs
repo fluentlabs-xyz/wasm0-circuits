@@ -17,8 +17,6 @@ pub struct LEB128Config<F> {
     pub q_enable: Column<Fixed>,
     ///
     pub is_signed: Column<Fixed>,
-    /// TODO remove, no need
-    pub is_leb_byte: Column<Fixed>,
     ///
     pub is_first_leb_byte: Column<Fixed>,
     ///
@@ -61,33 +59,22 @@ impl<F: Field> LEB128Chip<F>
     ///
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        sn: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
-        // is_signed: bool,
         bytes: &Column<Advice>,
-        // bytes_n: usize,
     ) -> LEB128Config<F> {
-        // if bytes_n <= 0 || bytes_n > 10 {
-        //     panic!("LEB128Config: unsupported LEB_BYTES_N {}, must be greater 0 and less than or equal 10", bytes_n)
-        // }
         let q_enable = cs.fixed_column();
         let is_signed = cs.fixed_column();
-        let is_leb_byte = cs.fixed_column();
         let is_first_leb_byte = cs.fixed_column();
         let is_last_leb_byte = cs.fixed_column();
-        // let leb_base64_word = cs.advice_column();
         let byte_has_cb = cs.advice_column();
         let leb_byte_mul = cs.advice_column();
         let sn = cs.advice_column();
         let sn_recovered_at_pos = cs.advice_column();
 
-        let mut cbs_constraints = Vec::<Expression<F>>::new();
-        let mut cbs_transitions_constraints = Vec::<Expression<F>>::new();
         cs.create_gate("leb128 gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
             let is_signed_expr = vc.query_fixed(is_signed, Rotation::cur());
-            let is_leb_byte_expr = vc.query_fixed(is_leb_byte, Rotation::cur());
             let is_first_leb_byte_expr = vc.query_fixed(is_first_leb_byte, Rotation::cur());
             let is_last_leb_byte_expr = vc.query_fixed(is_last_leb_byte, Rotation::cur());
 
@@ -106,7 +93,6 @@ impl<F: Field> LEB128Chip<F>
 
             cb.require_boolean("q_enable is bool", q_enable_expr.clone());
             cb.require_boolean("is_signed is bool", is_signed_expr.clone());
-            cb.require_boolean("is_leb_byte is bool", is_leb_byte_expr.clone());
             cb.require_boolean("is_first_leb_byte is bool", is_first_leb_byte_expr.clone());
             cb.require_boolean("is_last_leb_byte is bool", is_last_leb_byte_expr.clone());
             cb.require_boolean("byte_has_cb is bool", byte_has_cb_expr.clone());
@@ -212,12 +198,6 @@ impl<F: Field> LEB128Chip<F>
             //     ("solid number equals to recovered at last byte", sn_expr.clone() - sn_recovered_at_pos_expr.clone()),
             // );
 
-            for cb_constraint in cbs_constraints {
-                cb.constraints.push(("cb check", cb_constraint));
-            }
-            for cb_transition_constraint in cbs_transitions_constraints {
-                cb.constraints.push(("cbs transition checks", cb_transition_constraint));
-            }
             // for (i, leb_base64_word_recovered) in leb_base64_words_recovered.iter().enumerate() {
             //     let leb_base64_word = vc.query_advice(leb_base64_word, Rotation(i as i32));
             //     cb.constraints.push((
@@ -232,11 +212,9 @@ impl<F: Field> LEB128Chip<F>
         let config = LEB128Config {
             q_enable,
             is_signed,
-            is_leb_byte,
             is_first_leb_byte,
             is_last_leb_byte,
             byte_has_cb,
-            // leb_base64_word,
             leb_byte_mul,
             sn,
             sn_recovered_at_pos,
@@ -262,7 +240,6 @@ impl<F: Field> LEB128Chip<F>
                 false,
                 false,
                 false,
-                false,
                 0,
                 0,
             );
@@ -276,10 +253,9 @@ impl<F: Field> LEB128Chip<F>
         offset: usize,
         leb_byte_offset: usize,
         enabled: bool,
-        is_leb_byte: bool,
         is_first_leb_byte: bool,
         is_last_leb_byte: bool,
-        leb_byte_has_cb: bool,
+        is_leb_byte_has_cb: bool,
         is_signed: bool,
         sn: u64,
         sn_recovered_at_pos: u64,
@@ -299,17 +275,10 @@ impl<F: Field> LEB128Chip<F>
         ).unwrap();
 
         region.assign_advice(
-            || format!("assign 'byte_has_cb' to {} at {}", leb_byte_has_cb, offset),
+            || format!("assign 'byte_has_cb' to {} at {}", is_leb_byte_has_cb, offset),
             self.config.byte_has_cb,
             offset,
-            || Value::known(F::from(leb_byte_has_cb as u64)),
-        ).unwrap();
-
-        region.assign_fixed(
-            || format!("assign 'is_leb_byte' to {} at {}", is_leb_byte, offset),
-            self.config.is_leb_byte,
-            offset,
-            || Value::known(F::from(is_leb_byte as u64)),
+            || Value::known(F::from(is_leb_byte_has_cb as u64)),
         ).unwrap();
 
         region.assign_fixed(

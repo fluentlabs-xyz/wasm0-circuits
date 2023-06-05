@@ -5,7 +5,7 @@ use eth_types::{Field, ToScalar, ToWord, Word};
 ///
 #[derive(Clone, Debug)]
 pub struct WasmBytecode {
-    /// Raw bytes
+    ///
     pub(crate) bytes: Vec<u8>,
     pub(crate) code_hash: Word,
 }
