@@ -367,7 +367,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
     }
 }
 
-//#[cfg(test)]
+#[cfg(test)]
 mod test {
     use eth_types::{bytecode, Bytecode};
     use mock::TestContext;
@@ -397,6 +397,7 @@ mod test {
 
     macro_rules! tests_from_data {
         ([$( [$Const:ident [$($op:ident),*] [$($t:tt)*]] )*]) => {
+            #[allow(non_snake_case)]
             mod generated_tests {
                 use super::*;
                 $(mod $Const {
