@@ -81,7 +81,7 @@ impl<F: Field> ExecutionGadget<F> for EvmMsizeGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::test_util::CircuitTestBuilder;
-    use eth_types::{bytecode, Word};
+    use eth_types::{bytecode, Bytecode, Word};
     use mock::TestContext;
 
     #[test]
