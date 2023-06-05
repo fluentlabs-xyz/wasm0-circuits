@@ -381,13 +381,17 @@ mod test {
     }
 
     macro_rules! tests_from_data_lhs_rhs_matrix {
-        ([$Const:ident] [$op:ident] [$($lhs:expr),*] [$($rhs:expr),*]) => {
-            run_test(bytecode! {
-                $Const[0]
-                $Const[0]
-                $op
-                Drop
-            });
+        ([$Const:ident] [$op:ident]) => {
+            for lhs in args() {
+               for rhs in args() {
+                    run_test(bytecode! {
+                      $Const[lhs]
+                      $Const[rhs]
+                      $op
+                      Drop
+                    });
+                }
+            }
         }
     }
 
@@ -397,14 +401,18 @@ mod test {
                 use super::*;
                 $(mod $Const {
                     use super::*;
+                    fn args() -> Vec<i64> {
+                      vec![$($t)*]
+                    }
                     $(fn $op() {
-                        tests_from_data_lhs_rhs_matrix! { [$Const] [$op] [] [] }
+                        tests_from_data_lhs_rhs_matrix! { [$Const] [$op] }
                     })*
                 })*
             }
         }
     }
 
+    // Example command to run test: cargo test generated_tests::I32Const::I32GtU
     tests_from_data! {
       [
         [I32Const
@@ -418,40 +426,4 @@ mod test {
       ]
     }
 
-    #[test]
-    fn test_i32_gt_u() {
-        run_test(bytecode! {
-            I32Const[0]
-            I32Const[0]
-            I32GtU
-            Drop
-        });
-    }
-
-/*
-
-    #[test]
-    fn test_i32_eqz() {
-        run_test(bytecode! {
-            I32Const[0]
-            I32Eqz
-            Drop
-            I32Const[1]
-            I32Eqz
-            Drop
-        });
-    }
-
-    #[test]
-    fn test_i64_eqz() {
-        run_test(bytecode! {
-            I64Const[0]
-            I64Eqz
-            Drop
-            I64Const[1]
-            I64Eqz
-            Drop
-        });
-    }
-*/
 }
