@@ -367,7 +367,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
     }
 }
 
-#[cfg(test)]
+//#[cfg(test)]
 mod test {
     use eth_types::{bytecode, Bytecode};
     use mock::TestContext;
@@ -404,7 +404,8 @@ mod test {
                     fn args() -> Vec<i64> {
                       vec![$($t)*]
                     }
-                    $(fn $op() {
+                    $(#[test]
+                      fn $op() {
                         tests_from_data_lhs_rhs_matrix! { [$Const] [$op] }
                     })*
                 })*
