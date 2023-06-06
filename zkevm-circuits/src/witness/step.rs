@@ -225,6 +225,12 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
 
                     OpcodeId::Select => ExecutionState::WASM_SELECT,
 
+                    OpcodeId::I32GtU | OpcodeId::I32GeU | OpcodeId::I32LtU | OpcodeId::I32LeU |
+                    OpcodeId::I32Eq | OpcodeId::I32Ne | OpcodeId::I32GtS | OpcodeId::I32GeS | OpcodeId::I32LtS |
+                    OpcodeId::I32LeS | OpcodeId::I64GtU | OpcodeId::I64GeU | OpcodeId::I64LtU | OpcodeId::I64LeU |
+                    OpcodeId::I64Eq | OpcodeId::I64Ne | OpcodeId::I64GtS | OpcodeId::I64GeS | OpcodeId::I64LtS |
+                    OpcodeId::I64LeS => ExecutionState::WASM_REL,
+
                     // EVM opcodes
                     OpcodeId::ADDMOD => ExecutionState::ADDMOD,
                     OpcodeId::ADDRESS => ExecutionState::ADDRESS,
