@@ -4,6 +4,7 @@ use halo2_proofs::{
 use std::{marker::PhantomData};
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::{Advice, Circuit, Column};
+use log::debug;
 use eth_types::Field;
 use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip, LEB128Config};
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_sn_recovered_at_position;
@@ -90,13 +91,14 @@ impl<'a, F: Field, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, IS_S
                         self.leb_bytes_last_byte_index as usize,
                         leb_byte,
                     );
-                    // println!(
-                    //     "offset {} self.is_signed '{}' sn_recovered_at_pos '{}' is_last_leb_byte '{}'",
-                    //     leb_byte_offset,
-                    //     self.is_signed,
-                    //     sn_recovered_at_pos,
-                    //     is_last_leb_byte,
-                    // );
+                    debug!(
+                        "offset {} is_signed '{}' leb_byte_offset '{}' sn_recovered_at_pos '{}' is_last_leb_byte '{}'",
+                        leb_byte_offset,
+                        self.is_signed,
+                        leb_byte_offset,
+                        sn_recovered_at_pos,
+                        is_last_leb_byte,
+                    );
                     leb128_chip.assign(
                         &mut region,
                         leb_byte_offset,

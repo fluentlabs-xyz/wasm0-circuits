@@ -17,7 +17,6 @@ use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::NumType;
 use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::consts::Type::FuncType;
 
-///
 #[derive(Debug, Clone)]
 pub struct WasmTypeSectionItemConfig<F> {
     pub q_enable: Column<Fixed>,
@@ -32,22 +31,17 @@ pub struct WasmTypeSectionItemConfig<F> {
     _marker: PhantomData<F>,
 }
 
-///
 impl<'a, F: Field> WasmTypeSectionItemConfig<F>
 {}
 
-///
 #[derive(Debug, Clone)]
 pub struct WasmTypeSectionItemChip<F> {
-    ///
     pub config: WasmTypeSectionItemConfig<F>,
-    ///
     _marker: PhantomData<F>,
 }
 
 impl<F: Field> WasmTypeSectionItemChip<F>
 {
-    ///
     pub fn construct(config: WasmTypeSectionItemConfig<F>) -> Self {
         let instance = Self {
             config,
@@ -56,10 +50,9 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         instance
     }
 
-    ///
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: &WasmBytecodeTable,
+        bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
     ) -> WasmTypeSectionItemConfig<F> {
         let q_enable = cs.fixed_column();
@@ -126,7 +119,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 }
             );
 
-            // TODO add more
+            // TODO add constraints
 
             // TODO item_type -(1)> input_count -(0..N)> input_type -(1)> output_count -(0..N)> output_type
 
@@ -249,7 +242,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
         if offset >= wasm_bytecode.bytes.len() {
-            return Err(Error::IndexOutOfBounds(format!("offset {} when max {}", offset, wasm_bytecode.bytes.len())))
+            return Err(Error::IndexOutOfBounds(format!("offset {} when max {}", offset, wasm_bytecode.bytes.len() - 1)))
         }
 
         self.assign(

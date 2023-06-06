@@ -36,7 +36,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
         let bytes = cs.advice_column();
-        let wasm_bytecode_table = WasmBytecodeTable::construct(cs);
+        let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
             &bytes,
@@ -44,13 +44,13 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         let leb128_chip = LEB128Chip::construct(leb128_config);
         let wasm_type_section_item_config = WasmTypeSectionItemChip::configure(
             cs,
-            &wasm_bytecode_table,
+            wasm_bytecode_table.clone(),
             Rc::new(leb128_chip),
         );
         let wasm_type_section_item_chip = WasmTypeSectionItemChip::construct(wasm_type_section_item_config);
         let test_circuit_config = TestCircuitConfig {
             wasm_type_section_item_chip: Rc::new(wasm_type_section_item_chip),
-            wasm_bytecode_table: Rc::new(wasm_bytecode_table),
+            wasm_bytecode_table: wasm_bytecode_table.clone(),
             _marker: Default::default(),
         };
 

@@ -6,6 +6,7 @@ use std::rc::Rc;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
+use log::debug;
 use eth_types::Field;
 use gadgets::util::not;
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
@@ -56,7 +57,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
     ///
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: &WasmBytecodeTable,
+        bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         wasm_type_section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
     ) -> WasmTypeSectionBodyConfig<F> {
@@ -87,13 +88,14 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
                 }
             );
 
+
             cb.require_equal(
                 "if is_body_expr <-> wasm_type_section_item",
                 is_body_expr.clone(),
                 vc.query_fixed(wasm_type_section_item_chip.config.q_enable, Rotation::cur()),
             );
 
-            // TODO add more
+            // TODO add constraints
 
             cb.gate(q_enable_expr.clone())
         });
@@ -188,7 +190,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
         if offset >= wasm_bytecode.bytes.len() {
-            return Err(Error::IndexOutOfBounds(format!("offset {} when max {}", offset, wasm_bytecode.bytes.len())))
+            return Err(Error::IndexOutOfBounds(format!("offset {} when max {}", offset, wasm_bytecode.bytes.len() - 1)))
         }
 
         let (body_items_count_sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), false, offset)?;
@@ -216,12 +218,13 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         }
         offset = last_byte_offset + 1;
 
-        for body_item_number in 1..=body_items_count_sn {
+        for _body_item_number in 1..=body_items_count_sn {
             let next_body_item_offset = self.config.wasm_type_section_item_chip.assign_auto(
                 region,
                 wasm_bytecode,
                 offset,
             )?;
+            debug!("_body_item_number {} body_items_count_sn {} offset {} wasm_bytecode.bytes.len() {} next_body_item_offset {}", _body_item_number, body_items_count_sn, offset, wasm_bytecode.bytes.len(), next_body_item_offset);
             for offset in offset..next_body_item_offset {
                 self.assign(
                     region,

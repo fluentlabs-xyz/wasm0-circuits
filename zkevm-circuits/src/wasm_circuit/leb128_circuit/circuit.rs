@@ -194,6 +194,8 @@ impl<F: Field> LEB128Chip<F>
                 }
             );
 
+            // TODO add constraints
+
             // cb.constraints.push(
             //     ("solid number equals to recovered at last byte", sn_expr.clone() - sn_recovered_at_pos_expr.clone()),
             // );

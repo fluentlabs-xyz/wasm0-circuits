@@ -36,14 +36,14 @@ impl WasmBytecodeTable {
     pub fn load<'a, F: Field>(
         &self,
         layouter: &mut impl Layouter<F>,
-        bytecode: &'a WasmBytecode,
+        wasm_bytecode: &'a WasmBytecode,
     ) -> Result<(), Error> {
         layouter.assign_region(
             || "wasm bytecode table",
             |mut region| {
                 let bytecode_table_columns =
                     <WasmBytecodeTable as LookupTable<F>>::advice_columns(self);
-                for (offset, &row) in bytecode.table_assignments::<F>().iter().enumerate() {
+                for (offset, &row) in wasm_bytecode.table_assignments::<F>().iter().enumerate() {
                     for (&column, value) in bytecode_table_columns.iter().zip_eq(row) {
                         region.assign_advice(
                             || format!("assign wasm bytecode table row at {}", offset),
