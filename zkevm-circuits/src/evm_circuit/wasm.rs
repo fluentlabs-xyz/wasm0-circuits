@@ -167,7 +167,7 @@ use wasm_end::WasmEndGadget;
 use wasm_global::WasmGlobalGadget;
 // use wasm_load::WasmLoadGadget;
 use wasm_local::WasmLocalGadget;
-// use wasm_rel::WasmRelGadget;
+use wasm_rel::WasmRelGadget;
 use wasm_select::WasmSelectGadget;
 // use wasm_store::WasmStoreGadget;
 use wasm_test::WasmTestGadget;
@@ -300,7 +300,7 @@ pub(crate) struct ExecutionConfig<F> {
     wasm_global: Box<WasmGlobalGadget<F>>,
     // wasm_load: Box<WasmLoadGadget<F>>,
     wasm_local: Box<WasmLocalGadget<F>>,
-    // wasm_rel: Box<WasmRelGadget<F>>,
+    wasm_rel: Box<WasmRelGadget<F>>,
     wasm_select: Box<WasmSelectGadget<F>>,
     // wasm_store: Box<WasmStoreGadget<F>>,
     wasm_test: Box<WasmTestGadget<F>>,
@@ -547,7 +547,7 @@ impl<F: Field> ExecutionConfig<F> {
             wasm_global: configure_gadget!(),
             // wasm_load: configure_gadget!(),
             wasm_local: configure_gadget!(),
-            // wasm_rel: configure_gadget!(),
+            wasm_rel: configure_gadget!(),
             wasm_select: configure_gadget!(),
             // wasm_store: configure_gadget!(),
             wasm_test: configure_gadget!(),
