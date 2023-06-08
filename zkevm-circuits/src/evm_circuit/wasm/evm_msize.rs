@@ -15,10 +15,11 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::Field;
+use eth_types::{Field, ToLittleEndian, U64};
 use halo2_proofs::plonk::Error;
+use itertools::Itertools;
 use log::info;
-use crate::evm_circuit::param::N_BYTES_U64;
+use crate::evm_circuit::param::{N_BYTES_U64, PAGE_SIZE};
 use crate::evm_circuit::util::Cell;
 use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 
@@ -45,7 +46,7 @@ impl<F: Field> ExecutionGadget<F> for EvmMsizeGadget<F> {
         cb.require_equal(
             "Constrain memory_size equal to stack value",
             from_bytes::expr(&msize),
-            cb.curr.state.memory_word_size.expr() * N_BYTES_U64.expr(),
+            cb.curr.state.memory_word_size.expr() * PAGE_SIZE.expr(),
         );
 
         // State transition
@@ -80,9 +81,11 @@ impl<F: Field> ExecutionGadget<F> for EvmMsizeGadget<F> {
         let dest_offset = block.rws[step.rw_indices[0]].stack_value();
         self.dest_offset.assign(region, offset, Value::known(F::from(dest_offset.as_u64())))?;
 
-        let memory_size = step.memory_size.to_le_bytes();
+        let msize_bytes = (1..=8).map(|i| block.rws[step.rw_indices[i]].memory_value()).collect_vec();
+        let msize_value = U64::from_big_endian(msize_bytes.as_slice());
+        let msize_le = msize_value.to_le_bytes();
         for i in 0..N_BYTES_U64 {
-            self.msize[i].assign(region, offset, Value::known(F::from(memory_size[i] as u64)))?;
+            self.msize[i].assign(region, offset, Value::known(F::from(msize_le[i] as u64)))?;
         }
 
         Ok(())
@@ -97,17 +100,16 @@ mod test {
 
     #[test]
     fn msize_gadget() {
-
-        let mut code = Bytecode::default();
-        let dest = code.alloc_default_global_data(8);
-        bytecode_internal! {code,
-            I32Const[dest]
+        let mut bytecode = Bytecode::default();
+        // allocate 32+8 bytes, one wasm page is 512 bytes
+        bytecode.fill_default_global_data((1..33).collect::<Vec<_>>());
+        let dest_offset = bytecode.alloc_default_global_data(8);
+        bytecode_internal! {bytecode,
+            I32Const[dest_offset]
             MSIZE
-        };
-
+        }
         CircuitTestBuilder::new_from_test_ctx(
-            TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
-        )
-        .run();
+            TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
+        ).run();
     }
 }

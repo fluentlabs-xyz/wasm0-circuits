@@ -841,6 +841,9 @@ pub fn gen_begin_tx_ops(
     // increase reserved stack size with num locals
     exec_step.stack_size += first_function_call.num_locals as usize;
 
+    let mut call_ctx = state.call_ctx_mut()?;
+    call_ctx.memory = geth_trace.global_memory.clone();
+
     log::trace!("begin_tx_step: {:?}", exec_step);
     state.tx.steps_mut().push(exec_step);
 
