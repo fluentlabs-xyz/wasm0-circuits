@@ -1271,7 +1271,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::MEMORY => assign_exec_step!(self.memory_gadget),
             ExecutionState::SLOAD => assign_exec_step!(self.evm_sload),
             ExecutionState::SSTORE => assign_exec_step!(self.evm_sstore),
-            // ExecutionState::MSIZE => assign_exec_step!(self.msize_gadget),
+            ExecutionState::MSIZE => assign_exec_step!(self.evm_msize),
             ExecutionState::ORIGIN => assign_exec_step!(self.evm_origin),
             ExecutionState::PC => assign_exec_step!(self.evm_pc),
             ExecutionState::RETURN_REVERT => assign_exec_step!(self.evm_return_revert),

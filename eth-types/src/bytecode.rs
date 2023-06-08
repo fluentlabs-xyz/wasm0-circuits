@@ -639,7 +639,7 @@ impl Bytecode {
         let value = value.to_word();
 
         // Write the op code
-        self.write_op((OpcodeId::push_n(n)).expect("valid push size"));
+        self.write_op(OpcodeId::push_n(n).expect("valid push size"));
 
         let mut bytes = [0u8; 32];
         value.to_little_endian(&mut bytes);
