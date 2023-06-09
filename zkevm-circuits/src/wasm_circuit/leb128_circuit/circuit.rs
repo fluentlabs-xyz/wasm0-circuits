@@ -3,40 +3,39 @@ use halo2_proofs::{
 };
 use std::{marker::PhantomData};
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Constraints, Expression, Fixed, VirtualCells};
+use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
+use num_traits::pow;
 use eth_types::Field;
-use gadgets::util::{Expr, not};
-use crate::wasm_circuit::leb128_circuit::consts::{BYTES_IN_BASE64_WORD, EIGHT_LS_BITS_MASK};
+use gadgets::util::{and, Expr, not, or, select};
+use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 
-/// LEB128Config
 #[derive(Debug, Clone)]
 pub struct LEB128Config<F> {
-    /// base64 repr of leb128 (each row represents a part of leb)
-    pub leb_base64_words: Column<Advice>,
-    ///
+    pub q_enable: Column<Fixed>,
+    pub is_signed: Column<Fixed>,
     pub is_first_leb_byte: Column<Fixed>,
-    ///
-    pub byte_has_cb: Column<Advice>,
+    pub is_last_leb_byte: Column<Fixed>,
+    pub is_byte_has_cb: Column<Fixed>,
+
+    pub leb_byte_mul: Column<Advice>,
+    pub sn: Column<Advice>,
+    pub sn_recovered_at_pos: Column<Advice>,
+
     _marker: PhantomData<F>,
 }
 
-///
 impl<F: Field> LEB128Config<F>
 {}
 
-///
 #[derive(Debug, Clone)]
 pub struct LEB128Chip<F> {
-    ///
     pub config: LEB128Config<F>,
-    ///
     _marker: PhantomData<F>,
 }
 
 impl<F: Field> LEB128Chip<F>
 {
-    ///
     pub fn construct(config: LEB128Config<F>) -> Self {
         let instance = Self {
             config,
@@ -45,116 +44,188 @@ impl<F: Field> LEB128Chip<F>
         instance
     }
 
-    ///
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        solid_number: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
-        leb_bytes: &Column<Advice>,
-        is_signed: bool,
-        leb_bytes_n: usize,
+        bytes: &Column<Advice>,
     ) -> LEB128Config<F> {
-        if leb_bytes_n <= 0 || leb_bytes_n > 10 {
-            panic!("LEB128Config: unsupported LEB_BYTES_N {}, must be greater 0 and less than or equal 10", leb_bytes_n)
-        }
+        let q_enable = cs.fixed_column();
+        let is_signed = cs.fixed_column();
         let is_first_leb_byte = cs.fixed_column();
-        let leb_base64_words = cs.advice_column();
-        let byte_has_cb = cs.advice_column();
+        let is_last_leb_byte = cs.fixed_column();
+        let is_byte_has_cb = cs.fixed_column();
 
-        let mut cbs_constraints = Vec::<Expression<F>>::new();
-        let mut cbs_transitions_constraints = Vec::<Expression<F>>::new();
+        let leb_byte_mul = cs.advice_column();
+        let sn = cs.advice_column();
+        let sn_recovered_at_pos = cs.advice_column();
+
         cs.create_gate("leb128 gate", |vc| {
+            let mut cb = BaseConstraintBuilder::default();
+
+            let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let is_signed_expr = vc.query_fixed(is_signed, Rotation::cur());
             let is_first_leb_byte_expr = vc.query_fixed(is_first_leb_byte, Rotation::cur());
-            let sn_expr = solid_number(vc);
-            let mut sn_recovered_expr = 0.expr();
-            let mut number_for_signed_inversion_expr = 0.expr();
-            for i in (0..leb_bytes_n).rev() {
-                let leb_byte_expr = vc.query_advice(*leb_bytes, Rotation(i as i32));
-                let byte_has_cb_expr = vc.query_advice(byte_has_cb, Rotation(i as i32));
-                let not_byte_has_cb_expr = not::expr(byte_has_cb_expr.clone());
-                // continuation bit must be 0 or 1 value (boolean) (TODO replace with lookup)
-                cbs_constraints.push(byte_has_cb_expr.clone() * (byte_has_cb_expr.clone() - 1.expr()));
-                if i < leb_bytes_n - 1 {
-                    let has_cb_next_expr = vc.query_advice(byte_has_cb, Rotation((i + 1) as i32));
-                    // continuation bit (CB) eligible transitions: 1->1 or 1->0 or 0->0 not 0->1 (TODO replace with lookup)
-                    cbs_transitions_constraints.push((byte_has_cb_expr.clone() - 1.expr()) * has_cb_next_expr);
-                }
-                if is_signed {
-                    let has_cb_expr = vc.query_advice(byte_has_cb, Rotation(i as i32));
-                    let mut is_consider_expr = 1.expr();
-                    if i > 0 {
-                        let has_cb_prev_expr = vc.query_advice(byte_has_cb, Rotation((i-1) as i32));
-                        is_consider_expr = has_cb_prev_expr.clone() + has_cb_expr.clone() - has_cb_prev_expr * has_cb_expr;
-                    }
-                    number_for_signed_inversion_expr = number_for_signed_inversion_expr * 0b10000000.expr() + 0b1111111.expr() * is_consider_expr.clone();
-                    sn_recovered_expr = sn_recovered_expr * 0b10000000.expr()
-                        + (leb_byte_expr.clone() - 0b10000000.expr() * byte_has_cb_expr.expr()) * is_consider_expr.clone();
-                } else {
-                    sn_recovered_expr = sn_recovered_expr * 0b10000000.expr() + leb_byte_expr.clone() - byte_has_cb_expr * 0b10000000.expr();
-                }
-            }
-            if is_signed {
-                sn_recovered_expr = sn_recovered_expr.clone() - 1.expr() - number_for_signed_inversion_expr.clone();
-            }
+            let is_last_leb_byte_expr = vc.query_fixed(is_last_leb_byte, Rotation::cur());
+            let is_byte_has_cb_expr = vc.query_fixed(is_byte_has_cb, Rotation::cur());
 
-            let mut leb_base64_words_recovered = Vec::<Expression<F>>::new();
-            let mut rot_idx = 0;
-            let leb_bytes_index_max = leb_bytes_n - 1;
-            for i in 0..=leb_bytes_index_max {
-                if i % BYTES_IN_BASE64_WORD == 0 {
-                    leb_base64_words_recovered.push(0.expr());
-                    rot_idx = i + 7;
-                    if rot_idx > leb_bytes_index_max { rot_idx = leb_bytes_index_max }
-                } else {
-                    rot_idx -= 1;
-                }
-                let mut leb_byte_expr = vc.query_advice(*leb_bytes, Rotation(rot_idx as i32));
-                if rot_idx > 0 && is_signed {
-                    let has_cb_prev_expr = vc.query_advice(byte_has_cb, Rotation((rot_idx - 1) as i32));
-                    let has_cb_expr = vc.query_advice(byte_has_cb, Rotation(rot_idx as i32));
-                    let is_consider_expr = has_cb_prev_expr.clone() + has_cb_expr.clone() - has_cb_prev_expr * has_cb_expr;
-                    let is_not_consider_expr = not::expr(is_consider_expr.clone());
-                    leb_byte_expr = leb_byte_expr - is_not_consider_expr.clone() * EIGHT_LS_BITS_MASK.expr();
-                }
-                let base64_words_last_index = leb_base64_words_recovered.len() - 1;
-                let leb_base64_word = leb_base64_words_recovered[base64_words_last_index].clone();
-                leb_base64_words_recovered[base64_words_last_index] = leb_byte_expr + leb_base64_word * 0b100000000.expr();
-            }
+            let leb_byte_mul_expr = vc.query_advice(leb_byte_mul, Rotation::cur());
+            let sn_expr = vc.query_advice(sn, Rotation::cur());
+            let sn_recovered_at_pos_expr = vc.query_advice(sn_recovered_at_pos, Rotation::cur());
 
-            let mut constraints = Vec::new();
-            constraints.push(
-                ("solid number equals to recovered", sn_expr.clone() - sn_recovered_expr.clone()),
+            let byte_val_expr = vc.query_advice(*bytes, Rotation::cur());
+
+            let is_consider_byte_expr = select::expr(
+                not::expr(is_first_leb_byte_expr.clone()),
+                vc.query_fixed(is_byte_has_cb, Rotation::prev()) + is_byte_has_cb_expr.clone() - vc.query_fixed(is_byte_has_cb, Rotation::prev()) * is_byte_has_cb_expr.clone(),
+                1.expr(),
             );
-            for cb_constraint in cbs_constraints {
-                constraints.push(("continuation bit check", cb_constraint));
-            }
-            for continuation_bit_transition_constraint in cbs_transitions_constraints {
-                constraints.push(("continuation bits transitions checks", continuation_bit_transition_constraint));
-            }
-            for (i, leb_base64_word_recovered) in leb_base64_words_recovered.iter().enumerate() {
-                let leb_base64_word = vc.query_advice(leb_base64_words, Rotation(i as i32));
-                constraints.push((
-                    "base64 word equals to recovered base64 word",
-                    leb_base64_word_recovered.clone() - leb_base64_word.clone()
-                ));
-            }
-            Constraints::with_selector(
-                is_first_leb_byte_expr,
-                constraints,
-            )
+
+            cb.require_boolean("q_enable is bool", q_enable_expr.clone());
+            cb.require_boolean("is_signed is bool", is_signed_expr.clone());
+            cb.require_boolean("is_first_leb_byte is bool", is_first_leb_byte_expr.clone());
+            cb.require_boolean("is_last_leb_byte is bool", is_last_leb_byte_expr.clone());
+            cb.require_boolean("is_byte_has_cb is bool", is_byte_has_cb_expr.clone());
+
+            cb.condition(
+                is_first_leb_byte_expr.clone(),
+                |bcb| {
+                    bcb.require_zero(
+                        "leb_byte_mul=1 at first byte",
+                        leb_byte_mul_expr.clone() - 1.expr(),
+                    );
+                }
+            );
+            cb.condition(
+                and::expr([
+                    not::expr(is_first_leb_byte_expr.clone()),
+                    or::expr([
+                        is_byte_has_cb_expr.clone(),
+                        is_last_leb_byte_expr.clone(),
+                    ]),
+                ]),
+                |bcb| {
+                    let leb_byte_mul_prev_expr = vc.query_advice(leb_byte_mul.clone(), Rotation::prev());
+                    bcb.require_equal(
+                        "leb_byte_mul growth",
+                        leb_byte_mul_prev_expr.clone() * 0b10000000.expr(),
+                        leb_byte_mul_expr.clone(),
+                    );
+                }
+            );
+
+            cb.condition(
+                not::expr(is_first_leb_byte_expr.clone()),
+                |bcb| {
+                    let is_signed_prev_expr = vc.query_fixed(is_signed, Rotation::prev());
+                    bcb.require_equal(
+                        "is_signed consistent",
+                        is_signed_prev_expr.clone(),
+                        is_signed_expr.clone(),
+                    );
+                }
+            );
+
+            cb.condition(
+                not::expr(is_first_leb_byte_expr.clone()),
+                |bcb| {
+                    let byte_has_cb_prev_expr = vc.query_fixed(is_byte_has_cb, Rotation::prev());
+                    bcb.require_zero(
+                        "byte_has_cb eligible transitions: 1->1, 1->0, 0->0 but not 0->1",
+                        not::expr(byte_has_cb_prev_expr.clone()) * is_byte_has_cb_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                is_last_leb_byte_expr.clone(),
+                |bcb| {
+                    bcb.require_zero(
+                        "byte_has_cb is 0 on last_leb_byte",
+                        is_byte_has_cb_expr.clone(),
+                    );
+                }
+            );
+
+            cb.condition(
+                and::expr([
+                    not::expr(is_last_leb_byte_expr.clone()),
+                    is_consider_byte_expr.clone(),
+                ]),
+                |bcb| {
+                    let mut sn_recovered_at_pos_manual_expr = (byte_val_expr.clone() - 0b10000000.expr() * is_byte_has_cb_expr.clone()) * leb_byte_mul_expr.clone();
+                    let sn_recovered_at_pos_prev_expr = select::expr(
+                        not::expr(is_first_leb_byte_expr.clone()),
+                        vc.query_advice(sn_recovered_at_pos, Rotation::prev()),
+                        0.expr(),
+                    );
+                    sn_recovered_at_pos_manual_expr = sn_recovered_at_pos_manual_expr + sn_recovered_at_pos_prev_expr.clone();
+                    bcb.require_equal(
+                        "sn_recovered_at_pos equals to manually recovered",
+                        sn_recovered_at_pos_manual_expr.clone(),
+                        sn_recovered_at_pos_expr.clone(),
+                    )
+                }
+            );
+            cb.condition(
+                not::expr(is_first_leb_byte_expr.clone()),
+                |bcb| {
+                    let sn_prev_expr = vc.query_advice(sn, Rotation::prev());
+                    bcb.require_zero(
+                        "prev.sn=next.sn inside the block",
+                        sn_expr.clone() - sn_prev_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                is_last_leb_byte_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "sn equals to recovered at the last leb byte",
+                        sn_expr.clone(),
+                        sn_recovered_at_pos_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                not::expr(is_consider_byte_expr.clone()),
+                |bcb| {
+                    bcb.require_zero(
+                        "bytes after last leb byte have valid values (unsigned)",
+                        not::expr(is_signed_expr.clone()) * byte_val_expr.clone(),
+                    );
+                    bcb.require_zero(
+                        "bytes after last leb byte have valid values (signed)",
+                        is_signed_expr.clone() * (0xff.expr() - byte_val_expr.clone()),
+                    );
+                    // additional checks
+                    bcb.require_zero(
+                        "flags are zero for unused zone",
+                        is_first_leb_byte_expr.clone() + is_last_leb_byte_expr.clone() + is_byte_has_cb_expr.clone(),
+                    );
+                    bcb.require_zero(
+                        "leb_byte_mul is zero for unused zone",
+                        leb_byte_mul_expr.clone(),
+                    );
+                }
+            );
+
+            cb.gate(q_enable_expr.clone())
         });
 
         let config = LEB128Config {
+            q_enable,
+            is_signed,
             is_first_leb_byte,
-            leb_base64_words,
-            byte_has_cb,
+            is_last_leb_byte,
+            is_byte_has_cb,
+            leb_byte_mul,
+            sn,
+            sn_recovered_at_pos,
             _marker: PhantomData,
         };
 
         config
     }
 
-    ///
-    pub fn init_assign(
+    pub fn assign_init(
         &self,
         region: &mut Region<F>,
         offset_max: usize,
@@ -163,41 +234,96 @@ impl<F: Field> LEB128Chip<F>
             self.assign(
                 region,
                 offset,
+                0,
                 false,
                 false,
-                0
+                false,
+                false,
+                false,
+                0,
+                0,
             );
         }
     }
 
-    ///
     pub fn assign(
         &self,
         region: &mut Region<F>,
         offset: usize,
+        leb_byte_rel_offset: usize,
+        enabled: bool,
         is_first_leb_byte: bool,
-        leb_byte_has_continuation_bit: bool,
-        leb_base64_word: u64,
+        is_last_leb_byte: bool,
+        is_leb_byte_has_cb: bool,
+        is_signed: bool,
+        sn: u64,
+        sn_recovered_at_pos: u64,
     ) {
-        region.assign_advice(
-            || format!("assign byte_has_cb val {} at {}", leb_byte_has_continuation_bit, offset),
-            self.config.byte_has_cb,
+        region.assign_fixed(
+            || format!("assign 'q_enable' to {} at {}", enabled, offset),
+            self.config.q_enable,
             offset,
-            || Value::known(F::from(leb_byte_has_continuation_bit as u64)),
+            || Value::known(F::from(enabled as u64)),
         ).unwrap();
 
         region.assign_fixed(
-            || format!("assign is_first_leb_byte val {} at {}", is_first_leb_byte, offset),
+            || format!("assign 'is_signed' to {} at {}", is_signed, offset),
+            self.config.is_signed,
+            offset,
+            || Value::known(F::from(is_signed as u64)),
+        ).unwrap();
+
+        region.assign_fixed(
+            || format!("assign 'is_byte_has_cb' to {} at {}", is_leb_byte_has_cb, offset),
+            self.config.is_byte_has_cb,
+            offset,
+            || Value::known(F::from(is_leb_byte_has_cb as u64)),
+        ).unwrap();
+
+        region.assign_fixed(
+            || format!("assign 'is_first_leb_byte' to {} at {}", is_first_leb_byte, offset),
             self.config.is_first_leb_byte,
             offset,
             || Value::known(F::from(is_first_leb_byte as u64)),
         ).unwrap();
 
-        region.assign_advice(
-            || format!("assign leb_base64_word val {} at {}", leb_base64_word, offset),
-            self.config.leb_base64_words,
+        region.assign_fixed(
+            || format!("assign 'is_last_leb_byte' to {} at {}", is_last_leb_byte, offset),
+            self.config.is_last_leb_byte,
             offset,
-            || Value::known(F::from(leb_base64_word)),
+            || Value::known(F::from(is_last_leb_byte as u64)),
+        ).unwrap();
+
+        let leb_byte_mul = if is_leb_byte_has_cb || is_last_leb_byte { pow(0b10000000, leb_byte_rel_offset) } else { 0 };
+        region.assign_advice(
+            || format!("assign 'leb_byte_mul' to {} at {}", leb_byte_mul, offset),
+            self.config.leb_byte_mul,
+            offset,
+            || Value::known(F::from(leb_byte_mul)),
+        ).unwrap();
+
+        let val = if is_signed {
+            F::from(sn as u64).neg()
+        } else {
+            F::from(sn as u64)
+        };
+        region.assign_advice(
+            || format!("assign 'sn' is_signed '{}' to {} at {}", is_signed, sn, offset),
+            self.config.sn,
+            offset,
+            || Value::known(F::from(val)),
+        ).unwrap();
+
+        let val = if is_signed && is_last_leb_byte {
+            F::from(sn_recovered_at_pos as u64).neg()
+        } else {
+            F::from(sn_recovered_at_pos as u64)
+        };
+        region.assign_advice(
+            || format!("assign 'sn_recovered_at_pos' is_signed '{}' to {} at {}", is_signed, sn_recovered_at_pos, offset),
+            self.config.sn_recovered_at_pos,
+            offset,
+            || Value::known(val),
         ).unwrap();
     }
 }

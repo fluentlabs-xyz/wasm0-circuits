@@ -5514,6 +5514,7 @@ dependencies = [
  "itertools",
  "keccak256",
  "lazy_static",
+ "leb128",
  "libsecp256k1",
  "log",
  "maingate",
