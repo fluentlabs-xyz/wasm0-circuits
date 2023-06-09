@@ -33,6 +33,8 @@ pub(crate) struct WasmBinGadget<F> {
     is_rem_u: Cell<F>,
     is_div_s: Cell<F>,
     is_rem_s: Cell<F>,
+    div_rem_s_is_lhs_pos: Cell<F>,
+    div_rem_s_is_rhs_pos: Cell<F>,
     aux1: Cell<F>,
     aux2: Cell<F>,
     aux3: Cell<F>,
@@ -59,6 +61,9 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         let is_div_s = cb.alloc_bit_value();
         let is_rem_s = cb.alloc_bit_value();
 
+        let div_rem_s_is_lhs_pos = cb.alloc_bit_value();
+        let div_rem_s_is_rhs_pos = cb.alloc_bit_value();
+
         let aux1 = cb.alloc_u64_on_u8();
         let aux2 = cb.alloc_u64_on_u8();
         let aux3 = cb.alloc_u64_on_u8();
@@ -78,6 +83,9 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         cb.stack_pop(lhs.expr());
         cb.stack_push(res.expr());
 
+        // TODO: Analyze the security of such an addition. In theory, if all the `is` variables have
+        // already been proven as the only possible one or zero, then there is no problem.
+        // If `alloc_bit_value` does the job. If not, then fraud is possible.
         cb.require_equal(
             "binop: selector",
             is_add.expr() + is_sub.expr() + is_mul.expr() + is_div_u.expr() + is_rem_u.expr() + is_div_s.expr() + is_rem_s.expr(),
@@ -107,6 +115,15 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
             (aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_u.expr() + is_div_u.expr()),
             (res.expr() - aux1.expr()) * is_div_u.expr(),
             (res.expr() - aux2.expr()) * is_rem_u.expr(),
+        ]);
+
+        cb.require_zeros("div_s/rem_s constraints", vec![
+            (div_rem_s_is_lhs_pos.expr() - 1.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (div_rem_s_is_rhs_pos.expr() - 1.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (lhs.expr() - rhs.expr() * aux1.expr() - aux2.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (res.expr() - aux1.expr()) * is_div_s.expr(),
+            (res.expr() - aux2.expr()) * is_rem_s.expr(),
         ]);
 
         // constraint_builder.push(
@@ -219,6 +236,8 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
             is_rem_u,
             is_div_s,
             is_rem_s,
+            div_rem_s_is_lhs_pos,
+            div_rem_s_is_rhs_pos,
             aux1,
             aux2,
             aux3,
@@ -253,6 +272,7 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
             OpcodeId::I32DivS | OpcodeId::I64DivS => &self.is_div_s,
             OpcodeId::I32DivU | OpcodeId::I64DivU => &self.is_div_u,
             OpcodeId::I32RemU | OpcodeId::I64RemU => &self.is_rem_u,
+            OpcodeId::I32RemS | OpcodeId::I64RemS => &self.is_rem_s,
             _ => unreachable!("not supported opcode: {:?}", opcode),
         };
         selector.assign(region, offset, Value::known(F::one()))?;
@@ -260,6 +280,9 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         let aux1;
         let mut aux2 = 0u64;
         let mut aux3 = 0u64;
+
+        let mut div_rem_s_is_lhs_pos = 0u64;
+        let mut div_rem_s_is_rhs_pos = 0u64;
 
         match opcode {
             OpcodeId::I32Add => {
@@ -299,13 +322,28 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
                 aux3 = (rhs.as_u64() - lhs.as_u64() % rhs.as_u64() - 1) as u64;
             }
             OpcodeId::I32DivS | OpcodeId::I32RemS => {
-                unreachable!("not supported opcode");
+                // TODO: check and correct to fix possible problems with conversion.
+                aux1 = (lhs.as_u32() as i32 / rhs.as_u32() as i32) as u64;
+                aux2 = (lhs.as_u32() as i32 % rhs.as_u32() as i32) as u64;
+                aux3 = (rhs.as_u32() as i32 - lhs.as_u32() as i32 % rhs.as_u32() as i32 - 1) as u64;
+                div_rem_s_is_lhs_pos = (lhs.as_u32() as i32 >= 0) as u64;
+                div_rem_s_is_rhs_pos = (rhs.as_u32() as i32 >= 0) as u64;
+            }
+            OpcodeId::I64DivS | OpcodeId::I64RemS => {
+                // TODO: check and correct to fix possible problems with conversion.
+                aux1 = (lhs.as_u64() as i64 / rhs.as_u64() as i64) as u64;
+                aux2 = (lhs.as_u64() as i64 % rhs.as_u64() as i64) as u64;
+                aux3 = (rhs.as_u64() as i64 - lhs.as_u64() as i64 % rhs.as_u64() as i64 - 1) as u64;
+                div_rem_s_is_lhs_pos = (lhs.as_u64() as i64 >= 0) as u64;
+                div_rem_s_is_rhs_pos = (rhs.as_u64() as i64 >= 0) as u64;
             }
             _ => unreachable!("not supported opcode: {:?}", opcode),
         };
         self.aux1.assign(region, offset, Value::known(F::from(aux1)))?;
         self.aux2.assign(region, offset, Value::known(F::from(aux2)))?;
         self.aux3.assign(region, offset, Value::known(F::from(aux3)))?;
+        self.div_rem_s_is_lhs_pos.assign(region, offset, Value::known(F::from(div_rem_s_is_lhs_pos)))?;
+        self.div_rem_s_is_rhs_pos.assign(region, offset, Value::known(F::from(div_rem_s_is_rhs_pos)))?;
 
         let is_64bit = matches!(opcode,
             OpcodeId::I64Add |
@@ -441,6 +479,66 @@ mod test {
             I64Const[4]
             I64Const[4]
             I64RemU
+            Drop
+        });
+    }
+
+    // `s_pp` means signed where lhs is positive and rhs is positive.
+    #[test]
+    fn test_i32_64_rem_s_pp() {
+        run_test(bytecode! {
+            I64Const[4]
+            I64Const[3]
+            I64RemS
+            Drop
+            I64Const[4]
+            I64Const[4]
+            I64RemS
+            Drop
+        });
+    }
+
+    // `s_pp` means signed where lhs is positive and rhs is positive.
+    #[test]
+    fn test_i32_64_div_s_pp() {
+        run_test(bytecode! {
+            I64Const[4]
+            I64Const[3]
+            I64DivS
+            Drop
+            I64Const[4]
+            I64Const[4]
+            I64DivS
+            Drop
+        });
+    }
+
+    // `s_pp` means signed where lhs is positive and rhs is positive.
+    #[test]
+    fn test_i32_32_rem_s_pp() {
+        run_test(bytecode! {
+            I32Const[4]
+            I32Const[3]
+            I32RemS
+            Drop
+            I32Const[4]
+            I32Const[4]
+            I32RemS
+            Drop
+        });
+    }
+
+    // `s_pp` means signed where lhs is positive and rhs is positive.
+    #[test]
+    fn test_i32_32_div_s_pp() {
+        run_test(bytecode! {
+            I32Const[4]
+            I32Const[3]
+            I32DivS
+            Drop
+            I32Const[4]
+            I32Const[4]
+            I32DivS
             Drop
         });
     }

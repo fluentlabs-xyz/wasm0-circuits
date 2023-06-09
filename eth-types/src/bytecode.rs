@@ -507,6 +507,8 @@ impl Bytecode {
             OpcodeId::I64DivU => Instruction::I64DivU,
             OpcodeId::I32RemU => Instruction::I32RemU,
             OpcodeId::I64RemU => Instruction::I64RemU,
+            OpcodeId::I64RemS => Instruction::I64RemS,
+            OpcodeId::I32RemS => Instruction::I32RemS,
             OpcodeId::I32Ctz => Instruction::I32Ctz,
             OpcodeId::I64Ctz => Instruction::I64Ctz,
             OpcodeId::I32Clz => Instruction::I32Clz,
