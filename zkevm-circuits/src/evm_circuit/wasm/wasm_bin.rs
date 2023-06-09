@@ -326,16 +326,16 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
                 aux1 = (lhs.as_u32() as i32 / rhs.as_u32() as i32) as u64;
                 aux2 = (lhs.as_u32() as i32 % rhs.as_u32() as i32) as u64;
                 aux3 = (rhs.as_u32() as i32 - lhs.as_u32() as i32 % rhs.as_u32() as i32 - 1) as u64;
-                div_rem_s_is_lhs_pos = (lhs.as_u32() as i32 > 0) as u64;
-                div_rem_s_is_rhs_pos = (rhs.as_u32() as i32 > 0) as u64;
+                div_rem_s_is_lhs_pos = (lhs.as_u32() as i32 >= 0) as u64;
+                div_rem_s_is_rhs_pos = (rhs.as_u32() as i32 >= 0) as u64;
             }
             OpcodeId::I64DivS | OpcodeId::I64RemS => {
                 // TODO: check and correct to fix possible problems with conversion.
                 aux1 = (lhs.as_u64() as i64 / rhs.as_u64() as i64) as u64;
                 aux2 = (lhs.as_u64() as i64 % rhs.as_u64() as i64) as u64;
                 aux3 = (rhs.as_u64() as i64 - lhs.as_u64() as i64 % rhs.as_u64() as i64 - 1) as u64;
-                div_rem_s_is_lhs_pos = (lhs.as_u64() as i64 > 0) as u64;
-                div_rem_s_is_rhs_pos = (rhs.as_u64() as i64 > 0) as u64;
+                div_rem_s_is_lhs_pos = (lhs.as_u64() as i64 >= 0) as u64;
+                div_rem_s_is_rhs_pos = (rhs.as_u64() as i64 >= 0) as u64;
             }
             _ => unreachable!("not supported opcode: {:?}", opcode),
         };
