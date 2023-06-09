@@ -121,7 +121,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             );
 
             cb.require_equal(
-                "exactly one bool field active at a time",
+                "exactly one mark flag may be active at the same time",
                 is_type_expr.clone() + is_input_count_expr.clone() + is_input_type_expr.clone() + is_output_count_expr.clone() + is_output_type_expr.clone(),
                 1.expr(),
             );
@@ -130,7 +130,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check for next: is_type(1) -> is_input_count+",
+                "check next: is_type(1) -> is_input_count+",
                 true,
                 is_type_expr.clone(),
                 &[is_input_count, ],
@@ -138,7 +138,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check for prev: is_type(1) -> is_input_count+",
+                "check prev: is_type(1) -> is_input_count+",
                 false,
                 is_input_count_expr.clone(),
                 &[is_type, is_input_count, ],
@@ -146,7 +146,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check for next: is_input_count+ -> is_input_type* -> is_output_count+",
+                "check next: is_input_count+ -> is_input_type* -> is_output_count+",
                 true,
                 is_input_count_expr.clone(),
                 &[is_input_count, is_input_type, is_output_count, ],
@@ -154,7 +154,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check for prev: is_input_count+ -> is_input_type*",
+                "check prev: is_input_count+ -> is_input_type*",
                 false,
                 is_input_type_expr.clone(),
                 &[is_input_count, is_input_type, ],
@@ -162,7 +162,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check for next: is_input_type* -> is_output_count+",
+                "check next: is_input_type* -> is_output_count+",
                 true,
                 is_input_type_expr.clone(),
                 &[is_input_type, is_output_count, ],
@@ -170,7 +170,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check for prev: is_input_count+ -> is_input_type* -> is_output_count+",
+                "check prev: is_input_count+ -> is_input_type* -> is_output_count+",
                 false,
                 is_output_count_expr.clone(),
                 &[is_input_count, is_input_type, is_output_count, ],
@@ -178,7 +178,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check for prev: is_output_count+ -> is_output_type*",
+                "check prev: is_output_count+ -> is_output_type*",
                 false,
                 is_output_type_expr.clone(),
                 &[is_output_count, is_output_type, ],
