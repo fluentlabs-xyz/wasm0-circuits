@@ -35,11 +35,11 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     fn configure(
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
-        let bytes = cs.advice_column();
+        // let bytes = cs.advice_column();
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
-            &bytes,
+            &wasm_bytecode_table.value,
         );
         let leb128_chip = LEB128Chip::construct(leb128_config);
         let wasm_type_section_item_config = WasmTypeSectionItemChip::configure(
@@ -67,6 +67,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         layouter.assign_region(
             || "wasm_type_section_item region",
             |mut region| {
+                config.wasm_type_section_item_chip.config.leb128_chip.assign_init(&mut region, self.bytecode_bytes.len() - 1);
                 config.wasm_type_section_item_chip.assign_init(&mut region, self.bytecode_bytes.len() - 1);
                 config.wasm_type_section_item_chip.assign_auto(
                     &mut region,
@@ -86,11 +87,13 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 mod wasm_type_section_item_tests {
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
+    use log::debug;
     use rand::Rng;
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
     use crate::wasm_circuit::wasm_sections::consts::NumType;
-    use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::dev::TestCircuit;
+    use crate::wasm_circuit::wasm_sections::wasm_type_section::test_helpers::generate_type_section_functype_bytecode;
+    use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::tests::TestCircuit;
 
     fn test<'a, F: Field>(
         test_circuit: TestCircuit<'_, F>,
@@ -107,15 +110,26 @@ mod wasm_type_section_item_tests {
 
     #[test]
     pub fn test_type_section_item_bytecode_is_ok() {
-        let section_item_bytecode = [0x60, 0x2, 0x7e, 0x7f, 0x1, 0x7f];
-        let code_hash = CodeDB::hash(&section_item_bytecode);
-        let test_circuit = TestCircuit::<Fr> {
-            code_hash,
-            bytecode_bytes: &section_item_bytecode,
-            offset_start: 0,
-            _marker: Default::default(),
-        };
-        test(test_circuit, true);
+        let bytecodes = [
+            generate_type_section_functype_bytecode(0, 0),
+            generate_type_section_functype_bytecode(0, 1),
+            generate_type_section_functype_bytecode(1, 0),
+            generate_type_section_functype_bytecode(1, 1),
+            generate_type_section_functype_bytecode(1, 2),
+            generate_type_section_functype_bytecode(2, 1),
+            generate_type_section_functype_bytecode(2, 2),
+        ];
+        for bytecode in bytecodes {
+            let code_hash = CodeDB::hash(&bytecode);
+            debug!("bytecode (hex): {:x?}", bytecode);
+            let test_circuit = TestCircuit::<Fr> {
+                code_hash,
+                bytecode_bytes: &bytecode,
+                offset_start: 0,
+                _marker: Default::default(),
+            };
+            test(test_circuit, true);
+        }
     }
 
     #[test]

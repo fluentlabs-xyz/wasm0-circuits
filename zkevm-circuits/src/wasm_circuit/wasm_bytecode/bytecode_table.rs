@@ -8,19 +8,14 @@ use std::array;
 use crate::table::LookupTable;
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 
-///
 #[derive(Clone, Debug)]
 pub struct WasmBytecodeTable {
-    ///
     pub index: Column<Advice>,
-    ///
     pub value: Column<Advice>,
-    ///
     pub code_hash: Column<Advice>,
 }
 
 impl WasmBytecodeTable {
-    ///
     pub fn construct<F: Field>(cs: &mut ConstraintSystem<F>) -> Self {
         let [index, value, code_hash] = array::from_fn(|_| cs.advice_column());
         // TODO need this for prod ?
@@ -32,7 +27,6 @@ impl WasmBytecodeTable {
         }
     }
 
-    ///
     pub fn load<'a, F: Field>(
         &self,
         layouter: &mut impl Layouter<F>,

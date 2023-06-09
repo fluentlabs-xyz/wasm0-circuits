@@ -17,7 +17,6 @@ use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::circuit::WasmTypeSectionItemChip;
 
-///
 #[derive(Debug, Clone)]
 pub struct WasmTypeSectionBodyConfig<F> {
     pub q_enable: Column<Fixed>,
@@ -30,22 +29,17 @@ pub struct WasmTypeSectionBodyConfig<F> {
     _marker: PhantomData<F>,
 }
 
-///
 impl<'a, F: Field> WasmTypeSectionBodyConfig<F>
 {}
 
-///
 #[derive(Debug, Clone)]
 pub struct WasmTypeSectionBodyChip<F> {
-    ///
     pub config: WasmTypeSectionBodyConfig<F>,
-    ///
     _marker: PhantomData<F>,
 }
 
 impl<F: Field> WasmTypeSectionBodyChip<F>
 {
-    ///
     pub fn construct(config: WasmTypeSectionBodyConfig<F>) -> Self {
         let instance = Self {
             config,
@@ -54,7 +48,6 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         instance
     }
 
-    ///
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
@@ -88,7 +81,6 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
                 }
             );
 
-
             cb.require_equal(
                 "if is_body_expr <-> wasm_type_section_item",
                 is_body_expr.clone(),
@@ -112,7 +104,6 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         config
     }
 
-    ///
     pub fn assign_init(
         &self,
         region: &mut Region<F>,
@@ -124,8 +115,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
                 offset,
                 false,
                 false,
-                false,
-                false,
+                0,
                 0,
                 0,
                 0,
@@ -133,16 +123,14 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         }
     }
 
-    ///
     pub fn assign(
         &self,
         region: &mut Region<F>,
         offset: usize,
         is_body_items_count: bool,
-        is_body_items_count_first_byte: bool,
-        is_body_items_count_last_byte: bool,
         is_body: bool,
         leb_byte_offset: usize,
+        leb_last_byte_offset: usize,
         leb_sn: u64,
         leb_sn_recovered_at_pos: u64,
     ) {
@@ -152,9 +140,9 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
                 offset,
                 leb_byte_offset,
                 true,
-                is_body_items_count_first_byte,
-                is_body_items_count_last_byte,
-                !is_body_items_count_last_byte,
+                leb_last_byte_offset == 0,
+                leb_last_byte_offset == leb_last_byte_offset,
+                !leb_last_byte_offset < leb_last_byte_offset,
                 false,
                 leb_sn,
                 leb_sn_recovered_at_pos,
@@ -181,7 +169,40 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         ).unwrap();
     }
 
-    ///
+    /// returns sn and leb len
+    fn markup_leb_section(
+        &self,
+        region: &mut Region<F>,
+        leb_bytes: &[u8],
+        leb_bytes_start_offset: usize,
+        is_body_items_count: bool,
+    ) -> (u64, usize) {
+        const OFFSET: usize = 0;
+        let (leb_sn, last_byte_offset) = leb128_compute_sn(leb_bytes, false, OFFSET).unwrap();
+        let mut leb_sn_recovered_at_pos = 0;
+        for byte_offset in OFFSET..=last_byte_offset {
+            leb_sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
+                leb_sn_recovered_at_pos,
+                false,
+                byte_offset,
+                last_byte_offset,
+                leb_bytes[OFFSET],
+            );
+            self.assign(
+                region,
+                leb_bytes_start_offset + byte_offset,
+                is_body_items_count,
+                false,
+                byte_offset,
+                last_byte_offset,
+                leb_sn,
+                leb_sn_recovered_at_pos,
+            );
+        }
+
+        (leb_sn, last_byte_offset + 1)
+    }
+
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
@@ -193,46 +214,27 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
             return Err(Error::IndexOutOfBounds(format!("offset {} when max {}", offset, wasm_bytecode.bytes.len() - 1)))
         }
 
-        let (body_items_count_sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), false, offset)?;
-        let mut sn_recovered_at_pos = 0;
-        for byte_offset in offset..=last_byte_offset {
-            let leb_byte_offset = byte_offset - offset;
-            sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
-                sn_recovered_at_pos,
-                false,
-                leb_byte_offset,
-                last_byte_offset - offset,
-                wasm_bytecode.bytes[offset],
-            );
-            self.assign(
-                region,
-                byte_offset,
-                true,
-                byte_offset == offset,
-                byte_offset == last_byte_offset,
-                false,
-                leb_byte_offset,
-                body_items_count_sn,
-                sn_recovered_at_pos,
-            );
-        }
-        offset = last_byte_offset + 1;
+        let (body_items_count_sn, body_items_count_leb_len) = self.markup_leb_section(
+            region,
+            &wasm_bytecode.bytes[offset..],
+            offset,
+            true,
+        );
+        offset += body_items_count_leb_len;
 
-        for _body_item_number in 1..=body_items_count_sn {
+        for _body_item_index in 0..body_items_count_sn {
             let next_body_item_offset = self.config.wasm_type_section_item_chip.assign_auto(
                 region,
                 wasm_bytecode,
                 offset,
             )?;
-            debug!("_body_item_number {} body_items_count_sn {} offset {} wasm_bytecode.bytes.len() {} next_body_item_offset {}", _body_item_number, body_items_count_sn, offset, wasm_bytecode.bytes.len(), next_body_item_offset);
             for offset in offset..next_body_item_offset {
                 self.assign(
                     region,
                     offset,
                     false,
-                    false,
-                    false,
                     true,
+                    0,
                     0,
                     0,
                     0,

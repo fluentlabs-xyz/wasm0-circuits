@@ -9,13 +9,11 @@ use eth_types::Field;
 /// A lookup table of values from 0..RANGE.
 #[derive(Debug, Clone)]
 pub struct RangeTableConfig<F: Field, const RANGE: usize> {
-    ///
     pub value: TableColumn,
     _marker: PhantomData<F>,
 }
 
 impl<F: Field, const RANGE: usize> RangeTableConfig<F, RANGE> {
-    ///
     pub fn configure(cs: &mut ConstraintSystem<F>) -> Self {
         let value = cs.lookup_table_column();
 
@@ -25,7 +23,6 @@ impl<F: Field, const RANGE: usize> RangeTableConfig<F, RANGE> {
         }
     }
 
-    ///
     pub fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         layouter.assign_table(
             || "load range-check table",

@@ -4,7 +4,7 @@ use halo2_proofs::{
 use std::{marker::PhantomData};
 use std::rc::Rc;
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::Fixed;
+use halo2_proofs::plonk::{Expression, Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
 use eth_types::Field;
 use gadgets::util::{Expr, not, or};
@@ -15,6 +15,7 @@ use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_com
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::NumType;
+use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::consts::Type::FuncType;
 
 #[derive(Debug, Clone)]
@@ -113,15 +114,77 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 ]),
                 |bcb| {
                     bcb.require_zero(
-                        "if is_input/output_count -> leb128",
+                        "is_input/output_count -> leb128",
                         not::expr(vc.query_fixed(leb128_chip.config.q_enable.clone(), Rotation::cur())),
                     )
                 }
             );
 
-            // TODO add constraints
+            cb.require_equal(
+                "exactly one bool field active at a time",
+                is_type_expr.clone() + is_input_count_expr.clone() + is_input_type_expr.clone() + is_output_count_expr.clone() + is_output_type_expr.clone(),
+                1.expr(),
+            );
 
-            // TODO item_type -(1)> input_count -(0..N)> input_type -(1)> output_count -(0..N)> output_type
+            // is_type(1) -> is_input_count+ -> is_input_type* -> is_output_count+ -> is_output_type*
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check for next: is_type(1) -> is_input_count+",
+                true,
+                is_type_expr.clone(),
+                &[is_input_count, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check for prev: is_type(1) -> is_input_count+",
+                false,
+                is_input_count_expr.clone(),
+                &[is_type, is_input_count, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check for next: is_input_count+ -> is_input_type* -> is_output_count+",
+                true,
+                is_input_count_expr.clone(),
+                &[is_input_count, is_input_type, is_output_count, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check for prev: is_input_count+ -> is_input_type*",
+                false,
+                is_input_type_expr.clone(),
+                &[is_input_count, is_input_type, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check for next: is_input_type* -> is_output_count+",
+                true,
+                is_input_type_expr.clone(),
+                &[is_input_type, is_output_count, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check for prev: is_input_count+ -> is_input_type* -> is_output_count+",
+                false,
+                is_output_count_expr.clone(),
+                &[is_input_count, is_input_type, is_output_count, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check for prev: is_output_count+ -> is_output_type*",
+                false,
+                is_output_type_expr.clone(),
+                &[is_output_count, is_output_type, ],
+            );
+
+            // TODO add constraints
 
             cb.gate(q_enable_expr.clone())
         });
@@ -140,7 +203,6 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         config
     }
 
-    ///
     pub fn assign_init(
         &self,
         region: &mut Region<F>,
@@ -155,8 +217,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 false,
                 false,
                 false,
-                false,
-                false,
+                0,
                 0,
                 0,
                 0,
@@ -164,19 +225,17 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         }
     }
 
-    ///
     pub fn assign(
         &self,
         region: &mut Region<F>,
         offset: usize,
         is_type: bool,
-        is_count_first_byte: bool,
-        is_count_last_byte: bool,
         is_input_count: bool,
         is_input_type: bool,
         is_output_count: bool,
         is_output_type: bool,
-        leb_byte_offset: usize,
+        leb_byte_rel_offset: usize,
+        leb_last_byte_rel_offset: usize,
         leb_sn: u64,
         leb_sn_recovered_at_pos: u64,
     ) {
@@ -184,11 +243,11 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             self.config.leb128_chip.assign(
                 region,
                 offset,
-                leb_byte_offset,
+                leb_byte_rel_offset,
                 true,
-                is_count_first_byte,
-                is_count_last_byte,
-                !is_count_last_byte,
+                leb_byte_rel_offset == 0,
+                leb_byte_rel_offset == leb_last_byte_rel_offset,
+                leb_byte_rel_offset < leb_last_byte_rel_offset,
                 false,
                 leb_sn,
                 leb_sn_recovered_at_pos,
@@ -233,6 +292,44 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         ).unwrap();
     }
 
+    /// returns sn and leb len
+    fn markup_leb_section(
+        &self,
+        region: &mut Region<F>,
+        leb_bytes: &[u8],
+        leb_bytes_start_offset: usize,
+        is_input_count: bool,
+        is_output_count: bool,
+    ) -> (u64, usize) {
+        const OFFSET: usize = 0;
+        let (leb_sn, last_byte_offset) = leb128_compute_sn(leb_bytes, false, OFFSET).unwrap();
+        let mut leb_sn_recovered_at_pos = 0;
+        for byte_offset in OFFSET..=last_byte_offset {
+            leb_sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
+                leb_sn_recovered_at_pos,
+                false,
+                byte_offset,
+                last_byte_offset,
+                leb_bytes[OFFSET],
+            );
+            self.assign(
+                region,
+                leb_bytes_start_offset + byte_offset,
+                false,
+                is_input_count,
+                false,
+                is_output_count,
+                false,
+                byte_offset,
+                last_byte_offset,
+                leb_sn,
+                leb_sn_recovered_at_pos,
+            );
+        }
+
+        (leb_sn, last_byte_offset + 1)
+    }
+
     /// returns new offset
     pub fn assign_auto(
         &self,
@@ -253,85 +350,48 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             false,
             false,
             false,
-            false,
-            false,
+            0,
             0,
             0,
             0,
         );
         offset += 1;
 
-        let (input_count_sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), false, offset)?;
-        let mut sn_recovered_at_pos = 0;
-        for byte_offset in offset..=last_byte_offset {
-            let leb_byte_offset = byte_offset - offset;
-            sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
-                sn_recovered_at_pos,
-                false,
-                leb_byte_offset,
-                last_byte_offset - offset,
-                wasm_bytecode.bytes[offset],
-            );
-            self.assign(
-                region,
-                byte_offset,
-                false,
-                byte_offset == offset,
-                byte_offset == last_byte_offset,
-                true,
-                false,
-                false,
-                false,
-                leb_byte_offset,
-                input_count_sn,
-                sn_recovered_at_pos,
-            );
-        }
-        offset = last_byte_offset + 1;
+        let (input_count_sn, input_count_leb_len) = self.markup_leb_section(
+            region,
+            &wasm_bytecode.bytes[offset..],
+            offset,
+            true,
+            false,
+        );
+        offset += input_count_leb_len;
+
         for byte_offset in offset..(offset + input_count_sn as usize) {
             self.assign(
                 region,
                 byte_offset,
                 false,
                 false,
-                false,
-                false,
                 true,
                 false,
                 false,
+                0,
                 0,
                 0,
                 0,
             );
         }
         offset += input_count_sn as usize;
-        let (output_count_sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), false, offset)?;
-        let mut sn_recovered_at_pos = 0;
-        for byte_offset in offset..=last_byte_offset {
-            let leb_byte_offset = byte_offset - offset;
-            sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
-                sn_recovered_at_pos,
-                false,
-                leb_byte_offset,
-                last_byte_offset - offset,
-                wasm_bytecode.bytes[offset],
-            );
-            self.assign(
-                region,
-                byte_offset,
-                false,
-                byte_offset == offset,
-                byte_offset == last_byte_offset,
-                false,
-                false,
-                true,
-                false,
-                leb_byte_offset,
-                output_count_sn,
-                sn_recovered_at_pos,
-            );
-        }
-        offset = last_byte_offset + 1;
+
+        let (output_count_sn, output_count_leb_len) = self.markup_leb_section(
+            region,
+            &wasm_bytecode.bytes[offset..],
+            offset,
+            false,
+            true,
+        );
+        offset += output_count_leb_len;
+
         for byte_offset in offset..(offset + output_count_sn as usize) {
             self.assign(
                 region,
@@ -340,9 +400,8 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 false,
                 false,
                 false,
-                false,
-                false,
                 true,
+                0,
                 0,
                 0,
                 0,

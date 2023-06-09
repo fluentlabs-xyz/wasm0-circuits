@@ -52,6 +52,7 @@ wasmparser-nostd = "0.99.0"
 wasm-encoder = "0.22.1"
 wasmbin = "0.6.0"
 wasmparser = "0.105.0"
+leb128 = "0.2.5"
 
 [dev-dependencies]
 bus-mapping = { path = "../bus-mapping", features = ["test"] }

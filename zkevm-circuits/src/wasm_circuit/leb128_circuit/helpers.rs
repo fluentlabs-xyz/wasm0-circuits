@@ -27,9 +27,9 @@ pub fn leb128_compute_sn_recovered_at_position(
 
 pub fn leb128_compute_last_byte_offset(
     bytes: &[u8],
-    first_byte_offset: usize,
+    leb_first_byte_offset: usize,
 ) -> Result<usize, Error> {
-    let mut offset = first_byte_offset;
+    let mut offset = leb_first_byte_offset;
     loop {
         if offset >= bytes.len() {
             return Err(Error::IndexOutOfBounds(format!("offset {} when max {}", offset, bytes.len() - 1)))
@@ -40,7 +40,7 @@ pub fn leb128_compute_last_byte_offset(
         }
 
         offset += 1;
-        let byte_offset = offset - first_byte_offset;
+        let byte_offset = offset - leb_first_byte_offset;
         if byte_offset >= LEB128_MAX_BYTES_COUNT {
             return Err(Error::UnsupportedBytesCount(format!("bytes count {} when max allowed {}", byte_offset + 1, LEB128_MAX_BYTES_COUNT)))
         }
@@ -61,9 +61,25 @@ pub fn leb128_compute_sn(
             sn,
             is_signed,
             offset - first_byte_offset,
-            offset - last_byte_offset,
+            last_byte_offset - first_byte_offset,
             bytes[offset],
         )
     }
     Ok((sn, last_byte_offset))
+}
+
+///
+pub fn leb128_convert(
+    is_signed: bool,
+    value: u64,
+) -> Vec<u8> {
+    let mut res = vec![];
+
+    if is_signed {
+        leb128::write::signed(&mut res, -(value as i64)).expect("Failed to convert number to signed leb128");
+    } else {
+        leb128::write::unsigned(&mut res, value).expect("Failed to convert number to unsigned leb128");
+    }
+
+    res
 }

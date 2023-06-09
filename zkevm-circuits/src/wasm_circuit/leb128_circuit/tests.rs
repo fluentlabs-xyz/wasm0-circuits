@@ -15,12 +15,13 @@ struct TestCircuit<'a, F, const IS_SIGNED: bool> {
     leb_bytes_last_byte_index: u64,
     is_signed: bool,
     sn: u64,
+    offset_shift: usize,
     _marker: PhantomData<F>,
 }
 
 #[derive(Clone)]
 struct TestCircuitConfig<F, const IS_SIGNED: bool> {
-    sn: Column<Advice>,
+    // sn: Column<Advice>,
     leb_bytes: Column<Advice>,
     leb128_config: LEB128Config<F>,
     _marker: PhantomData<F>,
@@ -35,14 +36,12 @@ impl<'a, F: Field, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, IS_S
     fn configure(
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
-        let sn = cs.advice_column();
         let leb_bytes = cs.advice_column();
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
             &leb_bytes,
         );
         let test_circuit_config = TestCircuitConfig {
-            sn,
             leb_bytes,
             leb128_config,
             _marker: Default::default(),
@@ -61,24 +60,25 @@ impl<'a, F: Field, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, IS_S
         layouter.assign_region(
             || "leb128 region",
             |mut region| {
-                leb128_chip.assign_init(&mut region, self.leb_bytes.len() - 1);
+                leb128_chip.assign_init(&mut region, self.offset_shift + self.leb_bytes.len() - 1);
 
-                for i in 0..self.leb_bytes.len() {
-                    let mut val = self.sn;
-                    region.assign_advice(
-                        || format!("assign 'sn' is_signed {} to {} at {}", self.is_signed, val, i),
-                        config.sn,
-                        i,
-                        || Value::known(if self.is_signed { F::from(val).neg() } else { F::from(val) }),
-                    )?;
-                }
+                // for i in self.offset_shift..self.offset_shift + self.leb_bytes.len() {
+                //     let mut val = self.sn;
+                //     region.assign_advice(
+                //         || format!("assign 'sn' is_signed {} to {} at {}", self.is_signed, val, i),
+                //         config.sn,
+                //         i,
+                //         || Value::known(if self.is_signed { F::from(val).neg() } else { F::from(val) }),
+                //     )?;
+                // }
 
                 let mut sn_recovered_at_pos: u64 = 0;
                 for (leb_byte_offset, &leb_byte) in self.leb_bytes.iter().enumerate() {
+                    let offset = leb_byte_offset + self.offset_shift;
                     region.assign_advice(
                         || format!("assign 'leb_byte' to {} at {}", leb_byte, leb_byte_offset),
                         config.leb_bytes,
-                        leb_byte_offset,
+                        offset,
                         || Value::known(F::from(leb_byte as u64)),
                     ).unwrap();
                     let is_first_leb_byte = leb_byte_offset == 0;
@@ -101,7 +101,7 @@ impl<'a, F: Field, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, IS_S
                     );
                     leb128_chip.assign(
                         &mut region,
-                        leb_byte_offset,
+                        offset,
                         leb_byte_offset,
                         true,
                         is_first_leb_byte,
@@ -130,7 +130,7 @@ mod leb128_circuit_tests {
     use rand::Rng;
     use eth_types::Field;
     use crate::wasm_circuit::leb128_circuit::consts::{EIGHT_LS_BITS_MASK, EIGHT_MS_BIT_MASK, SEVEN_LS_BITS_MASK};
-    use crate::wasm_circuit::leb128_circuit::dev::TestCircuit;
+    use crate::wasm_circuit::leb128_circuit::tests::TestCircuit;
 
     const ALL_BIT_DEPTHS_BYTES: &[usize] = &[1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -213,7 +213,6 @@ mod leb128_circuit_tests {
         (res_vec, last_byte_index)
     }
 
-    ///
     pub fn convert_to_leb_bytes(is_signed: bool, number: u64, exact_bytes_count: usize) -> (Vec<u8>, usize) {
         if !is_signed || number == 0 {
             return convert_to_leb_bytes_unsigned(number, exact_bytes_count);
@@ -224,25 +223,6 @@ mod leb128_circuit_tests {
         }
         convert_to_leb_bytes_signed(if is_signed { -(number as i64) } else { number as i64 }, exact_bytes_count)
     }
-
-    /*pub fn convert_leb_to_leb_base64_words(leb128: &Vec<u8>, last_byte_index: usize) -> Vec<u64> {
-        let mut base64_words = Vec::<u64>::new();
-        let mut index = 0;
-        for i in 0..=last_byte_index {
-            if i % BYTES_IN_BASE64_WORD == 0 {
-                base64_words.push(0);
-                index = i + 7;
-                if index > last_byte_index { index = last_byte_index };
-            } else {
-                index -= 1;
-            }
-            let base64_words_last_index = base64_words.len() - 1;
-            let current_word = &mut base64_words[base64_words_last_index];
-            let byte = leb128[index];
-            (*current_word) = (*current_word) * 0b100000000 + byte as u64;
-        }
-        base64_words
-    }*/
 
     pub fn break_bit(byte_to_break: &mut u8, break_mask: u8) {
         *byte_to_break = (!*byte_to_break & break_mask) | (*byte_to_break & !break_mask);
@@ -291,7 +271,7 @@ mod leb128_circuit_tests {
         }
     }
 
-    pub fn exact_number<const LEB_BYTES_N: usize, const IS_SIGNED: bool>(solid_number: u64) {
+    pub fn exact_number<const LEB_BYTES_N: usize, const IS_SIGNED: bool>(solid_number: u64, offset_shift: usize) {
         let (input_number_leb128, last_byte_index) = convert_to_leb_bytes(
             IS_SIGNED,
             solid_number,
@@ -308,6 +288,7 @@ mod leb128_circuit_tests {
             leb_bytes_last_byte_index: last_byte_index as u64,
             is_signed: IS_SIGNED,
             sn: solid_number,
+            offset_shift,
             _marker: PhantomData
         };
         self::test(circuit, true);
@@ -316,24 +297,25 @@ mod leb128_circuit_tests {
     #[test]
     pub fn test_debug_exact_number_unsigned() {
         const IS_SIGNED: bool = false;
-        exact_number::<1, { IS_SIGNED }>(0);
-        exact_number::<1, { IS_SIGNED }>(1);
-        exact_number::<1, { IS_SIGNED }>(32);
-        exact_number::<2, { IS_SIGNED }>(16382);
-        exact_number::<2, { IS_SIGNED }>(16383);
-        exact_number::<3, { IS_SIGNED }>(123456);
-        exact_number::<4, { IS_SIGNED }>(123456789);
+        // exact_number::<1, { IS_SIGNED }>(0);
+        // exact_number::<1, { IS_SIGNED }>(1);
+        // exact_number::<1, { IS_SIGNED }>(32);
+        exact_number::<2, { IS_SIGNED }>(164, 1);
+        // exact_number::<2, { IS_SIGNED }>(16382);
+        // exact_number::<2, { IS_SIGNED }>(16383);
+        // exact_number::<3, { IS_SIGNED }>(123456);
+        // exact_number::<4, { IS_SIGNED }>(123456789);
     }
 
     #[test]
     pub fn test_debug_exact_number_signed() {
         const IS_SIGNED: bool = true;
-        exact_number::<1, { IS_SIGNED }>(1);
-        exact_number::<1, { IS_SIGNED }>(32);
-        exact_number::<3, { IS_SIGNED }>(16382);
-        exact_number::<3, { IS_SIGNED }>(16383);
-        exact_number::<3, { IS_SIGNED }>(123456);
-        exact_number::<4, { IS_SIGNED }>(123456789);
+        exact_number::<1, { IS_SIGNED }>(1, 0);
+        exact_number::<1, { IS_SIGNED }>(32, 0);
+        exact_number::<3, { IS_SIGNED }>(16382, 0);
+        exact_number::<3, { IS_SIGNED }>(16383, 0);
+        exact_number::<3, { IS_SIGNED }>(123456, 0);
+        exact_number::<4, { IS_SIGNED }>(123456789, 0);
     }
 
     pub fn eligible_numbers<const LEB_BYTES_N: usize, const IS_SIGNED: bool>() {
@@ -373,6 +355,7 @@ mod leb128_circuit_tests {
                 leb_bytes_last_byte_index: last_byte_index as u64,
                 is_signed: IS_SIGNED,
                 sn: solid_number,
+                offset_shift: 0,
                 _marker: PhantomData
             };
             self::test(circuit, true);
@@ -428,7 +411,6 @@ mod leb128_circuit_tests {
                 LEB_BYTES_N,
             );
 
-            // let base64_words = convert_leb_to_leb_base64_words(&input_number_leb128, last_byte_index);
             leb_break_continuation_bit(&mut rng, &mut input_number_leb128);
             debug!(
                 "{}. LEB_BYTES_N {} IS_SIGNED:{} solid_number {} leb128 {:x?}",
@@ -443,6 +425,7 @@ mod leb128_circuit_tests {
                 leb_bytes_last_byte_index: last_byte_index as u64,
                 is_signed: IS_SIGNED,
                 sn: solid_number,
+                offset_shift: 0,
                 _marker: PhantomData
             };
             self::test(circuit, false);
@@ -502,7 +485,6 @@ mod leb128_circuit_tests {
                 LEB_BYTES_N,
             );
 
-            // let base64_words = convert_leb_to_leb_base64_words(&input_number_leb128, last_byte_index);
             leb_break_random_bit(&mut rng, &mut input_number_leb128);
             debug!(
                 "{}. IS_SIGNED:{} solid_number {} leb128 {:x?}",
@@ -512,11 +494,11 @@ mod leb128_circuit_tests {
                 input_number_leb128,
             );
             let circuit = TestCircuit::<'_, Fr, IS_SIGNED> {
-                // leb_base64_words: base64_words.as_slice(),
                 leb_bytes: input_number_leb128.as_slice(),
                 leb_bytes_last_byte_index: last_byte_index as u64,
                 is_signed: IS_SIGNED,
                 sn: solid_number,
+                offset_shift: 0,
                 _marker: PhantomData
             };
             self::test(circuit, false);

@@ -61,6 +61,14 @@ mod wasm_parsers_tests {
                     println!("raw (hex): {:x?}", bytes);
                     println!("{:#?}", s);
                 }
+                Kind::Import => {
+                    println!("---Kind::Import:");
+                    let mut bytes = Vec::<u8>::new();
+                    s.encode(&mut bytes).unwrap();
+                    println!("section len: {:?}", compute_section_len(&bytes));
+                    println!("raw (hex): {:x?}", bytes);
+                    println!("{:#?}", s);
+                }
                 Kind::Function => {
                     println!("---Kind::Function:");
                     let mut bytes = Vec::<u8>::new();

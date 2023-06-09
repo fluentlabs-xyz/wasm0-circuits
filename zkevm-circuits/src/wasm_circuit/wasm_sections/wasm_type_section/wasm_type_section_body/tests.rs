@@ -37,11 +37,10 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     fn configure(
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
-        let bytes = cs.advice_column();
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
-            &bytes,
+            &wasm_bytecode_table.value,
         );
         let leb128_chip = Rc::new(LEB128Chip::construct(leb128_config));
         let wasm_type_section_item_config = WasmTypeSectionItemChip::configure(
@@ -77,6 +76,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         layouter.assign_region(
             || "wasm_type_section_body region",
             |mut region| {
+                config.wasm_type_section_body_chip.config.leb128_chip.assign_init(&mut region, self.bytecode_bytes.len() - 1);
+                config.wasm_type_section_body_chip.config.wasm_type_section_item_chip.assign_init(&mut region, self.bytecode_bytes.len() - 1);
                 config.wasm_type_section_body_chip.assign_init(&mut region, self.bytecode_bytes.len() - 1);
                 config.wasm_type_section_body_chip.assign_auto(
                     &mut region,
@@ -96,9 +97,11 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 mod wasm_type_section_body_tests {
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
+    use log::debug;
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
-    use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_body::dev::TestCircuit;
+    use crate::wasm_circuit::wasm_sections::wasm_type_section::test_helpers::generate_type_section_body_bytecode;
+    use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_body::tests::TestCircuit;
 
     fn test<'a, F: Field>(
         test_circuit: TestCircuit<'_, F>,
@@ -115,17 +118,25 @@ mod wasm_type_section_body_tests {
 
     #[test]
     pub fn test_type_section_body_bytecode_is_ok() {
-        // type_section_items start at: 1, 4, 7, 12
-        let section_body_bytecode = [
-            0x4, 0x60, 0, 0, 0x60, 0, 0, 0x60, 0x2, 0x7f, 0x7e, 0, 0x60, 0x2, 0x7e, 0x7f, 0x1, 0x7f
-        ];
-        let code_hash = CodeDB::hash(&section_body_bytecode);
-        let test_circuit = TestCircuit::<Fr> {
-            code_hash,
-            bytecode_bytes: &section_body_bytecode,
-            offset_start: 0,
-            _marker: Default::default(),
-        };
-        test(test_circuit, true);
+        for _ in 0..10 {
+            let bytecodes = [
+                generate_type_section_body_bytecode(0, 2, 2),
+                generate_type_section_body_bytecode(1, 2, 2),
+                generate_type_section_body_bytecode(2, 2, 2),
+                generate_type_section_body_bytecode(3, 2, 2),
+                generate_type_section_body_bytecode(4, 2, 2),
+            ];
+            for bytecode in bytecodes {
+                debug!("type_section_body_bytecode (hex) {:x?}", bytecode);
+                let code_hash = CodeDB::hash(&bytecode);
+                let test_circuit = TestCircuit::<Fr> {
+                    code_hash,
+                    bytecode_bytes: &bytecode,
+                    offset_start: 0,
+                    _marker: Default::default(),
+                };
+                test(test_circuit, true);
+            }
+        }
     }
 }
