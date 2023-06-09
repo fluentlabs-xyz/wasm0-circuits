@@ -14,9 +14,11 @@ use crate::{
     table::CallContextFieldTag,
     util::Expr,
 };
-use eth_types::{Field, ToScalar, ToU256};
+use eth_types::{Field, ToLittleEndian, ToScalar, ToU256, Word};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use itertools::Itertools;
 use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
+use crate::evm_circuit::util::RandomLinearCombination;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmSloadGadget<F> {
@@ -24,9 +26,11 @@ pub(crate) struct EvmSloadGadget<F> {
     tx_id: Cell<F>,
     reversion_info: ReversionInfo<F>,
     callee_address: Cell<F>,
-    phase2_key: Cell<F>,
-    phase2_value: Cell<F>,
-    phase2_committed_value: Cell<F>,
+    key_offset: Cell<F>,
+    key: RandomLinearCombination<F, 32>,
+    value_offset: Cell<F>,
+    value: RandomLinearCombination<F, 32>,
+    committed_value: RandomLinearCombination<F, 32>,
     is_warm: Cell<F>,
 }
 
@@ -42,27 +46,32 @@ impl<F: Field> ExecutionGadget<F> for EvmSloadGadget<F> {
         let mut reversion_info = cb.reversion_info_read(None);
         let callee_address = cb.call_context(None, CallContextFieldTag::CalleeAddress);
 
-        let phase2_key = cb.query_cell_phase2();
-        // Pop the key from the stack
-        cb.stack_pop(phase2_key.expr());
+        let value_offset = cb.query_cell();
+        let key_offset = cb.query_cell();
 
-        let phase2_value = cb.query_cell_phase2();
-        let phase2_committed_value = cb.query_cell_phase2();
+        let key = cb.query_word_rlc();
+        // Pop the key from the stack
+        cb.stack_pop(value_offset.expr());
+        cb.stack_pop(key_offset.expr());
+
+        let value = cb.query_word_rlc();
+        let committed_value = cb.query_word_rlc();
         cb.account_storage_read(
             callee_address.expr(),
-            phase2_key.expr(),
-            phase2_value.expr(),
+            key.expr(),
+            value.expr(),
             tx_id.expr(),
-            phase2_committed_value.expr(),
+            committed_value.expr(),
         );
 
-        cb.stack_push(phase2_value.expr());
+        cb.memory_rlc_lookup(0.expr(), &key_offset, &key);
+        cb.memory_rlc_lookup(1.expr(), &value_offset, &value);
 
         let is_warm = cb.query_bool();
         cb.account_storage_access_list_write(
             tx_id.expr(),
             callee_address.expr(),
-            phase2_key.expr(),
+            key.expr(),
             true.expr(),
             is_warm.expr(),
             Some(&mut reversion_info),
@@ -83,9 +92,11 @@ impl<F: Field> ExecutionGadget<F> for EvmSloadGadget<F> {
             tx_id,
             reversion_info,
             callee_address,
-            phase2_key,
-            phase2_value,
-            phase2_committed_value,
+            key_offset,
+            key,
+            value_offset,
+            value,
+            committed_value,
             is_warm,
         }
     }
@@ -119,20 +130,20 @@ impl<F: Field> ExecutionGadget<F> for EvmSloadGadget<F> {
             ),
         )?;
 
-        let [key, value] =
-            [step.rw_indices[4], step.rw_indices[6]].map(|idx| block.rws[idx].stack_value());
-        self.phase2_key
-            .assign(region, offset, region.word_rlc(key.to_u256()))?;
-        self.phase2_value
-            .assign(region, offset, region.word_rlc(value.to_u256()))?;
+        let [value_offset, key_offset] =
+            [step.rw_indices[4], step.rw_indices[5]].map(|idx| block.rws[idx].stack_value());
+        self.value_offset.assign(region, offset, Value::known(F::from(value_offset.as_u64())))?;
+        self.key_offset.assign(region, offset, Value::known(F::from(key_offset.as_u64())))?;
 
-        let (_, committed_value) = block.rws[step.rw_indices[5]].aux_pair();
-        self.phase2_committed_value
-            .assign(region, offset, region.word_rlc(committed_value))?;
+        let (key, value) = block.rws[step.rw_indices[5+1]].storage_key_value();
+        self.key.assign(region, offset, Some(key.to_le_bytes()))?;
+        self.value.assign(region, offset, Some(value.to_le_bytes()))?;
 
-        let (_, is_warm) = block.rws[step.rw_indices[7]].tx_access_list_value_pair();
-        self.is_warm
-            .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
+        let (_, committed_value) = block.rws[step.rw_indices[5+1]].aux_pair();
+        self.committed_value.assign(region, offset, Some(committed_value.to_le_bytes()))?;
+
+        let (_, is_warm) = block.rws[step.rw_indices[5+32+1+32+1]].tx_access_list_value_pair();
+        self.is_warm.assign(region, offset, Value::known(F::from(is_warm as u64)))?;
 
         Ok(())
     }
@@ -142,29 +153,39 @@ impl<F: Field> ExecutionGadget<F> for EvmSloadGadget<F> {
 mod test {
 
     use crate::{evm_circuit::test::rand_word, test_util::CircuitTestBuilder};
-    use eth_types::{bytecode, Word};
+    use eth_types::{bytecode, Bytecode, bytecode_internal, ToBigEndian, Word};
+    use eth_types::bytecode::WasmBinaryBytecode;
     use mock::{test_ctx::helpers::tx_from_1_to_0, TestContext, MOCK_ACCOUNTS};
 
     fn test_ok(key: Word, value: Word) {
         // Here we use two bytecodes to test both is_persistent(STOP) or not(REVERT)
         // Besides, in bytecode we use two SLOADs,
         // the first SLOAD is used to test cold,  and the second is used to test warm
-        let bytecode_success = bytecode! {
-            PUSH32(key)
+        let mut bytecode_success = Bytecode::default();
+        let mut bytecode_failure = Bytecode::default();
+        let key_offset = bytecode_success.fill_default_global_data(key.to_be_bytes().to_vec());
+        let value_offset = bytecode_success.alloc_default_global_data(32);
+        bytecode_internal! {bytecode_success,
+            I32Const[key_offset]
+            I32Const[value_offset]
             SLOAD
-            PUSH32(key)
+            I32Const[key_offset]
+            I32Const[value_offset]
             SLOAD
-            STOP
-        };
-        let bytecode_failure = bytecode! {
-            PUSH32(key)
+        }
+        let key_offset = bytecode_failure.fill_default_global_data(key.to_be_bytes().to_vec());
+        let value_offset = bytecode_failure.alloc_default_global_data(32);
+        bytecode_internal! {bytecode_failure,
+            I32Const[key_offset]
+            I32Const[value_offset]
             SLOAD
-            PUSH32(key)
+            I32Const[key_offset]
+            I32Const[value_offset]
             SLOAD
-            PUSH32(0)
-            PUSH32(0)
+            I32Const[0]
+            I32Const[0]
             REVERT
-        };
+        }
         for bytecode in [bytecode_success, bytecode_failure] {
             let ctx = TestContext::<2, 1>::new(
                 None,
@@ -172,7 +193,7 @@ mod test {
                     accs[0]
                         .address(MOCK_ACCOUNTS[0])
                         .balance(Word::from(10u64.pow(19)))
-                        .code(bytecode)
+                        .code(bytecode.wasm_binary())
                         .storage(vec![(key, value)].into_iter());
                     accs[1]
                         .address(MOCK_ACCOUNTS[1])

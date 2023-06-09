@@ -5,7 +5,7 @@ use crate::{
     operation::{CallContextField, StorageOp, TxAccessListAccountStorageOp, RW},
     Error,
 };
-use eth_types::{GethExecStep, ToU256, ToWord};
+use eth_types::{GethExecStep, ToBigEndian, ToU256, ToWord};
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the
@@ -49,10 +49,19 @@ impl Opcode for OOGSloadSstore {
             callee_address.to_word(),
         );
 
-        let key = geth_step.stack.last()?;
-        state.stack_read(&mut exec_step, geth_step.stack.last_filled(), key)?;
+        // First stack read
+        let value_offset = geth_step.stack.nth_last(0)?;
+        let key_offset = geth_step.stack.nth_last(1)?;
 
-        // TODO: "word can't be StackWord"
+        // Manage first stack read at latest stack position
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), value_offset)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), key_offset)?;
+
+        let key = geth_step.global_memory.read_u256(key_offset)?;
+        let key_bytes = key.to_be_bytes();
+
+        // Storage read
+        let value = geth_step.storage.get_or_err(&key)?;
 
         let is_warm = state
             .sdb
@@ -71,9 +80,6 @@ impl Opcode for OOGSloadSstore {
 
         // Special operations are only used for SSTORE.
         if geth_step.op == OpcodeId::SSTORE {
-            let value = geth_step.stack.nth_last(1)?;
-            state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), value)?;
-
             let (_, value_prev) = state.sdb.get_storage(&callee_address, &key.to_u256());
             let (_, original_value) = state.sdb.get_committed_storage(&callee_address, &key.to_u256());
 

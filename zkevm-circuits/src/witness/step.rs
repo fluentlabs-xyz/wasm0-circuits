@@ -17,7 +17,7 @@ use crate::{
     },
     table::RwTableTag,
 };
-use crate::evm_circuit::param::N_BYTES_U64;
+use crate::evm_circuit::param::{N_BYTES_U64, PAGE_SIZE};
 
 /// Step executed in a transaction
 #[derive(Clone, Default, PartialEq, Eq)]
@@ -90,8 +90,8 @@ impl ExecStep {
         // self.memory_size / N_BYTES_WORD as u64
         // TODO wasm0: what about word size and number below if `self.memory_size / N_BYTES_WORD * N_BYTES_WORD < self.memory_size`
         // temporal fix
-        let mut word_count = self.memory_size / N_BYTES_U64 as u64;
-        if word_count * (N_BYTES_U64 as u64) < self.memory_size { word_count += 1 }
+        let mut word_count = self.memory_size / PAGE_SIZE as u64;
+        if word_count * (PAGE_SIZE as u64) < self.memory_size { word_count += 1 }
         word_count
     }
 }
@@ -224,6 +224,12 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::End => ExecutionState::WASM_END,
 
                     OpcodeId::Select => ExecutionState::WASM_SELECT,
+
+                    OpcodeId::I32GtU | OpcodeId::I32GeU | OpcodeId::I32LtU | OpcodeId::I32LeU |
+                    OpcodeId::I32Eq | OpcodeId::I32Ne | OpcodeId::I32GtS | OpcodeId::I32GeS | OpcodeId::I32LtS |
+                    OpcodeId::I32LeS | OpcodeId::I64GtU | OpcodeId::I64GeU | OpcodeId::I64LtU | OpcodeId::I64LeU |
+                    OpcodeId::I64Eq | OpcodeId::I64Ne | OpcodeId::I64GtS | OpcodeId::I64GeS | OpcodeId::I64LtS |
+                    OpcodeId::I64LeS => ExecutionState::WASM_REL,
 
                     // EVM opcodes
                     OpcodeId::ADDMOD => ExecutionState::ADDMOD,

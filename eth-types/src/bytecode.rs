@@ -121,11 +121,7 @@ pub struct Bytecode {
 
 impl From<Bytecode> for Bytes {
     fn from(code: Bytecode) -> Self {
-        code.bytecode_items
-            .iter()
-            .map(|e| e.value)
-            .collect::<Vec<u8>>()
-            .into()
+        code.wasm_binary().into()
     }
 }
 
@@ -275,6 +271,7 @@ impl Bytecode {
         self
     }
 
+    #[deprecated(note = "Use `fill_default_global_data` instead")]
     pub fn with_global_data(&mut self, memory_index: u32, memory_offset: u32, data: Vec<u8>) -> &mut Self {
         self.section_descriptors.push(SectionDescriptor::Data {
             index: memory_index,
@@ -642,7 +639,7 @@ impl Bytecode {
         let value = value.to_word();
 
         // Write the op code
-        self.write_op((OpcodeId::push_n(n)).expect("valid push size"));
+        self.write_op(OpcodeId::push_n(n).expect("valid push size"));
 
         let mut bytes = [0u8; 32];
         value.to_little_endian(&mut bytes);

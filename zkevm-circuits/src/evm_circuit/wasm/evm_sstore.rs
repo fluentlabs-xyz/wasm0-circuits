@@ -17,12 +17,13 @@ use crate::{
     util::Expr,
 };
 
-use eth_types::{evm_types::GasCost, Field, ToScalar, ToU256};
+use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar, ToU256};
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
 };
 use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
+use crate::evm_circuit::util::RandomLinearCombination;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmSstoreGadget<F> {
@@ -31,10 +32,12 @@ pub(crate) struct EvmSstoreGadget<F> {
     is_static: Cell<F>,
     reversion_info: ReversionInfo<F>,
     callee_address: Cell<F>,
-    phase2_key: Cell<F>,
-    phase2_value: Cell<F>,
-    phase2_value_prev: Cell<F>,
-    phase2_original_value: Cell<F>,
+    key_offset: Cell<F>,
+    key: RandomLinearCombination<F, 32>,
+    value_offset: Cell<F>,
+    value: RandomLinearCombination<F, 32>,
+    value_prev: Cell<F>,
+    original_value: Cell<F>,
     is_warm: Cell<F>,
     tx_refund_prev: Cell<F>,
     // Constrain for SSTORE reentrancy sentry.
@@ -60,23 +63,24 @@ impl<F: Field> ExecutionGadget<F> for EvmSstoreGadget<F> {
         let mut reversion_info = cb.reversion_info_read(None);
         let callee_address = cb.call_context(None, CallContextFieldTag::CalleeAddress);
 
-        let phase2_key = cb.query_cell_phase2();
-        // Pop the key from the stack
-        cb.stack_pop(phase2_key.expr());
+        let value_offset = cb.query_cell();
+        let key_offset = cb.query_cell();
 
-        let phase2_value = cb.query_cell_phase2();
-        // Pop the value from the stack
-        cb.stack_pop(phase2_value.expr());
+        cb.stack_pop(value_offset.expr());
+        cb.stack_pop(key_offset.expr());
 
-        let phase2_value_prev = cb.query_cell_phase2();
-        let phase2_original_value = cb.query_cell_phase2();
+        let value = cb.query_word_rlc();
+        let key = cb.query_word_rlc();
+
+        let value_prev = cb.query_cell_phase2();
+        let original_value = cb.query_cell_phase2();
         cb.account_storage_write(
             callee_address.expr(),
-            phase2_key.expr(),
-            phase2_value.expr(),
-            phase2_value_prev.expr(),
+            key.expr(),
+            value.expr(),
+            value_prev.expr(),
             tx_id.expr(),
-            phase2_original_value.expr(),
+            original_value.expr(),
             Some(&mut reversion_info),
         );
 
@@ -84,7 +88,7 @@ impl<F: Field> ExecutionGadget<F> for EvmSstoreGadget<F> {
         cb.account_storage_access_list_write(
             tx_id.expr(),
             callee_address.expr(),
-            phase2_key.expr(),
+            key.expr(),
             true.expr(),
             is_warm.expr(),
             Some(&mut reversion_info),
@@ -104,9 +108,9 @@ impl<F: Field> ExecutionGadget<F> for EvmSstoreGadget<F> {
 
         let gas_cost = SstoreGasGadget::construct(
             cb,
-            phase2_value.clone(),
-            phase2_value_prev.clone(),
-            phase2_original_value.clone(),
+            value.clone(),
+            value_prev.clone(),
+            original_value.clone(),
             is_warm.clone(),
         );
 
@@ -114,9 +118,9 @@ impl<F: Field> ExecutionGadget<F> for EvmSstoreGadget<F> {
         let tx_refund = SstoreTxRefundGadget::construct(
             cb,
             tx_refund_prev.clone(),
-            phase2_value.clone(),
-            phase2_value_prev.clone(),
-            phase2_original_value.clone(),
+            value.clone(),
+            value_prev.clone(),
+            original_value.clone(),
         );
         cb.tx_refund_write(
             tx_id.expr(),
@@ -124,6 +128,9 @@ impl<F: Field> ExecutionGadget<F> for EvmSstoreGadget<F> {
             tx_refund_prev.expr(),
             Some(&mut reversion_info),
         );
+
+        cb.memory_rlc_lookup(0.expr(), &key_offset, &key);
+        cb.memory_rlc_lookup(0.expr(), &value_offset, &value);
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(10.expr()),
@@ -141,10 +148,12 @@ impl<F: Field> ExecutionGadget<F> for EvmSstoreGadget<F> {
             is_static,
             reversion_info,
             callee_address,
-            phase2_key,
-            phase2_value,
-            phase2_value_prev,
-            phase2_original_value,
+            key_offset,
+            key,
+            value_offset,
+            value,
+            value_prev,
+            original_value,
             is_warm,
             tx_refund_prev,
             sufficient_gas_sentry,
@@ -184,17 +193,19 @@ impl<F: Field> ExecutionGadget<F> for EvmSstoreGadget<F> {
             ),
         )?;
 
-        let [key, value] =
+        let [value_offset, key_offset] =
             [step.rw_indices[5], step.rw_indices[6]].map(|idx| block.rws[idx].stack_value());
-        self.phase2_key
-            .assign(region, offset, region.word_rlc(key.to_u256()))?;
-        self.phase2_value
-            .assign(region, offset, region.word_rlc(value.to_u256()))?;
+        self.value_offset.assign(region, offset, Value::known(F::from(value_offset.as_u64())))?;
+        self.key_offset.assign(region, offset, Value::known(F::from(key_offset.as_u64())))?;
+
+        let (key, value) = block.rws[step.rw_indices[7]].storage_key_value();
+        self.key.assign(region, offset, Some(key.to_le_bytes()))?;
+        self.value.assign(region, offset, Some(value.to_le_bytes()))?;
 
         let (_, value_prev, _, original_value) = block.rws[step.rw_indices[7]].storage_value_aux();
-        self.phase2_value_prev
+        self.value_prev
             .assign(region, offset, region.word_rlc(value_prev))?;
-        self.phase2_original_value
+        self.original_value
             .assign(region, offset, region.word_rlc(original_value))?;
 
         let (_, is_warm) = block.rws[step.rw_indices[8]].tx_access_list_value_pair();
@@ -232,7 +243,7 @@ impl<F: Field> ExecutionGadget<F> for EvmSstoreGadget<F> {
 pub(crate) struct SstoreTxRefundGadget<F> {
     tx_refund_old: Cell<F>,
     tx_refund_new: Expression<F>,
-    value: Cell<F>,
+    value: RandomLinearCombination<F, 32>,
     value_prev: Cell<F>,
     original_value: Cell<F>,
     value_prev_is_zero_gadget: IsZeroGadget<F>,
@@ -247,7 +258,7 @@ impl<F: Field> SstoreTxRefundGadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
         tx_refund_old: Cell<F>,
-        value: Cell<F>,
+        value: RandomLinearCombination<F, 32>,
         value_prev: Cell<F>,
         original_value: Cell<F>,
     ) -> Self {
@@ -326,7 +337,7 @@ impl<F: Field> SstoreTxRefundGadget<F> {
     ) -> Result<(), Error> {
         self.tx_refund_old
             .assign(region, offset, Value::known(F::from(tx_refund_old)))?;
-        self.value.assign(region, offset, region.word_rlc(value))?;
+        self.value.assign(region, offset, Some(value.to_le_bytes()))?;
         self.value_prev
             .assign(region, offset, region.word_rlc(value_prev))?;
         self.original_value
@@ -424,7 +435,8 @@ fn calc_expected_tx_refund(
 mod test {
 
     use crate::test_util::CircuitTestBuilder;
-    use eth_types::{bytecode, Word};
+    use eth_types::{bytecode, Bytecode, bytecode_internal, ToBigEndian, ToLittleEndian, Word};
+    use eth_types::bytecode::WasmBinaryBytecode;
     use mock::{test_ctx::helpers::tx_from_1_to_0, TestContext, MOCK_ACCOUNTS};
 
     #[test]
@@ -492,24 +504,31 @@ mod test {
         // Here we use two bytecodes to test both is_persistent(STOP) or not(REVERT)
         // Besides, in bytecode we use two SSTOREs,
         // the first SSTORE is used to test cold,  and the second is used to test warm
-        let bytecode_success = bytecode! {
-            PUSH32(value_prev)
-            PUSH32(key)
+        let mut bytecode_success = Bytecode::default();
+        let key_offset = bytecode_success.fill_default_global_data(key.to_be_bytes().to_vec());
+        let value_prev_offset = bytecode_success.fill_default_global_data(value_prev.to_be_bytes().to_vec());
+        let value_offset = bytecode_success.fill_default_global_data(value.to_be_bytes().to_vec());
+        bytecode_internal! {bytecode_success,
+            I32Const[key_offset]
+            I32Const[value_prev_offset]
             SSTORE
-            PUSH32(value)
-            PUSH32(key)
+            I32Const[key_offset]
+            I32Const[value_offset]
             SSTORE
-            STOP
-        };
-        let bytecode_failure = bytecode! {
-            PUSH32(value_prev)
-            PUSH32(key)
+        }
+        let mut bytecode_failure = Bytecode::default();
+        let key_offset = bytecode_failure.fill_default_global_data(key.to_be_bytes().to_vec());
+        let value_prev_offset = bytecode_failure.fill_default_global_data(value_prev.to_be_bytes().to_vec());
+        let value_offset = bytecode_failure.fill_default_global_data(value.to_be_bytes().to_vec());
+        bytecode_internal! {bytecode_failure,
+            I32Const[key_offset]
+            I32Const[value_prev_offset]
             SSTORE
-            PUSH32(value)
-            PUSH32(key)
+            I32Const[key_offset]
+            I32Const[value_offset]
             SSTORE
-            PUSH32(0)
-            PUSH32(0)
+            I32Const[0]
+            I32Const[0]
             REVERT
         };
         for bytecode in [bytecode_success, bytecode_failure] {
@@ -519,7 +538,7 @@ mod test {
                     accs[0]
                         .address(MOCK_ACCOUNTS[0])
                         .balance(Word::from(10u64.pow(19)))
-                        .code(bytecode)
+                        .code(bytecode.wasm_binary())
                         .storage(vec![(key, original_value)].into_iter());
                     accs[1]
                         .address(MOCK_ACCOUNTS[1])

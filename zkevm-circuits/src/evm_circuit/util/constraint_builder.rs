@@ -1247,11 +1247,20 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         dest_offset: &Cell<F>,
         value: &RandomLinearCombination<F, N>,
     ) {
+        self.memory_array_lookup(is_write, dest_offset, &value.cells);
+    }
+
+    pub(crate) fn memory_array_lookup<const N: usize>(
+        &mut self,
+        is_write: Expression<F>,
+        dest_offset: &Cell<F>,
+        value: &[Cell<F>; N],
+    ) {
         for idx in 0..N {
             self.memory_lookup(
                 is_write.clone(),
                 dest_offset.expr() + idx.expr(),
-                value.cells[N - 1 - idx].expr(),
+                value[N - 1 - idx].expr(),
                 None,
             );
         }

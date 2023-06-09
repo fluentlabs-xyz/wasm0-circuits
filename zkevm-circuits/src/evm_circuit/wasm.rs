@@ -167,7 +167,7 @@ use wasm_end::WasmEndGadget;
 use wasm_global::WasmGlobalGadget;
 // use wasm_load::WasmLoadGadget;
 use wasm_local::WasmLocalGadget;
-// use wasm_rel::WasmRelGadget;
+use wasm_rel::WasmRelGadget;
 use wasm_select::WasmSelectGadget;
 // use wasm_store::WasmStoreGadget;
 use wasm_test::WasmTestGadget;
@@ -300,7 +300,7 @@ pub(crate) struct ExecutionConfig<F> {
     wasm_global: Box<WasmGlobalGadget<F>>,
     // wasm_load: Box<WasmLoadGadget<F>>,
     wasm_local: Box<WasmLocalGadget<F>>,
-    // wasm_rel: Box<WasmRelGadget<F>>,
+    wasm_rel: Box<WasmRelGadget<F>>,
     wasm_select: Box<WasmSelectGadget<F>>,
     // wasm_store: Box<WasmStoreGadget<F>>,
     wasm_test: Box<WasmTestGadget<F>>,
@@ -547,7 +547,7 @@ impl<F: Field> ExecutionConfig<F> {
             wasm_global: configure_gadget!(),
             // wasm_load: configure_gadget!(),
             wasm_local: configure_gadget!(),
-            // wasm_rel: configure_gadget!(),
+            wasm_rel: configure_gadget!(),
             wasm_select: configure_gadget!(),
             // wasm_store: configure_gadget!(),
             wasm_test: configure_gadget!(),
@@ -1265,13 +1265,15 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::CODESIZE => assign_exec_step!(self.evm_codesize),
             // ExecutionState::EXTCODEHASH => assign_exec_step!(self.extcodehash_gadget),
             ExecutionState::EXTCODESIZE => assign_exec_step!(self.evm_extcodesize),
-            // ExecutionState::GAS => assign_exec_step!(self.gas_gadget),
+            ExecutionState::GAS => assign_exec_step!(self.evm_gas),
             ExecutionState::GASPRICE => assign_exec_step!(self.evm_gasprice),
             ExecutionState::LOG => assign_exec_step!(self.evm_log),
             // ExecutionState::MEMORY => assign_exec_step!(self.memory_gadget),
-            // ExecutionState::MSIZE => assign_exec_step!(self.msize_gadget),
+            ExecutionState::SLOAD => assign_exec_step!(self.evm_sload),
+            ExecutionState::SSTORE => assign_exec_step!(self.evm_sstore),
+            ExecutionState::MSIZE => assign_exec_step!(self.evm_msize),
             ExecutionState::ORIGIN => assign_exec_step!(self.evm_origin),
-            // ExecutionState::PC => assign_exec_step!(self.pc_gadget),
+            ExecutionState::PC => assign_exec_step!(self.evm_pc),
             ExecutionState::RETURN_REVERT => assign_exec_step!(self.evm_return_revert),
             // ExecutionState::RETURNDATASIZE => assign_exec_step!(self.returndatasize_gadget),
             // ExecutionState::RETURNDATACOPY => assign_exec_step!(self.returndatacopy_gadget),

@@ -7,8 +7,8 @@ use crate::Error;
 use super::Opcode;
 
 pub(crate) const STACK_TO_MEMORY_TYPE_DEFAULT: usize = 0;
-pub(crate) const STACK_TO_MEMORY_TYPE_U256: usize = 1;
-pub(crate) const STACK_TO_MEMORY_TYPE_U64: usize = 2;
+pub(crate) const STACK_TO_MEMORY_TYPE_U256: usize = 32;
+pub(crate) const STACK_TO_MEMORY_TYPE_U64: usize = 8;
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to all the Stack only operations: take N words and return one.
@@ -22,7 +22,7 @@ pub(crate) struct StackToMemoryOpcode<
     const EL_TYPE: usize = { STACK_TO_MEMORY_TYPE_DEFAULT },
 >;
 
-impl<const N_POP: usize, const EL_TYPE: usize> Opcode for StackToMemoryOpcode<N_POP, EL_TYPE> {
+impl<const N_POP: usize, const N_BYTES: usize> Opcode for StackToMemoryOpcode<N_POP, N_BYTES> {
     fn gen_associated_ops(
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
@@ -45,16 +45,22 @@ impl<const N_POP: usize, const EL_TYPE: usize> Opcode for StackToMemoryOpcode<N_
         }
 
         // Copy result to memory
-        let value = if EL_TYPE == STACK_TO_MEMORY_TYPE_DEFAULT {
+        let value = if N_BYTES == STACK_TO_MEMORY_TYPE_DEFAULT {
             geth_steps[1].memory[0].0.clone()
-        } else if EL_TYPE == STACK_TO_MEMORY_TYPE_U256 {
+        } else if N_BYTES == STACK_TO_MEMORY_TYPE_U256 {
             geth_steps[1].global_memory.read_u256(dest_offset)?.to_be_bytes().to_vec()
-        } else if EL_TYPE == STACK_TO_MEMORY_TYPE_U64 {
+        } else if N_BYTES == STACK_TO_MEMORY_TYPE_U64 {
             geth_steps[1].global_memory.read_u64(dest_offset)?.to_be_bytes().to_vec()
         } else {
             unreachable!("not possible EL_TYPE specified");
         };
-        for (i, b) in value.iter().enumerate() {
+        let it = if N_BYTES > 0 {
+            value.iter().skip(32 - N_BYTES)
+        } else {
+            value.iter().skip(0)
+        };
+
+        for (i, b) in it.enumerate() {
             state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), *b)?;
         }
         let call_ctx = state.call_ctx_mut()?;

@@ -4,7 +4,8 @@ use crate::{
     operation::{CallContextField, StorageOp, TxAccessListAccountStorageOp, RW},
     Error,
 };
-use eth_types::{GethExecStep, ToWord, Word};
+use eth_types::{GethExecStep, ToBigEndian, ToWord, Word};
+use eth_types::evm_types::MemoryAddress;
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the [`OpcodeId::SLOAD`](crate::evm::OpcodeId::SLOAD)
@@ -52,11 +53,15 @@ impl Opcode for Sload {
         );
 
         // First stack read
-        let key = geth_step.stack.last()?;
-        let stack_position = geth_step.stack.last_filled();
+        let value_offset = geth_step.stack.nth_last(0)?;
+        let key_offset = geth_step.stack.nth_last(1)?;
 
         // Manage first stack read at latest stack position
-        state.stack_read(&mut exec_step, stack_position, key)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), value_offset)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), key_offset)?;
+
+        let key = geth_step.global_memory.read_u256(key_offset)?;
+        let key_bytes = key.to_be_bytes();
 
         // Storage read
         let value = geth_step.storage.get_or_err(&key)?;
@@ -81,7 +86,11 @@ impl Opcode for Sload {
         );
 
         // First stack write
-        state.stack_write(&mut exec_step, stack_position, value)?;
+        let value2 = geth_steps[1].global_memory.read_u256(value_offset)?;
+        debug_assert_eq!(value2, value, "sload values mismatch");
+        let value_bytes = value2.to_be_bytes();
+        state.memory_read_n(&mut exec_step, MemoryAddress::from(key_offset.as_u64()), &key_bytes)?;
+        state.memory_write_n(&mut exec_step, MemoryAddress::from(value_offset.as_u64()), &value_bytes)?;
         state.push_op_reversible(
             &mut exec_step,
             TxAccessListAccountStorageOp {

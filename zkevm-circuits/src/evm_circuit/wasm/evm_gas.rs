@@ -1,3 +1,4 @@
+use array_init::array_init;
 use halo2_proofs::circuit::Value;
 use crate::{
     evm_circuit::{
@@ -15,13 +16,17 @@ use crate::{
 };
 use eth_types::{evm_types::OpcodeId, Field};
 use halo2_proofs::plonk::Error;
+use crate::evm_circuit::param::N_BYTES_U64;
 use crate::evm_circuit::util::Cell;
 use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
+use crate::evm_circuit::util::math_gadget::BinaryNumberGadget;
+use crate::evm_circuit::util::memory_gadget::MemoryExpansionGadget;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmGasGadget<F> {
     same_context: SameContextGadget<F>,
-    gas_left: Cell<F>,
+    gas_left: [Cell<F>; N_BYTES_U64],
+    dest_offset: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for EvmGasGadget<F> {
@@ -31,19 +36,19 @@ impl<F: Field> ExecutionGadget<F> for EvmGasGadget<F> {
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         // The gas passed to a transaction is a 64-bit number.
-        let gas_left = cb.query_cell();
+        let gas_left: [Cell<F>; N_BYTES_U64] = array_init(|_| cb.query_cell());
+        let dest_offset = cb.query_cell();
+
+        cb.stack_pop(dest_offset.expr());
+        cb.memory_array_lookup(1.expr(), &dest_offset, &gas_left);
 
         // The `gas_left` in the current state has to be deducted by the gas
         // used by the `GAS` opcode itself.
         cb.require_equal(
             "Constraint: gas left equal to stack value",
-            gas_left.expr(),
+            from_bytes::expr(&gas_left),
             cb.curr.state.gas_left.expr() - OpcodeId::GAS.constant_gas_cost().expr(),
         );
-
-        // Construct the value and push it to stack.
-        // cb.stack_push(gas_left.expr());
-        // cb.memory_rlc_lookup();
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(1.expr()),
@@ -58,6 +63,7 @@ impl<F: Field> ExecutionGadget<F> for EvmGasGadget<F> {
         Self {
             same_context,
             gas_left,
+            dest_offset,
         }
     }
 
@@ -65,20 +71,23 @@ impl<F: Field> ExecutionGadget<F> for EvmGasGadget<F> {
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
-        _block: &Block<F>,
+        block: &Block<F>,
         _transaction: &Transaction,
         _call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
+        let dest_offset = block.rws[step.rw_indices[0]].stack_value();
+        self.dest_offset.assign(region, offset, Value::known(F::from(dest_offset.as_u64())))?;
+
         // The GAS opcode takes into account the reduction of gas available due
         // to the instruction itself.
-        self.gas_left.assign(
-            region,
-            offset,
-            Value::known(F::from(step.gas_left.saturating_sub(OpcodeId::GAS.constant_gas_cost().as_u64()))),
-        )?;
+        let gas_left = step.gas_left.saturating_sub(OpcodeId::GAS.constant_gas_cost().as_u64());
+        let gas_left = gas_left.to_le_bytes();
+        for i in 0..N_BYTES_U64 {
+            self.gas_left[i].assign(region, offset, Value::known(F::from(gas_left[i] as u64)))?;
+        }
 
         Ok(())
     }
@@ -87,17 +96,21 @@ impl<F: Field> ExecutionGadget<F> for EvmGasGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::test_util::CircuitTestBuilder;
-    use eth_types::{address, bytecode, Word};
+    use eth_types::{address, bytecode, Bytecode, bytecode_internal, Word};
+    use eth_types::bytecode::WasmBinaryBytecode;
     use mock::TestContext;
 
     fn test_ok() {
-        let bytecode = bytecode! {
-            I32Const[0]
+        let mut code = Bytecode::default();
+        let dest = code.alloc_default_global_data(8);
+
+        bytecode_internal! {code,
+            I32Const[dest]
             GAS
         };
 
         CircuitTestBuilder::new_from_test_ctx(
-            TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
+            TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
         )
         .run();
     }
@@ -109,10 +122,15 @@ mod test {
 
     #[test]
     fn gas_gadget_incorrect_deduction() {
-        let bytecode = bytecode! {
+        let mut code = Bytecode::default();
+        let dest = code.alloc_default_global_data(8);
+
+        bytecode_internal! {code,
+            I32Const[dest]
             GAS
-            STOP
         };
+
+        let bytecode = code.wasm_binary();
 
         // Create a custom tx setting Gas to
         let ctx = TestContext::<2, 1>::new(
@@ -142,8 +160,8 @@ mod test {
                 // wrong `gas_left` value for the second step, to assert that
                 // the circuit verification fails for this scenario.
                 assert_eq!(block.txs.len(), 1);
-                assert_eq!(block.txs[0].steps.len(), 4);
-                block.txs[0].steps[2].gas_left -= 1;
+                assert_eq!(block.txs[0].steps.len(), 6);
+                block.txs[0].steps[3].gas_left -= 1;
             }))
             .evm_checks(Box::new(|prover, gate_rows, lookup_rows| {
                 assert!(prover

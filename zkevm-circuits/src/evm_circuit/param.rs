@@ -93,6 +93,7 @@ pub(crate) const N_BYTES_ACCOUNT_ADDRESS: usize = 20;
 pub(crate) const N_BYTES_MEMORY_ADDRESS: usize = 5;
 pub(crate) const N_BYTES_MEMORY_WORD_SIZE: usize = 4;
 
+pub(crate) const PAGE_SIZE: usize = 65536;
 pub(crate) const STACK_CAPACITY: usize = 1024;
 
 // Number of bytes that will be used of prorgam counter. Although the maximum

@@ -5,7 +5,8 @@ use crate::{
     Error,
 };
 
-use eth_types::{GethExecStep, ToWord, Word};
+use eth_types::{GethExecStep, ToBigEndian, ToWord, Word};
+use eth_types::evm_types::MemoryAddress;
 
 pub const KEY_BYTE_LENGTH: usize = 32;
 pub const VALUE_BYTE_LENGTH: usize = 32;
@@ -60,13 +61,18 @@ impl Opcode for Sstore {
             state.call()?.address.to_word(),
         );
 
-        let key = geth_step.stack.nth_last(1)?;
-        let key_stack_position = geth_step.stack.nth_last_filled(1);
-        let value = geth_step.stack.nth_last(0)?;
+        let value_offset = geth_step.stack.nth_last(0)?;
         let value_stack_position = geth_step.stack.nth_last_filled(0);
+        let key_offset = geth_step.stack.nth_last(1)?;
+        let key_stack_position = geth_step.stack.nth_last_filled(1);
 
-        state.stack_read(&mut exec_step, key_stack_position, key)?;
-        state.stack_read(&mut exec_step, value_stack_position, value)?;
+        state.stack_read(&mut exec_step, value_stack_position, value_offset)?;
+        state.stack_read(&mut exec_step, key_stack_position, key_offset)?;
+
+        let value = geth_steps[1].global_memory.read_u256(value_offset)?;
+        let value_bytes = value.to_be_bytes();
+        let key = geth_steps[0].global_memory.read_u256(key_offset)?;
+        let key_bytes = key.to_be_bytes();
 
         let is_warm = state
             .sdb
@@ -108,6 +114,9 @@ impl Opcode for Sstore {
                 value: geth_step.refund.0,
             },
         )?;
+
+        state.memory_read_n(&mut exec_step, MemoryAddress::from(key_offset.as_u64()), &key_bytes)?;
+        state.memory_read_n(&mut exec_step, MemoryAddress::from(value_offset.as_u64()), &value_bytes)?;
 
         Ok(vec![exec_step])
     }

@@ -226,6 +226,12 @@ impl ExecutionState {
                 OpcodeId::I32Eqz,
                 OpcodeId::I64Eqz,
             ],
+            Self::WASM_REL => vec![
+                OpcodeId::I32GtU, OpcodeId::I32GeU, OpcodeId::I32LtU, OpcodeId::I32LeU, OpcodeId::I32Eq,
+                OpcodeId::I32Ne, OpcodeId::I32GtS, OpcodeId::I32GeS, OpcodeId::I32LtS, OpcodeId::I32LeS,
+                OpcodeId::I64GtU, OpcodeId::I64GeU, OpcodeId::I64LtU, OpcodeId::I64LeU, OpcodeId::I64Eq,
+                OpcodeId::I64Ne, OpcodeId::I64GtS, OpcodeId::I64GeS, OpcodeId::I64LtS, OpcodeId::I64LeS
+            ],
             Self::WASM_UNARY => vec![
                 OpcodeId::I32Ctz,
                 OpcodeId::I64Ctz,

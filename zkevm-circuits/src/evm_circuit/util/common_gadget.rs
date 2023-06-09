@@ -33,6 +33,7 @@ use halo2_proofs::{
 mod tx_l1_fee;
 
 pub(crate) use tx_l1_fee::TxL1FeeGadget;
+use crate::evm_circuit::util::RandomLinearCombination;
 
 /// Construction of execution state that stays in the same call context, which
 /// lookups the opcode and verifies the execution state is responsible for it,
@@ -892,7 +893,7 @@ impl<F: Field> SloadGasGadget<F> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct SstoreGasGadget<F> {
-    value: Cell<F>,
+    value: RandomLinearCombination<F, 32>,
     value_prev: Cell<F>,
     original_value: Cell<F>,
     is_warm: Cell<F>,
@@ -905,7 +906,7 @@ pub(crate) struct SstoreGasGadget<F> {
 impl<F: Field> SstoreGasGadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
-        value: Cell<F>,
+        value: RandomLinearCombination<F, 32>,
         value_prev: Cell<F>,
         original_value: Cell<F>,
         is_warm: Cell<F>,
@@ -958,7 +959,7 @@ impl<F: Field> SstoreGasGadget<F> {
         original_value: eth_types::Word,
         is_warm: bool,
     ) -> Result<(), Error> {
-        self.value.assign(region, offset, region.word_rlc(value))?;
+        self.value.assign(region, offset, Some(value.to_le_bytes()))?;
         self.value_prev
             .assign(region, offset, region.word_rlc(value_prev))?;
         self.original_value

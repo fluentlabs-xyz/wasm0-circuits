@@ -214,7 +214,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn sha3_gadget_overflow_offset_and_zero_size() {
         let mut bytecode = Bytecode::default();
         let dest_offset = bytecode.alloc_default_global_data(32);
