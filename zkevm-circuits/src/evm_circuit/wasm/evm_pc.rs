@@ -84,7 +84,6 @@ impl<F: Field> ExecutionGadget<F> for EvmPcGadget<F> {
             self.pc[i].assign(region, offset, Value::known(F::from(program_counter[i] as u64)))?;
         }
 
-
         Ok(())
     }
 }
@@ -101,8 +100,7 @@ mod test {
         bytecode_internal! {code,
             I32Const[dest]
             PC
-            Drop
-        };
+        }
 
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),

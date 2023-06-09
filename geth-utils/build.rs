@@ -32,6 +32,7 @@ fn main() {
         "./gethutil/trace.go",
         "./gethutil/util.go",
         "./go.mod",
+        "./go.sum",
     ];
     for file in dep_files {
         println!("cargo:rerun-if-changed={}", file);
