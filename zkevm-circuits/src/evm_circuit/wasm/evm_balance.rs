@@ -148,9 +148,9 @@ impl<F: Field> ExecutionGadget<F> for EvmBalanceGadget<F> {
 
         let code_hash = block.rws[step.rw_indices[6]].account_value_pair().0;
         self.code_hash
-            .assign(region, offset, region.word_rlc(code_hash))?;
+            .assign(region, offset, region.code_hash(code_hash))?;
         self.not_exists
-            .assign_value(region, offset, region.word_rlc(code_hash))?;
+            .assign_value(region, offset, region.code_hash(code_hash))?;
 
         let address_rw_index = if code_hash.is_zero() { 7 } else { 8 };
         let balance_rw_index: usize = address_rw_index + N_BYTES_ACCOUNT_ADDRESS;
@@ -186,9 +186,7 @@ impl<F: Field> ExecutionGadget<F> for EvmBalanceGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::{evm_circuit::test::rand_bytes, test_util::CircuitTestBuilder};
-    use eth_types::{
-        address, bytecode, geth_types::Account, Address, Bytecode, ToWord, Word, U256,
-    };
+    use eth_types::{address, bytecode, geth_types::Account, Address, Bytecode, ToWord, Word, U256, bytecode_internal};
     use lazy_static::lazy_static;
     use eth_types::bytecode::WasmBinaryBytecode;
     use mock::TestContext;
@@ -246,24 +244,24 @@ mod test {
         let mut code = Bytecode::default();
         code.with_global_data(0, 0, address.to_fixed_bytes().to_vec());
         if is_warm {
-            code.append(&bytecode! {
+            bytecode_internal! {code,
                 I32Const[address_mem_offset]
                 I32Const[balance_mem_offset]
                 BALANCE
-            });
+            }
         }
-        code.append(&bytecode! {
+        bytecode_internal! {code,
             I32Const[address_mem_offset]
             I32Const[balance_mem_offset]
             BALANCE
-        });
+        }
 
         let ctx = TestContext::<3, 1>::new(
             None,
             |accs| {
                 accs[0]
                     .address(address!("0x000000000000000000000000000000000000cafe"))
-                    .balance(Word::from(1_u64 << 20))
+                    .balance(Word::from(1_u64 << 30))
                     .code(code.wasm_binary());
                 // Set balance if account exists.
                 if let Some(account) = account {
@@ -271,11 +269,11 @@ mod test {
                 } else {
                     accs[1]
                         .address(address!("0x0000000000000000000000000000000000000010"))
-                        .balance(Word::from(1_u64 << 20));
+                        .balance(Word::from(1_u64 << 30));
                 }
                 accs[2]
                     .address(address!("0x0000000000000000000000000000000000000020"))
-                    .balance(Word::from(1_u64 << 20));
+                    .balance(Word::from(1_u64 << 30));
             },
             |mut txs, accs| {
                 txs[0].to(accs[0].address).from(accs[2].address);

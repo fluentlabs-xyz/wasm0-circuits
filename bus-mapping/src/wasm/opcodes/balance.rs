@@ -73,6 +73,7 @@ impl Opcode for Balance {
         } else {
             H256::zero()
         };
+        debug_assert_eq!(balance, account.balance);
         state.account_read(
             &mut exec_step,
             address,
@@ -93,7 +94,7 @@ impl Opcode for Balance {
             state.memory_write(&mut exec_step, balance_offset_addr.map(|a| a + i), balance_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = geth_step.global_memory.clone();
+        call_ctx.memory = geth_steps[1].global_memory.clone();
 
         Ok(vec![exec_step])
     }
