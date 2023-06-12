@@ -395,12 +395,12 @@ mod test {
         code.alloc_default_global_data(1);
         code.fill_default_global_data(pushdata.to_vec());
 
-        code.write_postfix(OpcodeId::I32Const, mstart as u64);
-        code.write_postfix(OpcodeId::I32Const, msize as u64);
+        code.write_postfix(OpcodeId::I32Const, mstart as i128);
+        code.write_postfix(OpcodeId::I32Const, msize as i128);
         // make dynamic topics push operations
         for topic in topics {
             let offset = code.alloc_default_global_data(32);
-            code.write_postfix(OpcodeId::I32Const, offset as u64);
+            code.write_postfix(OpcodeId::I32Const, offset as i128);
         }
         code.write_op(cur_op_code);
         if is_persistent {

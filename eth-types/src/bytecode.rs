@@ -343,28 +343,7 @@ impl Bytecode {
     /// Append
     #[deprecated(note = "This function might not work properly")]
     pub fn append(&mut self, other: &Bytecode) {
-        self.bytecode_items.extend_from_slice(&other.bytecode_items);
-        for (key, val) in other.markers.iter() {
-            self.insert_marker(key, self.num_opcodes + val);
-        }
-        if self.section_descriptors.len() > 0 && other.section_descriptors.len() > 0 {
-            panic!("section collision might happen, not implemented");
-        }
-        for section in other.section_descriptors.iter() {
-            self.section_descriptors.push(section.clone());
-        }
-        if self.evm_table.len() > 0 && other.section_descriptors.len() > 0 {
-            panic!("EVM table collision might happen, not implemented");
-        }
-        self.variables = other.variables.clone();
-        self.existing_types = other.existing_types.clone();
-        self.types = other.types.clone();
-        self.functions = other.functions.clone();
-        self.codes = other.codes.clone();
-        for (evm_call, call_index) in other.evm_table.iter() {
-            self.evm_table.insert(*evm_call, *call_index);
-        }
-        self.num_opcodes += other.num_opcodes;
+        panic!("don't use this function, use bytecode_internal instead");
     }
 
     pub fn evm_call(&mut self, op: OpcodeId) -> &mut Self {
@@ -595,7 +574,7 @@ impl Bytecode {
         self
     }
 
-    pub fn write_postfix(&mut self, op: OpcodeId, val: u64) -> &mut Self {
+    pub fn write_postfix(&mut self, op: OpcodeId, val: i128) -> &mut Self {
         let op = match op {
             OpcodeId::I32Const => Instruction::I32Const(val as i32),
             OpcodeId::I64Const => Instruction::I64Const(val as i64),
@@ -886,7 +865,7 @@ macro_rules! bytecode_internal {
     ($code:ident, ) => {};
     // WASM const opcodes
     ($code:ident, $x:ident [$v:expr] $($rest:tt)*) => {{
-        $code.write_postfix($crate::evm_types::OpcodeId::$x, $v as u64);
+        $code.write_postfix($crate::evm_types::OpcodeId::$x, $v as i128);
         $crate::bytecode_internal!($code, $($rest)*);
     }};
     // PUSHX opcodes
