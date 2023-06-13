@@ -126,6 +126,33 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
             (res.expr() - aux2.expr()) * is_rem_s.expr(),
         ]);
 
+        cb.require_zeros("div_s/rem_s constraints PN", vec![
+            (div_rem_s_is_lhs_pos.expr() - 1.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            div_rem_s_is_rhs_pos.expr() * (is_rem_s.expr() + is_div_s.expr()),
+            (lhs.expr() - rhs.expr() * aux1.expr() - aux2.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (res.expr() - aux1.expr()) * is_div_s.expr(),
+            (res.expr() - aux2.expr()) * is_rem_s.expr(),
+        ]);
+
+        cb.require_zeros("div_s/rem_s constraints NP", vec![
+            div_rem_s_is_lhs_pos.expr() * (is_rem_s.expr() + is_div_s.expr()),
+            (div_rem_s_is_rhs_pos.expr() - 1.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (lhs.expr() - rhs.expr() * aux1.expr() - aux2.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (res.expr() - aux1.expr()) * is_div_s.expr(),
+            (res.expr() - aux2.expr()) * is_rem_s.expr(),
+        ]);
+
+        cb.require_zeros("div_s/rem_s constraints PP", vec![
+            div_rem_s_is_lhs_pos.expr() * (is_rem_s.expr() + is_div_s.expr()),
+            div_rem_s_is_rhs_pos.expr() * (is_rem_s.expr() + is_div_s.expr()),
+            (lhs.expr() - rhs.expr() * aux1.expr() - aux2.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (res.expr() - aux1.expr()) * is_div_s.expr(),
+            (res.expr() - aux2.expr()) * is_rem_s.expr(),
+        ]);
+
         // constraint_builder.push(
         //     "binop: div_s/rem_s constraints common",
         //     Box::new(move |meta| {
@@ -479,6 +506,32 @@ mod test {
             I64Const[4]
             I64Const[4]
             I64RemU
+            Drop
+        });
+    }
+
+    #[test]
+    fn test_i32_64_rem_s() {
+        run_test(bytecode! {
+            I64Const[-4]
+            I64Const[-3]
+            I64RemS
+            Drop
+            I64Const[-4]
+            I64Const[3]
+            I64RemS
+            Drop
+            I64Const[4]
+            I64Const[-3]
+            I64RemS
+            Drop
+            I64Const[4]
+            I64Const[-4]
+            I64RemS
+            Drop
+            I64Const[-3]
+            I64Const[-3]
+            I64RemS
             Drop
         });
     }
