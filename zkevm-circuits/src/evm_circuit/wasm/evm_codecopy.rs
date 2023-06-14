@@ -21,6 +21,7 @@ use crate::{
     },
     util::Expr,
 };
+use crate::evm_circuit::util::common_gadget::Word64ByteCapGadget;
 use crate::evm_circuit::util::memory_gadget::MemoryAddress64Gadget;
 
 use super::ExecutionGadget;
@@ -30,7 +31,7 @@ pub(crate) struct EvmCodeCopyGadget<F> {
     same_context: SameContextGadget<F>,
     /// Holds the memory address for the offset in code from where we
     /// read. It is valid if within range of Uint64 and less than code_size.
-    code_offset: WordByteCapGadget<F, N_BYTES_U64>,
+    code_offset: Word64ByteCapGadget<F, N_BYTES_U64>,
     /// Holds the size of the current environment's bytecode.
     code_size: Cell<F>,
     /// The code from current environment is copied to memory. To verify this
@@ -59,7 +60,7 @@ impl<F: Field> ExecutionGadget<F> for EvmCodeCopyGadget<F> {
 
         let size = cb.query_cell();
         let dst_memory_offset = cb.query_cell_phase2();
-        let code_offset = WordByteCapGadget::construct(cb, code_size.expr());
+        let code_offset = Word64ByteCapGadget::construct(cb, code_size.expr());
 
         // Pop items from stack.
         cb.stack_pop(size.expr());
@@ -168,7 +169,7 @@ impl<F: Field> ExecutionGadget<F> for EvmCodeCopyGadget<F> {
             .assign(region, offset, Value::known(F::from(code_size)))?;
 
         self.code_offset
-            .assign(region, offset, code_offset.to_u256(), F::from(code_size))?;
+            .assign(region, offset, code_offset, F::from(code_size))?;
 
         // assign the destination memory offset.
         let memory_address = self
