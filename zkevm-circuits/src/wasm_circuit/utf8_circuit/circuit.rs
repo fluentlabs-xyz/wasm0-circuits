@@ -12,6 +12,7 @@ use gadgets::is_zero::{IsZeroChip, IsZeroInstruction};
 use gadgets::util::{Expr, not};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::tables::range_table::RangeTableConfig;
+use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 
 #[derive(Debug, Clone)]
 pub struct UTF8Config<F: Field> {
@@ -481,16 +482,18 @@ impl<F: Field> UTF8Chip<F>
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        offset: usize,
-        enabled: bool,
-        byte_val: u8,
-        // is_first_byte: bool,
-        // is_last_byte: bool,
-        // codepoint: u64,
-        // codepoint_recovered: u64,
-        // byte_mul: u64,
-        // bytes_count: u8,
+        wasm_bytecode: &WasmBytecode,
+        bytecode_chunk_len: usize,
+        bytecode_offset_start: usize,
+        region_offset_start: usize,
     ) {
-
+        for (offset, bytecode_offset) in (bytecode_offset_start..bytecode_offset_start + bytecode_chunk_len).enumerate() {
+            self.assign(
+                region,
+                region_offset_start + offset,
+                true,
+                wasm_bytecode.bytes[bytecode_offset],
+            )
+        }
     }
 }

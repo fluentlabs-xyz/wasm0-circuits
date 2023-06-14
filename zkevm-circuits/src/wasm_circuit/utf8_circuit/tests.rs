@@ -5,9 +5,11 @@ use std::{marker::PhantomData};
 use std::rc::Rc;
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::{Advice, Circuit, Column};
-use eth_types::Field;
+use bus_mapping::state_db::CodeDB;
+use eth_types::{Field, ToWord};
 use crate::wasm_circuit::tables::range_table::RangeTableConfig;
 use crate::wasm_circuit::utf8_circuit::circuit::{UTF8Chip, UTF8Config};
+use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -57,6 +59,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Result<(), Error> {
         config.eligible_byte_vals_range_table_config.load(&mut layouter)?;
         let utf8_chip = UTF8Chip::construct(config.utf8_config);
+        let code_hash = CodeDB::hash(&self.bytes);
+        let wasm_bytecode = WasmBytecode::new(self.bytes.to_vec(), code_hash.to_word());
 
         layouter.assign_region(
             || "utf8 region",
@@ -72,8 +76,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
                         || Value::known(F::from(byte_val as u64)),
                     ).unwrap();
 
-                    utf8_chip.assign(&mut region, offset, true, byte_val);
                 }
+                utf8_chip.assign_auto(&mut region, &wasm_bytecode, self.bytes.len(), 0, self.offset_shift);
 
                 Ok(())
             }

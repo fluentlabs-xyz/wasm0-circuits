@@ -22,6 +22,7 @@ use crate::wasm_circuit::consts::{WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTIONS_STAR
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_last_byte_offset;
 use crate::wasm_circuit::tables::range_table::RangeTableConfig;
+use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::{ID_OF_SECTION_DEFAULT, WASM_SECTION_ID_MAX, WasmSectionId};
@@ -47,6 +48,7 @@ pub struct WasmConfig<F: Field> {
     id_of_section: Column<Advice>,
 
     leb128_chip: Rc<LEB128Chip<F>>,
+    utf8_chip: Rc<UTF8Chip<F>>,
     wasm_type_section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
     wasm_type_section_body_chip: Rc<WasmTypeSectionBodyChip<F>>,
     wasm_import_section_body_chip: Rc<WasmImportSectionBodyChip<F>>,
@@ -55,8 +57,9 @@ pub struct WasmConfig<F: Field> {
     index_at_magic_prefix: Vec<IsZeroChip<F>>,
     index_at_magic_prefix_prev: Vec<IsZeroChip<F>>,
     pub(crate) poseidon_table: PoseidonTable,
-    pub(crate) byte_value_range_table_config: RangeTableConfig<F, 0, 256>,
+    pub(crate) range_table_config_0_256: RangeTableConfig<F, 0, 256>,
     pub(crate) section_id_range_table_config: RangeTableConfig<F, 0, { WASM_SECTION_ID_MAX + 1 }>,
+    pub(crate) range_table_config_0_128: Rc<RangeTableConfig<F, 0, 128>>,
     pub(crate) wasm_bytecode_table: Rc<WasmBytecodeTable>,
 
     _marker: PhantomData<F>,
@@ -83,8 +86,9 @@ impl<F: Field> WasmChip<F>
         wasm_bytecode: &WasmBytecode,
     ) -> Result<(), Error> {
         self.config.wasm_bytecode_table.load(layouter, wasm_bytecode)?;
-        self.config.byte_value_range_table_config.load(layouter)?;
+        self.config.range_table_config_0_256.load(layouter)?;
         self.config.section_id_range_table_config.load(layouter)?;
+        self.config.range_table_config_0_128.load(layouter)?;
 
         self.config
             .poseidon_table
@@ -98,8 +102,9 @@ impl<F: Field> WasmChip<F>
         cs: &mut ConstraintSystem<F>,
         wasm_bytecode_table: Rc<WasmBytecodeTable>,
     ) -> WasmConfig<F> {
-        let byte_value_range_table_config = RangeTableConfig::configure(cs);
+        let range_table_config_0_256 = RangeTableConfig::configure(cs);
         let section_id_range_table_config = RangeTableConfig::configure(cs);
+        let range_table_config_0_128 = Rc::new(RangeTableConfig::configure(cs));
         let poseidon_table = PoseidonTable::dev_construct(cs);
 
         let leb128_config = LEB128Chip::configure(
@@ -107,6 +112,13 @@ impl<F: Field> WasmChip<F>
             &wasm_bytecode_table.value,
         );
         let mut leb128_chip = Rc::new(LEB128Chip::construct(leb128_config));
+
+        let utf8_config = UTF8Chip::configure(
+            cs,
+            range_table_config_0_128.clone(),
+            &wasm_bytecode_table.value,
+        );
+        let mut utf8_chip = Rc::new(UTF8Chip::construct(utf8_config));
 
         let wasm_type_section_item_config = WasmTypeSectionItemChip::configure(
             cs,
@@ -126,6 +138,7 @@ impl<F: Field> WasmChip<F>
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
+            utf8_chip.clone(),
         );
         let wasm_import_section_body_chip = Rc::new(WasmImportSectionBodyChip::construct(wasm_import_section_body_config));
 
@@ -223,7 +236,7 @@ impl<F: Field> WasmChip<F>
         cs.lookup("all bytecode values are byte values", |vc| {
             let bytecode_value = vc.query_advice(wasm_bytecode_table.value, Rotation::cur());
 
-            vec![(bytecode_value, byte_value_range_table_config.value)]
+            vec![(bytecode_value, range_table_config_0_256.value)]
         });
 
         cs.create_gate("wasm magic prefix check", |vc| {
@@ -498,7 +511,7 @@ impl<F: Field> WasmChip<F>
             q_enable,
             q_first,
             q_last,
-            byte_value_range_table_config,
+            range_table_config_0_256,
             section_id_range_table_config,
             index_at_magic_prefix,
             index_at_magic_prefix_prev,
@@ -508,11 +521,13 @@ impl<F: Field> WasmChip<F>
             is_section_len,
             is_section_body,
             leb128_chip: leb128_chip.clone(),
+            utf8_chip: utf8_chip.clone(),
             wasm_type_section_item_chip: wasm_type_section_item_chip.clone(),
             wasm_type_section_body_chip: wasm_type_section_body_chip.clone(),
             wasm_import_section_body_chip: wasm_import_section_body_chip.clone(),
             is_id_of_section_grows_lt_chip,
             _marker: PhantomData,
+            range_table_config_0_128: range_table_config_0_128.clone(),
         };
 
         config

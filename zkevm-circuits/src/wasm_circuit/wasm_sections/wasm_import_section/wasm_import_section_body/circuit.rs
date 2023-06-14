@@ -13,6 +13,7 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
+use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::NumType;
@@ -21,7 +22,7 @@ use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section
 use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::consts::Type::FuncType;
 
 #[derive(Debug, Clone)]
-pub struct WasmImportSectionBodyConfig<F> {
+pub struct WasmImportSectionBodyConfig<F: Field> {
     pub q_enable: Column<Fixed>,
     pub is_items_count: Column<Fixed>,
     pub is_mod_name_len: Column<Fixed>,
@@ -32,6 +33,7 @@ pub struct WasmImportSectionBodyConfig<F> {
     pub is_importdesc_val: Column<Fixed>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
+    pub utf8_chip: Rc<UTF8Chip<F>>,
     // TODO need ut8 chip for mod/import_name
 
     _marker: PhantomData<F>,
@@ -41,7 +43,7 @@ impl<'a, F: Field> WasmImportSectionBodyConfig<F>
 {}
 
 #[derive(Debug, Clone)]
-pub struct WasmImportSectionBodyChip<F> {
+pub struct WasmImportSectionBodyChip<F: Field> {
     pub config: WasmImportSectionBodyConfig<F>,
     _marker: PhantomData<F>,
 }
@@ -56,34 +58,11 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         instance
     }
 
-    fn configure_check_for_transition(
-        cb: &mut BaseConstraintBuilder<F>,
-        vc: &mut VirtualCells<F>,
-        name: &'static str,
-        is_for_next: bool,
-        condition: Expression<F>,
-        columns_to_check: &[Column<Fixed>],
-    ) {
-        cb.condition(
-            condition,
-            |bcb| {
-                let mut lhs = 0.expr();
-                for column_to_check in columns_to_check {
-                    lhs = lhs + vc.query_fixed(*column_to_check, Rotation(if is_for_next { 1 } else { -1 }));
-                }
-                bcb.require_equal(
-                    name,
-                    lhs,
-                    1.expr(),
-                )
-            }
-        );
-    }
-
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
+        utf8_chip: Rc<UTF8Chip<F>>,
     ) -> WasmImportSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let is_items_count = cs.fixed_column();
@@ -107,6 +86,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             let is_importdesc_val_expr = vc.query_fixed(is_importdesc_val, Rotation::cur());
 
             let byte_value_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+
+            let utf8_q_enabled_expr = vc.query_fixed(utf8_chip.config.q_enable, Rotation::cur());
 
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
             cb.require_boolean("is_items_count is boolean", is_items_count_expr.clone());
@@ -256,8 +237,16 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 }
             );
 
-            // todo: support other importdesc types
-            // todo: support utc8 for names (mod_name, import_name)
+            // TODO: support other importdesc types
+
+            cb.require_equal(
+                "is_mod_name || is_import_name -> utf8",
+                or::expr([
+                    is_mod_name_expr.clone(),
+                    is_import_name_expr.clone(),
+                ]),
+                utf8_q_enabled_expr.clone(),
+            );
 
             cb.gate(q_enable_expr.clone())
         });
@@ -272,6 +261,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             is_importdesc_type,
             is_importdesc_val,
             leb128_chip,
+            utf8_chip,
             _marker: PhantomData,
         };
 
@@ -298,6 +288,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 0,
                 0,
                 0,
+                0,
             );
         }
     }
@@ -317,6 +308,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         leb_last_byte_rel_offset: usize,
         leb_sn: u64,
         leb_sn_recovered_at_pos: u64,
+        byte_val: u8,
     ) {
         if is_items_count || is_mod_name_len || is_import_name_len || is_importdesc_val {
             let is_first_leb_byte = leb_byte_rel_offset == 0;
@@ -333,6 +325,14 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 leb_sn,
                 leb_sn_recovered_at_pos,
+            );
+        }
+        if is_mod_name || is_import_name {
+            self.config.utf8_chip.assign(
+                region,
+                offset,
+                true,
+                byte_val,
             );
         }
         let q_enable = is_items_count || is_mod_name_len || is_mod_name || is_import_name_len || is_import_name || is_importdesc_type || is_importdesc_val;
@@ -423,6 +423,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 last_byte_offset,
                 leb_sn,
                 leb_sn_recovered_at_pos,
+                0,
             );
         }
 
@@ -436,8 +437,9 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         is_mod_name: bool,
         is_import_name: bool,
         name_len: usize,
+        name_bytes: &[u8],
     ) {
-        for byte_offset in offset..offset + name_len {
+        for (rel_offset, byte_offset) in (offset..offset + name_len).enumerate() {
             self.assign(
                 region,
                 byte_offset,
@@ -452,6 +454,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 0,
                 0,
                 0,
+                name_bytes[rel_offset],
             );
         }
     }
@@ -500,6 +503,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 false,
                 mod_name_len as usize,
+                &wasm_bytecode.bytes.as_slice()[offset..],
             );
             debug!("markup_name_section offset {}", offset);
             offset += mod_name_len as usize;
@@ -522,6 +526,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 true,
                 import_name_len as usize,
+                &wasm_bytecode.bytes.as_slice()[offset..],
             );
             debug!("markup_name_section offset {}", offset);
             offset += import_name_len as usize;
@@ -540,6 +545,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 0,
                 0,
                 0,
+                wasm_bytecode.bytes.as_slice()[offset],
             );
             debug!("markup importdesc_type offset {}", offset);
             offset += 1;

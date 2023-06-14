@@ -7,6 +7,8 @@ use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
 use eth_types::{Field, Hash, ToWord};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::tables::range_table::RangeTableConfig;
+use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section_body::circuit::WasmImportSectionBodyChip;
@@ -20,9 +22,10 @@ struct TestCircuit<'a, F> {
 }
 
 #[derive(Clone)]
-struct TestCircuitConfig<F> {
+struct TestCircuitConfig<F: Field> {
     wasm_import_section_body_chip: Rc<WasmImportSectionBodyChip<F>>,
     wasm_bytecode_table: Rc<WasmBytecodeTable>,
+    range_table_config_0_128: Rc<RangeTableConfig<F, 0, 128>>,
     _marker: PhantomData<F>,
 }
 
@@ -36,20 +39,33 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
+
+        let range_table_config_0_128 = Rc::new(RangeTableConfig::configure(cs));
+
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
             &wasm_bytecode_table.value,
         );
         let leb128_chip = Rc::new(LEB128Chip::construct(leb128_config));
+
+        let utf8_config = UTF8Chip::<F>::configure(
+            cs,
+            range_table_config_0_128.clone(),
+            &wasm_bytecode_table.value,
+        );
+        let utf8_chip = Rc::new(UTF8Chip::construct(utf8_config));
+
         let wasm_import_section_body_config = WasmImportSectionBodyChip::configure(
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
+            utf8_chip.clone(),
         );
         let wasm_import_section_body_chip = WasmImportSectionBodyChip::construct(wasm_import_section_body_config);
         let test_circuit_config = TestCircuitConfig {
             wasm_import_section_body_chip: Rc::new(wasm_import_section_body_chip),
             wasm_bytecode_table: wasm_bytecode_table.clone(),
+            range_table_config_0_128: range_table_config_0_128.clone(),
             _marker: Default::default(),
         };
 
@@ -63,6 +79,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Result<(), Error> {
         let wasm_bytecode = WasmBytecode::new(self.bytecode.to_vec().clone(), self.code_hash.to_word());
         config.wasm_bytecode_table.load(&mut layouter, &wasm_bytecode)?;
+        config.range_table_config_0_128.load(&mut layouter)?;
         layouter.assign_region(
             || "wasm_import_section_body region",
             |mut region| {
