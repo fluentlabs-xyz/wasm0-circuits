@@ -2,10 +2,8 @@ use halo2_proofs::circuit::Value;
 use bus_mapping::state_db::CodeDB;
 use eth_types::{Field, ToScalar, ToWord, Word};
 
-///
 #[derive(Clone, Debug)]
 pub struct WasmBytecode {
-    ///
     pub(crate) bytes: Vec<u8>,
     pub(crate) code_hash: Word,
 }

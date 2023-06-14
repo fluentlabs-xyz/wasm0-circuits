@@ -250,11 +250,11 @@ impl<F: Field> LEB128Chip<F>
         &self,
         region: &mut Region<F>,
         offset: usize,
-        leb_byte_rel_offset: usize,
+        rel_byte_offset: usize,
         enabled: bool,
-        is_first_leb_byte: bool,
-        is_last_leb_byte: bool,
-        is_leb_byte_has_cb: bool,
+        is_first_byte: bool,
+        is_last_byte: bool,
+        is_byte_has_cb: bool,
         is_signed: bool,
         sn: u64,
         sn_recovered: u64,
@@ -274,27 +274,27 @@ impl<F: Field> LEB128Chip<F>
         ).unwrap();
 
         region.assign_fixed(
-            || format!("assign 'is_byte_has_cb' to {} at {}", is_leb_byte_has_cb, offset),
+            || format!("assign 'is_byte_has_cb' to {} at {}", is_byte_has_cb, offset),
             self.config.is_byte_has_cb,
             offset,
-            || Value::known(F::from(is_leb_byte_has_cb as u64)),
+            || Value::known(F::from(is_byte_has_cb as u64)),
         ).unwrap();
 
         region.assign_fixed(
-            || format!("assign 'is_first_leb_byte' to {} at {}", is_first_leb_byte, offset),
+            || format!("assign 'is_first_leb_byte' to {} at {}", is_first_byte, offset),
             self.config.is_first_leb_byte,
             offset,
-            || Value::known(F::from(is_first_leb_byte as u64)),
+            || Value::known(F::from(is_first_byte as u64)),
         ).unwrap();
 
         region.assign_fixed(
-            || format!("assign 'is_last_leb_byte' to {} at {}", is_last_leb_byte, offset),
+            || format!("assign 'is_last_leb_byte' to {} at {}", is_last_byte, offset),
             self.config.is_last_leb_byte,
             offset,
-            || Value::known(F::from(is_last_leb_byte as u64)),
+            || Value::known(F::from(is_last_byte as u64)),
         ).unwrap();
 
-        let leb_byte_mul = if is_leb_byte_has_cb || is_last_leb_byte { pow(0b10000000, leb_byte_rel_offset) } else { 0 };
+        let leb_byte_mul = if is_byte_has_cb || is_last_byte { pow(0b10000000, rel_byte_offset) } else { 0 };
         region.assign_advice(
             || format!("assign 'leb_byte_mul' to {} at {}", leb_byte_mul, offset),
             self.config.leb_byte_mul,
@@ -303,9 +303,9 @@ impl<F: Field> LEB128Chip<F>
         ).unwrap();
 
         let val = if is_signed {
-            F::from(sn as u64).neg()
+            F::from(sn).neg()
         } else {
-            F::from(sn as u64)
+            F::from(sn)
         };
         region.assign_advice(
             || format!("assign 'sn' is_signed '{}' to {} at {}", is_signed, sn, offset),
@@ -314,10 +314,10 @@ impl<F: Field> LEB128Chip<F>
             || Value::known(F::from(val)),
         ).unwrap();
 
-        let val = if is_signed && is_last_leb_byte {
-            F::from(sn_recovered as u64).neg()
+        let val = if is_signed && is_last_byte {
+            F::from(sn_recovered).neg()
         } else {
-            F::from(sn_recovered as u64)
+            F::from(sn_recovered)
         };
         region.assign_advice(
             || format!("assign 'sn_recovered' is_signed '{}' to {} at {}", is_signed, sn_recovered, offset),

@@ -27,4 +27,4 @@ pub enum NumType {
 }
 
 // TODO make it differ from custom section id (which is 0 too)
-pub const ID_OF_SECTION_DEFAULT: i32 = 0;
+pub const SECTION_ID_DEFAULT: i32 = 0;
