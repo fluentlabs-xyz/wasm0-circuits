@@ -108,7 +108,6 @@ mod wasm_import_section_body_tests {
         }
     }
 
-    // TODO
     #[test]
     pub fn import_section_body_bytecode_is_ok() {
         let mut bytecodes: Vec<Vec<u8>> = Vec::new();

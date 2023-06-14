@@ -266,6 +266,7 @@ mod test {
     use eth_types::{bytecode, evm_types::{GasCost, OpcodeId}, Bytecode, ToWord, U256, bytecode_internal, ToBigEndian};
     use mock::{eth, TestContext, MOCK_ACCOUNTS};
     use std::cmp::max;
+    use eth_types::evm_types::OpcodeId::I32Const;
 
     const TESTING_STORAGE_KEY: U256 = U256([0, 0, 0, 0x030201]);
 

@@ -131,56 +131,56 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 &mut cb,
                 vc,
                 "check next: is_type(1) -> is_input_count+",
-                true,
                 is_type_expr.clone(),
+                true,
                 &[is_input_count, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_type(1) -> is_input_count+",
-                false,
                 is_input_count_expr.clone(),
+                false,
                 &[is_type, is_input_count, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check next: is_input_count+ -> is_input_type* -> is_output_count+",
-                true,
                 is_input_count_expr.clone(),
+                true,
                 &[is_input_count, is_input_type, is_output_count, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_input_count+ -> is_input_type*",
-                false,
                 is_input_type_expr.clone(),
+                false,
                 &[is_input_count, is_input_type, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check next: is_input_type* -> is_output_count+",
-                true,
                 is_input_type_expr.clone(),
+                true,
                 &[is_input_type, is_output_count, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_input_count+ -> is_input_type* -> is_output_count+",
-                false,
                 is_output_count_expr.clone(),
+                false,
                 &[is_input_count, is_input_type, is_output_count, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_output_count+ -> is_output_type*",
-                false,
                 is_output_type_expr.clone(),
+                false,
                 &[is_output_count, is_output_type, ],
             );
 

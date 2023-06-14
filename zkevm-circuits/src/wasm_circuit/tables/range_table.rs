@@ -8,12 +8,12 @@ use eth_types::Field;
 
 /// A lookup table of values from 0..RANGE.
 #[derive(Debug, Clone)]
-pub struct RangeTableConfig<F: Field, const RANGE: usize> {
+pub struct RangeTableConfig<F: Field, const RANGE_START: usize, const RANGE_FINISH: usize> {
     pub value: TableColumn,
     _marker: PhantomData<F>,
 }
 
-impl<F: Field, const RANGE: usize> RangeTableConfig<F, RANGE> {
+impl<F: Field, const RANGE_START: usize, const RANGE_FINISH: usize> RangeTableConfig<F, RANGE_START, RANGE_FINISH> {
     pub fn configure(cs: &mut ConstraintSystem<F>) -> Self {
         let value = cs.lookup_table_column();
 
@@ -27,11 +27,11 @@ impl<F: Field, const RANGE: usize> RangeTableConfig<F, RANGE> {
         layouter.assign_table(
             || "load range-check table",
             |mut table| {
-                for value in 0..RANGE {
+                for (offset, value) in (RANGE_START..RANGE_FINISH).enumerate() {
                     table.assign_cell(
                         || "num_bits",
                         self.value,
-                        value,
+                        offset,
                         || Value::known(F::from(value as u64)),
                     )?;
                 }

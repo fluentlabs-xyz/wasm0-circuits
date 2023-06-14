@@ -8,8 +8,8 @@ pub fn configure_check_for_transition<F: Field>(
     cb: &mut BaseConstraintBuilder<F>,
     vc: &mut VirtualCells<F>,
     name: &'static str,
-    check_next: bool,
     condition: Expression<F>,
+    check_next: bool,
     columns_to_check: &[Column<Fixed>],
 ) {
     cb.condition(

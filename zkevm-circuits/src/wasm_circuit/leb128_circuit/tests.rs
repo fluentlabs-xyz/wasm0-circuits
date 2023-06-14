@@ -21,7 +21,6 @@ struct TestCircuit<'a, F, const IS_SIGNED: bool> {
 
 #[derive(Clone)]
 struct TestCircuitConfig<F, const IS_SIGNED: bool> {
-    // sn: Column<Advice>,
     leb_bytes: Column<Advice>,
     leb128_config: LEB128Config<F>,
     _marker: PhantomData<F>,
@@ -61,16 +60,6 @@ impl<'a, F: Field, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, IS_S
             || "leb128 region",
             |mut region| {
                 leb128_chip.assign_init(&mut region, self.offset_shift + self.leb_bytes.len() - 1);
-
-                // for i in self.offset_shift..self.offset_shift + self.leb_bytes.len() {
-                //     let mut val = self.sn;
-                //     region.assign_advice(
-                //         || format!("assign 'sn' is_signed {} to {} at {}", self.is_signed, val, i),
-                //         config.sn,
-                //         i,
-                //         || Value::known(if self.is_signed { F::from(val).neg() } else { F::from(val) }),
-                //     )?;
-                // }
 
                 let mut sn_recovered_at_pos: u64 = 0;
                 for (leb_byte_offset, &leb_byte) in self.leb_bytes.iter().enumerate() {
@@ -297,14 +286,14 @@ mod leb128_circuit_tests {
     #[test]
     pub fn test_debug_exact_number_unsigned() {
         const IS_SIGNED: bool = false;
-        // exact_number::<1, { IS_SIGNED }>(0);
-        // exact_number::<1, { IS_SIGNED }>(1);
-        // exact_number::<1, { IS_SIGNED }>(32);
-        exact_number::<2, { IS_SIGNED }>(164, 1);
-        // exact_number::<2, { IS_SIGNED }>(16382);
-        // exact_number::<2, { IS_SIGNED }>(16383);
-        // exact_number::<3, { IS_SIGNED }>(123456);
-        // exact_number::<4, { IS_SIGNED }>(123456789);
+        exact_number::<1, { IS_SIGNED }>(0, 1);
+        exact_number::<1, { IS_SIGNED }>(1, 0);
+        exact_number::<1, { IS_SIGNED }>(32, 0);
+        exact_number::<2, { IS_SIGNED }>(164, 0);
+        exact_number::<2, { IS_SIGNED }>(16382, 1);
+        exact_number::<2, { IS_SIGNED }>(16383, 0);
+        exact_number::<3, { IS_SIGNED }>(123456, 0);
+        exact_number::<4, { IS_SIGNED }>(123456789, 0);
     }
 
     #[test]

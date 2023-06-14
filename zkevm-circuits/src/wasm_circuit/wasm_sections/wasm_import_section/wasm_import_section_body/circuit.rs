@@ -152,96 +152,96 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
-                true,
                 is_items_count_expr.clone(),
+                true,
                 &[is_items_count, is_mod_name_len, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
-                false,
                 is_mod_name_len_expr.clone(),
+                false,
                 &[is_items_count, is_mod_name_len, is_importdesc_val, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check next: is_mod_name_len+ -> is_mod_name* -> is_import_name_len+",
-                true,
                 is_mod_name_len_expr.clone(),
+                true,
                 &[is_mod_name_len, is_mod_name, is_import_name_len, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_mod_name_len+ -> is_mod_name*",
-                false,
                 is_mod_name_expr.clone(),
+                false,
                 &[is_mod_name, is_mod_name_len, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check next: is_mod_name* -> is_import_name_len+",
-                true,
                 is_mod_name_expr.clone(),
+                true,
                 &[is_mod_name, is_import_name_len, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_mod_name_len+ -> is_mod_name* -> is_import_name_len+",
-                false,
                 is_import_name_len_expr.clone(),
+                false,
                 &[is_mod_name_len, is_mod_name, is_import_name_len, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check next: is_import_name_len+ -> is_import_name* -> is_importdesc_type(1)",
-                true,
                 is_import_name_len_expr.clone(),
+                true,
                 &[is_import_name_len, is_import_name, is_importdesc_type, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_import_name_len+ -> is_import_name*",
-                false,
                 is_import_name_expr.clone(),
+                false,
                 &[is_import_name_len, is_import_name, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check next: is_import_name* -> is_importdesc_type(1)",
-                true,
                 is_import_name_expr.clone(),
+                true,
                 &[is_import_name, is_importdesc_type, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_import_name_len+ -> is_import_name* -> is_importdesc_type(1)",
-                false,
                 is_importdesc_type_expr.clone(),
+                false,
                 &[is_import_name_len, is_import_name, is_importdesc_type, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check next: is_importdesc_type(1) -> is_importdesc_val+",
-                true,
                 is_importdesc_type_expr.clone(),
+                true,
                 &[is_importdesc_val, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_importdesc_type(1) -> is_importdesc_val+",
-                false,
                 is_importdesc_val_expr.clone(),
+                false,
                 &[is_importdesc_type, is_importdesc_val, ],
             );
 

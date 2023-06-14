@@ -55,8 +55,8 @@ pub struct WasmConfig<F: Field> {
     index_at_magic_prefix: Vec<IsZeroChip<F>>,
     index_at_magic_prefix_prev: Vec<IsZeroChip<F>>,
     pub(crate) poseidon_table: PoseidonTable,
-    pub(crate) byte_value_range_table_config: RangeTableConfig<F, 256>,
-    pub(crate) section_id_range_table_config: RangeTableConfig<F, { WASM_SECTION_ID_MAX + 1 }>,
+    pub(crate) byte_value_range_table_config: RangeTableConfig<F, 0, 256>,
+    pub(crate) section_id_range_table_config: RangeTableConfig<F, 0, { WASM_SECTION_ID_MAX + 1 }>,
     pub(crate) wasm_bytecode_table: Rc<WasmBytecodeTable>,
 
     _marker: PhantomData<F>,
@@ -187,22 +187,17 @@ impl<F: Field> WasmChip<F>
 
             cb.require_zero("index==0 when q_first==1", and::expr([q_first_expr.clone(), byte_val_expr.clone(), ]));
 
-            cb.condition(
-                or::expr([
-                    is_section_id_expr.clone(),
-                    is_section_len_expr.clone(),
-                    is_section_body_expr.clone()
-                ]),
-                |bcb| {
-                    bcb.require_equal(
-                        "exactly one mark flag may be active at the same time",
-                        is_section_id_expr.clone() + is_section_len_expr.clone() + is_section_body_expr.clone(),
-                        1.expr(),
-                    );
-                }
+            let mut is_index_at_magic_prefix_expr = index_at_magic_prefix.iter()
+                .fold(0.expr(), |acc, x| { acc.clone() + x.config().expr() });
+
+            // TODO check
+            cb.require_equal(
+                "exactly one mark flag may be active at the same time",
+                is_index_at_magic_prefix_expr.clone() + is_section_id_expr.clone() + is_section_len_expr.clone() + is_section_body_expr.clone(),
+                1.expr(),
             );
 
-            cb.gate(vc.query_fixed(q_enable, Rotation::cur()))
+            cb.gate(q_enable_expr)
         });
 
         cs.create_gate("bytecode checks", |vc| {
@@ -269,9 +264,7 @@ impl<F: Field> WasmChip<F>
             let is_section_body_expr = vc.query_fixed(is_section_body, Rotation::cur());
 
             let mut is_index_at_magic_prefix_expr = index_at_magic_prefix.iter()
-                .fold(0.expr(), |acc, x| {
-                    acc.clone() + x.config().expr()
-                });
+                .fold(0.expr(), |acc, x| { acc.clone() + x.config().expr() });
 
             cb.condition(
                 is_index_at_magic_prefix_expr.clone(),
@@ -327,35 +320,35 @@ impl<F: Field> WasmChip<F>
                 &mut cb,
                 vc,
                 "check next: is_section_id(1) -> is_section_len+",
-                true,
                 is_section_id_expr.clone(),
+                true,
                 &[is_section_len],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_section_id(1) -> is_section_len+",
-                false,
                 is_section_len_expr.clone(),
+                false,
                 &[is_section_id, is_section_len],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check next: is_section_len+ -> is_section_body+",
-                true,
                 is_section_len_expr.clone(),
+                true,
                 &[is_section_len, is_section_body],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
                 "check prev: is_section_len+ -> is_section_body+",
-                false,
                 is_section_body_expr.clone(),
+                false,
                 &[is_section_len, is_section_body],
             );
-            // TODO doesnt pass, recheck
+            // TODO must pass, recheck
             // configure_check_for_transition(
             //     &mut cb,
             //     vc,

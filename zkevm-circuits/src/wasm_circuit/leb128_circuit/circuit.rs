@@ -20,7 +20,7 @@ pub struct LEB128Config<F> {
 
     pub leb_byte_mul: Column<Advice>,
     pub sn: Column<Advice>,
-    pub sn_recovered_at_pos: Column<Advice>,
+    pub sn_recovered: Column<Advice>,
 
     _marker: PhantomData<F>,
 }
@@ -56,7 +56,7 @@ impl<F: Field> LEB128Chip<F>
 
         let leb_byte_mul = cs.advice_column();
         let sn = cs.advice_column();
-        let sn_recovered_at_pos = cs.advice_column();
+        let sn_recovered = cs.advice_column();
 
         cs.create_gate("leb128 gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -69,7 +69,7 @@ impl<F: Field> LEB128Chip<F>
 
             let leb_byte_mul_expr = vc.query_advice(leb_byte_mul, Rotation::cur());
             let sn_expr = vc.query_advice(sn, Rotation::cur());
-            let sn_recovered_at_pos_expr = vc.query_advice(sn_recovered_at_pos, Rotation::cur());
+            let sn_recovered_expr = vc.query_advice(sn_recovered, Rotation::cur());
 
             let byte_val_expr = vc.query_advice(*bytes, Rotation::cur());
 
@@ -150,17 +150,17 @@ impl<F: Field> LEB128Chip<F>
                     is_consider_byte_expr.clone(),
                 ]),
                 |bcb| {
-                    let mut sn_recovered_at_pos_manual_expr = (byte_val_expr.clone() - 0b10000000.expr() * is_byte_has_cb_expr.clone()) * leb_byte_mul_expr.clone();
-                    let sn_recovered_at_pos_prev_expr = select::expr(
+                    let mut sn_recovered_manual_expr = (byte_val_expr.clone() - 0b10000000.expr() * is_byte_has_cb_expr.clone()) * leb_byte_mul_expr.clone();
+                    let sn_recovered_prev_expr = select::expr(
                         not::expr(is_first_leb_byte_expr.clone()),
-                        vc.query_advice(sn_recovered_at_pos, Rotation::prev()),
+                        vc.query_advice(sn_recovered, Rotation::prev()),
                         0.expr(),
                     );
-                    sn_recovered_at_pos_manual_expr = sn_recovered_at_pos_manual_expr + sn_recovered_at_pos_prev_expr.clone();
+                    sn_recovered_manual_expr = sn_recovered_manual_expr + sn_recovered_prev_expr.clone();
                     bcb.require_equal(
-                        "sn_recovered_at_pos equals to manually recovered",
-                        sn_recovered_at_pos_manual_expr.clone(),
-                        sn_recovered_at_pos_expr.clone(),
+                        "sn_recovered equals to sn_recovered_manual",
+                        sn_recovered_manual_expr.clone(),
+                        sn_recovered_expr.clone(),
                     )
                 }
             );
@@ -180,7 +180,7 @@ impl<F: Field> LEB128Chip<F>
                     bcb.require_equal(
                         "sn equals to recovered at the last leb byte",
                         sn_expr.clone(),
-                        sn_recovered_at_pos_expr.clone(),
+                        sn_recovered_expr.clone(),
                     );
                 }
             );
@@ -218,7 +218,7 @@ impl<F: Field> LEB128Chip<F>
             is_byte_has_cb,
             leb_byte_mul,
             sn,
-            sn_recovered_at_pos,
+            sn_recovered,
             _marker: PhantomData,
         };
 
@@ -257,7 +257,7 @@ impl<F: Field> LEB128Chip<F>
         is_leb_byte_has_cb: bool,
         is_signed: bool,
         sn: u64,
-        sn_recovered_at_pos: u64,
+        sn_recovered: u64,
     ) {
         region.assign_fixed(
             || format!("assign 'q_enable' to {} at {}", enabled, offset),
@@ -315,13 +315,13 @@ impl<F: Field> LEB128Chip<F>
         ).unwrap();
 
         let val = if is_signed && is_last_leb_byte {
-            F::from(sn_recovered_at_pos as u64).neg()
+            F::from(sn_recovered as u64).neg()
         } else {
-            F::from(sn_recovered_at_pos as u64)
+            F::from(sn_recovered as u64)
         };
         region.assign_advice(
-            || format!("assign 'sn_recovered_at_pos' is_signed '{}' to {} at {}", is_signed, sn_recovered_at_pos, offset),
-            self.config.sn_recovered_at_pos,
+            || format!("assign 'sn_recovered' is_signed '{}' to {} at {}", is_signed, sn_recovered, offset),
+            self.config.sn_recovered,
             offset,
             || Value::known(val),
         ).unwrap();
