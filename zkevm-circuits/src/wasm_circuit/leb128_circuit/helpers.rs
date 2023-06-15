@@ -31,10 +31,6 @@ pub fn leb128_compute_last_byte_offset(
 ) -> Result<usize, Error> {
     let mut offset = leb_first_byte_offset;
     loop {
-        if offset >= bytes.len() {
-            return Err(Error::IndexOutOfBounds(format!("offset {} when max {}", offset, bytes.len() - 1)))
-        }
-
         if bytes[offset] & EIGHT_MS_BIT_MASK == 0 {
             break
         }

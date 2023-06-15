@@ -34,7 +34,6 @@ pub struct WasmImportSectionBodyConfig<F: Field> {
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
     pub utf8_chip: Rc<UTF8Chip<F>>,
-    // TODO need ut8 chip for mod/import_name
 
     _marker: PhantomData<F>,
 }
@@ -99,7 +98,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             cb.require_boolean("is_importdesc_val is boolean", is_importdesc_val_expr.clone());
 
             cb.require_equal(
-                "exactly one mark flag may be active at the same time",
+                "exactly one mark flag active at the same time",
                 is_items_count_expr.clone() + is_mod_name_len_expr.clone() + is_mod_name_expr.clone() + is_import_name_len_expr.clone() + is_import_name_expr.clone() + is_importdesc_type_expr.clone() + is_importdesc_val_expr.clone(),
                 1.expr(),
             );
@@ -236,8 +235,6 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     )
                 }
             );
-
-            // TODO: support other importdesc types
 
             cb.require_equal(
                 "is_mod_name || is_import_name -> utf8",
@@ -386,7 +383,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         ).unwrap();
     }
 
-    // returns sn and leb len
+    /// returns sn and leb len
     fn markup_leb_section(
         &self,
         region: &mut Region<F>,
@@ -467,9 +464,6 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
-        if offset >= wasm_bytecode.bytes.len() {
-            return Err(Error::IndexOutOfBounds(format!("offset {} when max {}", offset, wasm_bytecode.bytes.len() - 1)))
-        }
         debug!("offset_start {}", offset);
 
         let (items_count, items_count_leb_len) = self.markup_leb_section(

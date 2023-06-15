@@ -121,7 +121,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             );
 
             cb.require_equal(
-                "exactly one mark flag may be active at the same time",
+                "exactly one mark flag active at the same time",
                 is_type_expr.clone() + is_input_count_expr.clone() + is_input_type_expr.clone() + is_output_count_expr.clone() + is_output_type_expr.clone(),
                 1.expr(),
             );
@@ -338,10 +338,6 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
-        if offset >= wasm_bytecode.bytes.len() {
-            return Err(Error::IndexOutOfBounds(format!("offset {} when max {}", offset, wasm_bytecode.bytes.len() - 1)))
-        }
-
         self.assign(
             region,
             offset,

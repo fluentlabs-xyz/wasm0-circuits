@@ -210,10 +210,6 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
-        if offset >= wasm_bytecode.bytes.len() {
-            return Err(Error::IndexOutOfBounds(format!("offset {} when max {}", offset, wasm_bytecode.bytes.len() - 1)))
-        }
-
         let (body_items_count_sn, body_items_count_leb_len) = self.markup_leb_section(
             region,
             &wasm_bytecode.bytes[offset..],
