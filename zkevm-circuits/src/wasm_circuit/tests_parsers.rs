@@ -32,7 +32,7 @@ mod wasm_parsers_tests {
             let byte = wasm_bytes[i];
             let mut byte_val: u32 = (byte & 0b1111111) as u32;
             byte_val = byte_val * checked_pow(0b10000000, i - BASE_INDEX).unwrap();
-            section_len += byte_val as u32;
+            section_len += byte_val;
             if byte & 0b10000000 == 0 { break }
             i += 1;
         }
@@ -41,7 +41,9 @@ mod wasm_parsers_tests {
 
     #[test]
     pub fn test_print_parsed_file_contents() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
+        // let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
+        let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
+        println!("PARSED {}", path_to_file);
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
         let mut wasm_binary = wat2wasm(data.clone()).unwrap();
 

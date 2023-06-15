@@ -28,3 +28,10 @@ pub enum NumType {
 
 // TODO make it differ from custom section id (which is 0 too)
 pub const SECTION_ID_DEFAULT: i32 = 0;
+
+// https://webassembly.github.io/spec/core/binary/types.html#limits
+#[derive(Clone)]
+pub enum LimitsType {
+    MinOnly = 0x0,
+    MinMax = 0x1,
+}

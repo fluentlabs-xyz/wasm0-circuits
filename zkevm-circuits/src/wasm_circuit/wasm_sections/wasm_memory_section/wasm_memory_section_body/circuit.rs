@@ -15,31 +15,33 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::wasm_sections::consts::LimitsType;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 
 #[derive(Debug, Clone)]
-pub struct WasmFunctionSectionBodyConfig<F: Field> {
+pub struct WasmMemorySectionBodyConfig<F: Field> {
     pub q_enable: Column<Fixed>,
     pub is_items_count: Column<Fixed>,
-    pub is_typeidx: Column<Fixed>,
+    pub is_limit_type: Column<Fixed>,
+    pub is_limit_type_val: Column<Fixed>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
 
     _marker: PhantomData<F>,
 }
 
-impl<'a, F: Field> WasmFunctionSectionBodyConfig<F>
+impl<'a, F: Field> WasmMemorySectionBodyConfig<F>
 {}
 
 #[derive(Debug, Clone)]
-pub struct WasmFunctionSectionBodyChip<F: Field> {
-    pub config: WasmFunctionSectionBodyConfig<F>,
+pub struct WasmMemorySectionBodyChip<F: Field> {
+    pub config: WasmMemorySectionBodyConfig<F>,
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmFunctionSectionBodyChip<F>
+impl<F: Field> WasmMemorySectionBodyChip<F>
 {
-    pub fn construct(config: WasmFunctionSectionBodyConfig<F>) -> Self {
+    pub fn construct(config: WasmMemorySectionBodyConfig<F>) -> Self {
         let instance = Self {
             config,
             _marker: PhantomData,
@@ -51,67 +53,99 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
-    ) -> WasmFunctionSectionBodyConfig<F> {
+    ) -> WasmMemorySectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let is_items_count = cs.fixed_column();
-        let is_typeidx = cs.fixed_column();
+        let is_limit_type = cs.fixed_column();
+        let is_limit_type_val = cs.fixed_column();
 
-        cs.create_gate("WasmFunctionSectionBody gate", |vc| {
+        cs.create_gate("WasmMemorySectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
-            let is_typeidx_expr = vc.query_fixed(is_typeidx, Rotation::cur());
+            let is_limit_type_expr = vc.query_fixed(is_limit_type, Rotation::cur());
+            let is_limit_type_val_expr = vc.query_fixed(is_limit_type_val, Rotation::cur());
+
+            let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
 
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
             cb.require_boolean("is_items_count is boolean", is_items_count_expr.clone());
-            cb.require_boolean("is_typeidx is boolean", is_typeidx_expr.clone());
+            cb.require_boolean("is_limit_type is boolean", is_limit_type_expr.clone());
+            cb.require_boolean("is_limit_type_val is boolean", is_limit_type_val_expr.clone());
 
             cb.require_equal(
                 "exactly one mark flag active at the same time",
-                is_items_count_expr.clone() + is_typeidx_expr.clone(),
+                is_items_count_expr.clone() + is_limit_type_expr.clone() + is_limit_type_val_expr.clone(),
                 1.expr(),
             );
 
             cb.condition(
                 or::expr([
                     is_items_count_expr.clone(),
-                    is_typeidx_expr.clone(),
+                    is_limit_type_val_expr.clone(),
                 ]),
                 |cbc| {
                     cbc.require_equal(
-                        "is_items_count || is_typeidx -> leb128",
+                        "is_items_count || is_limit_type_val -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
                     )
                 }
             );
 
-            // is_items_count+ -> is_typeidx+
+            // is_items_count+ -> is_limit_type(1) -> is_limit_type_val+
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_items_count+ -> is_typeidx+",
+                "check next: is_items_count+ -> is_limit_type(1)",
                 is_items_count_expr.clone(),
                 true,
-                &[is_items_count, is_typeidx, ],
+                &[is_items_count, is_limit_type, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_items_count+ -> is_typeidx+",
-                is_typeidx_expr.clone(),
+                "check prev: is_items_count+ -> is_limit_type(1)",
+                is_limit_type_expr.clone(),
                 false,
-                &[is_items_count, is_typeidx, ],
+                &[is_items_count, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check next: is_limit_type(1) -> is_limit_type_val+",
+                is_limit_type_expr.clone(),
+                true,
+                &[is_limit_type_val, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check prev: is_limit_type(1) -> is_limit_type_val+",
+                is_limit_type_val_expr.clone(),
+                false,
+                &[is_limit_type, is_limit_type_val, ],
+            );
+
+            cb.condition(
+                is_limit_type_expr.clone(),
+                |bcb| {
+                    bcb.require_zero(
+                        "is_limit_type -> byte_val has valid value",
+                        (byte_val_expr.clone() - (LimitsType::MinOnly as i32).expr()) * (byte_val_expr.clone() - (LimitsType::MinMax as i32).expr())
+                    )
+                }
             );
 
             cb.gate(q_enable_expr.clone())
         });
 
-        let config = WasmFunctionSectionBodyConfig::<F> {
+        let config = WasmMemorySectionBodyConfig::<F> {
             q_enable,
             is_items_count,
-            is_typeidx,
+            is_limit_type,
+            is_limit_type_val,
             leb128_chip,
             _marker: PhantomData,
         };
@@ -130,6 +164,7 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
                 offset,
                 false,
                 false,
+                false,
                 0,
                 0,
                 0,
@@ -143,15 +178,16 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
         region: &mut Region<F>,
         offset: usize,
         is_items_count: bool,
-        is_typeidx: bool,
+        is_limit_type: bool,
+        is_limit_type_val: bool,
         leb_byte_rel_offset: usize,
         leb_last_byte_rel_offset: usize,
         leb_sn: u64,
         leb_sn_recovered_at_pos: u64,
     ) {
-        let q_enable = is_items_count || is_typeidx;
-        debug!("offset {} q_enable {} is_items_count {} is_typeidx {}", offset, q_enable, is_items_count, is_typeidx);
-        if is_items_count || is_typeidx {
+        let q_enable = is_items_count || is_limit_type || is_limit_type_val;
+        debug!("offset {} q_enable {} is_items_count {} is_typeidx {} is_limit_type_val {}", offset, q_enable, is_items_count, is_limit_type, is_limit_type_val);
+        if is_items_count || is_limit_type_val {
             let is_first_leb_byte = leb_byte_rel_offset == 0;
             let is_last_leb_byte = leb_byte_rel_offset == leb_last_byte_rel_offset;
             let is_leb_byte_has_cb = leb_byte_rel_offset < leb_last_byte_rel_offset;
@@ -181,10 +217,16 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
             || Value::known(F::from(is_items_count as u64)),
         ).unwrap();
         region.assign_fixed(
-            || format!("assign 'is_typeidx' val {} at {}", is_typeidx, offset),
-            self.config.is_typeidx,
+            || format!("assign 'is_limit_type' val {} at {}", is_limit_type, offset),
+            self.config.is_limit_type,
             offset,
-            || Value::known(F::from(is_typeidx as u64)),
+            || Value::known(F::from(is_limit_type as u64)),
+        ).unwrap();
+        region.assign_fixed(
+            || format!("assign 'is_limit_type_val' val {} at {}", is_limit_type_val, offset),
+            self.config.is_limit_type_val,
+            offset,
+            || Value::known(F::from(is_limit_type_val as u64)),
         ).unwrap();
     }
 
@@ -195,7 +237,7 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
         leb_bytes: &[u8],
         leb_bytes_start_offset: usize,
         is_items_count: bool,
-        is_typeidx: bool,
+        is_limit_type_val: bool,
     ) -> (u64, usize) {
         const OFFSET: usize = 0;
         let (leb_sn, last_byte_offset) = leb128_compute_sn(leb_bytes, false, OFFSET).unwrap();
@@ -213,7 +255,8 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
                 region,
                 offset,
                 is_items_count,
-                is_typeidx,
+                false,
+                is_limit_type_val,
                 byte_offset,
                 last_byte_offset,
                 leb_sn,
@@ -245,15 +288,43 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
-            let (typeidx_val, typeidx_val_leb_len) = self.markup_leb_section(
+            let limit_type = wasm_bytecode.bytes.as_slice()[offset];
+            debug!("offset {} limit_type {}", offset, limit_type);
+            self.assign(
+                region,
+                offset,
+                false,
+                true,
+                false,
+                0,
+                0,
+                0,
+                0,
+            );
+            offset += 1;
+
+            // at least 1 limit exists
+            let (min_limit_type_val, min_limit_type_val_leb_len) = self.markup_leb_section(
                 region,
                 &wasm_bytecode.bytes.as_slice()[offset..],
                 offset,
                 false,
                 true,
             );
-            debug!("offset {} typeidx_val {} typeidx_val_leb_len {}", offset, typeidx_val, typeidx_val_leb_len);
-            offset += typeidx_val_leb_len;
+            debug!("offset {} min_limit_type_val {} min_limit_type_val_leb_len {}", offset, min_limit_type_val, min_limit_type_val_leb_len);
+            offset += min_limit_type_val_leb_len;
+
+            if limit_type == LimitsType::MinMax as u8 {
+                let (max_limit_type_val, max_limit_type_val_leb_len) = self.markup_leb_section(
+                    region,
+                    &wasm_bytecode.bytes.as_slice()[offset..],
+                    offset,
+                    false,
+                    true,
+                );
+                debug!("offset {} max_limit_type_val {} max_limit_type_val_leb_len {}", offset, max_limit_type_val, max_limit_type_val_leb_len);
+                offset += max_limit_type_val_leb_len;
+            }
         }
 
         Ok(offset)
