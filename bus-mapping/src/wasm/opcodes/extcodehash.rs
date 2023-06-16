@@ -5,8 +5,9 @@ use crate::{
     operation::{AccountField, CallContextField, TxAccessListAccountOp},
     Error,
 };
-use eth_types::{GethExecStep, U256};
+use eth_types::{GethExecStep, H256, ToBigEndian, ToWord, U256};
 use eth_types::evm_types::MemoryAddress;
+use crate::evm::opcodes::address::ADDRESS_BYTE_LENGTH;
 
 const CODEHASH_BYTE_LENGTH: usize = 32;
 
@@ -18,20 +19,18 @@ impl Opcode for Extcodehash {
         state: &mut CircuitInputStateRef,
         steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let step = &steps[0];
-        let second_step = &steps[0];
-        let mut exec_step = state.new_step(step)?;
+        let geth_step = &steps[0];
+        let mut exec_step = state.new_step(geth_step)?;
 
         // Read account address from stack.
-        let external_address_mem_address = step.stack.nth_last(1)?;
-        state.stack_read(&mut exec_step, step.stack.nth_last_filled(1), external_address_mem_address)?;
-        let extcodehash_mem_address = step.stack.last()?;
-        state.stack_read(&mut exec_step, step.stack.last_filled(), extcodehash_mem_address)?;
+        let extcodehash_address = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), extcodehash_address)?;
+        let external_address_address = geth_step.stack.nth_last(1)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), external_address_address)?;
 
-        let extcodehash_vec = &second_step.memory.0;
-        if extcodehash_vec.len() != CODEHASH_BYTE_LENGTH {
-            return Err(Error::InvalidGethExecTrace("there is no hash bytes in memory for extcodehash opcode"));
-        }
+
+        let external_address = steps[0].global_memory.read_address(external_address_address)?;
+        let extcodehash = steps[1].global_memory.read_u256(extcodehash_address)?;
 
         // Pop external address off stack
         // let external_address_word = step.stack.last()?;
@@ -84,20 +83,24 @@ impl Opcode for Extcodehash {
         // Stack write of the result of EXTCODEHASH.
         // state.stack_write(&mut exec_step, stack_address, steps[1].stack.last()?)?;
 
-        // Ok(vec![exec_step])
 
         // Read dest offset as the (last-1) stack element
-        let dest_offset = step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), dest_offset)?;
-        let offset_addr = MemoryAddress::try_from(dest_offset)?;
+        // let dest_offset = geth_step.stack.nth_last(0)?;
+        // state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
 
+        let address_offset_addr = MemoryAddress::try_from(external_address_address)?;
+        for i in 0..ADDRESS_BYTE_LENGTH {
+            state.memory_read(&mut exec_step, address_offset_addr.map(|a| a + i), external_address[i])?;
+        }
+
+        let extblockhash_offset = MemoryAddress::try_from(extcodehash_address)?;
         // Copy result to memory
-        let extcodehash_bytes = extcodehash_vec.as_slice();
+        let extcodehash_bytes = extcodehash.to_be_bytes();
         for i in 0..CODEHASH_BYTE_LENGTH {
-            state.memory_write(&mut exec_step, offset_addr.map(|a| a + i), extcodehash_bytes[i])?;
+            state.memory_write(&mut exec_step, extblockhash_offset.map(|a| a + i), extcodehash_bytes[i])?;
         }
         let call_ctx = state.call_ctx_mut()?;
-        call_ctx.memory = second_step.memory.clone();
+        call_ctx.memory = steps[1].global_memory.clone();
 
         Ok(vec![exec_step])
     }

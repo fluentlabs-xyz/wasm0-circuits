@@ -50,6 +50,7 @@ use crate::{
 };
 use crate::error::{ContractAddressCollisionError, DepthError, InsufficientBalanceError, NonceUintOverflowError};
 use crate::evm::opcodes::create::Create;
+use crate::evm::opcodes::extcodehash::Extcodehash;
 use crate::precompile::is_precompiled;
 use crate::state_db::CodeDB;
 use crate::util::CHECK_MEM_STRICT;
@@ -79,7 +80,7 @@ mod codecopy;
 mod codesize;
 mod create;
 mod extcodecopy;
-// mod extcodehash;
+mod extcodehash;
 mod extcodesize;
 mod gasprice;
 mod logs;
@@ -356,7 +357,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::EXTCODECOPY => Extcodecopy::gen_associated_ops,
         OpcodeId::RETURNDATASIZE => Returndatasize::gen_associated_ops,
         OpcodeId::RETURNDATACOPY => Returndatacopy::gen_associated_ops,
-        // OpcodeId::EXTCODEHASH => Extcodehash::gen_associated_ops,
+        OpcodeId::EXTCODEHASH => Extcodehash::gen_associated_ops,
         OpcodeId::BLOCKHASH => StackToMemoryOpcode::<1, STACK_TO_MEMORY_TYPE_U256>::gen_associated_ops,
         OpcodeId::COINBASE => StackToMemoryOpcode::<0>::gen_associated_ops,
         OpcodeId::TIMESTAMP => StackToMemoryOpcode::<0>::gen_associated_ops,
