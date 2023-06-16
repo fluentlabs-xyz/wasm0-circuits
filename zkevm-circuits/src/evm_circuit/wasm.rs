@@ -36,6 +36,7 @@ use std::{
     collections::{HashMap},
     iter,
 };
+use std::any::Any;
 use std::collections::BTreeMap;
 use halo2_proofs::plonk::Assigned;
 use strum::EnumCount;
@@ -1263,7 +1264,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::CHAINID => assign_exec_step!(self.evm_chainid),
             ExecutionState::CODECOPY => assign_exec_step!(self.evm_codecopy),
             ExecutionState::CODESIZE => assign_exec_step!(self.evm_codesize),
-            // ExecutionState::EXTCODEHASH => assign_exec_step!(self.extcodehash_gadget),
+            ExecutionState::EXTCODEHASH => assign_exec_step!(self.evm_extcodehash),
             ExecutionState::EXTCODESIZE => assign_exec_step!(self.evm_extcodesize),
             ExecutionState::GAS => assign_exec_step!(self.evm_gas),
             ExecutionState::GASPRICE => assign_exec_step!(self.evm_gasprice),
