@@ -3,6 +3,7 @@ use halo2_proofs::{
 };
 use std::{marker::PhantomData};
 use std::rc::Rc;
+use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::{Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
@@ -131,10 +132,11 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             cb.condition(
                 is_limit_type_expr.clone(),
                 |bcb| {
-                    bcb.require_zero(
+                    bcb.require_in_set(
                         "is_limit_type -> byte_val has valid value",
-                        (byte_val_expr.clone() - (LimitsType::MinOnly as i32).expr()) * (byte_val_expr.clone() - (LimitsType::MinMax as i32).expr())
-                    )
+                        byte_val_expr.clone(),
+                        vec![(LimitsType::MinOnly as i32).expr(), (LimitsType::MinMax as i32).expr()],
+                    );
                 }
             );
 

@@ -66,6 +66,10 @@ mod test_helpers {
 
     #[test]
     pub fn string_to_hex_bytes_test() {
+        let str = "main";
+        debug!("'{}' in hex {:x?}", str, str.to_string().as_bytes());
+        let str = "memory";
+        debug!("'{}' in hex {:x?}", str, str.to_string().as_bytes());
         let str = "env";
         debug!("'{}' in hex {:x?}", str, str.to_string().as_bytes());
         let str = "_evm_address";
