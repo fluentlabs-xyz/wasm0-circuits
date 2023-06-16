@@ -15,13 +15,13 @@ use crate::{
     table::{AccountFieldTag, CallContextFieldTag},
     util::Expr,
 };
-use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
+use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar, ToU256};
 use halo2_proofs::{circuit::Value, plonk::Error};
 use gadgets::util::not;
 use crate::evm_circuit::param::N_BYTES_WORD;
 use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 use crate::evm_circuit::util::math_gadget::IsZeroGadget;
-use crate::evm_circuit::util::RandomLinearCombination;
+use crate::evm_circuit::util::{RandomLinearCombination, rlc};
 use crate::table::RwTableTag;
 
 #[derive(Clone, Debug)]
@@ -29,13 +29,11 @@ pub(crate) struct EvmExtCodeHashGadget<F> {
     same_context: SameContextGadget<F>,
     address_offset: Cell<F>,
     address_word: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
-    ext_code_hash_offset: Cell<F>,
-    ext_code_hash: Word<F>,
+    codehash_offset: Cell<F>,
+    code_hash: Word<F>,
     tx_id: Cell<F>,
     reversion_info: ReversionInfo<F>,
     is_warm: Cell<F>,
-    code_hash: Cell<F>,
-    not_exists: IsZeroGadget<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for EvmExtCodeHashGadget<F> {
@@ -47,14 +45,15 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeHashGadget<F> {
         let address_word = cb.query_word_rlc();
         let address = from_bytes::expr(&address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]);
 
-        let ext_code_hash_offset = cb.query_cell();
+        let codehash_offset = cb.query_cell();
         let address_offset = cb.query_cell();
 
-        cb.stack_pop(ext_code_hash_offset.expr());
+        cb.stack_pop(codehash_offset.expr());
         cb.stack_pop(address_offset.expr());
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let mut reversion_info = cb.reversion_info_read(None);
+
         let is_warm = cb.query_bool();
         cb.account_access_list_write(
             tx_id.expr(),
@@ -64,22 +63,19 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeHashGadget<F> {
             Some(&mut reversion_info),
         );
 
-        let code_hash = cb.query_cell_phase2();
+        let code_hash = cb.query_word_rlc();
+        // let exprs = code_hash.clone().cells.map(|v| v.expr());
+
         // For non-existing accounts the code_hash must be 0 in the rw_table.
-        // cb.account_read(address.expr(), AccountFieldTag::CodeHash, code_hash.expr());
-        // Not needed
-        let not_exists = IsZeroGadget::construct(cb, code_hash.expr());
-        let exists = not::expr(not_exists.expr());
-        let ext_code_hash = cb.query_word_rlc();
-
-        cb.account_read(address.expr(), AccountFieldTag::CodeHash, code_hash.expr());
-
-        cb.condition(not_exists.expr(), |cb| {
-            cb.require_zero("balance is zero when non_exists", ext_code_hash.expr());
-        });
+        // if cfg!(feature = "poseidon-codehash") {
+        //     let codehash_rlc = rlc::expr(&exprs, 256.expr());
+        //     cb.account_read(address.expr(), AccountFieldTag::KeccakCodeHash, codehash_rlc);
+        // } else {
+        // }
+        cb.account_read(address.expr(), AccountFieldTag::KeccakCodeHash, code_hash.expr());
 
         cb.memory_rlc_lookup(0.expr(), &address_offset, &address_word);
-        cb.memory_rlc_lookup(1.expr(), &ext_code_hash_offset, &ext_code_hash);
+        cb.memory_rlc_lookup(1.expr(), &codehash_offset, &code_hash);
 
         let gas_cost = select::expr(
             is_warm.expr(),
@@ -102,13 +98,11 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeHashGadget<F> {
             same_context,
             address_offset,
             address_word,
-            ext_code_hash_offset,
-            ext_code_hash,
+            codehash_offset,
             tx_id,
             reversion_info,
             is_warm,
             code_hash,
-            not_exists,
         }
     }
 
@@ -126,12 +120,12 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeHashGadget<F> {
         let codehash_offset= block.rws[step.rw_indices[0]].stack_value();
         let address_offset = block.rws[step.rw_indices[1]].stack_value();
 
+        self.codehash_offset.assign(region, offset, Value::<F>::known(codehash_offset.to_scalar().unwrap()))?;
         self.address_offset.assign(region, offset, Value::<F>::known(address_offset.to_scalar().unwrap()))?;
-        self.ext_code_hash_offset.assign(region, offset, Value::<F>::known(codehash_offset.to_scalar().unwrap()))?;
 
         self.tx_id
             .assign(region, offset, Value::known(F::from(tx.id as u64)))?;
-        
+
         self.reversion_info.assign(
             region,
             offset,
@@ -143,40 +137,13 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeHashGadget<F> {
         self.is_warm
             .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
 
-
-        // Change to region.code_hash(code_hash))?;
-        let code_hash = block.rws[step.rw_indices[6]].account_value_pair().0;
+        let (codehash, _) = block.rws[step.rw_indices[6]].account_value_pair();
         self.code_hash
-            .assign(region, offset, region.code_hash(code_hash))?;
-        self.not_exists
-            .assign_value(region, offset, region.code_hash(code_hash))?;
+            .assign(region, offset, Some(codehash.to_le_bytes()))?;
 
-        let address_rw_index = if code_hash.is_zero() { 7 } else { 7 };
-        let codehash_rw_index: usize = address_rw_index + N_BYTES_ACCOUNT_ADDRESS;
-
-        let address = {
-            let address_rw_tup_vec: Vec<(RwTableTag, usize)> = step.rw_indices[address_rw_index..(address_rw_index + N_BYTES_ACCOUNT_ADDRESS)].to_vec();
-            let address_bytes_vec: Vec<u8> = address_rw_tup_vec
-                .iter()
-                .map(|&b| block.rws[b].memory_value())
-                .collect();
-            eth_types::Word::from_big_endian(address_bytes_vec.as_slice())
-        };
-
+        let address = block.rws[step.rw_indices[6]].address().unwrap().to_u256();
         self.address_word
             .assign(region, offset, Some(address.to_le_bytes()[0..N_BYTES_ACCOUNT_ADDRESS].try_into().unwrap()))?;
-
-        let codehash = if code_hash.is_zero() {
-            eth_types::Word::zero()
-        } else {
-            let codehash_vec = step.rw_indices[codehash_rw_index..(codehash_rw_index + N_BYTES_WORD)]
-                .iter()
-                .map(|&b| block.rws[b].memory_value())
-                .collect::<Vec<u8>>();
-            eth_types::Word::from_big_endian(codehash_vec.as_slice())
-        };
-        self.ext_code_hash
-            .assign(region, offset, Some(codehash.to_le_bytes()))?;
 
         Ok(())
     }
@@ -205,17 +172,17 @@ mod test {
         // hash.
         let mut code = Bytecode::default();
         let external_address_offset= code.fill_default_global_data(external_address.to_fixed_bytes().to_vec());
-        let codehash_mem_offeset = code.alloc_default_global_data(32);
+        let codehash_mem_offset = code.alloc_default_global_data(32);
         if is_warm {
             bytecode_internal! {code,
                 I32Const[external_address_offset]
-                I32Const[codehash_mem_offeset]
+                I32Const[codehash_mem_offset]
                 EXTCODEHASH
             }
         }
         bytecode_internal! {code,
             I32Const[external_address_offset]
-            I32Const[codehash_mem_offeset]
+            I32Const[codehash_mem_offset]
             EXTCODEHASH
         }
 

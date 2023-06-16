@@ -40,9 +40,7 @@ impl Opcode for Extcodecopy {
         let code = state.code(code_hash)?;
 
         let call_ctx = state.call_ctx_mut()?;
-        let memory = &mut call_ctx.memory;
-
-        memory.copy_from(dest_offset, code_offset, length, &code);
+        call_ctx.memory = geth_steps[1].global_memory.clone();
 
         let copy_event = gen_copy_event(state, geth_step)?;
 
