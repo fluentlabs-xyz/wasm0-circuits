@@ -6,7 +6,7 @@ use gadgets::util::Expr;
 
 use crate::{
     evm_circuit::{
-        param::N_BYTES_ACCOUNT_ADDRESS,
+        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_U64},
         param::N_BYTES_MEMORY_ADDRESS,
         step::ExecutionState,
         util::{
@@ -22,8 +22,9 @@ use crate::{
     },
     table::{AccountFieldTag, CallContextFieldTag},
 };
+use crate::evm_circuit::util::common_gadget::Word64ByteCapGadget;
 use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
-use crate::evm_circuit::util::memory_gadget::CommonMemoryAddressGadget;
+use crate::evm_circuit::util::memory_gadget::{CommonMemoryAddressGadget, MemoryAddress64Gadget};
 use crate::evm_circuit::util::RandomLinearCombination;
 use crate::table::RwTableTag;
 
@@ -35,8 +36,8 @@ pub(crate) struct EvmExtCodeCopyGadget<F> {
     // external_address_word: Word<F>,
     external_address_word: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
     external_address_offset: Cell<F>,
-    dst_memory_addr: MemoryAddressGadget<F>,
-    code_offset: MemoryAddress<F>,
+    dst_memory_addr: MemoryAddress64Gadget<F>,
+    code_offset: Word64ByteCapGadget<F, N_BYTES_U64>,
     tx_id: Cell<F>,
     reversion_info: ReversionInfo<F>,
     is_warm: Cell<F>,
@@ -59,18 +60,18 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeCopyGadget<F> {
         let external_address =
             from_bytes::expr(&external_address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]);
 
-        let copy_size = cb.query_word_rlc();
-        let code_offset = cb.query_word_rlc();
+        let copy_size = cb.query_cell();
+        let code_offset = Word64ByteCapGadget::construct(cb, copy_size.expr());
         let dst_memory_offset = cb.query_cell_phase2();
         let external_address_offset = cb.query_cell();
 
         cb.stack_pop(copy_size.expr());
-        cb.stack_pop(code_offset.expr());
+        cb.stack_pop(code_offset.original_word());
         cb.stack_pop(dst_memory_offset.expr());
         cb.stack_pop(external_address_offset.expr());
         // cb.memory_rlc_lookup(false.expr(), &external_address_offset, &external_address_word);
 
-        let memory_address_gadget = MemoryAddressGadget::construct(cb, dst_memory_offset, copy_size);
+        let memory_address_gadget = MemoryAddress64Gadget::construct(cb, dst_memory_offset, copy_size);
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let mut reversion_info = cb.reversion_info_read(None);
@@ -84,17 +85,17 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeCopyGadget<F> {
         );
 
         let code_hash = cb.query_cell_phase2();
-        cb.account_read(
-            external_address.expr(),
-            AccountFieldTag::CodeHash,
-            code_hash.expr(),
-        );
+        // cb.account_read(
+        //     external_address.expr(),
+        //     AccountFieldTag::CodeHash,
+        //     code_hash.expr(),
+        // );
         let code_size = cb.query_cell();
         // TODO: If external_address doesn't exist, we will get code_hash = 0.  With
         // this value, the bytecode_length lookup will not work, and the copy
         // from code_hash = 0 will not work. We should use EMPTY_HASH when
         // code_hash = 0.
-        cb.bytecode_length(code_hash.expr(), code_size.expr());
+        // cb.bytecode_length(code_hash.expr(), code_size.expr());
 
         // let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.address()]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(
@@ -112,12 +113,19 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeCopyGadget<F> {
         let copy_rwc_inc = cb.query_cell();
         cb.condition(memory_address_gadget.has_length(), |cb| {
             // TODO problem here
+            let src_addr = select::expr(
+                code_offset.lt_cap(),
+                code_offset.valid_value(),
+                code_size.expr(),
+            );
+
+            println!("This");
             cb.copy_table_lookup(
                 code_hash.expr(),
                 CopyDataType::Bytecode.expr(),
                 cb.curr.state.call_id.expr(),
                 CopyDataType::Memory.expr(),
-                from_bytes::expr(&code_offset.cells),
+                src_addr,
                 code_size.expr(),
                 memory_address_gadget.offset(),
                 memory_address_gadget.length(),
@@ -172,12 +180,11 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeCopyGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        // let [external_address, memory_offset, data_offset, memory_length] =
         let [
-        copy_size,
-        code_offset,
-        dest_offset,
-        external_address_offset,
+            copy_size,
+            code_offset,
+            dest_offset,
+            external_address_offset,
         ] = [0, 1, 2, 3].map(|idx| block.rws[step.rw_indices[idx]].stack_value());
         let address_rw_index = 9;
         let external_address = {
@@ -198,11 +205,7 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeCopyGadget<F> {
         self.code_offset.assign(
             region,
             offset,
-            Some(
-                code_offset.to_le_bytes()[..N_BYTES_MEMORY_ADDRESS]
-                    .try_into()
-                    .unwrap(),
-            ),
+            code_offset, F::from(copy_size.as_u64())
         )?;
 
         self.tx_id
@@ -220,7 +223,7 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeCopyGadget<F> {
 
         let code_hash = block.rws[step.rw_indices[8]].account_value_pair().0;
         self.code_hash
-            .assign(region, offset, region.word_rlc(code_hash))?;
+            .assign(region, offset, region.code_hash(code_hash))?;
 
         let bytecode_len = if code_hash.is_zero() {
             0
@@ -267,9 +270,7 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeCopyGadget<F> {
 mod test {
     use lazy_static::lazy_static;
 
-    use eth_types::{
-        address, Address, bytecode, Bytecode, Bytes, geth_types::Account, Word,
-    };
+    use eth_types::{address, Address, bytecode, Bytecode, bytecode_internal, Bytes, geth_types::Account, Word};
     use eth_types::bytecode::WasmBinaryBytecode;
     use mock::TestContext;
 
@@ -295,22 +296,23 @@ mod test {
         let mut code = Bytecode::default();
 
         let address_offset = code.fill_default_global_data(external_address.as_bytes().to_vec());
+        let memory_offset =code.alloc_default_global_data(32);
 
         if is_warm {
-            code.append(&bytecode! {
+            bytecode_internal! {code,
                 I32Const[address_offset]
                 I32Const[0xff]
                 EXTCODEHASH
-            });
+            }
         }
-        code.append(&bytecode! {
+        bytecode_internal! {code,
             I32Const[address_offset]
             I32Const[memory_offset]
             I32Const[code_offset]
             I32Const[copy_size]
             // #[start]
             EXTCODECOPY
-        });
+        }
 
         let ctx = TestContext::<3, 1>::new(
             None,
