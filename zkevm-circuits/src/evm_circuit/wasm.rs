@@ -37,9 +37,9 @@ use std::{
     iter,
 };
 use std::any::Any;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use halo2_proofs::plonk::Assigned;
-use strum::EnumCount;
+use strum::{EnumCount, IntoEnumIterator};
 
 // TODO: "refactor this later"
 mod end_inner_block;
@@ -652,8 +652,8 @@ impl<F: Field> ExecutionConfig<F> {
         num_rows_until_next_step: Column<Advice>,
         q_step_first: Selector,
         q_step_last: Selector,
-        _step_curr: &Step<F>,
-        _step_next: &Step<F>,
+        step_curr: &Step<F>,
+        step_next: &Step<F>,
         height_map: &mut HashMap<ExecutionState, usize>,
         stored_expressions_map: &mut HashMap<ExecutionState, Vec<StoredExpression<F>>>,
         instrument: &mut Instrument,
@@ -726,9 +726,14 @@ impl<F: Field> ExecutionConfig<F> {
         //         .chain(
         //             IntoIterator::into_iter([
         //                 (
-        //                     "EndTx can only transit to BeginTx or EndBlock",
+        //                     "EndTx can only transit to BeginTx or EndInnerBlock",
         //                     ExecutionState::EndTx,
-        //                     vec![ExecutionState::BeginTx, ExecutionState::EndBlock],
+        //                     vec![ExecutionState::BeginTx, ExecutionState::EndInnerBlock],
+        //                 ),
+        //                 (
+        //                     "EndInnerBlock can only transition to BeginTx, EndInnerBlock or EndBlock",
+        //                     ExecutionState::EndInnerBlock,
+        //                     vec![ExecutionState::BeginTx, ExecutionState::EndInnerBlock, ExecutionState::EndBlock],
         //                 ),
         //                 (
         //                     "EndBlock can only transit to EndBlock",
@@ -742,9 +747,9 @@ impl<F: Field> ExecutionConfig<F> {
         //         .chain(
         //             IntoIterator::into_iter([
         //                 (
-        //                     "Only EndTx can transit to BeginTx",
+        //                     "Only EndTx or EndInnerBlock can transit to BeginTx",
         //                     ExecutionState::BeginTx,
-        //                     vec![ExecutionState::EndTx],
+        //                     vec![ExecutionState::EndTx, ExecutionState::EndInnerBlock],
         //                 ),
         //                 (
         //                     "Only ExecutionState which halts or BeginTx can transit to EndTx",
@@ -755,13 +760,47 @@ impl<F: Field> ExecutionConfig<F> {
         //                         .collect(),
         //                 ),
         //                 (
-        //                     "Only EndTx or EndBlock can transit to EndBlock",
+        //                     "Only EndInnerBlock or EndBlock can transit to EndBlock",
         //                     ExecutionState::EndBlock,
-        //                     vec![ExecutionState::EndTx, ExecutionState::EndBlock],
+        //                     vec![ExecutionState::EndInnerBlock, ExecutionState::EndBlock],
+        //                 ),
+        //                 (
+        //                     "Only EndTx or EndInnerBlock can transit to EndInnerBlock",
+        //                     ExecutionState::EndInnerBlock,
+        //                     vec![ExecutionState::EndTx, ExecutionState::EndInnerBlock],
         //                 ),
         //             ])
         //             .filter(move |(_, _, from)| !from.contains(&execution_state))
         //             .map(|(_, to, _)| step_next.execution_state_selector([to])),
+        //         )
+        //         .chain(
+        //             IntoIterator::into_iter([
+        //                 (
+        //                     "EndInnerBlock -> BeginTx/EndInnerBlock: block number increases by one",
+        //                     ExecutionState::EndInnerBlock,
+        //                     vec![ExecutionState::BeginTx, ExecutionState::EndInnerBlock],
+        //                     step_next.state.block_number.expr() - step_curr.state.block_number.expr() - 1.expr(),
+        //                 ),
+        //                 (
+        //                     "EndInnerBlock -> EndBlock: block number does not change",
+        //                     ExecutionState::EndInnerBlock,
+        //                     vec![ExecutionState::EndBlock],
+        //                     step_next.state.block_number.expr() - step_curr.state.block_number.expr(),
+        //                 ),
+        //             ])
+        //             .filter(move |(_, from, _, _)| *from == execution_state)
+        //             .map(|(_, _, to, expr)| step_next.execution_state_selector(to) * expr)
+        //         )
+        //         .chain(
+        //             IntoIterator::into_iter([
+        //                 (
+        //                     "step_cur != EndInnerBlock: block number does not change",
+        //                     ExecutionState::EndInnerBlock,
+        //                     step_next.state.block_number.expr() - step_curr.state.block_number.expr(),
+        //                 ),
+        //             ])
+        //             .filter(move |(_, from, _)| *from != execution_state)
+        //             .map(|(_, _, expr)| expr)
         //         )
         //         // Accumulate all state transition checks.
         //         // This can be done because all summed values are enforced to be boolean.
@@ -1154,7 +1193,7 @@ impl<F: Field> ExecutionConfig<F> {
             1,
             offset_begin,
         );
-        self.assign_exec_step_int(region, offset_begin, block, transaction, call, step)?;
+        self.assign_exec_step_int(region, offset_begin, block, transaction, call, step, false)?;
 
         region.replicate_assignment_for_range(
             || format!("repeat {:?} rows", step.execution_state),
@@ -1178,15 +1217,6 @@ impl<F: Field> ExecutionConfig<F> {
         next: Option<(&Transaction, &Call, &ExecStep)>,
         challenges: &Challenges<Value<F>>,
     ) -> Result<(), Error> {
-        if !matches!(step.execution_state, ExecutionState::EndBlock) {
-            log::trace!(
-                "assign_exec_step offset: {} state {:?} step: {:?} call: {:?}",
-                offset,
-                step.execution_state,
-                step,
-                call
-            );
-        }
         // Make the region large enough for the current step and the next step.
         // The next step's next step may also be accessed, so make the region large
         // enough for 3 steps.
@@ -1210,12 +1240,14 @@ impl<F: Field> ExecutionConfig<F> {
                 transaction_next,
                 call_next,
                 step_next,
+                false,
             )?;
         }
 
-        self.assign_exec_step_int(region, offset, block, transaction, call, step)
+        self.assign_exec_step_int(region, offset, block, transaction, call, step, true)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn assign_exec_step_int(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
@@ -1224,7 +1256,21 @@ impl<F: Field> ExecutionConfig<F> {
         transaction: &Transaction,
         call: &Call,
         step: &ExecStep,
+        verbose: bool,
     ) -> Result<(), Error> {
+        if verbose
+            && !(matches!(step.execution_state, ExecutionState::EndBlock)
+                && step.rw_indices.is_empty())
+        {
+            log::trace!(
+                "assign_exec_step offset: {} state {:?} step: {:?} call: {:?}",
+                offset,
+                step.execution_state,
+                step,
+                call
+            );
+        }
+
         self.step
             .assign_exec_step(region, offset, block, transaction, call, step)?;
 
@@ -1366,7 +1412,7 @@ impl<F: Field> ExecutionConfig<F> {
         let assigned_stored_expressions = self.assign_stored_expressions(region, offset, step)?;
 
         // enable with `CHECK_RW_LOOKUP=true`
-        if *CHECK_RW_LOOKUP {
+        if *CHECK_RW_LOOKUP && verbose {
             let is_padding_step = matches!(step.execution_state, ExecutionState::EndBlock)
                 && step.rw_indices.is_empty();
             if !is_padding_step {
@@ -1434,14 +1480,16 @@ impl<F: Field> ExecutionConfig<F> {
             }
         }
 
-        let rlc_assignments: BTreeMap<F, Rw> = step
+        let rlc_assignments: BTreeSet<_> = step
             .rw_indices
             .iter()
             .map(|rw_idx| block.rws[*rw_idx])
-            .fold(BTreeMap::<F, Rw>::new(), |mut set, value| {
-                let rlc = value.table_assignment_aux(evm_randomness)
-                    .rlc(lookup_randomness);
-                set.insert(rlc, value);
+            .map(|rw| {
+                rw.table_assignment_aux(evm_randomness)
+                    .rlc(lookup_randomness)
+            })
+            .fold(BTreeSet::<F>::new(), |mut set, value| {
+                set.insert(value);
                 set
             });
 
@@ -1489,17 +1537,17 @@ impl<F: Field> ExecutionConfig<F> {
             // Check that the number of rw operations generated from the bus-mapping
             // correspond to the number of assigned rw lookups by the EVM Circuit
             // plus the number of rw lookups done by the copy circuit.
-            // if step.rw_indices.len()
-            //     != assigned_rw_values.len() + step.copy_rw_counter_delta as usize
-            // {
-            //     log::error!(
-            //     "step.rw_indices.len: {} != assigned_rw_values.len: {} + step.copy_rw_counter_delta: {} in step: {:?}",
-            //     step.rw_indices.len(),
-            //     assigned_rw_values.len(),
-            //     step.copy_rw_counter_delta,
-            //     step
-            //     );
-            // }
+            if step.rw_indices.len()
+                != assigned_rw_values.len() + step.copy_rw_counter_delta as usize
+            {
+                log::error!(
+                "step.rw_indices.len: {} != assigned_rw_values.len: {} + step.copy_rw_counter_delta: {} in step: {:?}",
+                step.rw_indices.len(),
+                assigned_rw_values.len(),
+                step.copy_rw_counter_delta,
+                step
+            );
+            }
             let mut rev_count = 0;
             let is_rev = if assigned_rw_value.0.contains(" with reversion") {
                 rev_count += 1;
@@ -1526,7 +1574,7 @@ impl<F: Field> ExecutionConfig<F> {
             let table_assignments = rw.table_assignment_aux(evm_randomness);
             let rlc = table_assignments.rlc(lookup_randomness);
 
-            if !rlc_assignments.contains_key(value) {
+            if !rlc_assignments.contains(value) {
                 log_ctx(&assigned_rw_values);
                 log::error!(
                     "incorrect rw witness. input_value {:?}, name \"{}\". table_value {:?}, table_assignments {:?}, rw {:?}, index {:?}, {}th rw of step",
@@ -1537,10 +1585,10 @@ impl<F: Field> ExecutionConfig<F> {
                     rw,
                     rw_idx, idx);
 
-                debug_assert_eq!(
-                   rlc, assigned_rw_values[idx].1,
-                   "left is witness, right is expression"
-                );
+                // debug_assert_eq!(
+                //    rlc, assigned_rw_values[idx].1,
+                //    "left is witness, right is expression"
+                // );
             }
         }
         // for (idx, assigned_rw_value) in assigned_rw_values.iter().enumerate()

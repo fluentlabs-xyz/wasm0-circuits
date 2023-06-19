@@ -2,6 +2,7 @@ use halo2_proofs::{circuit::Value, plonk::Error};
 
 use bus_mapping::evm::OpcodeId;
 use eth_types::{Field, ToLittleEndian, ToScalar, ToU256};
+use eth_types::evm_types::block_utils::NUM_PREV_BLOCK_ALLOWED;
 use gadgets::util::{and, not};
 
 use crate::{
@@ -22,7 +23,6 @@ use crate::{
     },
     table::BlockContextFieldTag,
     util::Expr,
-    witness::NUM_PREV_BLOCK_ALLOWED,
 };
 use crate::evm_circuit::util::common_gadget::{Word64ByteCapGadget, WordByteCapGadget};
 

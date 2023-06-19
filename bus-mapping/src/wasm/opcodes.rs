@@ -86,6 +86,7 @@ mod gasprice;
 mod logs;
 mod number;
 mod origin;
+mod precompiles;
 mod return_revert;
 mod returndatacopy;
 mod returndatasize;
@@ -113,6 +114,8 @@ mod error_write_protection;
 
 #[cfg(test)]
 mod memory_expansion_test;
+#[cfg(feature = "test")]
+pub use callop::tests::PrecompileCallArgs;
 
 mod wasm_call;
 mod wasm_global;
