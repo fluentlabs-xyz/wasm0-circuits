@@ -400,6 +400,7 @@ impl Memory {
     }
 
     /// Copy source data to memory. Used in (ext)codecopy/calldatacopy.
+    #[deprecated(note = "this function might not work properly")]
     pub fn copy_from(&mut self, dst_offset: StackWord, src_offset: StackWord, length: StackWord, data: &[u8]) {
         // Reference go-ethereum `opCallDataCopy` function for defails.
         // https://github.com/ethereum/go-ethereum/blob/bb4ac2d396de254898a5f44b1ea2086bfe5bd193/core/vm/instructions.go#L299

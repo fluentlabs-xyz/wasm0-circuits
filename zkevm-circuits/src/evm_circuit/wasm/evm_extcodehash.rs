@@ -67,11 +67,6 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeHashGadget<F> {
         // let exprs = code_hash.clone().cells.map(|v| v.expr());
 
         // For non-existing accounts the code_hash must be 0 in the rw_table.
-        // if cfg!(feature = "poseidon-codehash") {
-        //     let codehash_rlc = rlc::expr(&exprs, 256.expr());
-        //     cb.account_read(address.expr(), AccountFieldTag::KeccakCodeHash, codehash_rlc);
-        // } else {
-        // }
         cb.account_read(address.expr(), AccountFieldTag::KeccakCodeHash, code_hash.expr());
 
         cb.memory_rlc_lookup(0.expr(), &address_offset, &address_word);
@@ -141,7 +136,7 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeHashGadget<F> {
         self.code_hash
             .assign(region, offset, Some(codehash.to_le_bytes()))?;
 
-        let address = block.rws[step.rw_indices[6]].address().unwrap().to_u256();
+        let address = block.rws[step.rw_indices[6]].address().ok_or(Error::Synthesis)?.to_u256();
         self.address_word
             .assign(region, offset, Some(address.to_le_bytes()[0..N_BYTES_ACCOUNT_ADDRESS].try_into().unwrap()))?;
 

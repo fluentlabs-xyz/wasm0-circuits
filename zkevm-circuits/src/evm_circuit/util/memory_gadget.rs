@@ -463,7 +463,7 @@ pub(crate) struct MemoryWordSizeGadget<F> {
 
 impl<F: Field> MemoryWordSizeGadget<F> {
     pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, address: Expression<F>) -> Self {
-        let memory_word_size = ConstantDivisionGadget::construct(cb, address + 31.expr(), 32);
+        let memory_word_size = ConstantDivisionGadget::construct(cb, address + 0xffff.expr(), 0x10000);
 
         Self { memory_word_size }
     }
@@ -480,7 +480,7 @@ impl<F: Field> MemoryWordSizeGadget<F> {
     ) -> Result<u64, Error> {
         let (quotient, _) = self
             .memory_word_size
-            .assign(region, offset, (address as u128) + 31)?;
+            .assign(region, offset, (address as u128) + 0xffff)?;
         Ok(quotient as u64)
     }
 }
@@ -640,7 +640,7 @@ pub(crate) struct MemoryCopierGasGadget<F, const GAS_COPY: GasCost> {
 }
 
 impl<F: Field, const GAS_COPY: GasCost> MemoryCopierGasGadget<F, GAS_COPY> {
-    pub const WORD_SIZE: u64 = 32u64;
+    pub const WORD_SIZE: u64 = 0x10000u64;
 
     /// Input requirements:
     /// - `curr_memory_size < 256**MAX_MEMORY_SIZE_IN_BYTES`

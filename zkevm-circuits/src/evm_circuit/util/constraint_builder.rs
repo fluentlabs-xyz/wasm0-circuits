@@ -1266,6 +1266,22 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         }
     }
 
+    pub(crate) fn memory_address_lookup<const N: usize>(
+        &mut self,
+        is_write: Expression<F>,
+        dest_offset: &Cell<F>,
+        value: &RandomLinearCombination<F, N>,
+    ) {
+        for idx in 0..20 {
+            self.memory_lookup(
+                is_write.clone(),
+                dest_offset.expr() + idx.expr(),
+                value.cells[19 - idx].expr(),
+                None,
+            );
+        }
+    }
+
     pub(crate) fn memory_lookup(
         &mut self,
         is_write: Expression<F>,

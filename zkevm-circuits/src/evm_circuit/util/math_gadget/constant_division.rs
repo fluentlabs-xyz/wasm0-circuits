@@ -35,7 +35,8 @@ impl<F: Field, const N_BYTES: usize> ConstantDivisionGadget<F, N_BYTES> {
         let remainder = cb.query_cell_with_type(CellType::storage_for_expr(&numerator));
 
         // Require that remainder < denominator
-        cb.range_lookup(remainder.expr(), denominator);
+        // TODO: "for WASM memory we have page size equal to 0x10000 that is bigger than available lookups, what to do?"
+        // cb.range_lookup(remainder.expr(), denominator);
 
         // Require that quotient < 256**N_BYTES
         // so we can't have any overflow when doing `quotient * denominator`.
