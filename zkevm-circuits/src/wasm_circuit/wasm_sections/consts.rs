@@ -1,5 +1,6 @@
 use crate::wasm_circuit::wasm_sections::consts::WasmSectionId::DataCount;
 
+#[derive(Copy, Clone)]
 pub enum WasmSectionId {
     Custom = 0, // = 0
     Type,
@@ -19,6 +20,7 @@ pub enum WasmSectionId {
 pub const WASM_SECTION_ID_MAX: usize = DataCount as usize;
 
 /// https://webassembly.github.io/spec/core/binary/types.html#number-types
+#[derive(Copy, Clone)]
 pub enum NumType {
     I32 = 0x7F,
     I64 = 0x7E,
@@ -30,7 +32,7 @@ pub enum NumType {
 pub const SECTION_ID_DEFAULT: i32 = 0;
 
 // https://webassembly.github.io/spec/core/binary/types.html#limits
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum LimitsType {
     MinOnly = 0x0,
     MinMax = 0x1,

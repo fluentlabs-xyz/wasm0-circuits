@@ -23,14 +23,13 @@ impl Opcode for Extcodehash {
         let mut exec_step = state.new_step(geth_step)?;
 
         // Read account address from stack.
-        let extcodehash_address = geth_step.stack.nth_last(0)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), extcodehash_address)?;
-        let external_address_address = geth_step.stack.nth_last(1)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), external_address_address)?;
+        let extcodehash_offset = geth_step.stack.nth_last(0)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), extcodehash_offset)?;
+        let external_address_offset = geth_step.stack.nth_last(1)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), external_address_offset)?;
 
-
-        let external_address = steps[0].global_memory.read_address(external_address_address)?;
-        let extcodehash = steps[1].global_memory.read_u256(extcodehash_address)?;
+        let external_address = steps[0].global_memory.read_address(external_address_offset)?;
+        let extcodehash = steps[1].global_memory.read_u256(extcodehash_offset)?;
 
         // Pop external address off stack
         // let external_address_word = step.stack.last()?;
@@ -69,31 +68,23 @@ impl Opcode for Extcodehash {
         let account = state.sdb.get_account(&external_address).1;
         let exists = !account.is_empty();
         let code_hash = if exists {
-            account.code_hash
+            account.keccak_code_hash
         } else {
             H256::zero()
         };
         state.account_read(
             &mut exec_step,
             external_address,
-            AccountField::CodeHash,
+            AccountField::KeccakCodeHash,
             code_hash.to_word(),
         );
 
-        // Stack write of the result of EXTCODEHASH.
-        // state.stack_write(&mut exec_step, stack_address, steps[1].stack.last()?)?;
-
-
-        // Read dest offset as the (last-1) stack element
-        // let dest_offset = geth_step.stack.nth_last(0)?;
-        // state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), dest_offset)?;
-
-        let address_offset_addr = MemoryAddress::try_from(external_address_address)?;
+        let address_offset_addr = MemoryAddress::try_from(external_address_offset)?;
         for i in 0..ADDRESS_BYTE_LENGTH {
             state.memory_read(&mut exec_step, address_offset_addr.map(|a| a + i), external_address[i])?;
         }
 
-        let extblockhash_offset = MemoryAddress::try_from(extcodehash_address)?;
+        let extblockhash_offset = MemoryAddress::try_from(extcodehash_offset)?;
         // Copy result to memory
         let extcodehash_bytes = extcodehash.to_be_bytes();
         for i in 0..CODEHASH_BYTE_LENGTH {

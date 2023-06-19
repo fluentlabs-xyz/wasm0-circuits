@@ -50,6 +50,7 @@ mod wasm_parsers_tests {
         let data = wat2wasm(&data.clone()).unwrap();
         println!("data len: {}", data.len());
         println!("data raw (hex): {:x?}", data);
+        println!("data raw (decimal): {:?}", data);
 
         let mut m = Module::decode_from(data.as_slice()).unwrap();
         for s in m.sections.iter_mut() {
@@ -61,6 +62,7 @@ mod wasm_parsers_tests {
                     s.encode(&mut bytes).unwrap();
                     println!("section len: {:?}", compute_section_len(&bytes));
                     println!("raw (hex): {:x?}", bytes);
+                    println!("raw (decimal): {:?}", bytes);
                     println!("{:#?}", s);
                 }
                 Kind::Import => {
@@ -69,6 +71,7 @@ mod wasm_parsers_tests {
                     s.encode(&mut bytes).unwrap();
                     println!("section len: {:?}", compute_section_len(&bytes));
                     println!("raw (hex): {:x?}", bytes);
+                    println!("raw (decimal): {:?}", bytes);
                     println!("{:#?}", s);
                 }
                 Kind::Function => {
@@ -77,6 +80,7 @@ mod wasm_parsers_tests {
                     s.encode(&mut bytes).unwrap();
                     println!("section len: {:?}", compute_section_len(&bytes));
                     println!("raw (hex): {:x?}", bytes);
+                    println!("raw (decimal): {:?}", bytes);
                     println!("{:#?}", s);
                 }
                 Kind::Code => {
@@ -85,6 +89,7 @@ mod wasm_parsers_tests {
                     s.encode(&mut bytes).unwrap();
                     println!("section len: {:?}", compute_section_len(&bytes));
                     println!("raw (hex): {:x?}", bytes);
+                    println!("raw (decimal): {:?}", bytes);
                     for c1 in s.try_as_mut::<wasmbin::sections::payload::Code>().into_iter().enumerate() {
                         let code_contents = c1.1.try_contents().unwrap();
                         for c2 in code_contents.as_slice() {
@@ -103,6 +108,7 @@ mod wasm_parsers_tests {
                     s.encode(&mut bytes).unwrap();
                     println!("section len: {:?}", compute_section_len(&bytes));
                     println!("raw (hex): {:x?}", bytes);
+                    println!("raw (decimal): {:?}", bytes);
                     println!("{:#?}", s);
                 }
                 Kind::Export => {
@@ -111,6 +117,7 @@ mod wasm_parsers_tests {
                     s.encode(&mut bytes).unwrap();
                     println!("section len: {:?}", compute_section_len(&bytes));
                     println!("raw (hex): {:x?}", bytes);
+                    println!("raw (decimal): {:?}", bytes);
                     println!("{:#?}", s);
                 }
                 Kind::Data => {
@@ -119,6 +126,7 @@ mod wasm_parsers_tests {
                     s.encode(&mut bytes).unwrap();
                     println!("section len: {:?}", compute_section_len(&bytes));
                     println!("raw (hex): {:x?}", bytes);
+                    println!("raw (decimal): {:?}", bytes);
                     println!("{:#?}", s);
                 }
                 Kind::Start => {
@@ -127,6 +135,7 @@ mod wasm_parsers_tests {
                     s.encode(&mut bytes).unwrap();
                     println!("section len: {:?}", compute_section_len(&bytes));
                     println!("raw (hex): {:x?}", bytes);
+                    println!("raw (decimal): {:?}", bytes);
                     println!("{:#?}", s);
                 },
                 _ => println!("UNKNOWN/UNPROCESSED section kind: {:?}", s.kind()),
