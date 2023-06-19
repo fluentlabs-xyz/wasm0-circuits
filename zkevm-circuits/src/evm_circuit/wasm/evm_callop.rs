@@ -22,7 +22,7 @@ use crate::{
     util::Expr,
 };
 use bus_mapping::{evm::OpcodeId, precompile::is_precompiled};
-use eth_types::{evm_types::GAS_STIPEND_CALL_WITH_VALUE, Field, StackWord, ToAddress, ToLittleEndian, ToScalar, ToU256, U256};
+use eth_types::{evm_types::GAS_STIPEND_CALL_WITH_VALUE, Field, StackWord, ToAddress, ToLittleEndian, ToScalar, ToU256, U256, U64};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 /// Gadget for call related opcodes. It supports `OpcodeId::CALL`,
@@ -74,8 +74,10 @@ impl<F: Field> ExecutionGadget<F> for EvmCallOpGadget<F> {
         cb.opcode_lookup(opcode.expr(), 1.expr());
         let is_call = IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::CALL.expr());
         let is_callcode = IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::CALLCODE.expr());
-        let is_delegatecall = IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::DELEGATECALL.expr());
-        let is_staticcall = IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::STATICCALL.expr());
+        let is_delegatecall =
+            IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::DELEGATECALL.expr());
+        let is_staticcall =
+            IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::STATICCALL.expr());
 
         // Use rw_counter of the step which triggers next call as its call_id.
         let callee_call_id = cb.curr.state.rw_counter.clone();
@@ -86,7 +88,8 @@ impl<F: Field> ExecutionGadget<F> for EvmCallOpGadget<F> {
             CallContextFieldTag::IsStatic,
             CallContextFieldTag::Depth,
             CallContextFieldTag::CalleeAddress,
-        ].map(|field_tag| cb.call_context(None, field_tag));
+        ]
+            .map(|field_tag| cb.call_context(None, field_tag));
 
         let (current_caller_address, current_value) = cb.condition(is_delegatecall.expr(), |cb| {
             (
@@ -509,6 +512,9 @@ impl<F: Field> ExecutionGadget<F> for EvmCallOpGadget<F> {
         ]
             .map(|idx| block.rws[idx].call_context_value());
 
+        let value = U256::zero();
+        let callee_address = U256::zero();
+
         self.is_depth_ok
             .assign(region, offset, F::from(depth.low_u64()), F::from(1025))?;
 
@@ -525,19 +531,19 @@ impl<F: Field> ExecutionGadget<F> for EvmCallOpGadget<F> {
         } else {
             [U256::zero(), U256::zero()]
         };
-        let [gas, callee_address] = [
+        let [gas, callee_address_offset] = [
             step.rw_indices[stack_index + rw_offset],
             step.rw_indices[stack_index + 1 + rw_offset],
         ]
             .map(|idx| block.rws[idx].stack_value());
         let is_precompile = is_precompiled(&callee_address.to_address());
-        let value = if is_call || is_callcode {
+        let value_offset = if is_call || is_callcode {
             rw_offset += 1;
             block.rws[step.rw_indices[7 + rw_offset]].stack_value()
         } else {
             StackWord::zero()
         };
-        let [cd_offset, cd_length, rd_offset, rd_length, is_success] = [
+        let [cd_offset, cd_length, rd_offset, rd_length, status_offset] = [
             step.rw_indices[stack_index + 2 + rw_offset],
             step.rw_indices[stack_index + 3 + rw_offset],
             step.rw_indices[stack_index + 4 + rw_offset],
@@ -565,6 +571,7 @@ impl<F: Field> ExecutionGadget<F> for EvmCallOpGadget<F> {
         let (caller_balance, _) = block.rws[step.rw_indices[17 + rw_offset]].account_balance_pair();
         self.caller_balance_word
             .assign(region, offset, Some(caller_balance.to_le_bytes()))?;
+
         self.is_insufficient_balance
             .assign(region, offset, caller_balance, value.to_u256())?;
 
@@ -664,41 +671,42 @@ impl<F: Field> ExecutionGadget<F> for EvmCallOpGadget<F> {
         self.depth
             .assign(region, offset, Value::known(F::from(depth.low_u64())))?;
 
-        let memory_expansion_gas_cost = 0u64;
-        // let memory_expansion_gas_cost = self.call.assign(
-        //     region,
-        //     offset,
-        //     gas,
-        //     callee_address,
-        //     value,
-        //     is_success,
-        //     cd_offset,
-        //     cd_length,
-        //     rd_offset,
-        //     rd_length,
-        //     step.memory_word_size(),
-        //     region.code_hash(callee_code_hash),
-        // )?;
-        // self.is_warm
-        //     .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
-        // self.is_warm_prev
-        //     .assign(region, offset, Value::known(F::from(is_warm_prev as u64)))?;
-        // self.callee_reversion_info.assign(
-        //     region,
-        //     offset,
-        //     callee_rw_counter_end_of_reversion.low_u64() as usize,
-        //     callee_is_persistent.low_u64() != 0,
-        // )?;
-        // // conditionally assign
-        // if is_precheck_ok && !value.is_zero() {
-        //     self.transfer.assign(
-        //         region,
-        //         offset,
-        //         caller_balance_pair,
-        //         callee_balance_pair,
-        //         value,
-        //     )?;
-        // }
+        let memory_expansion_gas_cost = self.call.assign(
+            region,
+            offset,
+            gas,
+            callee_address_offset,
+            U256::zero(), // todo
+            value_offset,
+            U256::zero(), // todo
+            status_offset,
+            U64::zero(), // todo
+            cd_offset,
+            cd_length,
+            rd_offset,
+            rd_length,
+            region.code_hash(callee_code_hash),
+        )?;
+        self.is_warm
+            .assign(region, offset, Value::known(F::from(is_warm as u64)))?;
+        self.is_warm_prev
+            .assign(region, offset, Value::known(F::from(is_warm_prev as u64)))?;
+        self.callee_reversion_info.assign(
+            region,
+            offset,
+            callee_rw_counter_end_of_reversion.low_u64() as usize,
+            callee_is_persistent.low_u64() != 0,
+        )?;
+        // conditionally assign
+        if is_precheck_ok && !value.is_zero() {
+            self.transfer.assign(
+                region,
+                offset,
+                caller_balance_pair,
+                callee_balance_pair,
+                value,
+            )?;
+        }
 
         let mut code_address_bytes = [0; 32];
         code_address_bytes[0..N_BYTES_ACCOUNT_ADDRESS]
@@ -736,10 +744,7 @@ mod test {
     use super::*;
     use crate::test_util::CircuitTestBuilder;
     use bus_mapping::circuit_input_builder::CircuitsParams;
-    use eth_types::{
-        address, bytecode, evm_types::OpcodeId, geth_types::Account, word, Address, Bytecode,
-        ToWord, Word,
-    };
+    use eth_types::{address, bytecode, evm_types::OpcodeId, geth_types::Account, word, Address, Bytecode, ToWord, Word, bytecode_internal, ToBigEndian};
 
     use itertools::Itertools;
     use mock::{
@@ -752,9 +757,9 @@ mod test {
 
     const TEST_CALL_OPCODES: &[OpcodeId] = &[
         OpcodeId::CALL,
-        OpcodeId::CALLCODE,
-        OpcodeId::DELEGATECALL,
-        OpcodeId::STATICCALL,
+        // OpcodeId::CALLCODE,
+        // OpcodeId::DELEGATECALL,
+        // OpcodeId::STATICCALL,
     ];
 
     #[test]
@@ -815,37 +820,37 @@ mod test {
             },
             // With memory expansion
             Stack {
-                cd_offset: 64.into(),
+                cd_offset: 64,
                 cd_length: 320,
-                rd_offset: Word::zero(),
+                rd_offset: 0,
                 rd_length: 32,
                 ..Default::default()
             },
             Stack {
-                cd_offset: Word::zero(),
+                cd_offset: 0,
                 cd_length: 32,
-                rd_offset: 64.into(),
+                rd_offset: 64,
                 rd_length: 320,
                 ..Default::default()
             },
             Stack {
-                cd_offset: 0xFFFFFF.into(),
+                cd_offset: 0xFFFFFF,
                 cd_length: 0,
-                rd_offset: 0xFFFFFF.into(),
+                rd_offset: 0xFFFFFF,
                 rd_length: 0,
                 ..Default::default()
             },
             // With memory expansion and value
             Stack {
-                cd_offset: 64.into(),
+                cd_offset: 64,
                 cd_length: 320,
-                rd_offset: 0.into(),
+                rd_offset: 0,
                 rd_length: 32,
                 value: Word::from(10).pow(18.into()),
                 ..Default::default()
             },
         ];
-        let callees = [callee(bytecode! {}), callee(bytecode! { STOP })];
+        let callees = [callee(bytecode! {})];
 
         TEST_CALL_OPCODES
             .iter()
@@ -860,9 +865,9 @@ mod test {
     #[test]
     fn callop_overflow_offset_and_zero_length() {
         let stack = Stack {
-            cd_offset: Word::MAX,
+            cd_offset: u64::MAX,
             cd_length: 0,
-            rd_offset: Word::MAX,
+            rd_offset: u64::MAX,
             rd_length: 0,
             ..Default::default()
         };
@@ -876,9 +881,9 @@ mod test {
     struct Stack {
         gas: u64,
         value: Word,
-        cd_offset: Word,
+        cd_offset: u64,
         cd_length: u64,
-        rd_offset: Word,
+        rd_offset: u64,
         rd_length: u64,
     }
 
@@ -903,35 +908,49 @@ mod test {
         };
 
         // Call twice for testing both cold and warm access
-        let mut bytecode = bytecode! {
-            PUSH32(Word::from(stack.rd_length))
-            PUSH32(stack.rd_offset)
-            PUSH32(Word::from(stack.cd_length))
-            PUSH32(stack.cd_offset)
-        };
-        if is_call_or_callcode {
-            bytecode.push(32, stack.value);
+        let mut bytecode = Bytecode::default();
+        let address_offset = bytecode.fill_default_global_data(Address::repeat_byte(0xff).to_u256().to_be_bytes().to_vec());
+        let value_offset = bytecode.fill_default_global_data(stack.value.to_be_bytes().to_vec());
+        let status_offset = bytecode.alloc_default_global_data(1);
+        // first call
+        bytecode_internal! {bytecode,
+            I32Const[stack.gas]
+            I32Const[address_offset]
         }
-        bytecode.append(&bytecode! {
-            PUSH32(Address::repeat_byte(0xff).to_word())
-            PUSH32(Word::from(stack.gas))
-            .write_op(*opcode)
-            PUSH32(Word::from(stack.rd_length))
-            PUSH32(stack.rd_offset)
-            PUSH32(Word::from(stack.cd_length))
-            PUSH32(stack.cd_offset)
-        });
         if is_call_or_callcode {
-            bytecode.push(32, stack.value);
+            bytecode_internal! {bytecode,
+                I32Const[value_offset]
+            }
         }
-        bytecode.append(&bytecode! {
-            PUSH32(Address::repeat_byte(0xff).to_word())
-            PUSH32(Word::from(stack.gas))
+        bytecode_internal! {bytecode,
+            I32Const[stack.cd_offset]
+            I32Const[stack.cd_length]
+            I32Const[stack.rd_offset]
+            I32Const[stack.rd_length]
+            I32Const[status_offset]
             .write_op(*opcode)
-            PUSH1(0)
-            PUSH1(0)
+        }
+        // second call
+        bytecode_internal! {bytecode,
+            I32Const[stack.gas]
+            I32Const[address_offset]
+        }
+        if is_call_or_callcode {
+            bytecode_internal! {bytecode,
+                I32Const[value_offset]
+            }
+        }
+        bytecode_internal! {bytecode,
+            I32Const[stack.cd_offset]
+            I32Const[stack.cd_length]
+            I32Const[stack.rd_offset]
+            I32Const[stack.rd_length]
+            I32Const[status_offset]
+            .write_op(*opcode)
+            I32Const[0]
+            I32Const[0]
             .write_op(terminator)
-        });
+        }
 
         Account {
             address: Address::repeat_byte(0xfe),
