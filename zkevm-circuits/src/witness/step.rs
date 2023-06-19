@@ -82,17 +82,7 @@ impl fmt::Debug for ExecStep {
 impl ExecStep {
     /// The memory size in word **before** this step
     pub fn memory_word_size(&self) -> u64 {
-        // EVM always pads the memory size to word size
-        // https://github.com/ethereum/go-ethereum/blob/master/core/vm/interpreter.go#L212-L216
-        // Thus, the memory size must be a multiple of 32 bytes.
-        // TODO wasm0: EVM pads the memory, but it doesnt work with wasm
-        // assert_eq!(self.memory_size % N_BYTES_WORD as u64, 0);
-        // self.memory_size / N_BYTES_WORD as u64
-        // TODO wasm0: what about word size and number below if `self.memory_size / N_BYTES_WORD * N_BYTES_WORD < self.memory_size`
-        // temporal fix
-        let mut word_count = self.memory_size / PAGE_SIZE as u64;
-        if word_count * (PAGE_SIZE as u64) < self.memory_size { word_count += 1 }
-        word_count
+         (self.memory_size + PAGE_SIZE as u64 - 1) / PAGE_SIZE as u64
     }
 }
 
