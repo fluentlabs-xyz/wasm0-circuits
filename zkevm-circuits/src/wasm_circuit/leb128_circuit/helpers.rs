@@ -66,14 +66,17 @@ pub fn leb128_compute_sn(
 
 pub fn leb128_convert(
     is_signed: bool,
-    value: u64,
+    value: i128,
 ) -> Vec<u8> {
     let mut res = vec![];
+    if !is_signed && value < 0 {
+        panic!("cannot convert negative number into u-leb128")
+    }
 
     if is_signed {
-        leb128::write::signed(&mut res, -(value as i64)).expect("Failed to convert number into s-leb128");
+        leb128::write::signed(&mut res, value as i64).expect("Failed to convert number into s-leb128");
     } else {
-        leb128::write::unsigned(&mut res, value).expect("Failed to convert number into u-leb128");
+        leb128::write::unsigned(&mut res, value as u64).expect("Failed to convert number into u-leb128");
     }
 
     res

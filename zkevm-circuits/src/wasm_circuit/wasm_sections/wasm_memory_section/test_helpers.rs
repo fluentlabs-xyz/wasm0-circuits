@@ -20,11 +20,11 @@ pub struct WasmMemorySectionBodyDescriptor {
 
 pub fn generate_wasm_memory_section_item_bytecode(descriptor: &WasmMemorySectionBodyItemDescriptor) -> Vec<u8> {
     let mut bytecode: Vec<u8> = vec![];
-    bytecode.extend(leb128_convert(false, descriptor.limits.limits_type.clone() as u64));
-    bytecode.extend(leb128_convert(false, descriptor.limits.min));
+    bytecode.extend(leb128_convert(false, descriptor.limits.limits_type.clone() as i128));
+    bytecode.extend(leb128_convert(false, descriptor.limits.min as i128));
     match descriptor.limits.limits_type {
         LimitsType::MinMax => {
-            bytecode.extend(leb128_convert(false, descriptor.limits.max));
+            bytecode.extend(leb128_convert(false, descriptor.limits.max as i128));
         },
         _ => {}
     }
@@ -37,7 +37,7 @@ pub fn generate_wasm_memory_section_item_bytecode(descriptor: &WasmMemorySection
 pub fn generate_wasm_memory_section_body_bytecode(descriptor: &WasmMemorySectionBodyDescriptor) -> Vec<u8> {
     let items_count = descriptor.items.len();
     let mut bytecode: Vec<u8> = vec![];
-    bytecode.extend(leb128_convert(false, items_count as u64));
+    bytecode.extend(leb128_convert(false, items_count as i128));
     for item in &descriptor.items {
         bytecode.extend(generate_wasm_memory_section_item_bytecode(item));
     }

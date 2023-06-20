@@ -126,7 +126,7 @@ mod wasm_import_section_body_tests {
     }
 
     #[test]
-    pub fn import_section_body_bytecode_is_ok() {
+    pub fn section_body_bytecode_is_ok() {
         let mut bytecodes: Vec<Vec<u8>> = Vec::new();
         // expected (hex): [3, 3, 65, 6e, 76, c, 5f, 65, 76, 6d, 5f, 61, 64, 64, 72, 65, 73, 73, 0, 2, 3, 65, 6e, 76, c, 5f, 65, 76, 6d, 5f, 62, 61, 6c, 61, 6e, 63, 65, 0, 3, 3, 65, 6e, 76, a4, 1, 5f, 65, 76, 6d, 5f, 73, 6f, 6d, 65, 5f, 6c, 6f, 6e, 67, 5f, 6e, 61, 6d, 65, 5f, 66, 75, 6e, 63, 5f, 73, 6f, 6d, 65, 5f, 6c, 6f, 6e, 67, 5f, 6e, 61, 6d, 65, 5f, 66, 75, 6e, 63, 5f, 73, 6f, 6d, 65, 5f, 6c, 6f, 6e, 67, 5f, 6e, 61, 6d, 65, 5f, 66, 75, 6e, 63, 5f, 73, 6f, 6d, 65, 5f, 6c, 6f, 6e, 67, 5f, 6e, 61, 6d, 65, 5f, 66, 75, 6e, 63, 5f, 73, 6f, 6d, 65, 5f, 6c, 6f, 6e, 67, 5f, 6e, 61, 6d, 65, 5f, 66, 75, 6e, 63, 5f, 73, 6f, 6d, 65, 5f, 6c, 6f, 6e, 67, 5f, 6e, 61, 6d, 65, 5f, 66, 75, 6e, 63, 5f, 73, 6f, 6d, 65, 5f, 6c, 6f, 6e, 67, 5f, 6e, 61, 6d, 65, 5f, 66, 75, 6e, 63, 5f, 73, 6f, 6d, 65, 5f, 6c, 6f, 6e, 67, 5f, 6e, 61, 6d, 65, 5f, 66, 75, 6e, 63, 0, 5];
         let descriptor = ImportSectionBodyDescriptor {

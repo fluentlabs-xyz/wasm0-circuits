@@ -132,6 +132,26 @@ mod wasm_circuit_tests {
         // }
     }
 
+    /// for development only
+    #[ignore]
+    #[test]
+    pub fn string_to_hex_bytes_test() {
+        let strings = [
+            "Hello, World",
+            "none",
+            "\0asm",
+            "main",
+            "memory",
+            "env",
+            "_evm_address",
+            "_evm_balance",
+            "_evm_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func",
+        ];
+        for str in strings {
+            debug!("'{}' in hex {:x?} in decimal {:?}", str, str.to_string().as_bytes(), str.to_string().as_bytes());
+        }
+    }
+
     #[test]
     pub fn test_wasm_bytecode_from_file2_must_succeed() {
         let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";

@@ -117,7 +117,7 @@ mod wasm_type_section_body_tests {
     }
 
     #[test]
-    pub fn test_type_section_body_bytecode_is_ok() {
+    pub fn section_body_bytecode_is_ok() {
         for _ in 0..10 {
             let bytecodes = [
                 generate_type_section_body_bytecode(0, 2, 2),
