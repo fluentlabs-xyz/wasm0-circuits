@@ -5,6 +5,8 @@ use super::{
     CallKind, CodeSource, CopyEvent, ExecState, ExecStep, ExpEvent, Transaction,
     TransactionContext,
 };
+#[cfg(feature = "scroll")]
+use crate::util::KECCAK_CODE_HASH_ZERO;
 use crate::{
     error::{
         get_step_reported_error, ContractAddressCollisionError, DepthError, ExecError,
@@ -666,6 +668,16 @@ impl<'a> CircuitInputStateRef<'a> {
                     value_prev: Word::zero(),
                 },
             )?;
+            #[cfg(feature = "scroll")]
+            self.push_op_reversible(
+                step,
+                AccountOp {
+                    address: receiver,
+                    field: AccountField::KeccakCodeHash,
+                    value: KECCAK_CODE_HASH_ZERO.to_word(),
+                    value_prev: Word::zero(),
+                },
+            )?;
         }
         if value.is_zero() {
             // Skip transfer if value == 0
@@ -1272,7 +1284,7 @@ impl<'a> CircuitInputStateRef<'a> {
             _ => [StackWord::zero(), StackWord::zero()],
         };
 
-        let gas_refund = if exec_step.error.is_some() {
+        let gas_refund = if exec_step.error.is_some() || exec_step.is_precompiled() {
             0
         } else {
             let code_deposit_cost = if call.is_create() && call.is_success {
@@ -1340,7 +1352,7 @@ impl<'a> CircuitInputStateRef<'a> {
 
     /// Push a copy event to the state.
     pub fn push_copy(&mut self, step: &mut ExecStep, event: CopyEvent) {
-        step.copy_rw_counter_delta = event.rw_counter_delta();
+        step.copy_rw_counter_delta += event.rw_counter_delta();
         self.block.add_copy_event(event);
     }
 

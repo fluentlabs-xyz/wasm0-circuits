@@ -608,6 +608,22 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         );
     }
 
+    // precompiled contract information
+    pub(crate) fn precompile_info_lookup(
+        &mut self,
+        execution_state: Expression<F>,
+        address: Expression<F>,
+        base_gas_cost: Expression<F>,
+    ) {
+        self.add_lookup(
+            "precompiles info",
+            Lookup::Fixed {
+                tag: FixedTableTag::PrecompileInfo.expr(),
+                values: [execution_state, address, base_gas_cost],
+            },
+        )
+    }
+
     // constant gas
     pub(crate) fn constant_gas_lookup(&mut self, opcode: Expression<F>, gas: Expression<F>) {
         self.add_lookup(
@@ -1261,6 +1277,22 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
                 is_write.clone(),
                 dest_offset.expr() + idx.expr(),
                 value[N - 1 - idx].expr(),
+                None,
+            );
+        }
+    }
+
+    pub(crate) fn memory_address_lookup<const N: usize>(
+        &mut self,
+        is_write: Expression<F>,
+        dest_offset: &Cell<F>,
+        value: &RandomLinearCombination<F, N>,
+    ) {
+        for idx in 0..20 {
+            self.memory_lookup(
+                is_write.clone(),
+                dest_offset.expr() + idx.expr(),
+                value.cells[19 - idx].expr(),
                 None,
             );
         }

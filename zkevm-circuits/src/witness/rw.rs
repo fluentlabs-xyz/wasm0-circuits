@@ -266,9 +266,8 @@ pub struct RwRow<F> {
 }
 
 impl<F: Field> RwRow<F> {
-    pub(crate) fn values(&self) -> [F; 12] {
+    pub(crate) fn values(&self) -> [F; 11] {
         [
-            F::one(),
             self.rw_counter,
             self.is_write,
             self.tag,
@@ -284,8 +283,8 @@ impl<F: Field> RwRow<F> {
     }
     pub(crate) fn rlc(&self, randomness: F) -> F {
         let values = self.values();
-        values
-            .iter()
+        std::iter::once(&F::one())
+            .chain(values.iter())
             .rev()
             .fold(F::zero(), |acc, value| acc * randomness + value)
     }
