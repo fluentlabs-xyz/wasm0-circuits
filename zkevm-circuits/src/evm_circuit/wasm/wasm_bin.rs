@@ -167,43 +167,30 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         ]);
 
         let pn_case = || div_rem_s_is_lhs_pos.expr() * (1.expr() - div_rem_s_is_rhs_pos.expr());
-        let pn_case_64 = || pn_case() * is_64bits.expr();
-        cb.require_zeros("div_s/rem_s constraints pn case 64", vec![
+        cb.require_zeros("div_s/rem_s constraints pn case", vec![
             (lhs.expr() - rhs_neg.expr() * aux1_neg.expr() - aux2.expr())
-                * (is_rem_s.expr() + is_div_s.expr()) * pn_case_64(),
+                * (is_rem_s.expr() + is_div_s.expr()) * pn_case(),
             //(aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()) * pn_case(),
-            (res.expr() - aux1.expr()) * is_div_s.expr() * pn_case_64(),
-            (res.expr() - aux2.expr()) * is_rem_s.expr() * pn_case_64(),
+            (res.expr() - aux1.expr()) * is_div_s.expr() * pn_case(),
+            (res.expr() - aux2.expr()) * is_rem_s.expr() * pn_case(),
         ]);
 
         let np_case = || (1.expr() - div_rem_s_is_lhs_pos.expr()) * div_rem_s_is_rhs_pos.expr();
-        let np_case_64 = || np_case() * is_64bits.expr();
-        cb.require_zeros("div_s/rem_s constraints np case 64", vec![
+        cb.require_zeros("div_s/rem_s constraints np case", vec![
             (lhs_neg.expr() - rhs.expr() * aux1_neg.expr() - aux2_neg.expr())
-                * (is_rem_s.expr() + is_div_s.expr()) * np_case_64(),
+                * (is_rem_s.expr() + is_div_s.expr()) * np_case(),
             //(aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()) * np_case(),
-            (res.expr() - aux1.expr()) * is_div_s.expr() * np_case_64(),
-            (res.expr() - aux2.expr()) * is_rem_s.expr() * np_case_64(),
+            (res.expr() - aux1.expr()) * is_div_s.expr() * np_case(),
+            (res.expr() - aux2.expr()) * is_rem_s.expr() * np_case(),
         ]);
 
         let nn_case = || (1.expr() - div_rem_s_is_lhs_pos.expr()) * (1.expr() - div_rem_s_is_rhs_pos.expr());
-        let nn_case_32 = || nn_case() * (1.expr() - is_64bits.expr());
-        let nn_case_64 = || nn_case() * is_64bits.expr();
-
-        cb.require_zeros("div_s/rem_s constraints nn case 32", vec![
+        cb.require_zeros("div_s/rem_s constraints nn case", vec![
             (lhs_neg.expr() - rhs_neg.expr() * aux1.expr() - aux2_neg.expr())
-                * (is_rem_s.expr() + is_div_s.expr()) * nn_case_32(),
+                * (is_rem_s.expr() + is_div_s.expr()) * nn_case(),
             //(aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()) * nn_case(),
-            (res.expr() - aux1.expr()) * is_div_s.expr() * nn_case_32(),
-            (res.expr() - aux2.expr()) * is_rem_s.expr() * nn_case_32(),
-        ]);
-
-        cb.require_zeros("div_s/rem_s constraints nn case 64", vec![
-            (lhs_neg.expr() - rhs_neg.expr() * aux1.expr() - aux2_neg.expr())
-                * (is_rem_s.expr() + is_div_s.expr()) * nn_case_64(),
-            //(aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()) * nn_case(),
-            (res.expr() - aux1.expr()) * is_div_s.expr() * nn_case_64(),
-            (res.expr() - aux2.expr()) * is_rem_s.expr() * nn_case_64(),
+            (res.expr() - aux1.expr()) * is_div_s.expr() * nn_case(),
+            (res.expr() - aux2.expr()) * is_rem_s.expr() * nn_case(),
         ]);
 
         // constraint_builder.push(
