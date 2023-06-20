@@ -384,7 +384,7 @@ impl OpcodeId {
 
     /// Returns `true` if the `OpcodeId` is a `PUSH1` .. `PUSH32` (excluding `PUSH0`).
     pub fn is_push_with_data(&self) -> bool {
-        self.as_u8() >= Self::PUSH1.as_u8() && self.as_u8() <= Self::PUSH32.as_u8()
+        self.as_u8() >= Self::PUSH1.as_u8() && self.as_u8() <= Self::PUSH32.as_u8() && self.ne(&Self::STOP)
     }
 
     /// ..
