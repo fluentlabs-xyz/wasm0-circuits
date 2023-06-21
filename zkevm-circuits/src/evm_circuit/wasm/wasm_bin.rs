@@ -141,33 +141,38 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         // Conversion is used, if we know that number is non-zero and negative.
         let conv_32 = |x| 0xffffffff_u64.expr() - x + 1.expr();
         let conv_64 = |x| 0xffffffff_ffffffff_u64.expr() - x + 1.expr();
-
-        /* TODO: create this constraint
-        // Check that if negative is same than it must be zero.
-        cb.require_zeros("check negatives, same must be zero", vec![
-        ]);
-        */
-
-        // For this constraint to work correctly, check that if negative is same than it must be zero.
-        cb.require_zeros("check negatives, rules for 64 bits", vec![
-            (lhs.expr() - conv_64(lhs_neg.expr())) * is_64bits.expr() * lhs.expr(),
-            (rhs.expr() - conv_64(rhs_neg.expr())) * is_64bits.expr() * rhs.expr(),
-            (res.expr() - conv_64(res_neg.expr())) * is_64bits.expr() * res.expr(),
-            (aux1.expr() - conv_64(aux1_neg.expr())) * is_64bits.expr() * aux1.expr(),
-            (aux2.expr() - conv_64(aux2_neg.expr())) * is_64bits.expr() * aux2.expr(),
-            (aux3.expr() - conv_64(aux3_neg.expr())) * is_64bits.expr() * aux3.expr(),
-        ]);
-
         let is_32bits = || 1.expr() - is_64bits.expr();
 
-        // For this constraint to work correctly, check that if negative is same than it must be zero.
+        // For this constraints to work correctly, check that if negative is same than it must be zero.
+        // To make this check you can see than constraint is like duplicated.
+        // So both direct and negative version must be zero at the same time, if constrait substration is failing.
+        cb.require_zeros("check negatives, rules for 64 bits", vec![
+            (lhs.expr() - conv_64(lhs_neg.expr())) * is_64bits.expr() * lhs.expr(),
+            (lhs.expr() - conv_64(lhs_neg.expr())) * is_64bits.expr() * lhs_neg.expr(),
+            (rhs.expr() - conv_64(rhs_neg.expr())) * is_64bits.expr() * rhs.expr(),
+            (rhs.expr() - conv_64(rhs_neg.expr())) * is_64bits.expr() * rhs_neg.expr(),
+            (res.expr() - conv_64(res_neg.expr())) * is_64bits.expr() * res.expr(),
+            (res.expr() - conv_64(res_neg.expr())) * is_64bits.expr() * res_neg.expr(),
+            (aux1.expr() - conv_64(aux1_neg.expr())) * is_64bits.expr() * aux1.expr(),
+            (aux1.expr() - conv_64(aux1_neg.expr())) * is_64bits.expr() * aux1_neg.expr(),
+            (aux2.expr() - conv_64(aux2_neg.expr())) * is_64bits.expr() * aux2.expr(),
+            (aux2.expr() - conv_64(aux2_neg.expr())) * is_64bits.expr() * aux2_neg.expr(),
+            (aux3.expr() - conv_64(aux3_neg.expr())) * is_64bits.expr() * aux3.expr(),
+            (aux3.expr() - conv_64(aux3_neg.expr())) * is_64bits.expr() * aux3_neg.expr(),
+        ]);
         cb.require_zeros("check negatives, rules for 32 bits", vec![
             (lhs.expr() - conv_32(lhs_neg.expr())) * is_32bits() * lhs.expr(),
+            (lhs.expr() - conv_32(lhs_neg.expr())) * is_32bits() * lhs_neg.expr(),
             (rhs.expr() - conv_32(rhs_neg.expr())) * is_32bits() * rhs.expr(),
+            (rhs.expr() - conv_32(rhs_neg.expr())) * is_32bits() * rhs_neg.expr(),
             (res.expr() - conv_32(res_neg.expr())) * is_32bits() * res.expr(),
+            (res.expr() - conv_32(res_neg.expr())) * is_32bits() * res_neg.expr(),
             (aux1.expr() - conv_32(aux1_neg.expr())) * is_32bits() * aux1.expr(),
+            (aux1.expr() - conv_32(aux1_neg.expr())) * is_32bits() * aux1_neg.expr(),
             (aux2.expr() - conv_32(aux2_neg.expr())) * is_32bits() * aux2.expr(),
+            (aux2.expr() - conv_32(aux2_neg.expr())) * is_32bits() * aux2_neg.expr(),
             (aux3.expr() - conv_32(aux3_neg.expr())) * is_32bits() * aux3.expr(),
+            (aux3.expr() - conv_32(aux3_neg.expr())) * is_32bits() * aux3_neg.expr(),
         ]);
 
         let pn_case = || div_rem_s_is_lhs_pos.expr() * (1.expr() - div_rem_s_is_rhs_pos.expr());
