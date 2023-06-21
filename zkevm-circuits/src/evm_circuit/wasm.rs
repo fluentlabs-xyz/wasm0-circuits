@@ -1340,7 +1340,7 @@ impl<F: Field> ExecutionConfig<F> {
             // ExecutionState::SIGNEXTEND => assign_exec_step!(self.signextend_gadget),
             // ExecutionState::SLOAD => assign_exec_step!(self.sload_gadget),
             // ExecutionState::SSTORE => assign_exec_step!(self.sstore_gadget),
-            // ExecutionState::STOP => assign_exec_step!(self.stop_gadget),
+            ExecutionState::STOP => assign_exec_step!(self.evm_stop),
             // ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
             // dummy errors
             ExecutionState::ErrorOutOfGasStaticMemoryExpansion => {
