@@ -5,3 +5,5 @@ pub mod helpers;
 pub mod wasm_function_section;
 pub mod wasm_memory_section;
 pub mod wasm_export_section;
+pub mod wasm_code_section;
+pub mod wasm_data_section;

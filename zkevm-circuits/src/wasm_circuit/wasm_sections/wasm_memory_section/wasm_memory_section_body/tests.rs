@@ -111,7 +111,7 @@ mod wasm_memory_section_body_tests {
     }
 
     #[test]
-    pub fn import_section_body_bytecode_is_ok() {
+    pub fn section_body_bytecode_is_ok() {
         let mut bytecodes: Vec<Vec<u8>> = Vec::new();
         // expected (hex): [1, 0, 1]
         let descriptor = WasmMemorySectionBodyDescriptor {

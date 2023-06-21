@@ -27,6 +27,7 @@ use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::{SECTION_ID_DEFAULT, WASM_SECTION_ID_MAX, WasmSectionId};
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::wasm_sections::wasm_data_section::wasm_data_section_body::circuit::WasmDataSectionBodyChip;
 use crate::wasm_circuit::wasm_sections::wasm_export_section::wasm_export_section_body::circuit::WasmExportSectionBodyChip;
 use crate::wasm_circuit::wasm_sections::wasm_function_section::wasm_function_section_body::circuit::WasmFunctionSectionBodyChip;
 use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section_body::circuit::WasmImportSectionBodyChip;
@@ -57,6 +58,7 @@ pub struct WasmConfig<F: Field> {
     wasm_function_section_body_chip: Rc<WasmFunctionSectionBodyChip<F>>,
     wasm_memory_section_body_chip: Rc<WasmMemorySectionBodyChip<F>>,
     wasm_export_section_body_chip: Rc<WasmExportSectionBodyChip<F>>,
+    wasm_data_section_body_chip: Rc<WasmDataSectionBodyChip<F>>,
     is_section_id_grows_lt_chip: LtChip<F, 1>,
     index_at_magic_prefix_count: usize,
     index_at_magic_prefix: Vec<IsZeroChip<F>>,
@@ -163,6 +165,13 @@ impl<F: Field> WasmChip<F>
             leb128_chip.clone(),
         );
         let wasm_export_section_body_chip = Rc::new(WasmExportSectionBodyChip::construct(wasm_export_section_body_config));
+
+        let wasm_data_section_body_config = WasmDataSectionBodyChip::configure(
+            cs,
+            wasm_bytecode_table.clone(),
+            leb128_chip.clone(),
+        );
+        let wasm_data_section_body_chip = Rc::new(WasmDataSectionBodyChip::construct(wasm_data_section_body_config));
 
         let index_at_magic_prefix_count = WASM_PREAMBLE_MAGIC_PREFIX.len() + WASM_VERSION_PREFIX_LENGTH;
 
@@ -573,6 +582,7 @@ impl<F: Field> WasmChip<F>
             wasm_function_section_body_chip: wasm_function_section_body_chip.clone(),
             wasm_memory_section_body_chip: wasm_memory_section_body_chip.clone(),
             wasm_export_section_body_chip: wasm_export_section_body_chip.clone(),
+            wasm_data_section_body_chip: wasm_data_section_body_chip.clone(),
             is_section_id_grows_lt_chip,
             _marker: PhantomData,
             range_table_config_0_128: range_table_config_0_128.clone(),
@@ -601,6 +611,7 @@ impl<F: Field> WasmChip<F>
         self.config.wasm_function_section_body_chip.assign_init(region, offset_max);
         self.config.wasm_memory_section_body_chip.assign_init(region, offset_max);
         self.config.wasm_export_section_body_chip.assign_init(region, offset_max);
+        self.config.wasm_data_section_body_chip.assign_init(region, offset_max);
 
         for offset in 0..=offset_max {
             self.assign(
@@ -862,6 +873,21 @@ impl<F: Field> WasmChip<F>
                         section_body_offset = last_byte_offset + 1;
                         debug!("section_id {} section_body_offset {}", section_id, section_body_offset);
                         let new_offset = self.config.wasm_export_section_body_chip.assign_auto(
+                            region,
+                            wasm_bytecode,
+                            section_body_offset,
+                        ).unwrap();
+                        debug!("section_id {} after assign_auto new_offset {}", section_id, new_offset);
+                    } else if section_id == WasmSectionId::Data as u8 {
+                        debug!("section_id {} offset {}", section_id, offset);
+                        let mut section_body_offset = offset + 1; // skips section_id byte
+                        let last_byte_offset = leb128_compute_last_byte_offset(
+                            &wasm_bytecode.bytes.as_slice(),
+                            section_body_offset,
+                        ).unwrap();
+                        section_body_offset = last_byte_offset + 1;
+                        debug!("section_id {} section_body_offset {}", section_id, section_body_offset);
+                        let new_offset = self.config.wasm_data_section_body_chip.assign_auto(
                             region,
                             wasm_bytecode,
                             section_body_offset,

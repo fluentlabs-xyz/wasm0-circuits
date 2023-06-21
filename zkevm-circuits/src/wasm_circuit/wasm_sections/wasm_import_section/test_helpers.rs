@@ -21,7 +21,7 @@ pub struct ImportSectionBodyDescriptor {
 
 pub fn generate_import_section_importdesc_bytecode(import_desc: &ImportDesc) -> Vec<u8> {
     let mut bytecode: Vec<u8> = vec![import_desc.val_type as u8];
-    bytecode.extend(leb128_convert(false, import_desc.val));
+    bytecode.extend(leb128_convert(false, import_desc.val as i128));
 
     return bytecode;
 }
@@ -29,7 +29,7 @@ pub fn generate_import_section_importdesc_bytecode(import_desc: &ImportDesc) -> 
 pub fn generate_import_section_name_bytecode(name: &str) -> Vec<u8> {
     let name_len = name.len();
     let mut bytecode: Vec<u8> = vec![];
-    bytecode.extend(leb128_convert(false, name_len as u64));
+    bytecode.extend(leb128_convert(false, name_len as u64 as i128));
     bytecode.extend(name.as_bytes());
 
     return bytecode;
@@ -49,7 +49,7 @@ pub fn generate_import_section_item_bytecode(descriptor: &ImportSectionBodyItemD
 pub fn generate_import_section_body_bytecode(descriptor: &ImportSectionBodyDescriptor) -> Vec<u8> {
     let items_count = descriptor.items.len();
     let mut bytecode: Vec<u8> = vec![];
-    bytecode.extend(leb128_convert(false, items_count as u64));
+    bytecode.extend(leb128_convert(false, items_count as i128));
     for item in &descriptor.items {
         bytecode.extend(generate_import_section_item_bytecode(item));
     }
@@ -63,22 +63,6 @@ mod test_helpers {
     use log::debug;
     use crate::wasm_circuit::wasm_sections::wasm_import_section::test_helpers::{generate_import_section_body_bytecode, generate_import_section_item_bytecode, ImportDesc, ImportSectionBodyDescriptor, ImportSectionBodyItemDescriptor};
     use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section_body::consts::ImportDescType;
-
-    #[test]
-    pub fn string_to_hex_bytes_test() {
-        let str = "main";
-        debug!("'{}' in hex {:x?}", str, str.to_string().as_bytes());
-        let str = "memory";
-        debug!("'{}' in hex {:x?}", str, str.to_string().as_bytes());
-        let str = "env";
-        debug!("'{}' in hex {:x?}", str, str.to_string().as_bytes());
-        let str = "_evm_address";
-        debug!("'{}' in hex {:x?}", str, str.to_string().as_bytes());
-        let str = "_evm_balance";
-        debug!("'{}' in hex {:x?}", str, str.to_string().as_bytes());
-        let str = "_evm_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func";
-        debug!("'{}' in hex {:x?}", str, str.to_string().as_bytes());
-    }
 
     #[test]
     pub fn generate_import_section_body_bytecode_test() {

@@ -16,10 +16,10 @@ pub struct WasmExportSectionBodyDescriptor {
 
 pub fn generate_wasm_export_section_item_bytecode(descriptor: &WasmExportSectionBodyItemDescriptor) -> Vec<u8> {
     let mut bytecode: Vec<u8> = vec![];
-    bytecode.extend(leb128_convert(false, descriptor.export_name.len() as u64));
+    bytecode.extend(leb128_convert(false, descriptor.export_name.len() as i128));
     bytecode.extend(descriptor.export_name.as_bytes());
     bytecode.push(descriptor.export_desc_type as u8);
-    bytecode.extend(leb128_convert(false, descriptor.export_desc_val));
+    bytecode.extend(leb128_convert(false, descriptor.export_desc_val as i128));
 
     return bytecode;
 }
@@ -29,7 +29,7 @@ pub fn generate_wasm_export_section_item_bytecode(descriptor: &WasmExportSection
 pub fn generate_wasm_export_section_body_bytecode(descriptor: &WasmExportSectionBodyDescriptor) -> Vec<u8> {
     let items_count = descriptor.items.len();
     let mut bytecode: Vec<u8> = vec![];
-    bytecode.extend(leb128_convert(false, items_count as u64));
+    bytecode.extend(leb128_convert(false, items_count as i128));
     for item in &descriptor.items {
         bytecode.extend(generate_wasm_export_section_item_bytecode(item));
     }

@@ -12,7 +12,7 @@ pub struct FunctionSectionBodyDescriptor {
 
 pub fn generate_function_section_item_bytecode(descriptor: &FunctionSectionBodyItemDescriptor) -> Vec<u8> {
     let mut bytecode: Vec<u8> = vec![];
-    bytecode.extend(leb128_convert(false, descriptor.typeidx));
+    bytecode.extend(leb128_convert(false, descriptor.typeidx as i128));
 
     return bytecode;
 }
@@ -22,7 +22,7 @@ pub fn generate_function_section_item_bytecode(descriptor: &FunctionSectionBodyI
 pub fn generate_function_section_body_bytecode(descriptor: &FunctionSectionBodyDescriptor) -> Vec<u8> {
     let items_count = descriptor.items.len();
     let mut bytecode: Vec<u8> = vec![];
-    bytecode.extend(leb128_convert(false, items_count as u64));
+    bytecode.extend(leb128_convert(false, items_count as i128));
     for item in &descriptor.items {
         bytecode.extend(generate_function_section_item_bytecode(item));
     }

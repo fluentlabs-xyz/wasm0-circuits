@@ -112,7 +112,7 @@ mod wasm_export_section_body_tests {
     }
 
     #[test]
-    pub fn import_section_body_bytecode_is_ok() {
+    pub fn section_body_bytecode_is_ok() {
         let mut bytecodes: Vec<Vec<u8>> = Vec::new();
         // expected (hex): [2, 4, 6d, 61, 69, 6e, 0, 0, 6, 6d, 65, 6d, 6f, 72, 79, 2, 0]
         let descriptor = WasmExportSectionBodyDescriptor {
