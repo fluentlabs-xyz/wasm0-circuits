@@ -44,6 +44,7 @@ pub(crate) struct WasmBinGadget<F> {
     aux2: Cell<F>,
     aux2_neg: Cell<F>,
     aux3: Cell<F>,
+    aux3_neg: Cell<F>,
     is_64bits: Cell<F>,
 }
 
@@ -78,6 +79,7 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         let aux2 = cb.alloc_u64_on_u8();
         let aux2_neg = cb.alloc_u64_on_u8();
         let aux3 = cb.alloc_u64_on_u8();
+        let aux3_neg = cb.alloc_u64_on_u8();
 
         // let lhs_flag = cb.alloc_bit_value();
         // let rhs_flag = cb.alloc_bit_value();
@@ -139,38 +141,45 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         // Conversion is used, if we know that number is non-zero and negative.
         let conv_32 = |x| 0xffffffff_u64.expr() - x + 1.expr();
         let conv_64 = |x| 0xffffffff_ffffffff_u64.expr() - x + 1.expr();
-
-        /* TODO: create this constraint
-        // Check that if negative is same than it must be zero.
-        cb.require_zeros("check negatives, same must be zero", vec![
-        ]);
-        */
-
-        // For this constraint to work correctly, check that if negative is same than it must be zero.
-        cb.require_zeros("check negatives, rules for 64 bits", vec![
-            (lhs.expr() - conv_64(lhs_neg.expr())) * is_64bits.expr() * lhs.expr(),
-            (rhs.expr() - conv_64(rhs_neg.expr())) * is_64bits.expr() * rhs.expr(),
-            (res.expr() - conv_64(res_neg.expr())) * is_64bits.expr() * res.expr(),
-            (aux1.expr() - conv_64(aux1_neg.expr())) * is_64bits.expr() * aux1.expr(),
-            (aux2.expr() - conv_64(aux2_neg.expr())) * is_64bits.expr() * aux2.expr(),
-        ]);
-
         let is_32bits = || 1.expr() - is_64bits.expr();
 
-        // For this constraint to work correctly, check that if negative is same than it must be zero.
+        // For this constraints to work correctly, check that if negative is same than it must be zero.
+        // To make this check you can see than constraint is like duplicated.
+        // So both direct and negative version must be zero at the same time, if constrait substration is failing.
+        cb.require_zeros("check negatives, rules for 64 bits", vec![
+            (lhs.expr() - conv_64(lhs_neg.expr())) * is_64bits.expr() * lhs.expr(),
+            (lhs.expr() - conv_64(lhs_neg.expr())) * is_64bits.expr() * lhs_neg.expr(),
+            (rhs.expr() - conv_64(rhs_neg.expr())) * is_64bits.expr() * rhs.expr(),
+            (rhs.expr() - conv_64(rhs_neg.expr())) * is_64bits.expr() * rhs_neg.expr(),
+            (res.expr() - conv_64(res_neg.expr())) * is_64bits.expr() * res.expr(),
+            (res.expr() - conv_64(res_neg.expr())) * is_64bits.expr() * res_neg.expr(),
+            (aux1.expr() - conv_64(aux1_neg.expr())) * is_64bits.expr() * aux1.expr(),
+            (aux1.expr() - conv_64(aux1_neg.expr())) * is_64bits.expr() * aux1_neg.expr(),
+            (aux2.expr() - conv_64(aux2_neg.expr())) * is_64bits.expr() * aux2.expr(),
+            (aux2.expr() - conv_64(aux2_neg.expr())) * is_64bits.expr() * aux2_neg.expr(),
+            (aux3.expr() - conv_64(aux3_neg.expr())) * is_64bits.expr() * aux3.expr(),
+            (aux3.expr() - conv_64(aux3_neg.expr())) * is_64bits.expr() * aux3_neg.expr(),
+        ]);
         cb.require_zeros("check negatives, rules for 32 bits", vec![
             (lhs.expr() - conv_32(lhs_neg.expr())) * is_32bits() * lhs.expr(),
+            (lhs.expr() - conv_32(lhs_neg.expr())) * is_32bits() * lhs_neg.expr(),
             (rhs.expr() - conv_32(rhs_neg.expr())) * is_32bits() * rhs.expr(),
+            (rhs.expr() - conv_32(rhs_neg.expr())) * is_32bits() * rhs_neg.expr(),
             (res.expr() - conv_32(res_neg.expr())) * is_32bits() * res.expr(),
+            (res.expr() - conv_32(res_neg.expr())) * is_32bits() * res_neg.expr(),
             (aux1.expr() - conv_32(aux1_neg.expr())) * is_32bits() * aux1.expr(),
+            (aux1.expr() - conv_32(aux1_neg.expr())) * is_32bits() * aux1_neg.expr(),
             (aux2.expr() - conv_32(aux2_neg.expr())) * is_32bits() * aux2.expr(),
+            (aux2.expr() - conv_32(aux2_neg.expr())) * is_32bits() * aux2_neg.expr(),
+            (aux3.expr() - conv_32(aux3_neg.expr())) * is_32bits() * aux3.expr(),
+            (aux3.expr() - conv_32(aux3_neg.expr())) * is_32bits() * aux3_neg.expr(),
         ]);
 
         let pn_case = || div_rem_s_is_lhs_pos.expr() * (1.expr() - div_rem_s_is_rhs_pos.expr());
         cb.require_zeros("div_s/rem_s constraints pn case", vec![
             (lhs.expr() - rhs_neg.expr() * aux1_neg.expr() - aux2.expr())
                 * (is_rem_s.expr() + is_div_s.expr()) * pn_case(),
-            //(aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()) * pn_case(),
+            (aux3_neg.expr() - aux2.expr() - 1.expr() - rhs_neg.expr()) * (is_rem_s.expr() + is_div_s.expr()) * pn_case(),
             (res.expr() - aux1.expr()) * is_div_s.expr() * pn_case(),
             (res.expr() - aux2.expr()) * is_rem_s.expr() * pn_case(),
         ]);
@@ -179,7 +188,7 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         cb.require_zeros("div_s/rem_s constraints np case", vec![
             (lhs_neg.expr() - rhs.expr() * aux1_neg.expr() - aux2_neg.expr())
                 * (is_rem_s.expr() + is_div_s.expr()) * np_case(),
-            //(aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()) * np_case(),
+            (aux3_neg.expr() + aux2_neg.expr() - 1.expr() - rhs_neg.expr()) * (is_rem_s.expr() + is_div_s.expr()) * np_case(),
             (res.expr() - aux1.expr()) * is_div_s.expr() * np_case(),
             (res.expr() - aux2.expr()) * is_rem_s.expr() * np_case(),
         ]);
@@ -188,7 +197,7 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         cb.require_zeros("div_s/rem_s constraints nn case", vec![
             (lhs_neg.expr() - rhs_neg.expr() * aux1.expr() - aux2_neg.expr())
                 * (is_rem_s.expr() + is_div_s.expr()) * nn_case(),
-            //(aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()) * nn_case(),
+            (aux3_neg.expr() + aux2_neg.expr() - 1.expr() - rhs_neg.expr()) * (is_rem_s.expr() + is_div_s.expr()) * nn_case(),
             (res.expr() - aux1.expr()) * is_div_s.expr() * nn_case(),
             (res.expr() - aux2.expr()) * is_rem_s.expr() * nn_case(),
         ]);
@@ -313,6 +322,7 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
             aux2,
             aux2_neg,
             aux3,
+            aux3_neg,
             is_64bits,
         }
     }
@@ -433,6 +443,7 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         let mut res_neg = 0u64;
         let mut aux1_neg = 0u64;
         let mut aux2_neg = 0u64;
+        let mut aux3_neg = 0u64;
 
         if is_64bit {
             rhs_neg = (rhs.0[0] as i64).neg() as u64;
@@ -440,12 +451,14 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
             res_neg = (res.0[0] as i64).neg() as u64;
             aux1_neg = (aux1 as i64).neg() as u64;
             aux2_neg = (aux2 as i64).neg() as u64;
+            aux3_neg = (aux3 as i64).neg() as u64;
         } else {
             rhs_neg = ((rhs.0[0] as i32).neg() as u32) as u64;
             lhs_neg = ((lhs.0[0] as i32).neg() as u32) as u64;
             res_neg = ((res.0[0] as i32).neg() as u32) as u64;
             aux1_neg = ((aux1 as i32).neg() as u32) as u64;
             aux2_neg = ((aux2 as i32).neg() as u32) as u64;
+            aux3_neg = ((aux3 as i32).neg() as u32) as u64;
         }
 
         self.rhs_neg.assign(region, offset, Value::known(F::from(rhs_neg)))?;
@@ -453,6 +466,7 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
         self.res_neg.assign(region, offset, Value::known(F::from(res_neg)))?;
         self.aux1_neg.assign(region, offset, Value::known(F::from(aux1_neg)))?;
         self.aux2_neg.assign(region, offset, Value::known(F::from(aux2_neg)))?;
+        self.aux3_neg.assign(region, offset, Value::known(F::from(aux3_neg)))?;
 
         Ok(())
     }
@@ -581,50 +595,33 @@ mod test {
         });
     }
 
-    #[test]
-    fn test_i32_64_rem_s() {
+    macro_rules! div_rem_s_pat {
+      ($A:ident, $B:ident) => {
         run_test(bytecode! {
-            I64Const[-4]
-            I64Const[-3]
-            I64RemS
-            Drop
-            I64Const[-4]
-            I64Const[3]
-            I64RemS
-            Drop
-            I64Const[4]
-            I64Const[-3]
-            I64RemS
-            Drop
-            I64Const[4]
-            I64Const[-4]
-            I64RemS
-            Drop
-            I64Const[-3]
-            I64Const[-3]
-            I64RemS
-            Drop
+            $A[-4] $A[-3] $B Drop
+            $A[-4] $A[ 3] $B Drop
+            $A[ 4] $A[-3] $B Drop
+            $A[ 4] $A[-4] $B Drop
+            $A[-3] $A[-3] $B Drop
         });
+      }
     }
 
-    #[test]
-    fn test_i32_32_rem_s() {
-        run_test(bytecode! {
-            I32Const[-4]
-            I32Const[-3]
-            I32RemS
-            Drop
-            I32Const[-4]
-            I32Const[3]
-            I32RemS
-            Drop
-            I32Const[4]
-            I32Const[-3]
-            I32RemS
-            Drop
-        });
+    macro_rules! make_div_rem_s_tests {
+      ($([$name:ident, $A:ident, $B:ident])*) => {$(
+        #[test]
+        fn $name() {
+          div_rem_s_pat!($A, $B);
+        }
+      )*}
     }
 
+    make_div_rem_s_tests! {
+        [test_64_rem_s, I64Const, I64RemS]
+        [test_64_div_s, I64Const, I64RemS]
+        [test_32_rem_s, I32Const, I32RemS]
+        [test_32_div_s, I32Const, I32RemS]
+    }
 
     // `s_pp` means signed where lhs is positive and rhs is positive.
     #[test]
