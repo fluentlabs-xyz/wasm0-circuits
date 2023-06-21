@@ -93,9 +93,8 @@ mod wasm_code_section_body_tests {
     use log::debug;
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
-    use crate::wasm_circuit::wasm_sections::consts::LimitsType;
+    use crate::wasm_circuit::wasm_sections::consts::{LimitsType, NumType};
     use crate::wasm_circuit::wasm_sections::wasm_code_section::test_helpers::{generate_wasm_code_section_body_bytecode, WasmCodeSectionBodyDescriptor, WasmCodeSectionBodyFuncDescriptor};
-    use crate::wasm_circuit::wasm_sections::wasm_code_section::wasm_code_section_body::consts::ExportDesc;
     use crate::wasm_circuit::wasm_sections::wasm_code_section::wasm_code_section_body::tests::TestCircuit;
 
     fn test<'a, F: Field>(
@@ -120,9 +119,6 @@ mod wasm_code_section_body_tests {
         let descriptor = WasmCodeSectionBodyDescriptor {
             funcs: vec![
                 WasmCodeSectionBodyFuncDescriptor {
-                    export_name: "main".to_string(),
-                    export_desc_type: ExportDesc::FuncExportDesc,
-                    export_desc_val: 0,
                 },
             ],
         };

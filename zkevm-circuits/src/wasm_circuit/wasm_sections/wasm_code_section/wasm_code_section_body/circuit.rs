@@ -18,17 +18,16 @@ use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::LimitsType;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
-use crate::wasm_circuit::wasm_sections::wasm_code_section::wasm_code_section_body::consts::ExportDesc;
 
 #[derive(Debug, Clone)]
 pub struct WasmCodeSectionBodyConfig<F: Field> {
     pub q_enable: Column<Fixed>,
     pub is_funcs_count: Column<Fixed>,
-    pub is_func_len: Column<Fixed>,
+    pub is_func_body_len: Column<Fixed>,
     pub is_valtype_transitions_count: Column<Fixed>,
     pub is_valtype_repetition_count: Column<Fixed>,
     pub is_valtype: Column<Fixed>,
-    pub is_code_body: Column<Fixed>,
+    pub is_func_body_code: Column<Fixed>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
 
@@ -60,76 +59,77 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
     ) -> WasmCodeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
-        let is_items_count = cs.fixed_column();
-        let is_export_name_len = cs.fixed_column();
-        let is_export_name = cs.fixed_column();
-        let is_exportdesc_type = cs.fixed_column();
-        let is_exportdesc_val = cs.fixed_column();
+        let is_funcs_count = cs.fixed_column();
+        let is_func_body_len = cs.fixed_column();
+        let is_valtype_transitions_count = cs.fixed_column();
+        let is_valtype_repetition_count = cs.fixed_column();
+        let is_valtype = cs.fixed_column();
+        let is_func_body_code = cs.fixed_column();
 
         cs.create_gate("WasmCodeSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let is_funcs_count = vc.query_fixed(q_enable, Rotation::cur());
-            let is_func_len = vc.query_fixed(q_enable, Rotation::cur());
-            let is_valtype_transitions_count = vc.query_fixed(q_enable, Rotation::cur());
-            let is_valtype_repetition_count = vc.query_fixed(q_enable, Rotation::cur());
-            let is_valtype = vc.query_fixed(q_enable, Rotation::cur());
-            let is_code_body = vc.query_fixed(q_enable, Rotation::cur());
+            let is_funcs_count_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let is_func_body_len_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let is_valtype_transitions_count_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let is_valtype_repetition_count_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let is_valtype_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let is_func_body_code_expr = vc.query_fixed(q_enable, Rotation::cur());
 
             let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
 
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
-            cb.require_boolean("is_funcs_count is boolean", is_funcs_count.clone());
-            cb.require_boolean("is_func_len is boolean", is_func_len.clone());
-            cb.require_boolean("is_valtype_transitions_count is boolean", is_valtype_transitions_count.clone());
-            cb.require_boolean("is_valtype_repetition_count is boolean", is_valtype_repetition_count.clone());
-            cb.require_boolean("is_valtype is boolean", is_valtype.clone());
-            cb.require_boolean("is_code_body is boolean", is_code_body.clone());
+            cb.require_boolean("is_funcs_count is boolean", is_funcs_count_expr.clone());
+            cb.require_boolean("is_func_body_len is boolean", is_func_body_len_expr.clone());
+            cb.require_boolean("is_valtype_transitions_count is boolean", is_valtype_transitions_count_expr.clone());
+            cb.require_boolean("is_valtype_repetition_count is boolean", is_valtype_repetition_count_expr.clone());
+            cb.require_boolean("is_valtype is boolean", is_valtype_expr.clone());
+            cb.require_boolean("is_func_body_code is boolean", is_func_body_code_expr.clone());
 
             cb.require_equal(
                 "exactly one mark flag active at the same time",
-                is_funcs_count.clone()
-                    + is_func_len.clone()
-                    + is_valtype_transitions_count.clone()
-                    + is_valtype_repetition_count.clone()
-                    + is_valtype.clone()
-                    + is_code_body.clone(),
+                is_funcs_count_expr.clone()
+                    + is_func_body_len_expr.clone()
+                    + is_valtype_transitions_count_expr.clone()
+                    + is_valtype_repetition_count_expr.clone()
+                    + is_valtype_expr.clone()
+                    + is_func_body_code_expr.clone(),
                 1.expr(),
             );
 
             cb.condition(
                 or::expr([
-                    is_funcs_count.clone(),
-                    is_func_len.clone(),
-                    is_valtype_transitions_count.clone(),
-                    is_valtype_repetition_count.clone(),
+                    is_funcs_count_expr.clone(),
+                    is_func_body_len_expr.clone(),
+                    is_valtype_transitions_count_expr.clone(),
+                    is_valtype_repetition_count_expr.clone(),
                 ]),
                 |cbc| {
                     cbc.require_equal(
-                        "is_funcs_count || is_func_len || is_valtype_transitions_count || is_valtype_repetition_count -> leb128",
+                        "is_funcs_count || is_func_body_len || is_valtype_transitions_count || is_valtype_repetition_count -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
                     )
                 }
             );
 
-            // funcs_count -> func_len -> valtype_transitions_count -> valtype_repetition_count -> valtype -> code_body (TODO)
+            // TODO: is_funcs_count+ -> is_func_body_len+ -> locals+(is_valtype_transitions_count+ -> local_var_descriptor+(is_local_repetition_count+ -> is_local_type(1))) -> is_func_body_code
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_items_count+ -> item+(is_export_name_len+ ...",
-                is_items_count_expr.clone(),
+                "check next: is_funcs_count+ -> is_func_body_len+",
+                is_funcs_count_expr.clone(),
                 true,
-                &[is_items_count, is_export_name_len],
+                &[is_funcs_count, is_func_body_len],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_items_count+ -> item+(is_export_name_len+ ...",
-                is_export_name_len_expr.clone(),
+                "check prev: is_funcs_count+ -> is_func_body_len+",
+                is_func_body_len_expr.clone(),
                 false,
-                &[is_items_count, is_exportdesc_val, is_export_name_len],
+                &[is_funcs_count, is_func_body_len],
             );
 
             cb.gate(q_enable_expr.clone())
@@ -138,11 +138,11 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         let config = WasmCodeSectionBodyConfig::<F> {
             q_enable,
             is_funcs_count,
-            is_func_len,
+            is_func_body_len,
             is_valtype_transitions_count,
             is_valtype_repetition_count,
             is_valtype,
-            is_code_body,
+            is_func_body_code,
             leb128_chip,
             _marker: PhantomData,
         };
@@ -164,6 +164,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 false,
                 false,
                 false,
+                false,
                 0,
                 0,
                 0,
@@ -177,29 +178,29 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         region: &mut Region<F>,
         offset: usize,
         is_funcs_count: bool,
-        is_func_len: bool,
+        is_func_body_len: bool,
         is_valtype_transitions_count: bool,
         is_valtype_repetition_count: bool,
         is_valtype: bool,
-        is_code_body: bool,
+        is_func_body_code: bool,
         leb_byte_rel_offset: usize,
         leb_last_byte_rel_offset: usize,
         leb_sn: u64,
         leb_sn_recovered_at_pos: u64,
     ) {
-        let q_enable = is_funcs_count || is_func_len || is_valtype_transitions_count || is_valtype_repetition_count || is_valtype || is_code_body;
+        let q_enable = is_funcs_count || is_func_body_len || is_valtype_transitions_count || is_valtype_repetition_count || is_valtype || is_func_body_code;
         debug!(
-            "offset {} q_enable {} is_funcs_count {} is_func_len {} is_valtype_transitions_count {} is_valtype_repetition_count {} is_valtype {} is_code_body {}",
+            "offset {} q_enable {} is_funcs_count {} is_func_body_len {} is_valtype_transitions_count {} is_valtype_repetition_count {} is_valtype {} is_func_body_code {}",
             offset,
             q_enable,
-            is_funcs_count ,
-            is_func_len ,
-            is_valtype_transitions_count ,
-            is_valtype_repetition_count ,
-            is_valtype ,
-            is_code_body,
+            is_funcs_count,
+            is_func_body_len,
+            is_valtype_transitions_count,
+            is_valtype_repetition_count,
+            is_valtype,
+            is_func_body_code,
         );
-        if is_funcs_count || is_func_len || is_valtype_transitions_count || is_valtype_repetition_count {
+        if is_funcs_count || is_func_body_len || is_valtype_transitions_count || is_valtype_repetition_count {
             let is_first_leb_byte = leb_byte_rel_offset == 0;
             let is_last_leb_byte = leb_byte_rel_offset == leb_last_byte_rel_offset;
             let is_leb_byte_has_cb = leb_byte_rel_offset < leb_last_byte_rel_offset;
@@ -222,7 +223,43 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        // TODO
+        // is_funcs_count,
+        region.assign_fixed(
+            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
+            self.config.q_enable,
+            offset,
+            || Value::known(F::from(q_enable as u64)),
+        ).unwrap();
+        region.assign_fixed(
+            || format!("assign 'is_func_body_len' val {} at {}", is_func_body_len, offset),
+            self.config.is_func_body_len,
+            offset,
+            || Value::known(F::from(is_func_body_len as u64)),
+        ).unwrap();
+        region.assign_fixed(
+            || format!("assign 'is_valtype_transitions_count' val {} at {}", is_valtype_transitions_count, offset),
+            self.config.is_valtype_transitions_count,
+            offset,
+            || Value::known(F::from(is_valtype_transitions_count as u64)),
+        ).unwrap();
+        region.assign_fixed(
+            || format!("assign 'is_valtype_repetition_count' val {} at {}", is_valtype_repetition_count, offset),
+            self.config.is_valtype_repetition_count,
+            offset,
+            || Value::known(F::from(is_valtype_repetition_count as u64)),
+        ).unwrap();
+        region.assign_fixed(
+            || format!("assign 'is_valtype' val {} at {}", is_valtype, offset),
+            self.config.is_valtype,
+            offset,
+            || Value::known(F::from(is_valtype as u64)),
+        ).unwrap();
+        region.assign_fixed(
+            || format!("assign 'is_func_body_code' val {} at {}", is_func_body_code, offset),
+            self.config.is_func_body_code,
+            offset,
+            || Value::known(F::from(is_func_body_code as u64)),
+        ).unwrap();
     }
 
     /// returns sn and leb len
@@ -232,7 +269,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         leb_bytes: &[u8],
         leb_bytes_start_offset: usize,
         is_funcs_count: bool,
-        is_func_len: bool,
+        is_func_body_len: bool,
         is_valtype_transitions_count: bool,
         is_valtype_repetition_count: bool,
     ) -> (u64, usize) {
@@ -252,7 +289,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 region,
                 offset,
                 is_funcs_count,
-                is_func_len,
+                is_func_body_len,
                 is_valtype_transitions_count,
                 is_valtype_repetition_count,
                 false,
@@ -267,6 +304,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         (leb_sn, last_byte_offset + 1)
     }
 
+    /// TODO
     /// returns new offset
     pub fn assign_auto(
         &self,
@@ -284,6 +322,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             true,
             false,
             false,
+            false,
         );
         debug!("offset {} items_count {} items_count_leb_len {}", offset, items_count, items_count_leb_len);
         offset += items_count_leb_len;
@@ -296,18 +335,10 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 false,
                 true,
                 false,
+                false,
             );
             debug!("offset {} export_name_len {} export_name_len_leb_len {}", offset, export_name_len, export_name_len_leb_len);
             offset += export_name_len_leb_len;
-
-            let export_name_new_offset = self.markup_name_section(
-                region,
-                offset,
-                true,
-                export_name_len as usize,
-            );
-            debug!("offset {} export_name_new_offset {}", offset, export_name_new_offset);
-            offset = export_name_new_offset;
 
             let exportdesc_type = wasm_bytecode.bytes.as_slice()[offset];
             debug!("offset {} export_desc_type {}", offset, exportdesc_type);
@@ -318,6 +349,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 false,
                 false,
                 true,
+                false,
                 false,
                 0,
                 0,
@@ -330,6 +362,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 region,
                 &wasm_bytecode.bytes.as_slice()[offset..],
                 offset,
+                false,
                 false,
                 false,
                 true,
