@@ -595,50 +595,33 @@ mod test {
         });
     }
 
-    #[test]
-    fn test_i32_64_rem_s() {
+    macro_rules! div_rem_s_pat {
+      ($A:ident, $B:ident) => {
         run_test(bytecode! {
-            I64Const[-4]
-            I64Const[-3]
-            I64RemS
-            Drop
-            I64Const[-4]
-            I64Const[3]
-            I64RemS
-            Drop
-            I64Const[4]
-            I64Const[-3]
-            I64RemS
-            Drop
-            I64Const[4]
-            I64Const[-4]
-            I64RemS
-            Drop
-            I64Const[-3]
-            I64Const[-3]
-            I64RemS
-            Drop
+            $A[-4] $A[-3] $B Drop
+            $A[-4] $A[ 3] $B Drop
+            $A[ 4] $A[-3] $B Drop
+            $A[ 4] $A[-4] $B Drop
+            $A[-3] $A[-3] $B Drop
         });
+      }
     }
 
-    #[test]
-    fn test_i32_32_rem_s() {
-        run_test(bytecode! {
-            I32Const[-4]
-            I32Const[-3]
-            I32RemS
-            Drop
-            I32Const[-4]
-            I32Const[3]
-            I32RemS
-            Drop
-            I32Const[4]
-            I32Const[-3]
-            I32RemS
-            Drop
-        });
+    macro_rules! make_div_rem_s_tests {
+      ($([$name:ident, $A:ident, $B:ident])*) => {$(
+        #[test]
+        fn $name() {
+          div_rem_s_pat!($A, $B);
+        }
+      )*}
     }
 
+    make_div_rem_s_tests! {
+        [test_64_rem_s, I64Const, I64RemS]
+        [test_64_div_s, I64Const, I64RemS]
+        [test_32_rem_s, I32Const, I32RemS]
+        [test_32_div_s, I32Const, I32RemS]
+    }
 
     // `s_pp` means signed where lhs is positive and rhs is positive.
     #[test]
