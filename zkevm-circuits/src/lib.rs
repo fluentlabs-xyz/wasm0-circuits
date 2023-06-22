@@ -20,6 +20,8 @@
 #![deny(clippy::debug_assert_with_mut_call)]
 #![feature(thread_local)]
 
+#![feature(box_syntax)]
+
 extern crate core;
 
 #[allow(missing_docs)]

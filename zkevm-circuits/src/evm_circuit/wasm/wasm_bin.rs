@@ -130,77 +130,68 @@ impl<F: Field> ExecutionGadget<F> for WasmBinGadget<F> {
             (res.expr() - aux2.expr()) * is_rem_u.expr(),
         ]);
 
-        let pp_case = || div_rem_s_is_lhs_pos.expr() * div_rem_s_is_rhs_pos.expr();
+        let pp_case = |xc| xc * div_rem_s_is_lhs_pos.expr() * div_rem_s_is_rhs_pos.expr();
         cb.require_zeros("div_s/rem_s constraints pp case", vec![
-            (lhs.expr() - rhs.expr() * aux1.expr() - aux2.expr()) * (is_rem_s.expr() + is_div_s.expr()) * pp_case(),
-            (aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()) * pp_case(),
-            (res.expr() - aux1.expr()) * is_div_s.expr() * pp_case(),
-            (res.expr() - aux2.expr()) * is_rem_s.expr() * pp_case(),
-        ]);
+            (lhs.expr() - rhs.expr() * aux1.expr() - aux2.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (aux2.expr() + aux3.expr() + 1.expr() - rhs.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (res.expr() - aux1.expr()) * is_div_s.expr(),
+            (res.expr() - aux2.expr()) * is_rem_s.expr(),
+        ].into_iter().map(pp_case).collect());
 
         // Conversion is used, if we know that number is non-zero and negative.
         let conv_32 = |x| 0xffffffff_u64.expr() - x + 1.expr();
         let conv_64 = |x| 0xffffffff_ffffffff_u64.expr() - x + 1.expr();
-        let is_32bits = || 1.expr() - is_64bits.expr();
+        let is_64bits_f = |xc| xc * is_64bits.expr();
+        let is_32bits_f = |xc| xc * (1.expr() - is_64bits.expr());
 
         // For this constraints to work correctly, check that if negative is same than it must be zero.
         // To make this check you can see than constraint is like duplicated.
         // So both direct and negative version must be zero at the same time, if constrait substration is failing.
-        cb.require_zeros("check negatives, rules for 64 bits", vec![
-            (lhs.expr() - conv_64(lhs_neg.expr())) * is_64bits.expr() * lhs.expr(),
-            (lhs.expr() - conv_64(lhs_neg.expr())) * is_64bits.expr() * lhs_neg.expr(),
-            (rhs.expr() - conv_64(rhs_neg.expr())) * is_64bits.expr() * rhs.expr(),
-            (rhs.expr() - conv_64(rhs_neg.expr())) * is_64bits.expr() * rhs_neg.expr(),
-            (res.expr() - conv_64(res_neg.expr())) * is_64bits.expr() * res.expr(),
-            (res.expr() - conv_64(res_neg.expr())) * is_64bits.expr() * res_neg.expr(),
-            (aux1.expr() - conv_64(aux1_neg.expr())) * is_64bits.expr() * aux1.expr(),
-            (aux1.expr() - conv_64(aux1_neg.expr())) * is_64bits.expr() * aux1_neg.expr(),
-            (aux2.expr() - conv_64(aux2_neg.expr())) * is_64bits.expr() * aux2.expr(),
-            (aux2.expr() - conv_64(aux2_neg.expr())) * is_64bits.expr() * aux2_neg.expr(),
-            (aux3.expr() - conv_64(aux3_neg.expr())) * is_64bits.expr() * aux3.expr(),
-            (aux3.expr() - conv_64(aux3_neg.expr())) * is_64bits.expr() * aux3_neg.expr(),
-        ]);
-        cb.require_zeros("check negatives, rules for 32 bits", vec![
-            (lhs.expr() - conv_32(lhs_neg.expr())) * is_32bits() * lhs.expr(),
-            (lhs.expr() - conv_32(lhs_neg.expr())) * is_32bits() * lhs_neg.expr(),
-            (rhs.expr() - conv_32(rhs_neg.expr())) * is_32bits() * rhs.expr(),
-            (rhs.expr() - conv_32(rhs_neg.expr())) * is_32bits() * rhs_neg.expr(),
-            (res.expr() - conv_32(res_neg.expr())) * is_32bits() * res.expr(),
-            (res.expr() - conv_32(res_neg.expr())) * is_32bits() * res_neg.expr(),
-            (aux1.expr() - conv_32(aux1_neg.expr())) * is_32bits() * aux1.expr(),
-            (aux1.expr() - conv_32(aux1_neg.expr())) * is_32bits() * aux1_neg.expr(),
-            (aux2.expr() - conv_32(aux2_neg.expr())) * is_32bits() * aux2.expr(),
-            (aux2.expr() - conv_32(aux2_neg.expr())) * is_32bits() * aux2_neg.expr(),
-            (aux3.expr() - conv_32(aux3_neg.expr())) * is_32bits() * aux3.expr(),
-            (aux3.expr() - conv_32(aux3_neg.expr())) * is_32bits() * aux3_neg.expr(),
-        ]);
+        macro_rules! make_cnr_constraint { ($name:expr, $conv:expr, $f:expr) => {
+            cb.require_zeros($name, vec![
+                (lhs.expr() - $conv(lhs_neg.expr())) * lhs.expr(),
+                (lhs.expr() - $conv(lhs_neg.expr())) * lhs_neg.expr(),
+                (rhs.expr() - $conv(rhs_neg.expr())) * rhs.expr(),
+                (rhs.expr() - $conv(rhs_neg.expr())) * rhs_neg.expr(),
+                (res.expr() - $conv(res_neg.expr())) * res.expr(),
+                (res.expr() - $conv(res_neg.expr())) * res_neg.expr(),
+                (aux1.expr() - $conv(aux1_neg.expr())) * aux1.expr(),
+                (aux1.expr() - $conv(aux1_neg.expr())) * aux1_neg.expr(),
+                (aux2.expr() - $conv(aux2_neg.expr())) * aux2.expr(),
+                (aux2.expr() - $conv(aux2_neg.expr())) * aux2_neg.expr(),
+                (aux3.expr() - $conv(aux3_neg.expr())) * aux3.expr(),
+                (aux3.expr() - $conv(aux3_neg.expr())) * aux3_neg.expr(),
+            ].into_iter().map($f).collect());
+        }}
+        make_cnr_constraint!("check negatives, rules for 64 bits", conv_64, is_64bits_f);
+        make_cnr_constraint!("check negatives, rules for 32 bits", conv_32, is_32bits_f);
 
-        let pn_case = || div_rem_s_is_lhs_pos.expr() * (1.expr() - div_rem_s_is_rhs_pos.expr());
+        let pn_case = |xc| xc * div_rem_s_is_lhs_pos.expr() * (1.expr() - div_rem_s_is_rhs_pos.expr());
         cb.require_zeros("div_s/rem_s constraints pn case", vec![
             (lhs.expr() - rhs_neg.expr() * aux1_neg.expr() - aux2.expr())
-                * (is_rem_s.expr() + is_div_s.expr()) * pn_case(),
-            (aux3_neg.expr() - aux2.expr() - 1.expr() - rhs_neg.expr()) * (is_rem_s.expr() + is_div_s.expr()) * pn_case(),
-            (res.expr() - aux1.expr()) * is_div_s.expr() * pn_case(),
-            (res.expr() - aux2.expr()) * is_rem_s.expr() * pn_case(),
-        ]);
+                * (is_rem_s.expr() + is_div_s.expr()),
+            (aux3_neg.expr() - aux2.expr() - 1.expr() - rhs_neg.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (res.expr() - aux1.expr()) * is_div_s.expr(),
+            (res.expr() - aux2.expr()) * is_rem_s.expr(),
+        ].into_iter().map(pn_case).collect());
 
-        let np_case = || (1.expr() - div_rem_s_is_lhs_pos.expr()) * div_rem_s_is_rhs_pos.expr();
+        let np_case = |xc| xc * (1.expr() - div_rem_s_is_lhs_pos.expr()) * div_rem_s_is_rhs_pos.expr();
         cb.require_zeros("div_s/rem_s constraints np case", vec![
             (lhs_neg.expr() - rhs.expr() * aux1_neg.expr() - aux2_neg.expr())
-                * (is_rem_s.expr() + is_div_s.expr()) * np_case(),
-            (aux3_neg.expr() + aux2_neg.expr() - 1.expr() - rhs_neg.expr()) * (is_rem_s.expr() + is_div_s.expr()) * np_case(),
-            (res.expr() - aux1.expr()) * is_div_s.expr() * np_case(),
-            (res.expr() - aux2.expr()) * is_rem_s.expr() * np_case(),
-        ]);
+                * (is_rem_s.expr() + is_div_s.expr()),
+            (aux3_neg.expr() + aux2_neg.expr() - 1.expr() - rhs_neg.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (res.expr() - aux1.expr()) * is_div_s.expr(),
+            (res.expr() - aux2.expr()) * is_rem_s.expr(),
+        ].into_iter().map(np_case).collect());
 
-        let nn_case = || (1.expr() - div_rem_s_is_lhs_pos.expr()) * (1.expr() - div_rem_s_is_rhs_pos.expr());
+        let nn_case = |xc| xc * (1.expr() - div_rem_s_is_lhs_pos.expr()) * (1.expr() - div_rem_s_is_rhs_pos.expr());
         cb.require_zeros("div_s/rem_s constraints nn case", vec![
             (lhs_neg.expr() - rhs_neg.expr() * aux1.expr() - aux2_neg.expr())
-                * (is_rem_s.expr() + is_div_s.expr()) * nn_case(),
-            (aux3_neg.expr() + aux2_neg.expr() - 1.expr() - rhs_neg.expr()) * (is_rem_s.expr() + is_div_s.expr()) * nn_case(),
-            (res.expr() - aux1.expr()) * is_div_s.expr() * nn_case(),
-            (res.expr() - aux2.expr()) * is_rem_s.expr() * nn_case(),
-        ]);
+                * (is_rem_s.expr() + is_div_s.expr()),
+            (aux3_neg.expr() + aux2_neg.expr() - 1.expr() - rhs_neg.expr()) * (is_rem_s.expr() + is_div_s.expr()),
+            (res.expr() - aux1.expr()) * is_div_s.expr(),
+            (res.expr() - aux2.expr()) * is_rem_s.expr(),
+        ].into_iter().map(nn_case).collect());
 
         // constraint_builder.push(
         //     "binop: div_s/rem_s constraints common",
