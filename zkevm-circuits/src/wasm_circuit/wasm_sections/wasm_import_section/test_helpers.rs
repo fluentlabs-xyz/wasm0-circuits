@@ -73,17 +73,17 @@ mod test_helpers {
                 ImportSectionBodyItemDescriptor {
                     mod_name: "env".to_string(),
                     import_name: "_evm_address".to_string(),
-                    import_desc: ImportDesc { val_type: ImportDescType::TypeImportDescType, val: 2, },
+                    import_desc: ImportDesc { val_type: ImportDescType::Type, val: 2, },
                 },
                 ImportSectionBodyItemDescriptor {
                     mod_name: "env".to_string(),
                     import_name: "_evm_balance".to_string(),
-                    import_desc: ImportDesc { val_type: ImportDescType::TypeImportDescType, val: 3, },
+                    import_desc: ImportDesc { val_type: ImportDescType::Type, val: 3, },
                 },
                 ImportSectionBodyItemDescriptor {
                     mod_name: "env".to_string(),
                     import_name: "_evm_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func".to_string(),
-                    import_desc: ImportDesc { val_type: ImportDescType::TypeImportDescType, val: 5, },
+                    import_desc: ImportDesc { val_type: ImportDescType::Type, val: 5, },
                 },
             ],
         };

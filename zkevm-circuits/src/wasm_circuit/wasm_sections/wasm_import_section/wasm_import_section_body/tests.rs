@@ -107,7 +107,6 @@ mod wasm_import_section_body_tests {
     use rand::Rng;
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
-    use crate::wasm_circuit::wasm_sections::consts::NumType;
     use crate::wasm_circuit::wasm_sections::wasm_import_section::test_helpers::{generate_import_section_body_bytecode, ImportDesc, ImportSectionBodyDescriptor, ImportSectionBodyItemDescriptor};
     use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section_body::consts::ImportDescType;
     use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section_body::tests::TestCircuit;
@@ -134,17 +133,17 @@ mod wasm_import_section_body_tests {
                 ImportSectionBodyItemDescriptor {
                     mod_name: "env".to_string(),
                     import_name: "_evm_address".to_string(),
-                    import_desc: ImportDesc { val_type: ImportDescType::TypeImportDescType, val: 2, },
+                    import_desc: ImportDesc { val_type: ImportDescType::Type, val: 2, },
                 },
                 ImportSectionBodyItemDescriptor {
                     mod_name: "env".to_string(),
                     import_name: "_evm_balance".to_string(),
-                    import_desc: ImportDesc { val_type: ImportDescType::TypeImportDescType, val: 3, },
+                    import_desc: ImportDesc { val_type: ImportDescType::Type, val: 3, },
                 },
                 ImportSectionBodyItemDescriptor {
                     mod_name: "env".to_string(),
                     import_name: "_evm_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func".to_string(),
-                    import_desc: ImportDesc { val_type: ImportDescType::TypeImportDescType, val: 5, },
+                    import_desc: ImportDesc { val_type: ImportDescType::Type, val: 5, },
                 },
             ],
         };

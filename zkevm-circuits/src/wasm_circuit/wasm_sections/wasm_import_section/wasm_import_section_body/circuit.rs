@@ -16,10 +16,8 @@ use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_com
 use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::wasm_sections::consts::NumType;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
-use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section_body::consts::ImportDescType::TypeImportDescType;
-use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::consts::Type::FuncType;
+use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section_body::consts::ImportDescType;
 
 #[derive(Debug, Clone)]
 pub struct WasmImportSectionBodyConfig<F: Field> {
@@ -126,8 +124,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 }
             );
 
-            // is_items_count+ -> is_item+ (is_mod_name_len+ -> is_mod_name* -> is_import_name_len+ -> is_import_name* -> is_importdesc_type(1) -> is_importdesc_val+
-            // importdesc: (0x0 -> typeidx | 0x1 -> tabletype | 0x2 -> memtype | 0x3 -> globaltype))
+            // is_items_count+ -> is_item+ (is_mod_name_len+ -> is_mod_name* -> is_import_name_len+ -> is_import_name* -> is_importdesc_type{1} -> is_importdesc_val+
             configure_check_for_transition(
                 &mut cb,
                 vc,
@@ -179,7 +176,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_import_name_len+ -> is_import_name* -> is_importdesc_type(1)",
+                "check next: is_import_name_len+ -> is_import_name* -> is_importdesc_type{1}",
                 is_import_name_len_expr.clone(),
                 true,
                 &[is_import_name_len, is_import_name, is_importdesc_type, ],
@@ -195,7 +192,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_import_name* -> is_importdesc_type(1)",
+                "check next: is_import_name* -> is_importdesc_type{1}",
                 is_import_name_expr.clone(),
                 true,
                 &[is_import_name, is_importdesc_type, ],
@@ -203,7 +200,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_import_name_len+ -> is_import_name* -> is_importdesc_type(1)",
+                "check prev: is_import_name_len+ -> is_import_name* -> is_importdesc_type{1}",
                 is_importdesc_type_expr.clone(),
                 false,
                 &[is_import_name_len, is_import_name, is_importdesc_type, ],
@@ -211,7 +208,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_importdesc_type(1) -> is_importdesc_val+",
+                "check next: is_importdesc_type{1} -> is_importdesc_val+",
                 is_importdesc_type_expr.clone(),
                 true,
                 &[is_importdesc_val, ],
@@ -219,7 +216,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_importdesc_type(1) -> is_importdesc_val+",
+                "check prev: is_importdesc_type{1} -> is_importdesc_val+",
                 is_importdesc_val_expr.clone(),
                 false,
                 &[is_importdesc_type, is_importdesc_val, ],
@@ -228,10 +225,14 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             cb.condition(
                 is_importdesc_type_expr.clone(),
                 |bcb| {
-                    bcb.require_zero(
+                    bcb.require_in_set(
                         "is_importdesc_type has valid value",
                         // TODO add support for other types
-                        byte_value_expr.clone() - (TypeImportDescType as i32).expr(),
+                        byte_value_expr.clone(),
+                        vec![
+                            (ImportDescType::Type as i32).expr(),
+                            (ImportDescType::Global as i32).expr(),
+                        ]
                     )
                 }
             );

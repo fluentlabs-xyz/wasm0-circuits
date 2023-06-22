@@ -1,5 +1,4 @@
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_convert;
-use crate::wasm_circuit::wasm_sections::consts::{LimitsType, NumType};
 
 #[derive(Copy, Clone)]
 pub struct WasmCodeSectionBodyFuncDescriptor {
@@ -65,7 +64,6 @@ pub fn generate_wasm_code_section_body_bytecode(descriptor: &WasmCodeSectionBody
 
 #[cfg(test)]
 mod test_helpers {
-    use crate::wasm_circuit::wasm_sections::consts::{LimitsType, NumType};
     use crate::wasm_circuit::wasm_sections::wasm_code_section::test_helpers::{generate_wasm_code_section_body_bytecode, WasmCodeSectionBodyDescriptor, WasmCodeSectionBodyFuncDescriptor};
 
     #[test]

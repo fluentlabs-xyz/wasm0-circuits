@@ -11,13 +11,13 @@ use log::debug;
 use eth_types::Field;
 use gadgets::util::{Expr, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::consts::NumericInstruction::I32Const;
+use crate::wasm_circuit::consts::{MemSegmentType, WASM_EXPR_DELIMITER};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::wasm_sections::consts::{LimitsType, MemSegmentType};
-use crate::wasm_circuit::wasm_sections::consts::NumericInstruction::I32Const;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 
 #[derive(Debug, Clone)]
@@ -27,7 +27,7 @@ pub struct WasmDataSectionBodyConfig<F: Field> {
     pub is_mem_segment_type: Column<Fixed>,
     pub is_mem_segment_size_opcode: Column<Fixed>,
     pub is_mem_segment_size: Column<Fixed>,
-    pub is_magic_delimiter: Column<Fixed>,
+    pub is_expr_delimiter: Column<Fixed>,
     pub is_mem_segment_len: Column<Fixed>,
     pub is_mem_segment_bytes: Column<Fixed>,
 
@@ -65,7 +65,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         let is_mem_segment_type = cs.fixed_column();
         let is_mem_segment_size_opcode = cs.fixed_column();
         let is_mem_segment_size = cs.fixed_column();
-        let is_magic_delimiter = cs.fixed_column();
+        let is_expr_delimiter = cs.fixed_column();
         let is_mem_segment_len = cs.fixed_column();
         let is_mem_segment_bytes = cs.fixed_column();
 
@@ -77,7 +77,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             let is_mem_segment_type_expr = vc.query_fixed(is_mem_segment_type, Rotation::cur());
             let is_mem_segment_size_opcode_expr = vc.query_fixed(is_mem_segment_size_opcode, Rotation::cur());
             let is_mem_segment_size_expr = vc.query_fixed(is_mem_segment_size, Rotation::cur());
-            let is_magic_delimiter_expr = vc.query_fixed(is_magic_delimiter, Rotation::cur());
+            let is_expr_delimiter_expr = vc.query_fixed(is_expr_delimiter, Rotation::cur());
             let is_mem_segment_len_expr = vc.query_fixed(is_mem_segment_len, Rotation::cur());
             let is_mem_segment_bytes_expr = vc.query_fixed(is_mem_segment_bytes, Rotation::cur());
 
@@ -88,7 +88,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             cb.require_boolean("is_mem_segment_type is boolean", is_mem_segment_type_expr.clone());
             cb.require_boolean("is_mem_segment_size_opcode is boolean", is_mem_segment_size_opcode_expr.clone());
             cb.require_boolean("is_mem_segment_size is boolean", is_mem_segment_size_expr.clone());
-            cb.require_boolean("is_magic_delimiter is boolean", is_magic_delimiter_expr.clone());
+            cb.require_boolean("is_expr_delimiter is boolean", is_expr_delimiter_expr.clone());
             cb.require_boolean("is_mem_segment_len is boolean", is_mem_segment_len_expr.clone());
             cb.require_boolean("is_mem_segment_bytes is boolean", is_mem_segment_bytes_expr.clone());
 
@@ -98,7 +98,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     + is_mem_segment_type_expr.clone()
                     + is_mem_segment_size_opcode_expr.clone()
                     + is_mem_segment_size_expr.clone()
-                    + is_magic_delimiter_expr.clone()
+                    + is_expr_delimiter_expr.clone()
                     + is_mem_segment_len_expr.clone()
                     + is_mem_segment_bytes_expr.clone()
                 ,
@@ -120,11 +120,11 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 }
             );
 
-            // is_items_count+ -> item+ (is_mem_segment_type(1) -> is_mem_segment_size_opcode(1) -> is_mem_segment_size+ -> is_magic_delimiter(1) -> is_mem_segment_len+ -> is_mem_segment_bytes+)
+            // is_items_count+ -> item+ (is_mem_segment_type{1} -> is_mem_segment_size_opcode{1} -> is_mem_segment_size+ -> is_expr_delimiter{1} -> is_mem_segment_len+ -> is_mem_segment_bytes+)
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_items_count+ -> item+ (is_mem_segment_type(1) ...",
+                "check next: is_items_count+ -> item+ (is_mem_segment_type{1} ...",
                 is_items_count_expr.clone(),
                 true,
                 &[is_items_count, is_mem_segment_type],
@@ -132,7 +132,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_items_count+ -> item+ (is_mem_segment_type(1) ...",
+                "check prev: is_items_count+ -> item+ (is_mem_segment_type{1} ...",
                 is_mem_segment_type_expr.clone(),
                 false,
                 &[is_items_count, is_mem_segment_bytes, is_mem_segment_type],
@@ -140,7 +140,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_mem_segment_type(1) -> is_mem_segment_size_opcode(1)",
+                "check next: is_mem_segment_type{1} -> is_mem_segment_size_opcode{1}",
                 is_mem_segment_type_expr.clone(),
                 true,
                 &[is_mem_segment_size_opcode],
@@ -148,7 +148,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_mem_segment_type(1) -> is_mem_segment_size_opcode(1)",
+                "check prev: is_mem_segment_type{1} -> is_mem_segment_size_opcode{1}",
                 is_mem_segment_size_opcode_expr.clone(),
                 false,
                 &[is_mem_segment_type],
@@ -156,7 +156,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_mem_segment_size_opcode(1) -> is_mem_segment_size+",
+                "check next: is_mem_segment_size_opcode{1} -> is_mem_segment_size+",
                 is_mem_segment_size_opcode_expr.clone(),
                 true,
                 &[is_mem_segment_size],
@@ -164,7 +164,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_mem_segment_size_opcode(1) -> is_mem_segment_size+",
+                "check prev: is_mem_segment_size_opcode{1} -> is_mem_segment_size+",
                 is_mem_segment_size_expr.clone(),
                 false,
                 &[is_mem_segment_size_opcode, is_mem_segment_size],
@@ -172,34 +172,34 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_mem_segment_size+ -> is_magic_delimiter(1)",
+                "check next: is_mem_segment_size+ -> is_expr_delimiter{1}",
                 is_mem_segment_size_expr.clone(),
                 true,
-                &[is_mem_segment_size, is_magic_delimiter],
+                &[is_mem_segment_size, is_expr_delimiter],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_mem_segment_size+ -> is_magic_delimiter(1)",
-                is_magic_delimiter_expr.clone(),
+                "check prev: is_mem_segment_size+ -> is_expr_delimiter{1}",
+                is_expr_delimiter_expr.clone(),
                 false,
                 &[is_mem_segment_size],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_magic_delimiter(1) -> is_mem_segment_len+",
-                is_magic_delimiter_expr.clone(),
+                "check next: is_expr_delimiter{1} -> is_mem_segment_len+",
+                is_expr_delimiter_expr.clone(),
                 true,
                 &[is_mem_segment_len],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_magic_delimiter(1) -> is_mem_segment_len+",
+                "check prev: is_expr_delimiter{1} -> is_mem_segment_len+",
                 is_mem_segment_len_expr.clone(),
                 false,
-                &[is_magic_delimiter, is_mem_segment_len],
+                &[is_expr_delimiter, is_mem_segment_len],
             );
             configure_check_for_transition(
                 &mut cb,
@@ -219,13 +219,12 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             );
 
             cb.condition(
-                is_magic_delimiter_expr.clone(),
+                is_expr_delimiter_expr.clone(),
                 |bcb| {
                     bcb.require_equal(
-                        "is_magic_delimiter -> byte value is 0xB",
+                        "is_expr_delimiter -> byte value is 0xB",
                         byte_val_expr.clone(),
-                        // TODO is this number correct
-                        0xB.expr(),
+                        WASM_EXPR_DELIMITER.expr(),
                     )
                 }
             );
@@ -254,7 +253,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         byte_val_expr.clone(),
                         vec![
                             (I32Const as i32).expr(),
-                            // TODO add support for other types
+                            // TODO add support for other types?
                         ],
                     )
                 }
@@ -269,7 +268,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             is_mem_segment_type,
             is_mem_segment_size_opcode,
             is_mem_segment_size,
-            is_magic_delimiter,
+            is_expr_delimiter,
             is_mem_segment_len,
             is_mem_segment_bytes,
             leb128_chip,
@@ -311,7 +310,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         is_mem_segment_type: bool,
         is_mem_segment_size_opcode: bool,
         is_mem_segment_size: bool,
-        is_magic_delimiter: bool,
+        is_expr_delimiter: bool,
         is_mem_segment_len: bool,
         is_mem_segment_bytes: bool,
         leb_byte_rel_offset: usize,
@@ -319,16 +318,16 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         leb_sn: u64,
         leb_sn_recovered_at_pos: u64,
     ) {
-        let q_enable = is_items_count || is_mem_segment_type || is_mem_segment_size_opcode || is_mem_segment_size || is_magic_delimiter || is_mem_segment_len || is_mem_segment_bytes;
+        let q_enable = is_items_count || is_mem_segment_type || is_mem_segment_size_opcode || is_mem_segment_size || is_expr_delimiter || is_mem_segment_len || is_mem_segment_bytes;
         debug!(
-            "offset {} q_enable {}  is_items_count {} is_mem_segment_type {} is_mem_segment_size_opcode {} is_mem_segment_size {} is_magic_delimiter {} is_mem_segment_len {} is_mem_segment_bytes {}",
+            "offset {} q_enable {}  is_items_count {} is_mem_segment_type {} is_mem_segment_size_opcode {} is_mem_segment_size {} is_expr_delimiter {} is_mem_segment_len {} is_mem_segment_bytes {}",
             offset,
             q_enable,
             is_items_count,
             is_mem_segment_type,
             is_mem_segment_size_opcode,
             is_mem_segment_size,
-            is_magic_delimiter,
+            is_expr_delimiter,
             is_mem_segment_len,
             is_mem_segment_bytes,
         );
@@ -380,10 +379,10 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             || Value::known(F::from(is_mem_segment_size as u64)),
         ).unwrap();
         region.assign_fixed(
-            || format!("assign 'is_magic_delimiter' val {} at {}", is_magic_delimiter, offset),
-            self.config.is_magic_delimiter,
+            || format!("assign 'is_expr_delimiter' val {} at {}", is_expr_delimiter, offset),
+            self.config.is_expr_delimiter,
             offset,
-            || Value::known(F::from(is_magic_delimiter as u64)),
+            || Value::known(F::from(is_expr_delimiter as u64)),
         ).unwrap();
         region.assign_fixed(
             || format!("assign 'is_mem_segment_len' val {} at {}", is_mem_segment_len, offset),
@@ -470,7 +469,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         offset + len
     }
 
-    /// TODO is_items_count+ -> item+ (is_mem_segment_type(1) -> is_mem_segment_size_opcode(1) -> is_mem_segment_size+ -> is_magic_delimiter(1) -> is_mem_segment_len+ -> is_mem_segment_bytes+)
+    /// TODO is_items_count+ -> item+ (is_mem_segment_type{1} -> is_mem_segment_size_opcode{1} -> is_mem_segment_size+ -> is_expr_delimiter{1} -> is_mem_segment_len+ -> is_mem_segment_bytes+)
     /// returns new offset
     pub fn assign_auto(
         &self,
@@ -494,7 +493,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
 
         for _item_index in 0..items_count {
 
-            // is_mem_segment_type(1)
+            // is_mem_segment_type{1}
             self.assign(
                 region,
                 offset,
@@ -512,7 +511,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             );
             offset += 1;
 
-            // is_mem_segment_size_opcode(1)
+            // is_mem_segment_size_opcode{1}
             self.assign(
                 region,
                 offset,
@@ -542,7 +541,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             debug!("offset {} mem_segment_size {} mem_segment_size_leb_len {}", offset, mem_segment_size, mem_segment_size_leb_len);
             offset += mem_segment_size_leb_len;
 
-            // TODO is_magic_delimiter(1)
+            // is_expr_delimiter{1}
             self.assign(
                 region,
                 offset,

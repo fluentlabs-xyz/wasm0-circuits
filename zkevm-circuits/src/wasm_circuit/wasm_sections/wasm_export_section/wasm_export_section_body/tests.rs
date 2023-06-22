@@ -93,7 +93,6 @@ mod wasm_export_section_body_tests {
     use log::debug;
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
-    use crate::wasm_circuit::wasm_sections::consts::LimitsType;
     use crate::wasm_circuit::wasm_sections::wasm_export_section::test_helpers::{generate_wasm_export_section_body_bytecode, WasmExportSectionBodyDescriptor, WasmExportSectionBodyItemDescriptor};
     use crate::wasm_circuit::wasm_sections::wasm_export_section::wasm_export_section_body::consts::ExportDesc;
     use crate::wasm_circuit::wasm_sections::wasm_export_section::wasm_export_section_body::tests::TestCircuit;

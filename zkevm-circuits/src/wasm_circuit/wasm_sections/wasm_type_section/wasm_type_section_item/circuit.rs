@@ -9,12 +9,12 @@ use halo2_proofs::poly::Rotation;
 use eth_types::Field;
 use gadgets::util::{Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::consts::NumType;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::wasm_sections::consts::NumType;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::consts::Type::FuncType;
 
@@ -126,11 +126,11 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 1.expr(),
             );
 
-            // is_type(1) -> is_input_count+ -> is_input_type* -> is_output_count+ -> is_output_type*
+            // is_type{1} -> is_input_count+ -> is_input_type* -> is_output_count+ -> is_output_type*
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_type(1) -> is_input_count+",
+                "check next: is_type{1} -> is_input_count+",
                 is_type_expr.clone(),
                 true,
                 &[is_input_count, ],
@@ -138,7 +138,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_type(1) -> is_input_count+",
+                "check prev: is_type{1} -> is_input_count+",
                 is_input_count_expr.clone(),
                 false,
                 &[is_type, is_input_count, ],

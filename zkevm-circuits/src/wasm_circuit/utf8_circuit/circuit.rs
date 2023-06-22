@@ -139,11 +139,11 @@ impl<F: Field> UTF8Chip<F>
             //     }
             // );
             //
-            // // transition checks: is_first_byte(1) -> q_enable* -> is_last_byte(1)
+            // // transition checks: is_first_byte{1} -> q_enable* -> is_last_byte{1}
             // configure_check_for_transition(
             //     &mut cb,
             //     vc,
-            //     "check next: is_first_byte(1) -> q_enable* -> is_last_byte(1)",
+            //     "check next: is_first_byte{1} -> q_enable* -> is_last_byte{1}",
             //     and::expr([
             //         is_first_byte_expr.clone(),
             //         not::expr(is_last_byte_expr.clone()),
@@ -154,7 +154,7 @@ impl<F: Field> UTF8Chip<F>
             // configure_check_for_transition(
             //     &mut cb,
             //     vc,
-            //     "check prev: is_first_byte(1) -> q_enable*",
+            //     "check prev: is_first_byte{1} -> q_enable*",
             //     and::expr([
             //         q_enable_expr.clone(),
             //         not::expr(is_first_byte_expr.clone()),
@@ -165,7 +165,7 @@ impl<F: Field> UTF8Chip<F>
             // configure_check_for_transition(
             //     &mut cb,
             //     vc,
-            //     "check next: q_enable* -> is_last_byte(1)",
+            //     "check next: q_enable* -> is_last_byte{1}",
             //     and::expr([
             //         q_enable_expr.clone(),
             //         not::expr(is_last_byte_expr.clone()),
@@ -176,7 +176,7 @@ impl<F: Field> UTF8Chip<F>
             // configure_check_for_transition(
             //     &mut cb,
             //     vc,
-            //     "check prev: is_first_byte(1) -> q_enable* -> is_last_byte(1)",
+            //     "check prev: is_first_byte{1} -> q_enable* -> is_last_byte{1}",
             //     and::expr([
             //         not::expr(is_first_byte_expr.clone()),
             //         is_last_byte_expr.clone(),

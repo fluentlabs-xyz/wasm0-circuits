@@ -11,12 +11,12 @@ use log::debug;
 use eth_types::Field;
 use gadgets::util::{Expr, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::consts::LimitsType;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::wasm_sections::consts::LimitsType;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 
 #[derive(Debug, Clone)]
@@ -95,11 +95,11 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 }
             );
 
-            // is_items_count+ -> is_limit_type(1) -> is_limit_type_val+
+            // is_items_count+ -> is_limit_type{1} -> is_limit_type_val+
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_items_count+ -> is_limit_type(1)",
+                "check next: is_items_count+ -> is_limit_type{1}",
                 is_items_count_expr.clone(),
                 true,
                 &[is_items_count, is_limit_type, ],
@@ -107,7 +107,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_items_count+ -> is_limit_type(1)",
+                "check prev: is_items_count+ -> is_limit_type{1}",
                 is_limit_type_expr.clone(),
                 false,
                 &[is_items_count, ],
@@ -115,7 +115,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_limit_type(1) -> is_limit_type_val+",
+                "check next: is_limit_type{1} -> is_limit_type_val+",
                 is_limit_type_expr.clone(),
                 true,
                 &[is_limit_type_val, ],
@@ -123,7 +123,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_limit_type(1) -> is_limit_type_val+",
+                "check prev: is_limit_type{1} -> is_limit_type_val+",
                 is_limit_type_val_expr.clone(),
                 false,
                 &[is_limit_type, is_limit_type_val, ],

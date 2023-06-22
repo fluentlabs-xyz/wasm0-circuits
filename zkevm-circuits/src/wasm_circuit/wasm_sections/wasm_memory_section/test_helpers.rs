@@ -1,5 +1,5 @@
+use crate::wasm_circuit::consts::LimitsType;
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_convert;
-use crate::wasm_circuit::wasm_sections::consts::LimitsType;
 
 #[derive(Clone)]
 pub struct WasmMemorySectionBodyItemLimitsDescriptor {
@@ -47,7 +47,7 @@ pub fn generate_wasm_memory_section_body_bytecode(descriptor: &WasmMemorySection
 
 #[cfg(test)]
 mod test_helpers {
-    use crate::wasm_circuit::wasm_sections::consts::LimitsType;
+    use crate::wasm_circuit::consts::LimitsType;
     use crate::wasm_circuit::wasm_sections::wasm_memory_section::test_helpers::{generate_wasm_memory_section_body_bytecode, WasmMemorySectionBodyDescriptor, WasmMemorySectionBodyItemDescriptor, WasmMemorySectionBodyItemLimitsDescriptor};
 
     #[test]

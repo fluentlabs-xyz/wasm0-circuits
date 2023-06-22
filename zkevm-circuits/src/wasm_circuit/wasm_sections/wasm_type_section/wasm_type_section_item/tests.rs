@@ -91,7 +91,7 @@ mod wasm_type_section_item_tests {
     use rand::Rng;
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
-    use crate::wasm_circuit::wasm_sections::consts::NumType;
+    use crate::wasm_circuit::consts::NumType;
     use crate::wasm_circuit::wasm_sections::wasm_type_section::test_helpers::generate_type_section_functype_bytecode;
     use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::tests::TestCircuit;
 

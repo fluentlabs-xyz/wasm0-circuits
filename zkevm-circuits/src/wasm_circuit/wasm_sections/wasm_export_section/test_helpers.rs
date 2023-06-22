@@ -1,5 +1,4 @@
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_convert;
-use crate::wasm_circuit::wasm_sections::consts::LimitsType;
 use crate::wasm_circuit::wasm_sections::wasm_export_section::wasm_export_section_body::consts::ExportDesc;
 
 #[derive(Clone)]
@@ -39,7 +38,6 @@ pub fn generate_wasm_export_section_body_bytecode(descriptor: &WasmExportSection
 
 #[cfg(test)]
 mod test_helpers {
-    use crate::wasm_circuit::wasm_sections::consts::LimitsType;
     use crate::wasm_circuit::wasm_sections::wasm_export_section::test_helpers::{generate_wasm_export_section_body_bytecode, WasmExportSectionBodyDescriptor, WasmExportSectionBodyItemDescriptor};
     use crate::wasm_circuit::wasm_sections::wasm_export_section::wasm_export_section_body::consts::ExportDesc;
 

@@ -16,7 +16,6 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::wasm_sections::consts::LimitsType;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 
 #[derive(Debug, Clone)]
@@ -225,10 +224,10 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         ).unwrap();
         // is_funcs_count,
         region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
-            self.config.q_enable,
+            || format!("assign 'is_funcs_count' val {} at {}", is_funcs_count, offset),
+            self.config.is_funcs_count,
             offset,
-            || Value::known(F::from(q_enable as u64)),
+            || Value::known(F::from(is_funcs_count as u64)),
         ).unwrap();
         region.assign_fixed(
             || format!("assign 'is_func_body_len' val {} at {}", is_func_body_len, offset),

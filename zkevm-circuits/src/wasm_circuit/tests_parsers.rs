@@ -43,11 +43,13 @@ mod wasm_parsers_tests {
     pub fn test_print_parsed_file_contents() {
         // let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
         let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
-        println!("PARSED {}", path_to_file);
-        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
-        let mut wasm_binary = wat2wasm(data.clone()).unwrap();
+        let wat: Vec<u8> = std::fs::read(path_to_file).unwrap();
+        println!("SOURCE WAT: {}", std::str::from_utf8(wat.as_slice()).unwrap());
+        let mut wasm_binary = wat2wasm(wat.clone()).unwrap();
 
-        let data = wat2wasm(&data.clone()).unwrap();
+        let data = wat2wasm(&wat.clone()).unwrap();
+        println!("");
+        println!("PARSED {}:", path_to_file);
         println!("data len: {}", data.len());
         println!("data raw (hex): {:x?}", data);
         println!("data raw (decimal): {:?}", data);
@@ -131,6 +133,15 @@ mod wasm_parsers_tests {
                 }
                 Kind::Start => {
                     println!("---Kind::Start:");
+                    let mut bytes = Vec::<u8>::new();
+                    s.encode(&mut bytes).unwrap();
+                    println!("section len: {:?}", compute_section_len(&bytes));
+                    println!("raw (hex): {:x?}", bytes);
+                    println!("raw (decimal): {:?}", bytes);
+                    println!("{:#?}", s);
+                },
+                Kind::Global => {
+                    println!("---Kind::Global:");
                     let mut bytes = Vec::<u8>::new();
                     s.encode(&mut bytes).unwrap();
                     println!("section len: {:?}", compute_section_len(&bytes));

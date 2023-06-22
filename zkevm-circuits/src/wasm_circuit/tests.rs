@@ -137,6 +137,11 @@ mod wasm_circuit_tests {
     #[test]
     pub fn string_to_hex_bytes_test() {
         let strings = [
+            "g1",
+            "g2",
+            "g3",
+            "js",
+            "global",
             "Hello, World",
             "none",
             "\0asm",

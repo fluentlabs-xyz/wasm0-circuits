@@ -93,7 +93,7 @@ mod wasm_memory_section_body_tests {
     use log::debug;
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
-    use crate::wasm_circuit::wasm_sections::consts::LimitsType;
+    use crate::wasm_circuit::consts::LimitsType;
     use crate::wasm_circuit::wasm_sections::wasm_memory_section::test_helpers::{generate_wasm_memory_section_body_bytecode, WasmMemorySectionBodyDescriptor, WasmMemorySectionBodyItemDescriptor, WasmMemorySectionBodyItemLimitsDescriptor};
     use crate::wasm_circuit::wasm_sections::wasm_memory_section::wasm_memory_section_body::tests::TestCircuit;
 

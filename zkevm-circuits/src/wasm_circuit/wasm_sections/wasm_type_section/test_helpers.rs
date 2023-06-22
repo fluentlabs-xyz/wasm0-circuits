@@ -1,6 +1,6 @@
 use rand::Rng;
+use crate::wasm_circuit::consts::NumType;
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_convert;
-use crate::wasm_circuit::wasm_sections::consts::NumType;
 use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::consts::Type::FuncType;
 
 // https://webassembly.github.io/spec/core/binary/types.html#binary-functype
