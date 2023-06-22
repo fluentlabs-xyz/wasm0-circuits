@@ -246,7 +246,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 is_expr_delimiter_expr.clone(),
                 |bcb| {
                     bcb.require_equal(
-                        "is_expr_delimiter -> WASM_EXPR_DELIMITER",
+                        "is_expr_delimiter -> byte value == WASM_EXPR_DELIMITER",
                         byte_val_expr.clone(),
                         WASM_EXPR_DELIMITER.expr(),
                     )
