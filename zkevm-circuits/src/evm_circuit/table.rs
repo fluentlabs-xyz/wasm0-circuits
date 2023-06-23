@@ -29,6 +29,7 @@ pub enum FixedTableTag {
     Pow2,
     ConstantGasCost,
     PrecompileInfo,
+    Popcnt,
 }
 impl_expr!(FixedTableTag);
 
@@ -129,6 +130,9 @@ impl FixedTableTag {
                     F::from(precompile.base_gas_cost().0),
                 ]
             })),
+            Self::Popcnt => {
+                Box::new((0..256).map(move |arg| [tag, F::from(arg), F::zero(), F::from(bitintr::Popcnt::popcnt(arg))]))
+            }
         }
     }
 }

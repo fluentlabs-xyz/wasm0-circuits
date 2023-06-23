@@ -492,6 +492,8 @@ impl Bytecode {
             OpcodeId::I64Ctz => Instruction::I64Ctz,
             OpcodeId::I32Clz => Instruction::I32Clz,
             OpcodeId::I64Clz => Instruction::I64Clz,
+            OpcodeId::I32Popcnt => Instruction::I32Popcnt,
+            OpcodeId::I64Popcnt => Instruction::I64Popcnt,
             OpcodeId::I32Eqz => Instruction::I32Eqz,
             OpcodeId::I64Eqz => Instruction::I64Eqz,
             OpcodeId::I32WrapI64 => Instruction::I32WrapI64,
