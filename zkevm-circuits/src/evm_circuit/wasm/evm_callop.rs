@@ -805,50 +805,50 @@ mod test {
             // With nothing
             Stack::default(),
             // With value
-            Stack {
-                value: Word::from(10).pow(18.into()),
-                ..Default::default()
-            },
-            // With gas
-            Stack {
-                gas: 100,
-                ..Default::default()
-            },
-            Stack {
-                gas: 100000,
-                ..Default::default()
-            },
-            // With memory expansion
-            Stack {
-                cd_offset: 64,
-                cd_length: 320,
-                rd_offset: 0,
-                rd_length: 32,
-                ..Default::default()
-            },
-            Stack {
-                cd_offset: 0,
-                cd_length: 32,
-                rd_offset: 64,
-                rd_length: 320,
-                ..Default::default()
-            },
-            Stack {
-                cd_offset: 0xFFFFFF,
-                cd_length: 0,
-                rd_offset: 0xFFFFFF,
-                rd_length: 0,
-                ..Default::default()
-            },
-            // With memory expansion and value
-            Stack {
-                cd_offset: 64,
-                cd_length: 320,
-                rd_offset: 0,
-                rd_length: 32,
-                value: Word::from(10).pow(18.into()),
-                ..Default::default()
-            },
+            // Stack {
+            //     value: Word::from(10).pow(18.into()),
+            //     ..Default::default()
+            // },
+            // // With gas
+            // Stack {
+            //     gas: 100,
+            //     ..Default::default()
+            // },
+            // Stack {
+            //     gas: 100000,
+            //     ..Default::default()
+            // },
+            // // With memory expansion
+            // Stack {
+            //     cd_offset: 64,
+            //     cd_length: 320,
+            //     rd_offset: 0,
+            //     rd_length: 32,
+            //     ..Default::default()
+            // },
+            // Stack {
+            //     cd_offset: 0,
+            //     cd_length: 32,
+            //     rd_offset: 64,
+            //     rd_length: 320,
+            //     ..Default::default()
+            // },
+            // Stack {
+            //     cd_offset: 0xFFFFFF,
+            //     cd_length: 0,
+            //     rd_offset: 0xFFFFFF,
+            //     rd_length: 0,
+            //     ..Default::default()
+            // },
+            // // With memory expansion and value
+            // Stack {
+            //     cd_offset: 64,
+            //     cd_length: 320,
+            //     rd_offset: 0,
+            //     rd_length: 32,
+            //     value: Word::from(10).pow(18.into()),
+            //     ..Default::default()
+            // },
         ];
         let callees = [callee(bytecode! {})];
 

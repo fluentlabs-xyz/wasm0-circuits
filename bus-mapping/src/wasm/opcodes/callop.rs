@@ -204,12 +204,11 @@ impl<const WITH_VALUE: bool> Opcode for CallOpcode<WITH_VALUE> {
 
         // Calculate next_memory_word_size and callee_gas_left manually in case
         // there isn't next geth_step (e.g. callee doesn't have code).
-        debug_assert_eq!(exec_step.memory_size % 32, 0);
-        let curr_memory_word_size = (exec_step.memory_size as u64) / 32;
+        let curr_memory_word_size = (exec_step.memory_size as u64) / 0x10000;
         let next_memory_word_size = [
             curr_memory_word_size,
-            (call.call_data_offset + call.call_data_length + 31) / 32,
-            (call.return_data_offset + call.return_data_length + 31) / 32,
+            (call.call_data_offset + call.call_data_length + 0xffff) / 0x10000,
+            (call.return_data_offset + call.return_data_length + 0xffff) / 0x10000,
         ]
         .into_iter()
         .max()
@@ -272,7 +271,7 @@ impl<const WITH_VALUE: bool> Opcode for CallOpcode<WITH_VALUE> {
             );
         }
 
-        match (!is_precheck_ok, is_precompile, is_empty_code_hash) {
+        let res = match (!is_precheck_ok, is_precompile, is_empty_code_hash) {
             // 1. Call to precompiled.
             (false, true, _) => {
                 let code_address = code_address.unwrap();
@@ -608,7 +607,12 @@ impl<const WITH_VALUE: bool> Opcode for CallOpcode<WITH_VALUE> {
                 state.handle_return(&mut exec_step, geth_steps, false)?;
                 Ok(vec![exec_step])
             } //
-        }
+        };
+
+        let caller_ctx_mut = state.call_ctx_mut()?;
+        caller_ctx_mut.memory = geth_steps[1].global_memory.clone();
+
+        res
     }
 }
 

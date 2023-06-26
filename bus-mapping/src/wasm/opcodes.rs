@@ -128,28 +128,6 @@ mod wasm_break;
 /// of the [`OpcodeId`] it contains.
 pub trait Opcode: Debug {
 
-    fn gen_associated_ops2(
-        state: &mut CircuitInputStateRef,
-        geth_steps: &[GethExecStep],
-    ) -> Result<Vec<ExecStep>, Error> {
-        let mut geth_steps = geth_steps.to_vec();
-        let mut step = &mut geth_steps[0];
-        let reverse_stack_input = match step.op {
-            OpcodeId::LOG0 => 2,
-            OpcodeId::LOG1 => 3,
-            OpcodeId::LOG2 => 4,
-            OpcodeId::LOG3 => 5,
-            OpcodeId::LOG4 => 6,
-            _ => 0,
-        };
-        if reverse_stack_input > 0 {
-            step.stack.reverse_last(reverse_stack_input as usize)?;
-            let res = Self::gen_associated_ops(state, geth_steps.as_slice())?;
-            return Ok(res);
-        }
-        Self::gen_associated_ops(state, geth_steps.as_slice())
-    }
-
     /// Generate the associated [`MemoryOp`](crate::operation::MemoryOp)s,
     /// [`StackOp`](crate::operation::StackOp)s, and
     /// [`StorageOp`](crate::operation::StorageOp)s associated to the Opcode
@@ -582,7 +560,17 @@ pub fn gen_associated_ops(
     }
     // if no errors, continue as normal
     let fn_gen_associated_ops = fn_gen_associated_ops(opcode_id);
-    fn_gen_associated_ops(state, geth_steps)
+    let res = fn_gen_associated_ops(state, geth_steps)?;
+    // copy global memory dump into call context
+    if state.has_call() {
+        let call_ctx = state.call_ctx_mut()?;
+        if geth_steps.len() > 1 {
+            call_ctx.memory = geth_steps[1].global_memory.clone();
+        } else if geth_steps.len() > 0 {
+            call_ctx.memory = geth_steps[0].global_memory.clone();
+        }
+    }
+    Ok(res)
 }
 
 pub fn gen_begin_tx_ops(

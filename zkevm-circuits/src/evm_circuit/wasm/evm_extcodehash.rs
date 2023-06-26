@@ -64,7 +64,6 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeHashGadget<F> {
         );
 
         let code_hash = cb.query_word_rlc();
-        // let exprs = code_hash.clone().cells.map(|v| v.expr());
 
         // For non-existing accounts the code_hash must be 0 in the rw_table.
         cb.account_read(address.expr(), AccountFieldTag::KeccakCodeHash, code_hash.expr());

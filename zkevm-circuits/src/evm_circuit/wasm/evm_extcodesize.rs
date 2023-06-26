@@ -174,7 +174,7 @@ impl<F: Field> ExecutionGadget<F> for EvmExtCodeSizeGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::{test_util::CircuitTestBuilder};
-    use eth_types::{bytecode, geth_types::Account, Bytecode};
+    use eth_types::{bytecode, bytecode_internal, geth_types::Account, Bytecode};
     use eth_types::bytecode::WasmBinaryBytecode;
     use mock::{TestContext, MOCK_1_ETH, MOCK_ACCOUNTS, MOCK_CODES};
     use crate::evm_circuit::param::N_BYTES_ACCOUNT_ADDRESS;
