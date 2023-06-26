@@ -71,11 +71,12 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
         cb.stack_push(result.expr());
 
         for limb_n in 0..8 {
+            let cond = || is_popcnt.expr();
             cb.add_lookup(
                 "Using Popcnt fixed table",
                 Lookup::Fixed {
                     tag: FixedTableTag::Popcnt.expr(),
-                    values: [arg_limbs[limb_n].expr() * is_popcnt.expr(), 0.expr(), res_terms[limb_n].expr() * is_popcnt.expr()],
+                    values: [arg_limbs[limb_n].expr() * cond(), 0.expr(), res_terms[limb_n].expr() * cond()],
                 },
             );
         }
@@ -132,7 +133,7 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
             "op_unary: popcnt",
             vec![
                 ( res_terms[0].expr() + res_terms[1].expr() + res_terms[2].expr() + res_terms[3].expr()
-                + ( res_terms[4].expr() + res_terms[5].expr() + res_terms[6].expr() + res_terms[7].expr() ) * is_64bits.expr()
+                + res_terms[4].expr() + res_terms[5].expr() + res_terms[6].expr() + res_terms[7].expr()
                 - result.expr() ) * is_popcnt.expr()
             ],
         );
@@ -244,13 +245,8 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
                     self.res_terms[$idx].assign(region, offset, Value::<F>::known(F::from(bitintr::Popcnt::popcnt(arg_limb))))?;
                   }
                 }
-                for idx in 0..4 {
+                for idx in 0..8 {
                   assign_arg_res!(idx, (operand.0[0] >> (idx * 8)) & 0xff);
-                }
-                if opcode == OpcodeId::I64Popcnt {
-                  for idx in 4..8 {
-                    assign_arg_res!(idx, (operand.0[0] >> (idx * 8)) & 0xff);
-                  }
                 }
             }
             _ => unreachable!("not supported opcode for unary operation: {:?}", step.opcode)
@@ -334,7 +330,7 @@ mod test {
     }
 
     #[test]
-    fn test_popcnt() {
+    fn test_popcnt32() {
         run_test(bytecode! {
             I32Const[0x00000000]
             I32Popcnt
@@ -342,15 +338,21 @@ mod test {
             I32Const[0xffffffff]
             I32Popcnt
             Drop
+        });
+    }
+
+    #[test]
+    fn test_popcnt64() {
+        run_test(bytecode! {
 /*
             TODO: find and fix problem with 64 bits version.
+*/
             I64Const[0x0000000000000000]
             I64Popcnt
             Drop
             I64Const[0xffffffffffffffff]
             I64Popcnt
             Drop
-*/
         });
     }
 }
