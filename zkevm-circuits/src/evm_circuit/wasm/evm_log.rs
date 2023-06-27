@@ -314,23 +314,23 @@ mod test {
             true,
             None,
         );
-        //
-        // // 2. tests for is_persistent = false cases
-        // // log0
-        // test_log_ok(&[], false, None);
-        // // log1
-        // test_log_ok(&[Word::from(0xA0)], false, None);
-        // // log4
-        // test_log_ok(
-        //     &[
-        //         Word::from(0xA0),
-        //         Word::from(0xef),
-        //         Word::from(0xb0),
-        //         Word::from(0x37),
-        //     ],
-        //     false,
-        //     None,
-        // );
+
+        // 2. tests for is_persistent = false cases
+        // log0
+        test_log_ok(&[], false, None);
+        // log1
+        test_log_ok(&[Word::from(0xA0)], false, None);
+        // log4
+        test_log_ok(
+            &[
+                Word::from(0xA0),
+                Word::from(0xef),
+                Word::from(0xb0),
+                Word::from(0x37),
+            ],
+            false,
+            None,
+        );
     }
 
     #[test]
@@ -419,7 +419,11 @@ mod test {
         if is_persistent {
         } else {
             // make current call failed with false persistent
-            code.write_op(OpcodeId::INVALID(0xfe));
+            bytecode_internal! {code,
+                I32Const[0]
+                I32Const[0]
+                REVERT
+            }
         }
 
         CircuitTestBuilder::new_from_test_ctx(
@@ -432,7 +436,6 @@ mod test {
         // prepare memory data
         let mut pushdata = [0u8; 320];
         rand::thread_rng().try_fill(&mut pushdata[..]).unwrap();
-        let mut code_prepare = prepare_code(&pushdata, 0);
 
         let log_codes = [
             OpcodeId::LOG0,
@@ -445,13 +448,11 @@ mod test {
         let topic_count = topics.len();
         let cur_op_code = log_codes[topic_count];
 
-        let mut mstart = 0x00usize;
-        let mut msize = 0x10usize;
         // first log op code
         let mut code = Bytecode::default();
         // make dynamic topics push operations
-        code.alloc_default_global_data(1);
-        code.fill_default_global_data(pushdata.to_vec());
+        let mut mstart = code.fill_default_global_data(pushdata.to_vec());
+        let mut msize = 0x10usize;
 
         code.write_postfix(OpcodeId::I32Const, mstart as i128);
         code.write_postfix(OpcodeId::I32Const, msize as i128);
@@ -463,8 +464,7 @@ mod test {
 
         // second log op code
         // prepare additinal bytes for memory reading
-        code.append(&prepare_code(&pushdata, 0x20));
-        mstart = 0x00usize;
+        let mstart = code.fill_default_global_data(pushdata.to_vec());
         // when mszie > 0x20 (32) needs multi copy steps
         msize = 0x30usize;
         code.write_postfix(OpcodeId::I32Const, mstart as i128);
@@ -475,23 +475,8 @@ mod test {
         }
         code.write_op(cur_op_code);
 
-        code.op_stop();
-        code_prepare.append(&code);
-
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
-        )
-        .run();
-    }
-
-    /// prepare memory reading data
-    fn prepare_code(data: &[u8], offset: usize) -> Bytecode {
-        assert_eq!(data.len() % 32, 0);
-        // prepare memory data
-        let mut code = Bytecode::default();
-        for (i, d) in data.chunks(32).enumerate() {
-            code.op_mstore(offset + i * 32, Word::from_big_endian(d));
-        }
-        code
+        ).run();
     }
 }
