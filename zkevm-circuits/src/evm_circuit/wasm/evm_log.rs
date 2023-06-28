@@ -21,16 +21,18 @@ use crate::{
 };
 use array_init::array_init;
 use bus_mapping::circuit_input_builder::CopyDataType;
-use eth_types::{evm_types::{GasCost, OpcodeId}, Field, StackWord, ToScalar, ToU256, U256};
+use eth_types::{evm_types::{GasCost, OpcodeId}, Field, StackWord, ToBigEndian, ToLittleEndian, ToScalar, ToU256, U256};
 use halo2_proofs::{circuit::Value, plonk::Error};
 use crate::evm_circuit::util::memory_gadget::MemoryAddress64Gadget;
+use crate::evm_circuit::util::Word;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvmLogGadget<F> {
     same_context: SameContextGadget<F>,
     memory_address: MemoryAddress64Gadget<F>,
-    phase2_topics: [Cell<F>; 4],
+    topics_offsets: [Cell<F>; 4],
     topic_selectors: [Cell<F>; 4],
+    topics_rlc: [Word<F>; 4],
 
     contract_address: Cell<F>,
     is_static_call: Cell<F>,
@@ -72,11 +74,13 @@ impl<F: Field> ExecutionGadget<F> for EvmLogGadget<F> {
         });
 
         // constrain topics in logs
-        let phase2_topics = array_init(|_| cb.query_cell_phase2());
         let topic_selectors: [Cell<F>; 4] = array_init(|_| cb.query_cell());
-        for (idx, topic) in phase2_topics.iter().enumerate() {
+        let topics_offsets: [Cell<F>; 4] = array_init(|_| cb.query_cell());
+        let topics_rlc: [Word<F>; 4] = array_init(|_| cb.query_word_rlc());
+        for (idx, (topics_offsets,  topic_rlc)) in topics_offsets.iter().zip(topics_rlc.iter()).enumerate() {
             cb.condition(topic_selectors[idx].expr(), |cb| {
-                cb.stack_pop(topic.expr());
+                cb.stack_pop(topics_offsets.expr());
+                cb.memory_rlc_lookup(1.expr(), &topics_offsets, &topic_rlc);
             });
             cb.condition(topic_selectors[idx].expr() * is_persistent.expr(), |cb| {
                 cb.tx_log_lookup(
@@ -84,14 +88,14 @@ impl<F: Field> ExecutionGadget<F> for EvmLogGadget<F> {
                     cb.curr.state.log_id.expr() + 1.expr(),
                     TxLogFieldTag::Topic,
                     idx.expr(),
-                    topic.expr(),
+                    topic_rlc.expr(),
                 );
             });
         }
 
         // Pop mstart_address, msize from stack
-        // cb.stack_pop(msize.expr());
-        // cb.stack_pop(mstart.expr());
+        cb.stack_pop(msize.expr());
+        cb.stack_pop(mstart.expr());
 
         let opcode = cb.query_cell();
         let topic_count = opcode.expr() - OpcodeId::LOG0.as_u8().expr();
@@ -172,14 +176,15 @@ impl<F: Field> ExecutionGadget<F> for EvmLogGadget<F> {
         Self {
             same_context,
             memory_address,
-            phase2_topics,
             topic_selectors,
+            topics_offsets,
             contract_address,
             is_static_call,
             is_persistent,
             tx_id,
             copy_rwc_inc,
             memory_expansion,
+            topics_rlc,
         }
     }
 
@@ -207,21 +212,29 @@ impl<F: Field> ExecutionGadget<F> for EvmLogGadget<F> {
         };
 
         for i in 0..4 {
-            let mut topic = region.word_rlc(U256::zero());
+            let mut topic = U256::zero();
+            let mut topic_offset = StackWord::zero();
             if i < topic_count {
-                topic = region.word_rlc(block.rws[topic_stack_entry].stack_value().to_u256());
+                let topic_vec = step.rw_indices[5 + call.is_persistent as usize + 34 * i..6 + 34 * i + 32].iter().map(|&b|
+                    block.rws[b].memory_value()
+                ).collect::<Vec<u8>>();
+                topic = U256::from_big_endian(topic_vec.as_slice());
+                topic_offset = block.rws[topic_stack_entry].stack_value();
+
                 self.topic_selectors[i].assign(region, offset, Value::known(F::one()))?;
                 topic_stack_entry.1 += 1;
             } else {
                 self.topic_selectors[i].assign(region, offset, Value::known(F::zero()))?;
             }
-            self.phase2_topics[i].assign(region, offset, topic)?;
+            self.topics_rlc[i].assign(region, offset, Some(topic.to_le_bytes()))?;
+            self.topics_offsets[i].assign(region, offset, Value::<F>::known(topic_offset.to_scalar().unwrap()))?;
         }
 
-        let stack_offset = 4 + call.is_persistent as usize + topic_count;
-
-        let [memory_start, msize] =
-            [step.rw_indices[stack_offset], step.rw_indices[stack_offset + 1]].map(|idx| block.rws[idx].stack_value());
+        let stack_offset = 4 + call.is_persistent as usize + topic_count * (1 + 32 + is_persistent as usize);
+        let [msize, memory_start] =
+            [step.rw_indices[stack_offset], step.rw_indices[stack_offset + 1]].map(|idx| {
+                block.rws[idx].stack_value()
+            });
 
         let memory_address = self
             .memory_address
@@ -266,7 +279,7 @@ impl<F: Field> ExecutionGadget<F> for EvmLogGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::test_util::CircuitTestBuilder;
-    use eth_types::{evm_types::OpcodeId, Bytecode, Word};
+    use eth_types::{evm_types::OpcodeId, Bytecode, Word, ToBigEndian, bytecode_internal};
     use mock::TestContext;
     use rand::Rng;
 
@@ -399,14 +412,18 @@ mod test {
         code.write_postfix(OpcodeId::I32Const, msize as i128);
         // make dynamic topics push operations
         for topic in topics {
-            let offset = code.alloc_default_global_data(32);
+            let offset = code.fill_default_global_data(topic.to_be_bytes().to_vec());
             code.write_postfix(OpcodeId::I32Const, offset as i128);
         }
         code.write_op(cur_op_code);
         if is_persistent {
         } else {
             // make current call failed with false persistent
-            code.write_op(OpcodeId::INVALID(0xfe));
+            bytecode_internal! {code,
+                I32Const[0]
+                I32Const[0]
+                REVERT
+            }
         }
 
         CircuitTestBuilder::new_from_test_ctx(
@@ -419,7 +436,6 @@ mod test {
         // prepare memory data
         let mut pushdata = [0u8; 320];
         rand::thread_rng().try_fill(&mut pushdata[..]).unwrap();
-        let mut code_prepare = prepare_code(&pushdata, 0);
 
         let log_codes = [
             OpcodeId::LOG0,
@@ -432,48 +448,35 @@ mod test {
         let topic_count = topics.len();
         let cur_op_code = log_codes[topic_count];
 
-        let mut mstart = 0x00usize;
-        let mut msize = 0x10usize;
         // first log op code
         let mut code = Bytecode::default();
         // make dynamic topics push operations
+        let mut mstart = code.fill_default_global_data(pushdata.to_vec());
+        let mut msize = 0x10usize;
+
+        code.write_postfix(OpcodeId::I32Const, mstart as i128);
+        code.write_postfix(OpcodeId::I32Const, msize as i128);
         for topic in topics {
-            code.push(32, *topic);
+            let offset = code.fill_default_global_data(topic.to_be_bytes().to_vec());
+            code.write_postfix(OpcodeId::I32Const, offset as i128);
         }
-        code.push(32, Word::from(msize));
-        code.push(32, Word::from(mstart));
         code.write_op(cur_op_code);
 
         // second log op code
         // prepare additinal bytes for memory reading
-        code.append(&prepare_code(&pushdata, 0x20));
-        mstart = 0x00usize;
+        let mstart = code.fill_default_global_data(pushdata.to_vec());
         // when mszie > 0x20 (32) needs multi copy steps
         msize = 0x30usize;
+        code.write_postfix(OpcodeId::I32Const, mstart as i128);
+        code.write_postfix(OpcodeId::I32Const, msize as i128);
         for topic in topics {
-            code.push(32, *topic);
+            let offset = code.fill_default_global_data(topic.to_be_bytes().to_vec());
+            code.write_postfix(OpcodeId::I32Const, offset as i128);
         }
-        code.push(32, Word::from(msize));
-        code.push(32, Word::from(mstart));
         code.write_op(cur_op_code);
-
-        code.op_stop();
-        code_prepare.append(&code);
 
         CircuitTestBuilder::new_from_test_ctx(
             TestContext::<2, 1>::simple_ctx_with_bytecode(code).unwrap(),
-        )
-        .run();
-    }
-
-    /// prepare memory reading data
-    fn prepare_code(data: &[u8], offset: usize) -> Bytecode {
-        assert_eq!(data.len() % 32, 0);
-        // prepare memory data
-        let mut code = Bytecode::default();
-        for (i, d) in data.chunks(32).enumerate() {
-            code.op_mstore(offset + i * 32, Word::from_big_endian(d));
-        }
-        code
+        ).run();
     }
 }

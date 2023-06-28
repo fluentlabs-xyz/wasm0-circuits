@@ -8,7 +8,7 @@ use crate::{
     Error,
 };
 use eth_types::{GethExecStep, ToBigEndian, ToWord, Word};
-use eth_types::evm_types::MemoryAddress;
+use eth_types::evm_types::{MemoryAddress, StackAddress};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Log<const N_LOGS: usize>;
@@ -88,20 +88,12 @@ fn gen_log_step<const N_LOGS: usize>(
         )?;
     }
 
-    // generates topic operation dynamically
-    let topic_count = match exec_step.exec_state {
-        ExecState::Op(op_id) => op_id.postfix().expect("opcode with postfix") as usize,
-        _ => panic!("currently only handle successful log state"),
-    };
-
-    let mut stack_index = 2;
-
-    for i in 0..topic_count {
-        let topic_offset = geth_step.stack.nth_last(2 + i)?;
+    for i in 0..N_LOGS {
+        let topic_offset = geth_step.stack.nth_last(i)?;
         let topic = geth_step.global_memory.read_u256(topic_offset)?;
         state.stack_read(
             &mut exec_step,
-            geth_step.stack.nth_last_filled(2 + N_LOGS - stack_index - 1),
+            geth_step.stack.nth_last_filled(i),
             topic_offset,
         )?;
         let topic_bytes = topic.to_be_bytes();
@@ -110,7 +102,6 @@ fn gen_log_step<const N_LOGS: usize>(
             MemoryAddress::from(topic_offset.as_u64()),
             &topic_bytes,
         )?;
-        stack_index += 1;
 
         if state.call()?.is_persistent {
             state.tx_log_write(
@@ -124,18 +115,18 @@ fn gen_log_step<const N_LOGS: usize>(
         }
     }
 
-    let mstart = geth_step.stack.nth_last(2 + N_LOGS - 1)?;
-    let msize = geth_step.stack.nth_last(2 + N_LOGS - 2)?;
+    let mstart = geth_step.stack.nth_last(1 + N_LOGS)?;
+    let msize = geth_step.stack.nth_last(N_LOGS)?;
 
     state.stack_read(
         &mut exec_step,
-        geth_step.stack.nth_last_filled(2 + N_LOGS - 1),
-        mstart,
+        geth_step.stack.nth_last_filled(N_LOGS),
+        msize,
     )?;
     state.stack_read(
         &mut exec_step,
-        geth_step.stack.nth_last_filled(2 + N_LOGS - 2),
-        msize,
+        geth_step.stack.nth_last_filled(1 + N_LOGS),
+        mstart,
     )?;
 
     Ok(exec_step)
