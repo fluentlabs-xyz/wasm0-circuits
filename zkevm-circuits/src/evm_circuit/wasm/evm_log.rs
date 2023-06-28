@@ -20,6 +20,7 @@ use crate::{
     util::{build_tx_log_expression, Expr},
 };
 use array_init::array_init;
+use bitintr::Rev;
 use bus_mapping::circuit_input_builder::CopyDataType;
 use eth_types::{evm_types::{GasCost, OpcodeId}, Field, StackWord, ToBigEndian, ToLittleEndian, ToScalar, ToU256, U256};
 use halo2_proofs::{circuit::Value, plonk::Error};
@@ -31,6 +32,7 @@ pub(crate) struct EvmLogGadget<F> {
     same_context: SameContextGadget<F>,
     memory_address: MemoryAddress64Gadget<F>,
     topics_offsets: [Cell<F>; 4],
+    topics_log_index: [Cell<F>; 4],
     topic_selectors: [Cell<F>; 4],
     topics_rlc: [Word<F>; 4],
 
@@ -77,7 +79,9 @@ impl<F: Field> ExecutionGadget<F> for EvmLogGadget<F> {
         let topic_selectors: [Cell<F>; 4] = array_init(|_| cb.query_cell());
         let topics_offsets: [Cell<F>; 4] = array_init(|_| cb.query_cell());
         let topics_rlc: [Word<F>; 4] = array_init(|_| cb.query_word_rlc());
-        for (idx, (topics_offsets,  topic_rlc)) in topics_offsets.iter().zip(topics_rlc.iter()).enumerate() {
+        let topics_log_index: [Cell<F>; 4] = array_init(|_| cb.query_cell());
+
+        for (idx, (topics_offsets,  topic_rlc)) in topics_offsets.iter().zip(topics_rlc.iter()).enumerate().rev() {
             cb.condition(topic_selectors[idx].expr(), |cb| {
                 cb.stack_pop(topics_offsets.expr());
                 cb.memory_rlc_lookup(1.expr(), &topics_offsets, &topic_rlc);
@@ -87,7 +91,7 @@ impl<F: Field> ExecutionGadget<F> for EvmLogGadget<F> {
                     tx_id.expr(),
                     cb.curr.state.log_id.expr() + 1.expr(),
                     TxLogFieldTag::Topic,
-                    idx.expr(),
+                    topics_log_index[idx].expr(),
                     topic_rlc.expr(),
                 );
             });
@@ -178,6 +182,7 @@ impl<F: Field> ExecutionGadget<F> for EvmLogGadget<F> {
             memory_address,
             topic_selectors,
             topics_offsets,
+            topics_log_index,
             contract_address,
             is_static_call,
             is_persistent,
@@ -212,22 +217,23 @@ impl<F: Field> ExecutionGadget<F> for EvmLogGadget<F> {
         };
 
         for i in 0..4 {
-            let mut topic = U256::zero();
-            let mut topic_offset = StackWord::zero();
             if i < topic_count {
                 let topic_vec = step.rw_indices[5 + call.is_persistent as usize + 34 * i..6 + 34 * i + 32].iter().map(|&b|
                     block.rws[b].memory_value()
                 ).collect::<Vec<u8>>();
-                topic = U256::from_big_endian(topic_vec.as_slice());
-                topic_offset = block.rws[topic_stack_entry].stack_value();
+                let topic = U256::from_big_endian(topic_vec.as_slice());
+                let topic_offset = block.rws[topic_stack_entry].stack_value();
 
-                self.topic_selectors[i].assign(region, offset, Value::known(F::one()))?;
+                self.topic_selectors[topic_count - 1 - i].assign(region, offset, Value::known(F::one()))?;
+                self.topics_log_index[topic_count - 1 - i].assign(region, offset, Value::known(i.to_scalar().unwrap() ))?;
                 topic_stack_entry.1 += 1;
+                self.topics_rlc[topic_count - 1 - i].assign(region, offset, Some(topic.to_le_bytes()))?;
+                self.topics_offsets[topic_count - 1 - i].assign(region, offset, Value::<F>::known(topic_offset.to_scalar().unwrap()))?;
             } else {
                 self.topic_selectors[i].assign(region, offset, Value::known(F::zero()))?;
+                self.topics_rlc[i].assign(region, offset, Some(U256::zero().to_le_bytes()))?;
+                self.topics_offsets[i].assign(region, offset, Value::<F>::known(StackWord::zero().to_scalar().unwrap()))?;
             }
-            self.topics_rlc[i].assign(region, offset, Some(topic.to_le_bytes()))?;
-            self.topics_offsets[i].assign(region, offset, Value::<F>::known(topic_offset.to_scalar().unwrap()))?;
         }
 
         let stack_offset = 4 + call.is_persistent as usize + topic_count * (1 + 32 + is_persistent as usize);
@@ -405,7 +411,6 @@ mod test {
         let mstart = 0x102usize;
         let msize = 0x20usize;
         let mut code = Bytecode::default();
-        code.alloc_default_global_data(1);
         code.fill_default_global_data(pushdata.to_vec());
 
         code.write_postfix(OpcodeId::I32Const, mstart as i128);
