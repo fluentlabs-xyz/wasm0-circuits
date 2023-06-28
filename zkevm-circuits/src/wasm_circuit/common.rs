@@ -1,4 +1,5 @@
 use num_traits::checked_pow;
+use gadgets::binary_number::AsBits;
 
 /// Returns section len and leb bytes count representing section len
 pub fn wasm_compute_section_len(wasm_bytes: &[u8], len_start_index: usize) -> Result<(usize, u8), ()> {

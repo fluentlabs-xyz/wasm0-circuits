@@ -5,12 +5,16 @@ use std::{marker::PhantomData};
 use std::rc::Rc;
 use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Fixed, VirtualCells};
+use halo2_proofs::plonk::{Any, Expression, Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
+use itertools::Itertools;
 use log::debug;
 use eth_types::Field;
+use gadgets::binary_number::BinaryNumberChip;
 use gadgets::util::{Expr, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::evm_circuit::util::math_gadget::BinaryNumberGadget;
+use crate::wasm_circuit::consts::{CONTROL_INSTRUCTIONS_BLOCKS, CONTROL_INSTRUCTIONS_WITH_LEB_PARAM, CONTROL_INSTRUCTIONS_WITHOUT_PARAMS, ControlInstruction, NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM, NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS, NumericInstruction, VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -23,12 +27,23 @@ pub struct WasmCodeSectionBodyConfig<F: Field> {
     pub q_enable: Column<Fixed>,
     pub is_funcs_count: Column<Fixed>,
     pub is_func_body_len: Column<Fixed>,
-    pub is_valtype_transitions_count: Column<Fixed>,
-    pub is_valtype_repetition_count: Column<Fixed>,
-    pub is_valtype: Column<Fixed>,
-    pub is_func_body_code: Column<Fixed>,
+    pub is_local_type_transitions_count: Column<Fixed>,
+    pub is_local_repetition_count: Column<Fixed>,
+    pub is_local_type: Column<Fixed>,
+
+    pub is_numeric_instruction: Column<Fixed>,
+    pub is_numeric_instruction_leb_arg: Column<Fixed>,
+    pub is_variable_instruction: Column<Fixed>,
+    pub is_variable_instruction_leb_arg: Column<Fixed>,
+    pub is_control_instruction: Column<Fixed>,
+    pub is_control_instruction_leb_arg: Column<Fixed>,
+    pub is_blocktype_delimiter: Column<Fixed>,
+    pub is_block_end: Column<Fixed>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
+    pub numeric_instructions_chip: Rc<BinaryNumberChip<F, NumericInstruction, 8>>,
+    pub variable_instruction_chip: Rc<BinaryNumberChip<F, VariableInstruction, 8>>,
+    pub control_instruction_chip: Rc<BinaryNumberChip<F, ControlInstruction, 8>>,
 
     _marker: PhantomData<F>,
 }
@@ -60,76 +75,373 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         let q_enable = cs.fixed_column();
         let is_funcs_count = cs.fixed_column();
         let is_func_body_len = cs.fixed_column();
-        let is_valtype_transitions_count = cs.fixed_column();
-        let is_valtype_repetition_count = cs.fixed_column();
-        let is_valtype = cs.fixed_column();
-        let is_func_body_code = cs.fixed_column();
+        let is_local_type_transitions_count = cs.fixed_column();
+        let is_local_repetition_count = cs.fixed_column();
+        let is_local_type = cs.fixed_column();
+
+        let is_numeric_instruction = cs.fixed_column();
+        let is_numeric_instruction_leb_arg = cs.fixed_column();
+        let is_variable_instruction = cs.fixed_column();
+        let is_variable_instruction_leb_arg = cs.fixed_column();
+        let is_control_instruction = cs.fixed_column();
+        let is_control_instruction_leb_arg = cs.fixed_column();
+        let is_blocktype_delimiter = cs.fixed_column();
+        let is_block_end = cs.fixed_column();
+
+        let binary_number_config = BinaryNumberChip::configure(
+            cs,
+            is_numeric_instruction,
+            Some(bytecode_table.value.into()),
+        );
+        let numeric_instructions_chip = Rc::new(BinaryNumberChip::construct(binary_number_config));
+
+        let binary_number_config = BinaryNumberChip::configure(
+            cs,
+            is_control_instruction,
+            Some(bytecode_table.value.into()),
+        );
+        let control_instruction_chip = Rc::new(BinaryNumberChip::construct(binary_number_config));
+
+        let binary_number_config = BinaryNumberChip::configure(
+            cs,
+            is_variable_instruction,
+            Some(bytecode_table.value.into()),
+        );
+        let variable_instruction_chip = Rc::new(BinaryNumberChip::construct(binary_number_config));
 
         cs.create_gate("WasmCodeSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let is_funcs_count_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let is_func_body_len_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let is_valtype_transitions_count_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let is_valtype_repetition_count_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let is_valtype_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let is_func_body_code_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let is_funcs_count_expr = vc.query_fixed(is_funcs_count, Rotation::cur());
+            let is_func_body_len_expr = vc.query_fixed(is_func_body_len, Rotation::cur());
+            let is_local_type_transitions_count_expr = vc.query_fixed(is_local_type_transitions_count, Rotation::cur());
+            let is_local_repetition_count_expr = vc.query_fixed(is_local_repetition_count, Rotation::cur());
+            let is_local_type_expr = vc.query_fixed(is_local_type, Rotation::cur());
+            let is_numeric_instruction_expr = vc.query_fixed(is_numeric_instruction, Rotation::cur());
+            let is_numeric_instruction_leb_arg_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::cur());
+            let is_variable_instruction_expr = vc.query_fixed(is_variable_instruction, Rotation::cur());
+            let is_variable_instruction_leb_arg_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::cur());
+            let is_control_instruction_expr = vc.query_fixed(is_control_instruction, Rotation::cur());
+            let is_control_instruction_leb_arg_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::cur());
+            let is_blocktype_delimiter_expr = vc.query_fixed(is_blocktype_delimiter, Rotation::cur());
+            let is_block_end_expr = vc.query_fixed(is_block_end, Rotation::cur());
+
+            let is_leb128_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur());
+            let is_leb128_next_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::next());
 
             let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
 
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
             cb.require_boolean("is_funcs_count is boolean", is_funcs_count_expr.clone());
             cb.require_boolean("is_func_body_len is boolean", is_func_body_len_expr.clone());
-            cb.require_boolean("is_valtype_transitions_count is boolean", is_valtype_transitions_count_expr.clone());
-            cb.require_boolean("is_valtype_repetition_count is boolean", is_valtype_repetition_count_expr.clone());
-            cb.require_boolean("is_valtype is boolean", is_valtype_expr.clone());
-            cb.require_boolean("is_func_body_code is boolean", is_func_body_code_expr.clone());
+            cb.require_boolean("is_local_type_transitions_count is boolean", is_local_type_transitions_count_expr.clone());
+            cb.require_boolean("is_local_repetition_count is boolean", is_local_repetition_count_expr.clone());
+            cb.require_boolean("is_local_type is boolean", is_local_type_expr.clone());
+            cb.require_boolean("is_numeric_instruction is boolean", is_numeric_instruction_expr.clone());
+            cb.require_boolean("is_numeric_instruction_leb_arg is boolean", is_numeric_instruction_leb_arg_expr.clone());
+            cb.require_boolean("is_variable_instruction is boolean", is_variable_instruction_expr.clone());
+            cb.require_boolean("is_variable_instruction_leb_arg is boolean", is_variable_instruction_leb_arg_expr.clone());
+            cb.require_boolean("is_control_instruction is boolean", is_control_instruction_expr.clone());
+            cb.require_boolean("is_control_instruction_leb_arg is boolean", is_control_instruction_leb_arg_expr.clone());
 
             cb.require_equal(
                 "exactly one mark flag active at the same time",
                 is_funcs_count_expr.clone()
                     + is_func_body_len_expr.clone()
-                    + is_valtype_transitions_count_expr.clone()
-                    + is_valtype_repetition_count_expr.clone()
-                    + is_valtype_expr.clone()
-                    + is_func_body_code_expr.clone(),
+                    + is_local_type_transitions_count_expr.clone()
+                    + is_local_repetition_count_expr.clone()
+                    + is_local_type_expr.clone()
+                    + is_numeric_instruction_expr.clone()
+                    + is_numeric_instruction_leb_arg_expr.clone()
+                    + is_variable_instruction_expr.clone()
+                    + is_variable_instruction_leb_arg_expr.clone()
+                    + is_control_instruction_expr.clone()
+                    + is_control_instruction_leb_arg_expr.clone()
+                    + is_blocktype_delimiter_expr.clone()
+                    + is_block_end_expr.clone()
+                ,
                 1.expr(),
+            );
+
+            cb.condition(
+                is_numeric_instruction_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_numeric_instruction -> opcode is valid",
+                        or::expr(
+                            NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS.iter()
+                                .chain(NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM.iter())
+                                .map(|v| {
+                                    numeric_instructions_chip.config.value_equals(*v, Rotation::cur())(vc)
+                                }).collect_vec()
+                        ),
+                        1.expr(),
+                    );
+                }
+            );
+            // numeric instructions without params
+            cb.condition(
+                or::expr(
+                    NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS.iter().map(|v| {
+                        numeric_instructions_chip.config.value_equals(*v, Rotation::cur())(vc)
+                    }).collect_vec()
+                ),
+                |bcb| {
+                    // TODO check next is opcode?
+                    // TODO check prev is ???
+                }
+            );
+            // numeric instructions with leb param
+            cb.condition(
+                or::expr(
+                    NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM.iter().map(|v| {
+                        numeric_instructions_chip.config.value_equals(*v, Rotation::cur())(vc)
+                    }).collect_vec()
+                ),
+                |bcb| {
+                    bcb.require_equal(
+                        "numeric instructions with leb param -> next.is_leb128",
+                        is_leb128_next_expr.clone(),
+                        1.expr(),
+                    );
+                }
+            );
+            cb.condition(
+                is_numeric_instruction_leb_arg_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_numeric_instruction_leb_arg -> leb128",
+                        is_leb128_expr.clone(),
+                        1.expr(),
+                    )
+                }
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check prev: is_numeric_instruction(1) -> is_numeric_instruction_leb_arg+",
+                is_numeric_instruction_leb_arg_expr.clone(),
+                false,
+                &[is_numeric_instruction, is_numeric_instruction_leb_arg]
+            );
+
+            cb.condition(
+                is_variable_instruction_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_variable_instruction -> opcode is valid",
+                        or::expr(
+                            VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM.iter()
+                                .map(|v| {
+                                    variable_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
+                                }).collect_vec()
+                        ),
+                        1.expr(),
+                    );
+                }
+            );
+            cb.condition(
+                or::expr(
+                    VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM.iter().map(|v| {
+                        variable_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
+                    }).collect_vec()
+                ),
+                |bcb| {
+                    bcb.require_equal(
+                        "variable instructions with leb param -> next.is_leb128",
+                        is_leb128_next_expr.clone(),
+                        1.expr(),
+                    );
+                }
+            );
+            cb.condition(
+                is_variable_instruction_leb_arg_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_variable_instruction_leb_arg -> leb128",
+                        is_leb128_expr.clone(),
+                        1.expr(),
+                    )
+                }
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check prev: is_variable_instruction(1) -> is_variable_instruction_leb_arg+",
+                is_variable_instruction_leb_arg_expr.clone(),
+                false,
+                &[is_variable_instruction, is_variable_instruction_leb_arg]
+            );
+
+            cb.condition(
+                is_control_instruction_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_control_instruction -> opcode is valid",
+                        or::expr(
+                            CONTROL_INSTRUCTIONS_WITHOUT_PARAMS.iter()
+                                .chain(CONTROL_INSTRUCTIONS_WITH_LEB_PARAM.iter())
+                                .chain(CONTROL_INSTRUCTIONS_BLOCKS.iter())
+                                .map(|v| {
+                                    control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
+                                }).collect_vec()
+                        ),
+                        1.expr(),
+                    );
+                }
+            );
+            cb.condition(
+                or::expr(
+                    CONTROL_INSTRUCTIONS_WITHOUT_PARAMS.iter().map(|v| {
+                        control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
+                    }).collect_vec()
+                ),
+                |bcb| {
+                    // TODO
+                }
+            );
+            cb.condition(
+                or::expr(
+                    CONTROL_INSTRUCTIONS_WITH_LEB_PARAM.iter().map(|v| {
+                        control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
+                    }).collect_vec()
+                ),
+                |bcb| {
+                    bcb.require_equal(
+                        "control instructions with leb param -> is_control_instruction",
+                        is_control_instruction_expr.clone(),
+                        1.expr(),
+                    );
+                    bcb.require_equal(
+                        "control instructions with leb param -> next.is_leb128_next",
+                        is_leb128_next_expr.clone(),
+                        1.expr(),
+                    );
+                }
+            );
+            cb.condition(
+                is_control_instruction_leb_arg_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_control_instruction_leb_arg -> leb128",
+                        is_leb128_expr.clone(),
+                        1.expr(),
+                    )
+                }
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check prev: is_control_instruction(1) -> is_control_instruction_leb_arg+",
+                is_control_instruction_leb_arg_expr.clone(),
+                false,
+                &[is_control_instruction, is_control_instruction_leb_arg]
+            );
+
+            cb.condition(
+                is_blocktype_delimiter_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_blocktype_delimiter -> WASM_BLOCKTYPE_DELIMITER",
+                        byte_val_expr.clone(),
+                        WASM_BLOCKTYPE_DELIMITER.expr(),
+                    );
+                }
+            );
+
+            cb.condition(
+                is_block_end_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_block_end_expr -> WASM_BLOCK_END",
+                        byte_val_expr.clone(),
+                        WASM_BLOCK_END.expr(),
+                    );
+                }
             );
 
             cb.condition(
                 or::expr([
                     is_funcs_count_expr.clone(),
                     is_func_body_len_expr.clone(),
-                    is_valtype_transitions_count_expr.clone(),
-                    is_valtype_repetition_count_expr.clone(),
+                    is_local_type_transitions_count_expr.clone(),
+                    is_local_repetition_count_expr.clone(),
                 ]),
                 |cbc| {
                     cbc.require_equal(
-                        "is_funcs_count || is_func_body_len || is_valtype_transitions_count || is_valtype_repetition_count -> leb128",
-                        vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
+                        "leb128 flag is active -> leb128_chip enabled",
+                        is_leb128_expr.clone(),
                         1.expr(),
                     )
                 }
             );
 
-            // TODO: is_funcs_count+ -> is_func_body_len+ -> locals+(is_valtype_transitions_count+ -> local_var_descriptor+(is_local_repetition_count+ -> is_local_type(1))) -> is_func_body_code
-            configure_check_for_transition(
-                &mut cb,
-                vc,
-                "check next: is_funcs_count+ -> is_func_body_len+",
-                is_funcs_count_expr.clone(),
-                true,
-                &[is_funcs_count, is_func_body_len],
-            );
-            configure_check_for_transition(
-                &mut cb,
-                vc,
-                "check prev: is_funcs_count+ -> is_func_body_len+",
-                is_func_body_len_expr.clone(),
-                false,
-                &[is_funcs_count, is_func_body_len],
-            );
+            // TODO: is_funcs_count+ -> func+(is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ -> local_var_descriptor+(is_local_repetition_count+ -> is_local_type(1))) -> is_func_body_code+)
+            // configure_check_for_transition(
+            //     &mut cb,
+            //     vc,
+            //     "check next: is_funcs_count+ -> func+(is_func_body_len+ ...",
+            //     is_funcs_count_expr.clone(),
+            //     true,
+            //     &[is_funcs_count, is_func_body_len, ],
+            // );
+            // configure_check_for_transition(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_funcs_count+ -> func+(is_func_body_len+ ...",
+            //     is_func_body_len_expr.clone(),
+            //     false,
+            //     &[is_funcs_count, is_func_body_code, is_func_body_len, ],
+            // );
+            // configure_check_for_transition(
+            //     &mut cb,
+            //     vc,
+            //     "check next: is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ ...",
+            //     is_func_body_len_expr.clone(),
+            //     true,
+            //     &[is_func_body_len, is_local_type_transitions_count, ],
+            // );
+            // configure_check_for_transition(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ ...",
+            //     is_local_type_transitions_count_expr.clone(),
+            //     false,
+            //     &[is_func_body_len, is_local_type_transitions_count, ],
+            // );
+            // configure_check_for_transition(
+            //     &mut cb,
+            //     vc,
+            //     "check next: is_local_type_transitions_count+ -> local_var_descriptor+(is_local_repetition_count+ ...",
+            //     is_local_type_transitions_count_expr.clone(),
+            //     true,
+            //     &[is_local_type_transitions_count, is_local_repetition_count, ],
+            // );
+            // configure_check_for_transition(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_local_type_transitions_count+ -> local_var_descriptor+(is_local_repetition_count+ ...",
+            //     is_local_repetition_count_expr.clone(),
+            //     false,
+            //     &[is_local_type_transitions_count, is_local_type, is_local_repetition_count, ],
+            // );
+            // configure_check_for_transition(
+            //     &mut cb,
+            //     vc,
+            //     "check next: is_local_repetition_count+ -> is_local_type(1) ...",
+            //     is_local_repetition_count_expr.clone(),
+            //     true,
+            //     &[is_local_repetition_count, is_local_type, ],
+            // );
+            // configure_check_for_transition(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_local_repetition_count+ -> is_local_type(1) ...",
+            //     is_local_type_expr.clone(),
+            //     false,
+            //     &[is_local_repetition_count, ],
+            // );
 
             cb.gate(q_enable_expr.clone())
         });
@@ -138,68 +450,128 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             q_enable,
             is_funcs_count,
             is_func_body_len,
-            is_valtype_transitions_count,
-            is_valtype_repetition_count,
-            is_valtype,
-            is_func_body_code,
+            is_local_type_transitions_count,
+            is_local_repetition_count,
+            is_local_type,
+            is_numeric_instruction,
+            is_numeric_instruction_leb_arg,
+            is_variable_instruction,
+            is_variable_instruction_leb_arg,
+            is_control_instruction,
+            is_control_instruction_leb_arg,
+            is_blocktype_delimiter,
+            is_block_end,
             leb128_chip,
+            numeric_instructions_chip,
+            variable_instruction_chip,
+            control_instruction_chip,
             _marker: PhantomData,
         };
 
         config
     }
 
-    pub fn assign_init(
-        &self,
-        region: &mut Region<F>,
-        offset_max: usize,
-    ) {
-        for offset in 0..=offset_max {
-            self.assign(
-                region,
-                offset,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                0,
-                0,
-                0,
-                0,
-            );
-        }
-    }
+    // pub fn assign_init(
+    //     &self,
+    //     region: &mut Region<F>,
+    //     offset_max: usize,
+    // ) {
+    //     for offset in 0..=offset_max {
+    //         self.assign(
+    //             region,
+    //             offset,
+    //             false,
+    //             false,
+    //             false,
+    //             false,
+    //             false,
+    //             false,
+    //             0,
+    //             0,
+    //             0,
+    //             0,
+    //         );
+    //     }
+    // }
 
     pub fn assign(
         &self,
         region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
         offset: usize,
-        is_funcs_count: bool,
-        is_func_body_len: bool,
-        is_valtype_transitions_count: bool,
-        is_valtype_repetition_count: bool,
-        is_valtype: bool,
-        is_func_body_code: bool,
+        is_funcs_count: Option<bool>,
+        is_func_body_len: Option<bool>,
+        is_local_type_transitions_count: Option<bool>,
+        is_local_repetition_count: Option<bool>,
+        is_local_type: Option<bool>,
+        is_numeric_instruction: Option<bool>,
+        is_numeric_instruction_leb_arg: Option<bool>,
+        is_variable_instruction: Option<bool>,
+        is_variable_instruction_leb_arg: Option<bool>,
+        is_control_instruction: Option<bool>,
+        is_control_instruction_leb_arg: Option<bool>,
+        is_blocktype_delimiter: Option<bool>,
+        is_block_end: Option<bool>,
         leb_byte_rel_offset: usize,
         leb_last_byte_rel_offset: usize,
         leb_sn: u64,
         leb_sn_recovered_at_pos: u64,
     ) {
-        let q_enable = is_funcs_count || is_func_body_len || is_valtype_transitions_count || is_valtype_repetition_count || is_valtype || is_func_body_code;
+        let q_enable = is_funcs_count.unwrap_or(false)
+            || is_func_body_len.unwrap_or(false)
+            || is_local_type_transitions_count.unwrap_or(false)
+            || is_local_repetition_count.unwrap_or(false)
+            || is_local_type.unwrap_or(false)
+            || is_numeric_instruction.unwrap_or(false)
+            || is_numeric_instruction_leb_arg.unwrap_or(false)
+            || is_variable_instruction.unwrap_or(false)
+            || is_variable_instruction_leb_arg.unwrap_or(false)
+            || is_control_instruction.unwrap_or(false)
+            || is_control_instruction_leb_arg.unwrap_or(false)
+            || is_blocktype_delimiter.unwrap_or(false)
+            || is_block_end.unwrap_or(false)
+            ;
         debug!(
-            "offset {} q_enable {} is_funcs_count {} is_func_body_len {} is_valtype_transitions_count {} is_valtype_repetition_count {} is_valtype {} is_func_body_code {}",
+            "assign at offset {} \
+            q_enable {} \
+            is_funcs_count {} \
+            is_func_body_len {} \
+            is_local_type_transitions_count {} \
+            is_local_repetition_count {} \
+            is_local_type {} \
+            is_numeric_instruction {} \
+            is_numeric_instruction_leb_arg {} \
+            is_variable_instruction {} \
+            is_variable_instruction_leb_arg {} \
+            is_control_instruction {} \
+            is_control_instruction_leb_arg {} \
+            is_blocktype_delimiter {} \
+            is_block_end {} \
+            ",
             offset,
             q_enable,
-            is_funcs_count,
-            is_func_body_len,
-            is_valtype_transitions_count,
-            is_valtype_repetition_count,
-            is_valtype,
-            is_func_body_code,
+            is_funcs_count.unwrap_or(false),
+            is_func_body_len.unwrap_or(false),
+            is_local_type_transitions_count.unwrap_or(false),
+            is_local_repetition_count.unwrap_or(false),
+            is_local_type.unwrap_or(false),
+            is_numeric_instruction.unwrap_or(false),
+            is_numeric_instruction_leb_arg.unwrap_or(false),
+            is_variable_instruction.unwrap_or(false),
+            is_variable_instruction_leb_arg.unwrap_or(false),
+            is_control_instruction.unwrap_or(false),
+            is_control_instruction_leb_arg.unwrap_or(false),
+            is_blocktype_delimiter.unwrap_or(false),
+            is_block_end.unwrap_or(false),
         );
-        if is_funcs_count || is_func_body_len || is_valtype_transitions_count || is_valtype_repetition_count {
+        if is_funcs_count.unwrap_or(false)
+            || is_func_body_len.unwrap_or(false)
+            || is_local_type_transitions_count.unwrap_or(false)
+            || is_local_repetition_count.unwrap_or(false)
+            || is_numeric_instruction_leb_arg.unwrap_or(false)
+            || is_variable_instruction_leb_arg.unwrap_or(false)
+            || is_control_instruction_leb_arg.unwrap_or(false)
+        {
             let is_first_leb_byte = leb_byte_rel_offset == 0;
             let is_last_leb_byte = leb_byte_rel_offset == leb_last_byte_rel_offset;
             let is_leb_byte_has_cb = leb_byte_rel_offset < leb_last_byte_rel_offset;
@@ -222,77 +594,217 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        // is_funcs_count,
-        region.assign_fixed(
-            || format!("assign 'is_funcs_count' val {} at {}", is_funcs_count, offset),
-            self.config.is_funcs_count,
-            offset,
-            || Value::known(F::from(is_funcs_count as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_func_body_len' val {} at {}", is_func_body_len, offset),
-            self.config.is_func_body_len,
-            offset,
-            || Value::known(F::from(is_func_body_len as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_valtype_transitions_count' val {} at {}", is_valtype_transitions_count, offset),
-            self.config.is_valtype_transitions_count,
-            offset,
-            || Value::known(F::from(is_valtype_transitions_count as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_valtype_repetition_count' val {} at {}", is_valtype_repetition_count, offset),
-            self.config.is_valtype_repetition_count,
-            offset,
-            || Value::known(F::from(is_valtype_repetition_count as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_valtype' val {} at {}", is_valtype, offset),
-            self.config.is_valtype,
-            offset,
-            || Value::known(F::from(is_valtype as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_func_body_code' val {} at {}", is_func_body_code, offset),
-            self.config.is_func_body_code,
-            offset,
-            || Value::known(F::from(is_func_body_code as u64)),
-        ).unwrap();
+        is_funcs_count.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_funcs_count' val {} at {}", v, offset),
+                self.config.is_funcs_count,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
+        is_func_body_len.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_func_body_len' val {} at {}", v, offset),
+                self.config.is_func_body_len,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
+        is_local_type_transitions_count.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_local_type_transitions_count' val {} at {}", v, offset),
+                self.config.is_local_type_transitions_count,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
+        is_local_repetition_count.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_valtype_repetition_count' val {} at {}", v, offset),
+                self.config.is_local_repetition_count,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
+        is_local_type.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_valtype' val {} at {}", v, offset),
+                self.config.is_local_type,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
+        is_control_instruction.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_control_instruction' val {} at {}", v, offset),
+                self.config.is_control_instruction,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
+        is_block_end.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_block_end' val {} at {}", v, offset),
+                self.config.is_block_end,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
+        is_blocktype_delimiter.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_blocktype_delimiter' val {} at {}", v, offset),
+                self.config.is_blocktype_delimiter,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
+        is_variable_instruction.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_variable_instruction' val {} at {}", v, offset),
+                self.config.is_variable_instruction,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
+
+        is_numeric_instruction.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_numeric_instruction' val {} at {}", v, offset),
+                self.config.is_numeric_instruction,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            if v {
+                let opcode = (wasm_bytecode.bytes[offset] as i32).try_into().unwrap();
+                self.config.numeric_instructions_chip.assign(
+                    region,
+                    offset,
+                    &opcode,
+                ).unwrap();
+            }
+            None::<bool>
+        });
+
+        is_numeric_instruction_leb_arg.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_numeric_instruction_leb_arg' val {} at {}", v, offset),
+                self.config.is_numeric_instruction_leb_arg,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
+
+        is_variable_instruction.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_variable_instruction' val {} at {}", v, offset),
+                self.config.is_variable_instruction,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            if v {
+                let opcode = (wasm_bytecode.bytes[offset] as i32).try_into().unwrap();
+                self.config.variable_instruction_chip.assign(
+                    region,
+                    offset,
+                    &opcode,
+                ).unwrap();
+            }
+            None::<bool>
+        });
+
+        is_variable_instruction_leb_arg.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_variable_instruction_leb_arg' val {} at {}", v, offset),
+                self.config.is_variable_instruction_leb_arg,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
+
+        is_control_instruction.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_control_instruction' val {} at {}", v, offset),
+                self.config.is_control_instruction,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            if v {
+                let opcode = (wasm_bytecode.bytes[offset] as i32).try_into().unwrap();
+                self.config.control_instruction_chip.assign(
+                    region,
+                    offset,
+                    &opcode,
+                ).unwrap();
+            }
+            None::<bool>
+        });
+
+        is_control_instruction_leb_arg.and_then(|v| {
+            region.assign_fixed(
+                || format!("assign 'is_control_instruction_leb_arg' val {} at {}", v, offset),
+                self.config.is_control_instruction_leb_arg,
+                offset,
+                || Value::known(F::from(v as u64)),
+            ).unwrap();
+            None::<bool>
+        });
     }
 
     /// returns sn and leb len
     fn markup_leb_section(
         &self,
         region: &mut Region<F>,
-        leb_bytes: &[u8],
+        wasm_bytecode: &WasmBytecode,
         leb_bytes_start_offset: usize,
-        is_funcs_count: bool,
-        is_func_body_len: bool,
-        is_valtype_transitions_count: bool,
-        is_valtype_repetition_count: bool,
+        is_funcs_count: Option<bool>,
+        is_func_body_len: Option<bool>,
+        is_local_type_transitions_count: Option<bool>,
+        is_local_repetition_count: Option<bool>,
+        is_numeric_instruction: Option<bool>,
+        is_numeric_instruction_leb_arg: Option<bool>,
+        is_variable_instruction_leb_arg: Option<bool>,
+        is_control_instruction_leb_arg: Option<bool>,
     ) -> (u64, usize) {
         const OFFSET: usize = 0;
-        let (leb_sn, last_byte_offset) = leb128_compute_sn(leb_bytes, false, OFFSET).unwrap();
+        let (leb_sn, last_byte_offset) = leb128_compute_sn(&wasm_bytecode.bytes[leb_bytes_start_offset..], false, OFFSET).unwrap();
         let mut leb_sn_recovered_at_pos = 0;
         for byte_offset in OFFSET..=last_byte_offset {
+            let offset = leb_bytes_start_offset + byte_offset;
             leb_sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
                 leb_sn_recovered_at_pos,
                 false,
                 byte_offset,
                 last_byte_offset,
-                leb_bytes[byte_offset],
+                wasm_bytecode.bytes[offset],
             );
-            let offset = leb_bytes_start_offset + byte_offset;
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
                 is_funcs_count,
                 is_func_body_len,
-                is_valtype_transitions_count,
-                is_valtype_repetition_count,
-                false,
-                false,
+                is_local_type_transitions_count,
+                is_local_repetition_count,
+                None,
+                is_numeric_instruction,
+                is_numeric_instruction_leb_arg,
+                None,
+                is_variable_instruction_leb_arg,
+                None,
+                is_control_instruction_leb_arg,
+                None,
+                None,
                 byte_offset,
                 last_byte_offset,
                 leb_sn,
@@ -303,7 +815,143 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         (leb_sn, last_byte_offset + 1)
     }
 
-    /// TODO
+    /// returns new offset
+    fn markup_instruction_section(
+        &self,
+        region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
+        start_offset: usize,
+    ) -> Result<usize, Error> {
+        let mut offset = start_offset;
+
+        let opcode = wasm_bytecode.bytes[offset] as i32;
+
+        let mut is_numeric_instruction = false;
+        let mut is_numeric_instruction_with_leb_arg = false;
+        match <i32 as TryInto<NumericInstruction>>::try_into(opcode) {
+            Ok(opcode) => {
+                is_numeric_instruction = true;
+                is_numeric_instruction_with_leb_arg = NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM.contains(&opcode);
+            }
+            Err(_) => {}
+        }
+
+        let mut is_variable_instruction = false;
+        let mut is_variable_instruction_with_leb_arg = false;
+        match <i32 as TryInto<VariableInstruction>>::try_into(opcode) {
+            Ok(opcode) => {
+                is_variable_instruction = true;
+                is_variable_instruction_with_leb_arg = VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM.contains(&opcode);
+            }
+            Err(_) => {}
+        }
+
+        let mut is_control_instruction = false;
+        let mut is_blocktype_delimiter = false;
+        let mut is_control_block_instruction_with_leb_arg = false;
+        match <i32 as TryInto<ControlInstruction>>::try_into(opcode) {
+            Ok(opcode) => {
+                is_control_instruction = true;
+                is_blocktype_delimiter = CONTROL_INSTRUCTIONS_BLOCKS.contains(&opcode);
+                is_control_block_instruction_with_leb_arg = CONTROL_INSTRUCTIONS_WITH_LEB_PARAM.contains(&opcode);
+            }
+            Err(_) => {}
+        }
+
+        let mut is_block_end = false;
+        if opcode == WASM_BLOCK_END { is_block_end = true };
+
+        if is_numeric_instruction || is_control_instruction || is_variable_instruction {
+            self.assign(
+                region,
+                wasm_bytecode,
+                offset,
+                None,
+                None,
+                None,
+                None,
+                None,
+                if is_numeric_instruction { Some(true) } else { None },
+                None,
+                if is_variable_instruction { Some(true) } else { None },
+                None,
+                if is_control_instruction { Some(true) } else { None },
+                None,
+                None,
+                None,
+                0,
+                0,
+                0,
+                0,
+            );
+            offset += 1;
+        }
+
+        if is_blocktype_delimiter || is_block_end {
+            self.assign(
+                region,
+                wasm_bytecode,
+                offset,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                if is_blocktype_delimiter { Some(true) } else { None },
+                if is_block_end { Some(true) } else { None },
+                0,
+                0,
+                0,
+                0,
+            );
+            offset += 1;
+        }
+
+        if is_numeric_instruction_with_leb_arg || is_variable_instruction_with_leb_arg || is_control_block_instruction_with_leb_arg {
+            let (instruction_leb_argument, instruction_leb_argument_leb_len) = self.markup_leb_section(
+                region,
+                wasm_bytecode,
+                offset,
+                None,
+                None,
+                None,
+                None,
+                None,
+                if is_numeric_instruction_with_leb_arg { Some(true) } else { None },
+                if is_variable_instruction_with_leb_arg { Some(true) } else { None },
+                if is_control_block_instruction_with_leb_arg { Some(true) } else { None },
+            );
+            debug!(
+                "offset {} \
+                is_numeric_instruction_with_leb_arg {} \
+                is_control_block_instruction_with_leb_arg {} \
+                is_variable_instruction_with_leb_arg {} \
+                instruction_leb_argument {} \
+                instruction_leb_argument_leb_len {} \
+                ",
+                offset,
+                is_numeric_instruction_with_leb_arg,
+                is_control_block_instruction_with_leb_arg,
+                is_variable_instruction_with_leb_arg,
+                instruction_leb_argument,
+                instruction_leb_argument_leb_len,
+            );
+            offset += instruction_leb_argument_leb_len;
+        }
+
+        if offset == start_offset {
+            panic!("failed to detect instruction at offset {}", offset)
+        }
+
+        Ok(offset)
+    }
+
     /// returns new offset
     pub fn assign_auto(
         &self,
@@ -314,60 +962,117 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         let mut offset = offset_start;
         debug!("offset_start {}", offset);
 
-        let (items_count, items_count_leb_len) = self.markup_leb_section(
+        // is_funcs_count+
+        let (funcs_count, funcs_count_leb_len) = self.markup_leb_section(
             region,
-            &wasm_bytecode.bytes.as_slice()[offset..],
+            wasm_bytecode,
             offset,
-            true,
-            false,
-            false,
-            false,
+            Some(true),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
         );
-        debug!("offset {} items_count {} items_count_leb_len {}", offset, items_count, items_count_leb_len);
-        offset += items_count_leb_len;
+        debug!("offset {} funcs_count {} funcs_count_leb_len {}", offset, funcs_count, funcs_count_leb_len);
+        offset += funcs_count_leb_len;
 
-        for _item_index in 0..items_count {
-            let (export_name_len, export_name_len_leb_len) = self.markup_leb_section(
+        for _func_index in 0..funcs_count {
+            // is_func_body_len+
+            let (func_body_len, func_body_len_leb_len) = self.markup_leb_section(
                 region,
-                &wasm_bytecode.bytes.as_slice()[offset..],
+                wasm_bytecode,
                 offset,
-                false,
-                true,
-                false,
-                false,
+                None,
+                Some(true),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
             );
-            debug!("offset {} export_name_len {} export_name_len_leb_len {}", offset, export_name_len, export_name_len_leb_len);
-            offset += export_name_len_leb_len;
+            let func_body_start_offset = offset;
+            debug!("offset {} func_body_len {} func_body_len_leb_len {} func_body_start_offset {}", offset, func_body_len, func_body_len_leb_len, func_body_start_offset);
+            offset += func_body_len_leb_len;
 
-            let exportdesc_type = wasm_bytecode.bytes.as_slice()[offset];
-            debug!("offset {} export_desc_type {}", offset, exportdesc_type);
-            self.assign(
-                region,
-                offset,
-                false,
-                false,
-                false,
-                true,
-                false,
-                false,
-                0,
-                0,
-                0,
-                0,
-            );
-            offset += 1;
+            let func_body_end_offset = offset + (func_body_len as usize) - 1;
+            debug!("offset {} func_body_end_offset {}", offset, func_body_end_offset);
 
-            let (exportdesc_val, exportdesc_val_leb_len) = self.markup_leb_section(
+            //  locals(1)(is_local_type_transitions_count+ ...
+            let (is_local_type_transitions_count, is_local_type_transitions_count_leb_len) = self.markup_leb_section(
                 region,
-                &wasm_bytecode.bytes.as_slice()[offset..],
+                wasm_bytecode,
                 offset,
-                false,
-                false,
-                false,
-                true,
+                None,
+                None,
+                Some(true),
+                None,
+                None,
+                None,
+                None,
+                None,
             );
-            debug!("offset {} exportdesc_val {} exportdesc_val_leb_len {}", offset, exportdesc_val, exportdesc_val_leb_len);
-            offset += exportdesc_val_leb_len;
+            debug!("offset {} is_local_type_transitions_count {} is_local_type_transitions_count_leb_len {}", offset, is_local_type_transitions_count, is_local_type_transitions_count_leb_len);
+            offset += is_local_type_transitions_count_leb_len;
+
+            for is_valtype_transition_index in 0..is_local_type_transitions_count {
+                // -> local_var_descriptor+(is_local_repetition_count+ ...
+                let (is_local_repetition_count, is_local_repetition_count_leb_len) = self.markup_leb_section(
+                    region,
+                    wasm_bytecode,
+                    offset,
+                    None,
+                    None,
+                    None,
+                    Some(true),
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+                debug!("offset {} is_local_repetition_count {} is_local_repetition_count_leb_len {}", offset, is_local_repetition_count, is_local_repetition_count_leb_len);
+                offset += is_local_repetition_count_leb_len;
+
+                // is_local_type(1)
+                self.assign(
+                    region,
+                    wasm_bytecode,
+                    offset,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(true),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                );
+                debug!("offset {} is_local_type true", offset);
+                offset += 1;
+            }
+
+            // is_func_body_code+
+            while offset <= func_body_end_offset {
+                let new_offset = self.markup_instruction_section(
+                    region,
+                    wasm_bytecode,
+                    offset,
+                ).unwrap();
+
+                offset = new_offset;
+            }
         }
 
         Ok(offset)

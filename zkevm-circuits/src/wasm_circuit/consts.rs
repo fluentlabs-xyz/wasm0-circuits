@@ -1,12 +1,17 @@
+use std::convert::Into;
+use std::iter::{IntoIterator, Iterator};
+use itertools::Itertools;
+use strum_macros::EnumIter;
 use crate::wasm_circuit::consts::WasmSectionId::DataCount;
 
 pub static WASM_VERSION_PREFIX_BASE_INDEX: usize = 4;
 pub static WASM_VERSION_PREFIX_LENGTH: usize = 4;
 pub static WASM_SECTIONS_START_INDEX: usize = WASM_VERSION_PREFIX_BASE_INDEX + WASM_VERSION_PREFIX_LENGTH;
 pub static WASM_PREAMBLE_MAGIC_PREFIX: &'static str = "\0asm";
-pub static WASM_EXPR_DELIMITER: i32 = 0xB;
+pub static WASM_BLOCK_END: i32 = 0xB;
+pub static WASM_BLOCKTYPE_DELIMITER: i32 = 0x40;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum WasmSectionId {
     Custom = 0,
     Type,
@@ -25,7 +30,7 @@ pub enum WasmSectionId {
 pub const WASM_SECTION_ID_MAX: usize = DataCount as usize;
 
 /// https://webassembly.github.io/spec/core/binary/types.html#number-types
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum NumType {
     I32 = 0x7F,
     I64 = 0x7E,
@@ -37,30 +42,21 @@ pub enum NumType {
 pub const SECTION_ID_DEFAULT: i32 = 0;
 
 // https://webassembly.github.io/spec/core/binary/types.html#limits
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum LimitsType {
     MinOnly = 0x0,
     MinMax = 0x1,
 }
 
-#[derive(Copy, Clone)]
-pub enum VariableInstruction {
-    LocalGet = 0x20,
-    LocalSet = 0x21,
-    LocalTee = 0x22,
-    GlobalGet = 0x23,
-    GlobalSet = 0x24,
-}
-
 /// https://webassembly.github.io/spec/core/binary/modules.html#data-section
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum MemSegmentType {
     ActiveZero = 0x0,
     Passive = 0x1,
     ActiveVariadic = 0x2,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NumericInstruction {
     I32Const = 0x41,
     I64Const = 0x42,
@@ -203,4 +199,115 @@ pub enum NumericInstruction {
     I64extend8S = 0xc2,
     I64extend16S = 0xc3,
     I64extend32S = 0xc4,
+}
+pub const NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS: &[NumericInstruction] = &[
+    NumericInstruction::I32Add,
+    NumericInstruction::I64Add,
+];
+pub const NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM: &[NumericInstruction] = &[
+    NumericInstruction::I32Const,
+    NumericInstruction::I64Const,
+];
+
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
+pub enum VariableInstruction {
+    LocalGet = 0x20,
+    LocalSet = 0x21,
+    LocalTee = 0x22,
+    GlobalGet = 0x23,
+    GlobalSet = 0x24,
+}
+pub static VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM: &[VariableInstruction] = &[
+    VariableInstruction::LocalGet,
+    VariableInstruction::LocalSet,
+    VariableInstruction::LocalTee,
+    VariableInstruction::GlobalGet,
+    VariableInstruction::GlobalSet,
+];
+
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ControlInstruction {
+    Unreachable = 0x00,
+    Nop = 0x01,
+    Block = 0x02,
+    Loop = 0x03,
+    If = 0x04,
+    Else = 0x05,
+    Br = 0x0C,
+    BrIf = 0x0D,
+    BrTable = 0x0E,
+    Return = 0x0F,
+    Call = 0x10,
+    CallIndirect = 0x11,
+}
+pub static CONTROL_INSTRUCTIONS_WITHOUT_PARAMS: &[ControlInstruction] = &[
+    ControlInstruction::Unreachable,
+];
+pub static CONTROL_INSTRUCTIONS_WITH_LEB_PARAM: &[ControlInstruction] = &[
+    ControlInstruction::Br,
+    ControlInstruction::BrIf,
+];
+pub static CONTROL_INSTRUCTIONS_BLOCKS: &[ControlInstruction] = &[
+    ControlInstruction::Block,
+    ControlInstruction::Loop,
+];
+
+impl TryFrom<i32> for NumericInstruction {
+    type Error = ();
+
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        for instr in NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        for instr in NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+
+impl TryFrom<i32> for VariableInstruction {
+    type Error = ();
+
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        for instr in VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+
+impl TryFrom<i32> for ControlInstruction {
+    type Error = ();
+
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        for instr in CONTROL_INSTRUCTIONS_WITH_LEB_PARAM {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        for instr in CONTROL_INSTRUCTIONS_WITHOUT_PARAMS {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        for instr in CONTROL_INSTRUCTIONS_BLOCKS {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+
+impl From<NumericInstruction> for usize {
+    fn from(t: NumericInstruction) -> Self {
+        t as usize
+    }
+}
+
+impl From<VariableInstruction> for usize {
+    fn from(t: VariableInstruction) -> Self {
+        t as usize
+    }
+}
+
+impl From<ControlInstruction> for usize {
+    fn from(t: ControlInstruction) -> Self {
+        t as usize
+    }
 }

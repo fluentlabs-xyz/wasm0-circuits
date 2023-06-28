@@ -112,7 +112,8 @@ where
 ///    and 0 otherwise.
 #[derive(Clone, Debug)]
 pub struct BinaryNumberChip<F, T, const N: usize> {
-    config: BinaryNumberConfig<T, N>,
+    ///
+    pub config: BinaryNumberConfig<T, N>,
     _marker: PhantomData<F>,
 }
 

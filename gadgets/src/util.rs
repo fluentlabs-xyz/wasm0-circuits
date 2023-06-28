@@ -4,6 +4,7 @@ use eth_types::{
     U256,
 };
 use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
+use crate::binary_number::AsBits;
 
 /// Returns the sum of the passed in cells
 pub mod sum {

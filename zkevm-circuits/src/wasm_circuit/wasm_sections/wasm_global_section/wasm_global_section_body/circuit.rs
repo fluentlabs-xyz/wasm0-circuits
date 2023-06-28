@@ -11,7 +11,7 @@ use log::debug;
 use eth_types::Field;
 use gadgets::util::{Expr, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::consts::{NumType, WASM_EXPR_DELIMITER};
+use crate::wasm_circuit::consts::{NumType, WASM_BLOCK_END};
 use crate::wasm_circuit::consts::NumericInstruction::{F32Const, F64Const, I32Const, I64Const};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -246,9 +246,9 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 is_expr_delimiter_expr.clone(),
                 |bcb| {
                     bcb.require_equal(
-                        "is_expr_delimiter -> byte value == WASM_EXPR_DELIMITER",
+                        "is_expr_delimiter -> byte value == WASM_BLOCK_END",
                         byte_val_expr.clone(),
-                        WASM_EXPR_DELIMITER.expr(),
+                        WASM_BLOCK_END.expr(),
                     )
                 }
             );
@@ -271,28 +271,28 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         config
     }
 
-    pub fn assign_init(
-        &self,
-        region: &mut Region<F>,
-        offset_max: usize,
-    ) {
-        for offset in 0..=offset_max {
-            self.assign(
-                region,
-                offset,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                0,
-                0,
-                0,
-                0,
-            );
-        }
-    }
+    // pub fn assign_init(
+    //     &self,
+    //     region: &mut Region<F>,
+    //     offset_max: usize,
+    // ) {
+    //     for offset in 0..=offset_max {
+    //         self.assign(
+    //             region,
+    //             offset,
+    //             false,
+    //             false,
+    //             false,
+    //             false,
+    //             false,
+    //             false,
+    //             0,
+    //             0,
+    //             0,
+    //             0,
+    //         );
+    //     }
+    // }
 
     pub fn assign(
         &self,

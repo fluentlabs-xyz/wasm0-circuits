@@ -615,14 +615,14 @@ impl<F: Field> WasmChip<F>
     ) -> Result<(), Error> {
         self.config.leb128_chip.assign_init(region, offset_max);
         // TODO remove INITs for all chips?
-        self.config.wasm_type_section_item_chip.assign_init(region, offset_max);
-        self.config.wasm_type_section_body_chip.assign_init(region, offset_max);
-        self.config.wasm_import_section_body_chip.assign_init(region, offset_max);
-        self.config.wasm_function_section_body_chip.assign_init(region, offset_max);
-        self.config.wasm_memory_section_body_chip.assign_init(region, offset_max);
-        self.config.wasm_export_section_body_chip.assign_init(region, offset_max);
-        self.config.wasm_data_section_body_chip.assign_init(region, offset_max);
-        self.config.wasm_global_section_body_chip.assign_init(region, offset_max);
+        // self.config.wasm_type_section_item_chip.assign_init(region, offset_max);
+        // self.config.wasm_type_section_body_chip.assign_init(region, offset_max);
+        // self.config.wasm_import_section_body_chip.assign_init(region, offset_max);
+        // self.config.wasm_function_section_body_chip.assign_init(region, offset_max);
+        // self.config.wasm_memory_section_body_chip.assign_init(region, offset_max);
+        // self.config.wasm_export_section_body_chip.assign_init(region, offset_max);
+        // self.config.wasm_data_section_body_chip.assign_init(region, offset_max);
+        // self.config.wasm_global_section_body_chip.assign_init(region, offset_max);
 
         for offset in 0..=offset_max {
             self.assign(

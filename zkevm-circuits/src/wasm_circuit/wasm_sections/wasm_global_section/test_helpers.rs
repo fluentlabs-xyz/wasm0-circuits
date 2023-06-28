@@ -1,5 +1,5 @@
 use crate::wasm_circuit::consts::NumericInstruction::{I32Const, I64Const};
-use crate::wasm_circuit::consts::{NumType, WASM_EXPR_DELIMITER, WASM_SECTION_ID_MAX};
+use crate::wasm_circuit::consts::{NumType, WASM_BLOCK_END, WASM_SECTION_ID_MAX};
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_convert;
 
 #[derive(Copy, Clone)]
@@ -30,7 +30,7 @@ pub fn generate_wasm_global_section_item_bytecode(descriptor: &WasmGlobalSection
         NumType::F32 => {panic!("unsupported type F32")}
         NumType::F64 => {panic!("unsupported type F64")}
     }
-    bytecode.push(WASM_EXPR_DELIMITER as u8);
+    bytecode.push(WASM_BLOCK_END as u8);
 
     return bytecode;
 }
@@ -46,13 +46,13 @@ pub fn generate_wasm_global_section_item_bytecode(descriptor: &WasmGlobalSection
 // 3, - items count
 // 7f, 1, - I32, mut
 // 41, 0, - i32.const 0
-// b, - WASM_EXPR_DELIMITER
+// b, - WASM_BLOCK_END
 // 7e, 1, - i64, mut
 // 42, 0, - i64.const 0
-// b, - WASM_EXPR_DELIMITER
+// b, - WASM_BLOCK_END
 // 7e, 1, - i64, mut
 // 42, d1, df, 4, - i64.const 77777
-// b - WASM_EXPR_DELIMITER
+// b - WASM_BLOCK_END
 // ]
 // '77777' in s-leb hex [d1, df, 4]
 // 'js' in hex [6a, 73] in decimal [106, 115]
