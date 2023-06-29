@@ -200,11 +200,11 @@ pub enum NumericInstruction {
     I64extend16S = 0xc3,
     I64extend32S = 0xc4,
 }
-pub const NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS: &[NumericInstruction] = &[
+pub const NUMERIC_INSTRUCTIONS_WITHOUT_ARGS: &[NumericInstruction] = &[
     NumericInstruction::I32Add,
     NumericInstruction::I64Add,
 ];
-pub const NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM: &[NumericInstruction] = &[
+pub const NUMERIC_INSTRUCTIONS_WITH_LEB_ARG: &[NumericInstruction] = &[
     NumericInstruction::I32Const,
     NumericInstruction::I64Const,
 ];
@@ -217,7 +217,7 @@ pub enum VariableInstruction {
     GlobalGet = 0x23,
     GlobalSet = 0x24,
 }
-pub static VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM: &[VariableInstruction] = &[
+pub static VARIABLE_INSTRUCTIONS_WITH_LEB_ARG: &[VariableInstruction] = &[
     VariableInstruction::LocalGet,
     VariableInstruction::LocalSet,
     VariableInstruction::LocalTee,
@@ -240,10 +240,10 @@ pub enum ControlInstruction {
     Call = 0x10,
     CallIndirect = 0x11,
 }
-pub static CONTROL_INSTRUCTIONS_WITHOUT_PARAMS: &[ControlInstruction] = &[
+pub static CONTROL_INSTRUCTIONS_WITHOUT_ARGS: &[ControlInstruction] = &[
     ControlInstruction::Unreachable,
 ];
-pub static CONTROL_INSTRUCTIONS_WITH_LEB_PARAM: &[ControlInstruction] = &[
+pub static CONTROL_INSTRUCTIONS_WITH_LEB_ARG: &[ControlInstruction] = &[
     ControlInstruction::Br,
     ControlInstruction::BrIf,
 ];
@@ -256,10 +256,10 @@ impl TryFrom<i32> for NumericInstruction {
     type Error = ();
 
     fn try_from(v: i32) -> Result<Self, Self::Error> {
-        for instr in NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM {
+        for instr in NUMERIC_INSTRUCTIONS_WITH_LEB_ARG {
             if v == *instr as i32 { return Ok(*instr); }
         }
-        for instr in NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS {
+        for instr in NUMERIC_INSTRUCTIONS_WITHOUT_ARGS {
             if v == *instr as i32 { return Ok(*instr); }
         }
         Err(())
@@ -270,7 +270,7 @@ impl TryFrom<i32> for VariableInstruction {
     type Error = ();
 
     fn try_from(v: i32) -> Result<Self, Self::Error> {
-        for instr in VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM {
+        for instr in VARIABLE_INSTRUCTIONS_WITH_LEB_ARG {
             if v == *instr as i32 { return Ok(*instr); }
         }
         Err(())
@@ -281,10 +281,10 @@ impl TryFrom<i32> for ControlInstruction {
     type Error = ();
 
     fn try_from(v: i32) -> Result<Self, Self::Error> {
-        for instr in CONTROL_INSTRUCTIONS_WITH_LEB_PARAM {
+        for instr in CONTROL_INSTRUCTIONS_WITH_LEB_ARG {
             if v == *instr as i32 { return Ok(*instr); }
         }
-        for instr in CONTROL_INSTRUCTIONS_WITHOUT_PARAMS {
+        for instr in CONTROL_INSTRUCTIONS_WITHOUT_ARGS {
             if v == *instr as i32 { return Ok(*instr); }
         }
         for instr in CONTROL_INSTRUCTIONS_BLOCK {
