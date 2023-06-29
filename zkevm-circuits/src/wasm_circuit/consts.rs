@@ -247,7 +247,7 @@ pub static CONTROL_INSTRUCTIONS_WITH_LEB_PARAM: &[ControlInstruction] = &[
     ControlInstruction::Br,
     ControlInstruction::BrIf,
 ];
-pub static CONTROL_INSTRUCTIONS_BLOCKS: &[ControlInstruction] = &[
+pub static CONTROL_INSTRUCTIONS_BLOCK: &[ControlInstruction] = &[
     ControlInstruction::Block,
     ControlInstruction::Loop,
 ];
@@ -287,7 +287,7 @@ impl TryFrom<i32> for ControlInstruction {
         for instr in CONTROL_INSTRUCTIONS_WITHOUT_PARAMS {
             if v == *instr as i32 { return Ok(*instr); }
         }
-        for instr in CONTROL_INSTRUCTIONS_BLOCKS {
+        for instr in CONTROL_INSTRUCTIONS_BLOCK {
             if v == *instr as i32 { return Ok(*instr); }
         }
         Err(())

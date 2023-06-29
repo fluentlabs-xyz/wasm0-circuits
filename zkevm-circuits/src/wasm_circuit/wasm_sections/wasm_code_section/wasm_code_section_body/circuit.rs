@@ -11,10 +11,10 @@ use itertools::Itertools;
 use log::debug;
 use eth_types::Field;
 use gadgets::binary_number::BinaryNumberChip;
-use gadgets::util::{Expr, or};
+use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::evm_circuit::util::math_gadget::BinaryNumberGadget;
-use crate::wasm_circuit::consts::{CONTROL_INSTRUCTIONS_BLOCKS, CONTROL_INSTRUCTIONS_WITH_LEB_PARAM, CONTROL_INSTRUCTIONS_WITHOUT_PARAMS, ControlInstruction, NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM, NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS, NumericInstruction, VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
+use crate::wasm_circuit::consts::{CONTROL_INSTRUCTIONS_BLOCK, CONTROL_INSTRUCTIONS_WITH_LEB_PARAM, CONTROL_INSTRUCTIONS_WITHOUT_PARAMS, ControlInstruction, NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM, NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS, NumericInstruction, VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -145,6 +145,59 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             cb.require_boolean("is_control_instruction is boolean", is_control_instruction_expr.clone());
             cb.require_boolean("is_control_instruction_leb_arg is boolean", is_control_instruction_leb_arg_expr.clone());
 
+            let is_numeric_opcode_without_params_expr = or::expr(
+                NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS.iter()
+                    .map(|v| {
+                        numeric_instructions_chip.config.value_equals(*v, Rotation::cur())(vc)
+                    }).collect_vec()
+            );
+            let is_numeric_opcode_with_leb_param_expr = or::expr(
+                NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM.iter()
+                    .map(|v| {
+                        numeric_instructions_chip.config.value_equals(*v, Rotation::cur())(vc)
+                    }).collect_vec()
+            );
+            let is_variable_opcode_with_leb_param_expr = or::expr(
+                VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM.iter()
+                    .map(|v| {
+                        variable_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
+                    }).collect_vec()
+            );
+            let is_control_opcode_without_params_expr = or::expr(
+                CONTROL_INSTRUCTIONS_WITHOUT_PARAMS.iter()
+                    .map(|v| {
+                        control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
+                    }).collect_vec()
+            );
+            let is_control_opcode_with_leb_param_expr = or::expr(
+                CONTROL_INSTRUCTIONS_WITH_LEB_PARAM.iter()
+                    .map(|v| {
+                        control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
+                    }).collect_vec()
+            );
+            let is_control_opcode_block_expr = or::expr(
+                CONTROL_INSTRUCTIONS_BLOCK.iter()
+                    .map(|v| {
+                        control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
+                    }).collect_vec()
+            );
+
+            let is_opcode_with_leb_param_expr = or::expr([
+                is_numeric_opcode_with_leb_param_expr.clone(),
+                is_variable_opcode_with_leb_param_expr.clone(),
+                is_control_opcode_with_leb_param_expr.clone(),
+            ]);
+            let is_instruction_expr = or::expr([
+                is_numeric_instruction_expr.clone(),
+                is_variable_instruction_expr.clone(),
+                is_control_instruction_expr.clone(),
+            ]);
+            let is_instruction_leb_arg_expr = or::expr([
+                is_numeric_instruction_leb_arg_expr.clone(),
+                is_variable_instruction_leb_arg_expr.clone(),
+                is_control_instruction_leb_arg_expr.clone(),
+            ]);
+
             cb.require_equal(
                 "exactly one mark flag active at the same time",
                 is_funcs_count_expr.clone()
@@ -159,78 +212,125 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     + is_control_instruction_expr.clone()
                     + is_control_instruction_leb_arg_expr.clone()
                     + is_blocktype_delimiter_expr.clone()
-                    + is_block_end_expr.clone()
-                ,
+                    + is_block_end_expr.clone(),
                 1.expr(),
             );
 
-            cb.condition(
-                is_numeric_instruction_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
-                        "is_numeric_instruction -> opcode is valid",
-                        or::expr(
-                            NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS.iter()
-                                .chain(NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM.iter())
-                                .map(|v| {
-                                    numeric_instructions_chip.config.value_equals(*v, Rotation::cur())(vc)
-                                }).collect_vec()
-                        ),
-                        1.expr(),
-                    );
-                }
-            );
-            // numeric instructions without params
-            cb.condition(
-                or::expr(
-                    NUMERIC_INSTRUCTIONS_WITHOUT_PARAMS.iter().map(|v| {
-                        numeric_instructions_chip.config.value_equals(*v, Rotation::cur())(vc)
-                    }).collect_vec()
-                ),
-                |bcb| {
-                    // TODO check next is opcode?
-                    // TODO check prev is ???
-                }
-            );
-            // numeric instructions with leb param
-            cb.condition(
-                or::expr(
-                    NUMERIC_INSTRUCTIONS_WITH_LEB_PARAM.iter().map(|v| {
-                        numeric_instructions_chip.config.value_equals(*v, Rotation::cur())(vc)
-                    }).collect_vec()
-                ),
-                |bcb| {
-                    bcb.require_equal(
-                        "numeric instructions with leb param -> next.is_leb128",
-                        is_leb128_next_expr.clone(),
-                        1.expr(),
-                    );
-                }
-            );
-            cb.condition(
-                is_numeric_instruction_leb_arg_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
-                        "is_numeric_instruction_leb_arg -> leb128",
-                        is_leb128_expr.clone(),
-                        1.expr(),
-                    )
-                }
+            // TODO: is_funcs_count+ -> func+(is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ -> local_var_descriptor+(is_local_repetition_count+ -> is_local_type(1))) -> is_func_body_code+)
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check next: is_funcs_count+ -> func+(is_func_body_len+ ...",
+                is_funcs_count_expr.clone(),
+                true,
+                &[is_funcs_count, is_func_body_len, ],
             );
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_numeric_instruction(1) -> is_numeric_instruction_leb_arg+",
-                is_numeric_instruction_leb_arg_expr.clone(),
+                "check prev: is_funcs_count+ -> func+(is_func_body_len+ ...",
+                is_func_body_len_expr.clone(),
                 false,
-                &[is_numeric_instruction, is_numeric_instruction_leb_arg]
+                &[is_funcs_count, is_block_end, is_func_body_len, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check next: is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ ...",
+                is_func_body_len_expr.clone(),
+                true,
+                &[is_func_body_len, is_local_type_transitions_count, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check prev: is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ ...",
+                is_local_type_transitions_count_expr.clone(),
+                false,
+                &[is_func_body_len, is_local_type_transitions_count, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check next: is_local_type_transitions_count+ -> local_var_descriptor+(is_local_repetition_count+ ...",
+                is_local_type_transitions_count_expr.clone(),
+                true,
+                &[is_local_type_transitions_count, is_local_repetition_count, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check prev: is_local_type_transitions_count+ -> local_var_descriptor+(is_local_repetition_count+ ...",
+                is_local_repetition_count_expr.clone(),
+                false,
+                &[is_local_type_transitions_count, is_local_type, is_local_repetition_count, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check next: is_local_repetition_count+ -> is_local_type(1) ...",
+                is_local_repetition_count_expr.clone(),
+                true,
+                &[is_local_repetition_count, is_local_type, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check prev: is_local_repetition_count+ -> is_local_type(1) ...",
+                is_local_type_expr.clone(),
+                false,
+                &[is_local_repetition_count, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check next: ... is_local_type(1))) -> is_func_body_code+",
+                is_local_type_expr.clone(),
+                true,
+                &[is_local_repetition_count, is_numeric_instruction, is_variable_instruction, is_control_instruction, ],
+            );
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "check prev: ... is_local_type(1))) -> is_func_body_code+",
+                is_instruction_expr.clone(),
+                false,
+                &[
+                    is_local_type,
+                    is_numeric_instruction,
+                    is_variable_instruction,
+                    is_control_instruction,
+                    is_numeric_instruction_leb_arg,
+                    is_variable_instruction_leb_arg,
+                    is_control_instruction_leb_arg,
+                    is_blocktype_delimiter,
+                    is_block_end,
+                ],
             );
 
+            // BASIC CONSTRAINTS:
+
+            // is_numeric_instruction(1) => opcode is valid
+            cb.condition(
+                is_numeric_instruction_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_numeric_instruction(1) -> opcode is valid",
+                        or::expr([
+                            is_numeric_opcode_without_params_expr.clone(),
+                            is_numeric_opcode_with_leb_param_expr.clone(),
+                        ]),
+                        1.expr(),
+                    );
+                }
+            );
+
+            // is_variable_instruction(1) => opcode is valid
             cb.condition(
                 is_variable_instruction_expr.clone(),
                 |bcb| {
                     bcb.require_equal(
-                        "is_variable_instruction -> opcode is valid",
+                        "is_variable_instruction(1) => opcode is valid",
                         or::expr(
                             VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM.iter()
                                 .map(|v| {
@@ -241,207 +341,213 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     );
                 }
             );
-            cb.condition(
-                or::expr(
-                    VARIABLE_INSTRUCTIONS_WITH_LEB_PARAM.iter().map(|v| {
-                        variable_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
-                    }).collect_vec()
-                ),
-                |bcb| {
-                    bcb.require_equal(
-                        "variable instructions with leb param -> next.is_leb128",
-                        is_leb128_next_expr.clone(),
-                        1.expr(),
-                    );
-                }
-            );
-            cb.condition(
-                is_variable_instruction_leb_arg_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
-                        "is_variable_instruction_leb_arg -> leb128",
-                        is_leb128_expr.clone(),
-                        1.expr(),
-                    )
-                }
-            );
-            configure_check_for_transition(
-                &mut cb,
-                vc,
-                "check prev: is_variable_instruction(1) -> is_variable_instruction_leb_arg+",
-                is_variable_instruction_leb_arg_expr.clone(),
-                false,
-                &[is_variable_instruction, is_variable_instruction_leb_arg]
-            );
 
+            // is_control_instruction(1) => opcode is valid
             cb.condition(
                 is_control_instruction_expr.clone(),
                 |bcb| {
                     bcb.require_equal(
-                        "is_control_instruction -> opcode is valid",
-                        or::expr(
-                            CONTROL_INSTRUCTIONS_WITHOUT_PARAMS.iter()
-                                .chain(CONTROL_INSTRUCTIONS_WITH_LEB_PARAM.iter())
-                                .chain(CONTROL_INSTRUCTIONS_BLOCKS.iter())
-                                .map(|v| {
-                                    control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
-                                }).collect_vec()
-                        ),
+                        "is_control_instruction(1) -> opcode is valid",
+                        or::expr([
+                            is_control_opcode_without_params_expr.clone(),
+                            is_control_opcode_with_leb_param_expr.clone(),
+                            is_control_opcode_block_expr.clone(),
+                        ]),
                         1.expr(),
-                    );
-                }
-            );
-            cb.condition(
-                or::expr(
-                    CONTROL_INSTRUCTIONS_WITHOUT_PARAMS.iter().map(|v| {
-                        control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
-                    }).collect_vec()
-                ),
-                |bcb| {
-                    // TODO
-                }
-            );
-            cb.condition(
-                or::expr(
-                    CONTROL_INSTRUCTIONS_WITH_LEB_PARAM.iter().map(|v| {
-                        control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
-                    }).collect_vec()
-                ),
-                |bcb| {
-                    bcb.require_equal(
-                        "control instructions with leb param -> is_control_instruction",
-                        is_control_instruction_expr.clone(),
-                        1.expr(),
-                    );
-                    bcb.require_equal(
-                        "control instructions with leb param -> next.is_leb128_next",
-                        is_leb128_next_expr.clone(),
-                        1.expr(),
-                    );
-                }
-            );
-            cb.condition(
-                is_control_instruction_leb_arg_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
-                        "is_control_instruction_leb_arg -> leb128",
-                        is_leb128_expr.clone(),
-                        1.expr(),
-                    )
-                }
-            );
-            configure_check_for_transition(
-                &mut cb,
-                vc,
-                "check prev: is_control_instruction(1) -> is_control_instruction_leb_arg+",
-                is_control_instruction_leb_arg_expr.clone(),
-                false,
-                &[is_control_instruction, is_control_instruction_leb_arg]
-            );
-
-            cb.condition(
-                is_blocktype_delimiter_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
-                        "is_blocktype_delimiter -> WASM_BLOCKTYPE_DELIMITER",
-                        byte_val_expr.clone(),
-                        WASM_BLOCKTYPE_DELIMITER.expr(),
                     );
                 }
             );
 
-            cb.condition(
-                is_block_end_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
-                        "is_block_end_expr -> WASM_BLOCK_END",
-                        byte_val_expr.clone(),
-                        WASM_BLOCK_END.expr(),
-                    );
-                }
-            );
-
+            // leb128 flag is active => leb128_chip enabled
             cb.condition(
                 or::expr([
                     is_funcs_count_expr.clone(),
                     is_func_body_len_expr.clone(),
                     is_local_type_transitions_count_expr.clone(),
                     is_local_repetition_count_expr.clone(),
+                    is_instruction_leb_arg_expr.clone(),
                 ]),
                 |cbc| {
                     cbc.require_equal(
-                        "leb128 flag is active -> leb128_chip enabled",
+                        "leb128 flag is active => leb128_chip enabled",
                         is_leb128_expr.clone(),
                         1.expr(),
                     )
                 }
             );
+            // is_blocktype_delimiter(1) => WASM_BLOCKTYPE_DELIMITER
+            cb.condition(
+                is_blocktype_delimiter_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_blocktype_delimiter(1) => WASM_BLOCKTYPE_DELIMITER",
+                        byte_val_expr.clone(),
+                        WASM_BLOCKTYPE_DELIMITER.expr(),
+                    );
+                }
+            );
+            // is_block_end(1) => WASM_BLOCK_END
+            cb.condition(
+                is_block_end_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_block_end(1) => WASM_BLOCK_END",
+                        byte_val_expr.clone(),
+                        WASM_BLOCK_END.expr(),
+                    );
+                }
+            );
 
-            // TODO: is_funcs_count+ -> func+(is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ -> local_var_descriptor+(is_local_repetition_count+ -> is_local_type(1))) -> is_func_body_code+)
-            // configure_check_for_transition(
-            //     &mut cb,
-            //     vc,
-            //     "check next: is_funcs_count+ -> func+(is_func_body_len+ ...",
-            //     is_funcs_count_expr.clone(),
-            //     true,
-            //     &[is_funcs_count, is_func_body_len, ],
-            // );
-            // configure_check_for_transition(
-            //     &mut cb,
-            //     vc,
-            //     "check prev: is_funcs_count+ -> func+(is_func_body_len+ ...",
-            //     is_func_body_len_expr.clone(),
-            //     false,
-            //     &[is_funcs_count, is_func_body_code, is_func_body_len, ],
-            // );
-            // configure_check_for_transition(
-            //     &mut cb,
-            //     vc,
-            //     "check next: is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ ...",
-            //     is_func_body_len_expr.clone(),
-            //     true,
-            //     &[is_func_body_len, is_local_type_transitions_count, ],
-            // );
-            // configure_check_for_transition(
-            //     &mut cb,
-            //     vc,
-            //     "check prev: is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ ...",
-            //     is_local_type_transitions_count_expr.clone(),
-            //     false,
-            //     &[is_func_body_len, is_local_type_transitions_count, ],
-            // );
-            // configure_check_for_transition(
-            //     &mut cb,
-            //     vc,
-            //     "check next: is_local_type_transitions_count+ -> local_var_descriptor+(is_local_repetition_count+ ...",
-            //     is_local_type_transitions_count_expr.clone(),
-            //     true,
-            //     &[is_local_type_transitions_count, is_local_repetition_count, ],
-            // );
-            // configure_check_for_transition(
-            //     &mut cb,
-            //     vc,
-            //     "check prev: is_local_type_transitions_count+ -> local_var_descriptor+(is_local_repetition_count+ ...",
-            //     is_local_repetition_count_expr.clone(),
-            //     false,
-            //     &[is_local_type_transitions_count, is_local_type, is_local_repetition_count, ],
-            // );
-            // configure_check_for_transition(
-            //     &mut cb,
-            //     vc,
-            //     "check next: is_local_repetition_count+ -> is_local_type(1) ...",
-            //     is_local_repetition_count_expr.clone(),
-            //     true,
-            //     &[is_local_repetition_count, is_local_type, ],
-            // );
-            // configure_check_for_transition(
-            //     &mut cb,
-            //     vc,
-            //     "check prev: is_local_repetition_count+ -> is_local_type(1) ...",
-            //     is_local_type_expr.clone(),
-            //     false,
-            //     &[is_local_repetition_count, ],
-            // );
+            // SIMPLE RELATIONS CONSTRAINTS:
+
+            // is_numeric_opcode_with_leb_param(1) -> is_numeric_instruction_leb_arg+
+            cb.condition(
+                is_numeric_opcode_with_leb_param_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_numeric_opcode_with_leb_param(1) -> is_leb128",
+                        is_leb128_next_expr.clone(),
+                        1.expr(),
+                    );
+                }
+            );
+
+            // is_variable_opcode_with_leb_param(1) -> is_variable_instruction_leb_arg+
+            cb.condition(
+                is_variable_opcode_with_leb_param_expr.clone(),
+                |bcb| {
+                    let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
+                    bcb.require_equal(
+                        "is_variable_opcode_with_leb_param(1) -> is_variable_instruction_leb_arg+",
+                        is_variable_instruction_leb_arg_next_expr.clone(),
+                        1.expr(),
+                    );
+                }
+            );
+
+            // is_control_opcode_with_leb_param(1) -> is_control_instruction_leb_arg+
+            cb.condition(
+                is_control_opcode_with_leb_param_expr.clone(),
+                |bcb| {
+                    let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
+                    bcb.require_equal(
+                        "is_control_opcode_with_leb_param(1) -> is_control_instruction_leb_arg+",
+                        is_control_instruction_leb_arg_next_expr.clone(),
+                        1.expr(),
+                    );
+                }
+            );
+            // is_control_opcode_block(1) -> is_blocktype_delimiter(1)
+            configure_check_for_transition(
+                &mut cb,
+                vc,
+                "is_control_opcode_block(1) -> is_blocktype_delimiter(1)",
+                and::expr([
+                    is_control_opcode_block_expr.clone(),
+                ]),
+                true,
+                &[is_blocktype_delimiter],
+            );
+
+            // COMPLEX RELATIONS CONSTRAINTS:
+
+            // TODO need reversed-direction constraints
+
+            // is_numeric_instruction(1) -> is_instruction_leb_arg || is_instruction || is_block_end
+            cb.condition(
+                is_numeric_instruction_expr.clone(),
+                |bcb| {
+                    let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
+                    let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
+                    let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
+
+                    let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
+                    let is_variable_instruction_next_expr = vc.query_fixed(is_variable_instruction, Rotation::next());
+                    let is_control_instruction_next_expr = vc.query_fixed(is_control_instruction, Rotation::next());
+
+                    let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
+
+                    bcb.require_equal(
+                        "check next: is_numeric_instruction(1) -> is_instruction_leb_arg || is_instruction || is_block_end",
+                            is_numeric_instruction_leb_arg_next_expr
+                            + is_variable_instruction_leb_arg_next_expr
+                            + is_control_instruction_leb_arg_next_expr
+
+                            + is_numeric_instruction_next_expr
+                            + is_variable_instruction_next_expr
+                            + is_control_instruction_next_expr
+
+                            + is_block_end_next_expr
+                        ,
+                        1.expr(),
+                    );
+                }
+            );
+
+            // is_variable_instruction(1) -> is_instruction_leb_arg || is_instruction || is_block_end
+            cb.condition(
+                is_variable_instruction_expr.clone(),
+                |bcb| {
+                    let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
+                    let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
+                    let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
+
+                    let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
+                    let is_variable_instruction_next_expr = vc.query_fixed(is_variable_instruction, Rotation::next());
+                    let is_control_instruction_next_expr = vc.query_fixed(is_control_instruction, Rotation::next());
+
+                    let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
+
+                    bcb.require_equal(
+                        "check next: is_variable_instruction(1) -> is_instruction_leb_arg || is_instruction || is_block_end",
+                        is_numeric_instruction_leb_arg_next_expr
+                            + is_variable_instruction_leb_arg_next_expr
+                            + is_control_instruction_leb_arg_next_expr
+
+                            + is_numeric_instruction_next_expr
+                            + is_variable_instruction_next_expr
+                            + is_control_instruction_next_expr
+
+                            + is_block_end_next_expr
+                        ,
+                        1.expr(),
+                    );
+                }
+            );
+
+            // is_control_instruction(1) && not(is_control_opcode_block) -> is_instruction_leb_arg || is_instruction || is_block_end
+            cb.condition(
+                and::expr([
+                    is_control_instruction_expr.clone(),
+                    not::expr(is_control_opcode_block_expr.clone()),
+                ]),
+                |bcb| {
+                    let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
+                    let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
+                    let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
+
+                    let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
+                    let is_variable_instruction_next_expr = vc.query_fixed(is_variable_instruction, Rotation::next());
+                    let is_control_instruction_next_expr = vc.query_fixed(is_control_instruction, Rotation::next());
+
+                    let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
+
+                    bcb.require_equal(
+                        "check next: is_control_instruction(1) && not(is_control_opcode_block) -> is_instruction_leb_arg || is_instruction || is_block_end",
+                        is_numeric_instruction_leb_arg_next_expr
+                        + is_variable_instruction_leb_arg_next_expr
+                        + is_control_instruction_leb_arg_next_expr
+
+                        + is_numeric_instruction_next_expr
+                        + is_variable_instruction_next_expr
+                        + is_control_instruction_next_expr
+
+                        + is_block_end_next_expr
+                        ,
+                        1.expr(),
+                    );
+                }
+            );
 
             cb.gate(q_enable_expr.clone())
         });
@@ -470,29 +576,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
         config
     }
-
-    // pub fn assign_init(
-    //     &self,
-    //     region: &mut Region<F>,
-    //     offset_max: usize,
-    // ) {
-    //     for offset in 0..=offset_max {
-    //         self.assign(
-    //             region,
-    //             offset,
-    //             false,
-    //             false,
-    //             false,
-    //             false,
-    //             false,
-    //             false,
-    //             0,
-    //             0,
-    //             0,
-    //             0,
-    //         );
-    //     }
-    // }
 
     pub fn assign(
         &self,
@@ -852,7 +935,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         match <i32 as TryInto<ControlInstruction>>::try_into(opcode) {
             Ok(opcode) => {
                 is_control_instruction = true;
-                is_blocktype_delimiter = CONTROL_INSTRUCTIONS_BLOCKS.contains(&opcode);
+                is_blocktype_delimiter = CONTROL_INSTRUCTIONS_BLOCK.contains(&opcode);
                 is_control_block_instruction_with_leb_arg = CONTROL_INSTRUCTIONS_WITH_LEB_PARAM.contains(&opcode);
             }
             Err(_) => {}
@@ -1063,7 +1146,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 offset += 1;
             }
 
-            // is_func_body_code+
             while offset <= func_body_end_offset {
                 let new_offset = self.markup_instruction_section(
                     region,

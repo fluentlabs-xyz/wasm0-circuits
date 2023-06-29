@@ -203,28 +203,6 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         config
     }
 
-    // pub fn assign_init(
-    //     &self,
-    //     region: &mut Region<F>,
-    //     offset_max: usize,
-    // ) {
-    //     for offset in 0..=offset_max {
-    //         self.assign(
-    //             region,
-    //             offset,
-    //             false,
-    //             false,
-    //             false,
-    //             false,
-    //             false,
-    //             0,
-    //             0,
-    //             0,
-    //             0,
-    //         );
-    //     }
-    // }
-
     pub fn assign(
         &self,
         region: &mut Region<F>,

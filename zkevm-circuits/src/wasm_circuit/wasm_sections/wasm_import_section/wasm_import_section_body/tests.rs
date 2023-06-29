@@ -83,8 +83,6 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         layouter.assign_region(
             || "wasm_import_section_body region",
             |mut region| {
-                // config.wasm_import_section_body_chip.config.leb128_chip.assign_init(&mut region, self.bytecode.len() - 1);
-                // config.wasm_import_section_body_chip.assign_init(&mut region, self.bytecode.len() - 1);
                 config.wasm_import_section_body_chip.assign_auto(
                     &mut region,
                     &wasm_bytecode,
