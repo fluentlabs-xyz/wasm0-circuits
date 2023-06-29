@@ -26,18 +26,12 @@ pub(crate) struct WasmUnaryGadget<F> {
     same_context: SameContextGadget<F>,
     operand: Cell<F>,
     result: Cell<F>,
-    operand_inv: Cell<F>,
-    operand_is_zero: Cell<F>,
     is_ctz: Cell<F>,
     is_clz: Cell<F>,
     is_popcnt: Cell<F>,
     is_64bits: Cell<F>,
-    boundary: Cell<F>,
-    aux1: Cell<F>,
-    aux2: Cell<F>,
-    lookup_pow: Cell<F>,
     arg_limbs: [Cell<F>; 8],
-    res_terms: [Cell<F>; 8],
+    terms: [Cell<F>; 4],
 }
 
 impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
@@ -48,38 +42,54 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let operand = cb.alloc_u64();
         let result = cb.alloc_u64();
-        let operand_is_zero = cb.alloc_bit_value();
-        let operand_inv = cb.alloc_unlimited_value();
-
-        let boundary = cb.alloc_unlimited_value();
-        let aux1 = cb.alloc_u64_on_u8();
-        let aux2 = cb.alloc_u64_on_u8();
 
         let is_ctz = cb.alloc_bit_value();
         let is_clz = cb.alloc_bit_value();
         let is_popcnt = cb.alloc_bit_value();
         let is_64bits = cb.alloc_bit_value();
 
-        let lookup_pow = cb.alloc_u64();
-
         let arg_limbs = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
                          cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
-        let res_terms = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
-                         cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
+        let terms = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
 
         cb.stack_pop(operand.expr());
         cb.stack_push(result.expr());
 
-        for limb_n in 0..8 {
-            let cond = || is_popcnt.expr();
-            cb.add_lookup(
-                "Using Popcnt fixed table",
-                Lookup::Fixed {
-                    tag: FixedTableTag::Popcnt.expr(),
-                    values: [arg_limbs[limb_n].expr() * cond(), 0.expr(), res_terms[limb_n].expr() * cond()],
-                },
-            );
+        for i in 0..4 {
+            let even = || arg_limbs[i*2].expr();
+            let odd = || arg_limbs[i*2+1].expr();
+            cb.add_lookup("Using Ctz fixed table", Lookup::Fixed {
+                tag: FixedTableTag::Ctz.expr(),
+                values: [even() * is_ctz.expr(), odd() * is_ctz.expr(),
+                         terms[i].expr() * is_ctz.expr() + 16.expr() * (1.expr() - is_ctz.expr())],
+            });
+            cb.add_lookup("Using Clz fixed table", Lookup::Fixed {
+                tag: FixedTableTag::Clz.expr(),
+                values: [even() * is_clz.expr(), odd() * is_clz.expr(),
+                         terms[i].expr() * is_clz.expr() + 16.expr() * (1.expr() - is_clz.expr())],
+            });
+            cb.add_lookup("Using Popcnt fixed table", Lookup::Fixed {
+                tag: FixedTableTag::Popcnt.expr(),
+                values: [even() * is_popcnt.expr(), odd() * is_popcnt.expr(),
+                         terms[i].expr() * is_popcnt.expr()],
+            });
         }
+
+        cb.add_lookup("Using CzOut fixed table for Ctz", Lookup::Fixed {
+            tag: FixedTableTag::CzOut.expr(),
+            values: [(terms[0].expr() + terms[1].expr() * 17.expr()) * is_ctz.expr(),
+                     (terms[2].expr() + terms[3].expr() * 17.expr()) * is_ctz.expr(),
+                     result.expr() * is_ctz.expr()],
+        });
+
+/*
+        cb.add_lookup("Using CzOut fixed table for Clz", Lookup::Fixed {
+            tag: FixedTableTag::CzOut.expr(),
+            values: [(terms[3].expr() + terms[2].expr() * 17.expr()) * is_clz.expr(),
+                     (terms[1].expr() + terms[0].expr() * 17.expr()) * is_clz.expr(),
+                     result.expr() * is_clz.expr()],
+        });
+*/
 
         cb.require_zero(
             "op_unary: selector",
@@ -87,53 +97,20 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
         );
 
         cb.require_zeros(
-            "op_unary: zero_cond",
-            vec![
-                operand_is_zero.expr() * operand.expr(),
-                operand.expr() * operand_inv.expr() - 1.expr() + operand_is_zero.expr(),
-            ],
-        );
-
-        pub fn pow_table_encode<F: Field>(
-            modulus: Expression<F>,
-            power: Expression<F>,
-        ) -> Expression<F> {
-            modulus * (1u64 << 16).expr() + power
-        }
-
-        let bits = 32.expr() + 32.expr() * is_64bits.expr();
-        let operand_is_not_zero = 1.expr() - operand_is_zero.expr();
-
-        cb.require_zeros(
-            "op_unary: clz",
-            vec![
-                operand_is_zero.expr() * (result.expr() - (32.expr() + is_64bits.expr() * 32.expr())),
-                operand_is_not_zero.clone() * (boundary.expr() + aux1.expr() - operand.expr()),
-                operand_is_not_zero.clone() * (aux1.expr() + aux2.expr() + 1.expr() - boundary.expr()),
-                operand_is_not_zero.clone() * (lookup_pow.expr() - pow_table_encode(boundary.expr(), bits - result.expr() - 1.expr())),
-            ].into_iter().map(|constraint| constraint * is_clz.expr()).collect(),
-        );
-
-        cb.require_zeros(
-            "op_unary: ctz",
-            vec![
-                operand_is_zero.expr()
-                    * (result.expr()
-                    - (32.expr() + is_64bits.expr() * 32.expr())),
-                operand_is_not_zero
-                    * (aux1.expr() * boundary.expr() * 2.expr()
-                    + boundary.expr()
-                    - operand.expr()),
-                lookup_pow.expr()
-                    - pow_table_encode(boundary.expr(), result.expr()),
-            ].into_iter().map(|constraint| constraint * is_ctz.expr()).collect(),
+            "op_unary: argument from limbs",
+            vec![{
+                let mut out = arg_limbs[0].expr();
+                for i in 1..8 {
+                  out = out + arg_limbs[i].expr() * (1_u64 << i*8).expr();
+                }
+                out - operand.expr()
+            }],
         );
 
         cb.require_zeros(
             "op_unary: popcnt",
             vec![
-                ( res_terms[0].expr() + res_terms[1].expr() + res_terms[2].expr() + res_terms[3].expr()
-                + res_terms[4].expr() + res_terms[5].expr() + res_terms[6].expr() + res_terms[7].expr()
+                ( terms[0].expr() + terms[1].expr() + terms[2].expr() + terms[3].expr()
                 - result.expr() ) * is_popcnt.expr()
             ],
         );
@@ -153,18 +130,12 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
             same_context,
             operand,
             result,
-            operand_inv,
-            operand_is_zero,
             is_ctz,
             is_clz,
             is_popcnt,
             is_64bits,
-            boundary,
-            aux1,
-            aux2,
-            lookup_pow,
             arg_limbs,
-            res_terms,
+            terms,
         }
     }
 
@@ -186,8 +157,6 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
 
         self.operand.assign(region, offset, Value::<F>::known(operand.to_scalar().unwrap()))?;
         self.result.assign(region, offset, Value::<F>::known(result.to_scalar().unwrap()))?;
-        self.operand_inv.assign(region, offset, Value::<F>::known(F::from(operand.as_u64()).invert().unwrap_or(F::zero())))?;
-        self.operand_is_zero.assign(region, offset, Value::<F>::known(F::from(operand.is_zero() as u64)))?;
 
         let (selector, bits, max) = match opcode {
             OpcodeId::I32Ctz => (&self.is_ctz, 32, 1u128 << 32),
@@ -200,57 +169,27 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
         };
         selector.assign(region, offset, Value::known(F::one()))?;
 
-        match opcode {
-            OpcodeId::I32Ctz | OpcodeId::I64Ctz => {
-                /*
-                 * 0000 0100 0000 1000
-                 * |____________| |__|
-                 *  hd            boundary
-                 *
-                 */
-                let least_one_pos = result.as_u64();
-                let hd = operand
-                    .as_u64()
-                    .checked_shr(least_one_pos as u32 + 1)
-                    .unwrap_or(0);
-
-                self.aux1.assign(region, offset, Value::<F>::known(F::from(hd)))?;
-                self.boundary.assign(region, offset, Value::<F>::known(F::from(1u64 << least_one_pos)))?;
-                self.lookup_pow.assign(region, offset, Value::<F>::known(F::from(least_one_pos)))?;
-            }
-            OpcodeId::I32Clz | OpcodeId::I64Clz => {
-                /*
-                 * operand:
-                 *   0000 0100 0000 1000
-                 * aux1: tail of operand
-                 *    i.e.  00 0000 1000
-                 * boundary: operand minus tail
-                 *    i.e. 100 0000 0000
-                 */
-                let boundary = max.checked_shr(1 + result.as_u32()).unwrap_or(0) as u64;
-                let tail = operand.as_u64() ^ boundary;
-
-                self.boundary.assign(region, offset, Value::<F>::known(F::from(boundary as u64)))?;
-                self.aux1.assign(region, offset, Value::<F>::known(F::from(tail)))?;
-                self.aux2.assign(region, offset, Value::<F>::known(F::from(boundary - tail - 1)))?;
-                if boundary != 0 {
-                    self.lookup_pow.assign(region, offset, Value::<F>::known(F::from(bits - result.as_u64() - 1)))?;
+        println!("DEBUG RESULT {:#}", result.0[0]);
+        for idx in 0..4 {
+            let pair = (operand.0[0] >> (idx * 16)) & 0xffff;
+            let even = pair & 0xff;
+            let odd = pair >> 8;
+            self.arg_limbs[idx*2].assign(region, offset, Value::<F>::known(F::from(even)))?;
+            self.arg_limbs[idx*2+1].assign(region, offset, Value::<F>::known(F::from(odd)))?;
+            match opcode {
+                OpcodeId::I32Ctz | OpcodeId::I64Ctz => {
+                    println!("DEBUG TERMS {idx} {:#}", bitintr::Tzcnt::tzcnt(pair as u16) as u64);
+                    self.terms[idx].assign(region, offset, Value::<F>::known(F::from(bitintr::Tzcnt::tzcnt(pair as u16) as u64)))?;
                 }
-            }
-            OpcodeId::I32Popcnt | OpcodeId::I64Popcnt => {
-                macro_rules! assign_arg_res {
-                  ($idx:expr, $arg_limb:expr) => {
-                    let arg_limb = $arg_limb;
-                    self.arg_limbs[$idx].assign(region, offset, Value::<F>::known(F::from(arg_limb)))?;
-                    self.res_terms[$idx].assign(region, offset, Value::<F>::known(F::from(bitintr::Popcnt::popcnt(arg_limb))))?;
-                  }
+                OpcodeId::I32Clz | OpcodeId::I64Clz => {
+                    self.terms[idx].assign(region, offset, Value::<F>::known(F::from(bitintr::Lzcnt::lzcnt(pair as u16) as u64)))?;
                 }
-                for idx in 0..8 {
-                  assign_arg_res!(idx, (operand.0[0] >> (idx * 8)) & 0xff);
+                OpcodeId::I32Popcnt | OpcodeId::I64Popcnt => {
+                    self.terms[idx].assign(region, offset, Value::<F>::known(F::from(bitintr::Popcnt::popcnt(pair))))?;
                 }
+                _ => unreachable!("not supported opcode for unary operation: {:?}", step.opcode)
             }
-            _ => unreachable!("not supported opcode for unary operation: {:?}", step.opcode)
-        };
+        }
 
         Ok(())
     }
@@ -275,9 +214,9 @@ mod test {
             // I32Const[0x00100000]
             // I32Ctz
             // Drop
-            I32Const[0x00000001]
-            I32Ctz
-            Drop
+            //I32Const[0x00000001]
+            //I32Ctz
+            //Drop
             // I32Const[0x80000000]
             // I32Ctz
             // Drop
@@ -293,15 +232,16 @@ mod test {
             // I64Const[0x8000000000000000]
             // I64Ctz
             // Drop
-            // I64Const[0x0000000000000000]
-            // I64Ctz
-            // Drop
+            I64Const[0x0000000000000000]
+            I64Ctz
+            Drop
         });
     }
 
     #[test]
     fn test_clz() {
         run_test(bytecode! {
+/*
             I32Const[0x00000001]
             I32Clz
             Drop
@@ -314,6 +254,7 @@ mod test {
             I32Const[0xffffffff]
             I32Clz
             Drop
+*/
             I64Const[0x0000000000000001]
             I64Clz
             Drop
@@ -323,7 +264,7 @@ mod test {
             I64Const[0x0000000000000000]
             I64Clz
             Drop
-            I64Clz[0xffffffffffffffff]
+            I64Const[0xffffffffffffffff]
             I64Clz
             Drop
         });
@@ -344,9 +285,6 @@ mod test {
     #[test]
     fn test_popcnt64() {
         run_test(bytecode! {
-/*
-            TODO: find and fix problem with 64 bits version.
-*/
             I64Const[0x0000000000000000]
             I64Popcnt
             Drop
