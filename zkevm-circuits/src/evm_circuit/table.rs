@@ -30,6 +30,9 @@ pub enum FixedTableTag {
     ConstantGasCost,
     PrecompileInfo,
     Popcnt,
+    Ctz,
+    Clz,
+    CzOut,
 }
 impl_expr!(FixedTableTag);
 
@@ -130,9 +133,34 @@ impl FixedTableTag {
                     F::from(precompile.base_gas_cost().0),
                 ]
             })),
-            Self::Popcnt => {
-                Box::new((0..256).map(move |arg| [tag, F::from(arg), F::zero(), F::from(bitintr::Popcnt::popcnt(arg))]))
-            }
+            Self::Popcnt => Box::new((0..256).flat_map(move |lhs| {
+                (0..256).map(move |rhs| [tag, F::from(lhs), F::from(rhs), F::from(bitintr::Popcnt::popcnt(lhs | rhs << 8))])
+            })),
+            Self::Clz => Box::new((0..256).flat_map(move |lhs| {
+                (0..256).map(move |rhs| [tag, F::from(lhs), F::from(rhs),
+                    F::from(bitintr::Lzcnt::lzcnt((lhs | rhs << 8) as u16) as u64)])
+            })),
+            Self::Ctz => Box::new((0..256).flat_map(move |lhs| {
+                (0..256).map(move |rhs| [tag, F::from(lhs), F::from(rhs),
+                    F::from(bitintr::Tzcnt::tzcnt((lhs | rhs << 8) as u16) as u64)])
+            })),
+            Self::CzOut => Box::new((0..288).flat_map(move |lhs| {
+                // Logic is to accumulate when it equal to 16, otherwize summ and return.
+                // If arguments is all zero, than result is zero.
+                (0..288).map(move |rhs| [tag, F::from(lhs), F::from(rhs), F::from({
+                     let list = [lhs % 17, lhs / 17, rhs % 17, rhs / 17];
+                     let mut out = 0;
+                     for i in 0..4 {
+                       if list[i] == 16 {
+                         out += 16;
+                       } else {
+                         out += list[i];
+                         break;
+                       }
+                     }
+                     out
+                })])
+            })),
         }
     }
 }
