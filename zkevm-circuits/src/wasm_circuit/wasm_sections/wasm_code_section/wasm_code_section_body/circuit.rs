@@ -21,6 +21,7 @@ use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_com
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::wasm_sections::wasm_code_section::wasm_code_section_body::structs::{WasmCodeSectionAssignLebParams, WasmCodeSectionAssignType};
 
 #[derive(Debug, Clone)]
 pub struct WasmCodeSectionBodyConfig<F: Field> {
@@ -50,24 +51,6 @@ pub struct WasmCodeSectionBodyConfig<F: Field> {
 
 impl<'a, F: Field> WasmCodeSectionBodyConfig<F>
 {}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum WasmCodeSectionAssignType {
-    Unknown,
-    FuncsCount,
-    FuncBodyLen,
-    LocalTypeTransitionsCount,
-    LocalRepetitionCount,
-    LocalType,
-    NumericInstruction,
-    NumericInstructionLebArg,
-    VariableInstruction,
-    VariableInstructionLebArg,
-    ControlInstruction,
-    ControlInstructionLebArg,
-    BlocktypeDelimiter,
-    BlockEnd,
-}
 
 #[derive(Debug, Clone)]
 pub struct WasmCodeSectionBodyChip<F: Field> {
@@ -602,14 +585,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         offset: usize,
         assign_type: WasmCodeSectionAssignType,
         assign_value: bool,
-        leb_byte_rel_offset: usize,
-        leb_last_byte_rel_offset: usize,
-        leb_sn: u64,
-        leb_sn_recovered_at_pos: u64,
+        leb_params: Option<WasmCodeSectionAssignLebParams>,
     ) {
-        if assign_type == WasmCodeSectionAssignType::Unknown {
-            panic!("unknown assign type")
-        }
+        if assign_type == WasmCodeSectionAssignType::Unknown { panic!("unknown assign type") }
         let q_enable = true;
         let assign_value = assign_value as u64;
         debug!(
@@ -629,20 +607,21 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             WasmCodeSectionAssignType::NumericInstructionLebArg |
             WasmCodeSectionAssignType::VariableInstructionLebArg |
             WasmCodeSectionAssignType::ControlInstructionLebArg => {
-                let is_first_leb_byte = leb_byte_rel_offset == 0;
-                let is_last_leb_byte = leb_byte_rel_offset == leb_last_byte_rel_offset;
-                let is_leb_byte_has_cb = leb_byte_rel_offset < leb_last_byte_rel_offset;
+                let leb_params = leb_params.unwrap();
+                let is_first_leb_byte = leb_params.byte_rel_offset == 0;
+                let is_last_leb_byte = leb_params.byte_rel_offset == leb_params.last_byte_rel_offset;
+                let is_leb_byte_has_cb = leb_params.byte_rel_offset < leb_params.last_byte_rel_offset;
                 self.config.leb128_chip.assign(
                     region,
                     offset,
-                    leb_byte_rel_offset,
+                    leb_params.byte_rel_offset,
                     q_enable,
                     is_first_leb_byte,
                     is_last_leb_byte,
                     is_leb_byte_has_cb,
                     false,
-                    leb_sn,
-                    leb_sn_recovered_at_pos,
+                    leb_params.sn,
+                    leb_params.sn_recovered_at_pos,
                 );
             }
             _ => {}
@@ -659,7 +638,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || format!("assign 'is_funcs_count' val {} at {}", assign_value, offset),
                     self.config.is_funcs_count,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
             WasmCodeSectionAssignType::FuncBodyLen => {
@@ -667,7 +646,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || format!("assign 'is_func_body_len' val {} at {}", assign_value, offset),
                     self.config.is_func_body_len,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
             WasmCodeSectionAssignType::LocalTypeTransitionsCount => {
@@ -675,7 +654,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || format!("assign 'is_local_type_transitions_count' val {} at {}", assign_value, offset),
                     self.config.is_local_type_transitions_count,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
             WasmCodeSectionAssignType::LocalRepetitionCount => {
@@ -683,7 +662,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || format!("assign 'is_local_repetition_count' val {} at {}", assign_value, offset),
                     self.config.is_local_repetition_count,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
             WasmCodeSectionAssignType::LocalType => {
@@ -691,7 +670,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || format!("assign 'is_local_type' val {} at {}", assign_value, offset),
                     self.config.is_local_type,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
             WasmCodeSectionAssignType::NumericInstruction => {
@@ -699,7 +678,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || format!("assign 'is_numeric_instruction' val {} at {}", assign_value, offset),
                     self.config.is_numeric_instruction,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
                 if assign_value == 1 {
                     let opcode = (wasm_bytecode.bytes[offset] as i32).try_into().unwrap();
@@ -715,7 +694,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || format!("assign 'is_numeric_instruction_leb_arg' val {} at {}", assign_value, offset),
                     self.config.is_numeric_instruction_leb_arg,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
             WasmCodeSectionAssignType::VariableInstruction => {
@@ -723,7 +702,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || format!("assign 'is_variable_instruction' val {} at {}", assign_value, offset),
                     self.config.is_variable_instruction,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
                 if assign_value == 1 {
                     let opcode = (wasm_bytecode.bytes[offset] as i32).try_into().unwrap();
@@ -739,7 +718,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || format!("assign 'is_variable_instruction_leb_arg' val {} at {}", assign_value, offset),
                     self.config.is_variable_instruction_leb_arg,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
             WasmCodeSectionAssignType::ControlInstruction => {
@@ -823,10 +802,12 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 offset,
                 assign_type,
                 assign_value,
-                byte_offset,
-                last_byte_offset,
-                leb_sn,
-                leb_sn_recovered_at_pos,
+                Some(WasmCodeSectionAssignLebParams{
+                    byte_rel_offset: byte_offset,
+                    last_byte_rel_offset: last_byte_offset,
+                    sn: leb_sn,
+                    sn_recovered_at_pos: leb_sn_recovered_at_pos,
+                })
             );
         }
 
@@ -887,10 +868,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 offset,
                 assign_type,
                 true,
-                0,
-                0,
-                0,
-                0,
+                None,
             );
             offset += 1;
         }
@@ -902,10 +880,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 offset,
                 assign_type_argument,
                 true,
-                0,
-                0,
-                0,
-                0,
+                None,
             );
             offset += 1;
         }
@@ -1008,10 +983,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     offset,
                     WasmCodeSectionAssignType::LocalType,
                     true,
-                    0,
-                    0,
-                    0,
-                    0,
+                    None,
                 );
                 debug!("offset {} is_local_type true", offset);
                 offset += 1;
