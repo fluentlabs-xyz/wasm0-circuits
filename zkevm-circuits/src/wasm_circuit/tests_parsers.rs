@@ -7,21 +7,7 @@ mod wasm_parsers_tests {
     use wasmbin::Module;
     use wasmbin::sections::Kind;
     use wasmbin::visit::{Visit, VisitError};
-
-    fn unlazify_with_opt<T: Visit>(wasm: &mut T, include_raw: bool) -> Result<(), DecodeError> {
-        let res = if include_raw {
-            wasm.visit(|()| {})
-        } else {
-            wasm.visit_mut(|()| {})
-        };
-        match res {
-            Ok(()) => Ok(()),
-            Err(err) => match err {
-                VisitError::LazyDecode(err) => Err(err),
-                VisitError::Custom(err) => match err {},
-            },
-        }
-    }
+    use crate::wasm_circuit::common::wasmbin_unlazify_with_opt;
 
     /// returns section len and quantity of leb bytes
     fn compute_section_len(wasm_bytes: &Vec<u8>) -> (u32, u8) {
@@ -56,7 +42,7 @@ mod wasm_parsers_tests {
 
         let mut m = Module::decode_from(data.as_slice()).unwrap();
         for s in m.sections.iter_mut() {
-            unlazify_with_opt(s, false).unwrap();
+            wasmbin_unlazify_with_opt(s, false).unwrap();
             match s.kind() {
                 Kind::Type => {
                     println!("---Kind::Type:");

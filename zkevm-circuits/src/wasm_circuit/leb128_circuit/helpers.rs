@@ -27,16 +27,16 @@ pub fn leb128_compute_sn_recovered_at_position(
 
 pub fn leb128_compute_last_byte_offset(
     bytes: &[u8],
-    leb_first_byte_offset: usize,
+    first_leb_byte_offset: usize,
 ) -> Result<usize, Error> {
-    let mut offset = leb_first_byte_offset;
+    let mut offset = first_leb_byte_offset;
     loop {
         if bytes[offset] & EIGHT_MS_BIT_MASK == 0 {
             break
         }
 
         offset += 1;
-        let byte_offset = offset - leb_first_byte_offset;
+        let byte_offset = offset - first_leb_byte_offset;
         if byte_offset >= LEB128_MAX_BYTES_COUNT {
             return Err(Error::UnsupportedBytesCount(format!("bytes count {} when max allowed {}", byte_offset + 1, LEB128_MAX_BYTES_COUNT)))
         }

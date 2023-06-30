@@ -89,8 +89,11 @@ mod wasm_function_section_body_tests {
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
+    use wasmbin::sections::Kind;
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
+    use crate::wasm_circuit::common::{wat_extract_section_body_bytecode, wat_extract_section_bytecode};
+    use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_last_byte_offset;
     use crate::wasm_circuit::wasm_sections::wasm_function_section::test_helpers::{FunctionSectionBodyDescriptor, FunctionSectionBodyItemDescriptor, generate_function_section_body_bytecode};
     use crate::wasm_circuit::wasm_sections::wasm_function_section::wasm_function_section_body::tests::TestCircuit;
 
@@ -109,30 +112,19 @@ mod wasm_function_section_body_tests {
 
     #[test]
     pub fn section_body_bytecode_is_ok() {
-        let mut bytecodes: Vec<Vec<u8>> = Vec::new();
-        // expected (hex): [2, 0, 1]
-        let descriptor = FunctionSectionBodyDescriptor {
-            items: vec![
-                FunctionSectionBodyItemDescriptor {
-                    typeidx: 0,
-                },
-                FunctionSectionBodyItemDescriptor {
-                    typeidx: 1,
-                },
-            ],
-        };
-        let bytecode = generate_function_section_body_bytecode(&descriptor);
+        // expected (hex): [3, 0, 2, 0]
+        let bytecode = wat_extract_section_body_bytecode(
+            "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
+            Kind::Function,
+        );
         debug!("bytecode (len {}) (hex): {:x?}", bytecode.len(), bytecode);
-        bytecodes.push(bytecode);
-        for bytecode in &bytecodes {
-            let code_hash = CodeDB::hash(&bytecode);
-            let test_circuit = TestCircuit::<Fr> {
-                code_hash,
-                bytecode: &bytecode,
-                offset_start: 0,
-                _marker: Default::default(),
-            };
-            test(test_circuit, true);
-        }
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
     }
 }

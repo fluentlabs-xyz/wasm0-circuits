@@ -356,7 +356,6 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
-        debug!("offset_start {}", offset);
 
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,

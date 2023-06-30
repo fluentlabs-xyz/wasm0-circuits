@@ -24,11 +24,17 @@
         br 0 (;@2;)
       end
     end)
-  (func (;0;) (type 2)
+  (func (;1;) (type 2)
     (local i32 i64 i32 i32 i64 i64 i64)
     i32.const 0
     local.set 0
     )
+  (func (;2;) (type 0)
+    (local i32)
+    i32.const 0
+    drop
+    )
+  (start 2)
   (memory (;0;) 1)
   (export "main" (func 0))
   (export "memory" (memory 0))

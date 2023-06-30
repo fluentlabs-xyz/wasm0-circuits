@@ -2,7 +2,6 @@ use std::convert::Into;
 use std::iter::{IntoIterator, Iterator};
 use itertools::Itertools;
 use strum_macros::EnumIter;
-use crate::wasm_circuit::consts::WasmSectionId::DataCount;
 
 pub static WASM_VERSION_PREFIX_BASE_INDEX: usize = 4;
 pub static WASM_VERSION_PREFIX_LENGTH: usize = 4;
@@ -14,20 +13,20 @@ pub static WASM_BLOCKTYPE_DELIMITER: i32 = 0x40;
 #[derive(Copy, Clone, Debug)]
 pub enum WasmSectionId {
     Custom = 0,
-    Type,
-    Import,
-    Function,
-    Table,
-    Memory,
-    Global,
-    Export,
-    Start,
-    Element,
-    Code,
-    Data,
-    DataCount,
+    Type = 1,
+    Import = 2,
+    Function = 3,
+    Table = 4,
+    Memory = 5,
+    Global = 6,
+    Export = 7,
+    Start = 8,
+    Element = 9,
+    Code = 10,
+    Data = 11,
+    DataCount = 12,
 }
-pub const WASM_SECTION_ID_MAX: usize = DataCount as usize;
+pub const WASM_SECTION_ID_MAX: usize = WasmSectionId::DataCount as usize;
 
 /// https://webassembly.github.io/spec/core/binary/types.html#number-types
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -208,6 +207,24 @@ pub const NUMERIC_INSTRUCTIONS_WITH_LEB_ARG: &[NumericInstruction] = &[
     NumericInstruction::I32Const,
     NumericInstruction::I64Const,
 ];
+impl TryFrom<i32> for NumericInstruction {
+    type Error = ();
+
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        for instr in NUMERIC_INSTRUCTIONS_WITH_LEB_ARG {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        for instr in NUMERIC_INSTRUCTIONS_WITHOUT_ARGS {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+impl From<NumericInstruction> for usize {
+    fn from(t: NumericInstruction) -> Self {
+        t as usize
+    }
+}
 
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum VariableInstruction {
@@ -224,6 +241,21 @@ pub static VARIABLE_INSTRUCTIONS_WITH_LEB_ARG: &[VariableInstruction] = &[
     VariableInstruction::GlobalGet,
     VariableInstruction::GlobalSet,
 ];
+impl TryFrom<i32> for VariableInstruction {
+    type Error = ();
+
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        for instr in VARIABLE_INSTRUCTIONS_WITH_LEB_ARG {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+impl From<VariableInstruction> for usize {
+    fn from(t: VariableInstruction) -> Self {
+        t as usize
+    }
+}
 
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ControlInstruction {
@@ -251,32 +283,6 @@ pub static CONTROL_INSTRUCTIONS_BLOCK: &[ControlInstruction] = &[
     ControlInstruction::Block,
     ControlInstruction::Loop,
 ];
-
-impl TryFrom<i32> for NumericInstruction {
-    type Error = ();
-
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
-        for instr in NUMERIC_INSTRUCTIONS_WITH_LEB_ARG {
-            if v == *instr as i32 { return Ok(*instr); }
-        }
-        for instr in NUMERIC_INSTRUCTIONS_WITHOUT_ARGS {
-            if v == *instr as i32 { return Ok(*instr); }
-        }
-        Err(())
-    }
-}
-
-impl TryFrom<i32> for VariableInstruction {
-    type Error = ();
-
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
-        for instr in VARIABLE_INSTRUCTIONS_WITH_LEB_ARG {
-            if v == *instr as i32 { return Ok(*instr); }
-        }
-        Err(())
-    }
-}
-
 impl TryFrom<i32> for ControlInstruction {
     type Error = ();
 
@@ -293,21 +299,34 @@ impl TryFrom<i32> for ControlInstruction {
         Err(())
     }
 }
-
-impl From<NumericInstruction> for usize {
-    fn from(t: NumericInstruction) -> Self {
-        t as usize
-    }
-}
-
-impl From<VariableInstruction> for usize {
-    fn from(t: VariableInstruction) -> Self {
-        t as usize
-    }
-}
-
 impl From<ControlInstruction> for usize {
     fn from(t: ControlInstruction) -> Self {
+        t as usize
+    }
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ParametricInstruction {
+    Drop = 0x1A,
+    Select = 0x1B,
+    // SelectT = 0x1C,
+}
+pub const PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS: &[ParametricInstruction] = &[
+    ParametricInstruction::Drop,
+    ParametricInstruction::Select,
+];
+impl TryFrom<i32> for ParametricInstruction {
+    type Error = ();
+
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        for instr in PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+impl From<ParametricInstruction> for usize {
+    fn from(t: ParametricInstruction) -> Self {
         t as usize
     }
 }
