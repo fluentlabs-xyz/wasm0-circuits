@@ -144,10 +144,10 @@ impl FixedTableTag {
                 (0..256).map(move |rhs| [tag, F::from(lhs), F::from(rhs),
                     F::from(bitintr::Tzcnt::tzcnt((lhs | rhs << 8) as u16) as u64)])
             })),
-            Self::CzOut => Box::new((0..288).flat_map(move |lhs| {
+            Self::CzOut => Box::new((0..289).flat_map(move |lhs| {
                 // Logic is to accumulate when it equal to 16, otherwize summ and return.
                 // If arguments is all zero, than result is zero.
-                (0..288).map(move |rhs| [tag, F::from(lhs), F::from(rhs), F::from({
+                (0..289).map(move |rhs| [tag, F::from(lhs), F::from(rhs), F::from({
                      let list = [lhs % 17, lhs / 17, rhs % 17, rhs / 17];
                      let mut out = 0;
                      for i in 0..4 {
