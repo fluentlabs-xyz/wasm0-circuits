@@ -74,8 +74,6 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGLogGadget<F> {
         let gas_cost = GasCost::LOG.as_u64().expr()
             + GasCost::LOG.as_u64().expr() * topic_count
             + 8.expr() * memory_address.length()
-            //TODO: Fix memory expansion gas calculation.
-            // Now this is not taken into account in  gas_cost the calculations.
             + memory_expansion.gas_cost();
 
 
@@ -89,7 +87,6 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGLogGadget<F> {
         );
 
         let common_error_gadget = CommonErrorGadget::construct(cb, OpcodeId::Call.as_u64().expr(), 5.expr());
-        cb.opcode_lookup(opcode_call_index.expr(), 1.expr());
 
         Self {
             opcode,

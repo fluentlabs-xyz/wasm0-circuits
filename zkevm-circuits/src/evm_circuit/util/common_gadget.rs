@@ -1066,7 +1066,7 @@ impl<F: Field> CommonErrorGadget<F> {
         return_data_length: Expression<F>,
     ) -> Self {
         //TODO: Fix correct is_code flag for CALL opcode for external functions
-        cb.opcode_lookup(opcode.expr(), 0.expr());
+        // cb.opcode_lookup(opcode.expr(), 0.expr());
 
         let rw_counter_end_of_reversion = cb.query_cell();
 
