@@ -17,6 +17,7 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::wasm_sections::consts::LebParams;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 
 #[derive(Debug, Clone)]
@@ -162,28 +163,17 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
         is_items_count: bool,
         is_limit_type: bool,
         is_limit_type_val: bool,
-        leb_byte_rel_offset: usize,
-        leb_last_byte_rel_offset: usize,
-        leb_sn: u64,
-        leb_sn_recovered_at_pos: u64,
+        leb_params: Option<LebParams>,
     ) {
-        let q_enable = is_items_count || is_limit_type || is_limit_type_val;
-        debug!("offset {} q_enable {} is_items_count {} is_typeidx {} is_limit_type_val {}", offset, q_enable, is_items_count, is_limit_type, is_limit_type_val);
+        let q_enable = true;
+        debug!("assign at offset {} q_enable {} is_items_count {} is_typeidx {} is_limit_type_val {}", offset, q_enable, is_items_count, is_limit_type, is_limit_type_val);
         if is_items_count || is_limit_type_val {
-            let is_first_leb_byte = leb_byte_rel_offset == 0;
-            let is_last_leb_byte = leb_byte_rel_offset == leb_last_byte_rel_offset;
-            let is_leb_byte_has_cb = leb_byte_rel_offset < leb_last_byte_rel_offset;
+            let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
                 region,
                 offset,
-                leb_byte_rel_offset,
                 true,
-                is_first_leb_byte,
-                is_last_leb_byte,
-                is_leb_byte_has_cb,
-                false,
-                leb_sn,
-                leb_sn_recovered_at_pos,
+                p,
             );
         }
         region.assign_fixed(
@@ -222,7 +212,8 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
         is_limit_type_val: bool,
     ) -> (u64, usize) {
         const OFFSET: usize = 0;
-        let (leb_sn, last_byte_offset) = leb128_compute_sn(leb_bytes, false, OFFSET).unwrap();
+        let is_signed_leb = false;
+        let (leb_sn, last_byte_offset) = leb128_compute_sn(leb_bytes, is_signed_leb, OFFSET).unwrap();
         let mut leb_sn_recovered_at_pos = 0;
         for byte_offset in OFFSET..=last_byte_offset {
             leb_sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
@@ -239,10 +230,13 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 is_items_count,
                 false,
                 is_limit_type_val,
-                byte_offset,
-                last_byte_offset,
-                leb_sn,
-                leb_sn_recovered_at_pos,
+                Some(LebParams{
+                    is_signed: is_signed_leb,
+                    byte_rel_offset: byte_offset,
+                    last_byte_rel_offset: last_byte_offset,
+                    sn: leb_sn,
+                    sn_recovered_at_pos: leb_sn_recovered_at_pos,
+                })
             );
         }
 
@@ -265,22 +259,17 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             true,
             false,
         );
-        debug!("offset {} items_count {} items_count_leb_len {}", offset, items_count, items_count_leb_len);
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
             let limit_type = wasm_bytecode.bytes.as_slice()[offset];
-            debug!("offset {} limit_type {}", offset, limit_type);
             self.assign(
                 region,
                 offset,
                 false,
                 true,
                 false,
-                0,
-                0,
-                0,
-                0,
+                None,
             );
             offset += 1;
 
@@ -292,7 +281,6 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 false,
                 true,
             );
-            debug!("offset {} min_limit_type_val {} min_limit_type_val_leb_len {}", offset, min_limit_type_val, min_limit_type_val_leb_len);
             offset += min_limit_type_val_leb_len;
 
             if limit_type == LimitsType::MinMax as u8 {
@@ -303,7 +291,6 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                     false,
                     true,
                 );
-                debug!("offset {} max_limit_type_val {} max_limit_type_val_leb_len {}", offset, max_limit_type_val, max_limit_type_val_leb_len);
                 offset += max_limit_type_val_leb_len;
             }
         }

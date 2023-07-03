@@ -9,6 +9,7 @@ use num_traits::pow;
 use eth_types::Field;
 use gadgets::util::{and, Expr, not, or, select};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::wasm_sections::consts::LebParams;
 
 #[derive(Debug, Clone)]
 pub struct LEB128Config<F> {
@@ -225,76 +226,70 @@ impl<F: Field> LEB128Chip<F>
         config
     }
 
-    pub fn assign_init(
-        &self,
-        region: &mut Region<F>,
-        offset_max: usize,
-    ) {
-        for offset in 0..=offset_max {
-            self.assign(
-                region,
-                offset,
-                0,
-                false,
-                false,
-                false,
-                false,
-                false,
-                0,
-                0,
-            );
-        }
-    }
+    // pub fn assign_init(
+    //     &self,
+    //     region: &mut Region<F>,
+    //     offset_max: usize,
+    // ) {
+    //     for offset in 0..=offset_max {
+    //         self.assign(
+    //             region,
+    //             offset,
+    //             0,
+    //             false,
+    //             false,
+    //             false,
+    //             false,
+    //             false,
+    //             0,
+    //             0,
+    //         );
+    //     }
+    // }
 
     pub fn assign(
         &self,
         region: &mut Region<F>,
         offset: usize,
-        rel_byte_offset: usize,
-        enabled: bool,
-        is_first_byte: bool,
-        is_last_byte: bool,
-        is_byte_has_cb: bool,
-        is_signed: bool,
-        sn: u64,
-        sn_recovered: u64,
+        q_enable: bool,
+        p: LebParams,
     ) {
         region.assign_fixed(
-            || format!("assign 'q_enable' to {} at {}", enabled, offset),
+            || format!("assign 'q_enable' to {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
-            || Value::known(F::from(enabled as u64)),
+            || Value::known(F::from(q_enable as u64)),
         ).unwrap();
 
         region.assign_fixed(
-            || format!("assign 'is_signed' to {} at {}", is_signed, offset),
+            || format!("assign 'is_signed' to {} at {}", p.is_signed, offset),
             self.config.is_signed,
             offset,
-            || Value::known(F::from(is_signed as u64)),
+            || Value::known(F::from(p.is_signed as u64)),
         ).unwrap();
 
         region.assign_fixed(
-            || format!("assign 'is_byte_has_cb' to {} at {}", is_byte_has_cb, offset),
+            || format!("assign 'is_byte_has_cb' to {} at {}", p.is_byte_has_cb(), offset),
             self.config.is_byte_has_cb,
             offset,
-            || Value::known(F::from(is_byte_has_cb as u64)),
+            || Value::known(F::from(p.is_byte_has_cb() as u64)),
         ).unwrap();
 
         region.assign_fixed(
-            || format!("assign 'is_first_leb_byte' to {} at {}", is_first_byte, offset),
+            || format!("assign 'is_first_leb_byte' to {} at {}", p.is_first_byte(), offset),
             self.config.is_first_leb_byte,
             offset,
-            || Value::known(F::from(is_first_byte as u64)),
+            || Value::known(F::from(p.is_first_byte() as u64)),
         ).unwrap();
 
         region.assign_fixed(
-            || format!("assign 'is_last_leb_byte' to {} at {}", is_last_byte, offset),
+            || format!("assign 'is_last_leb_byte' to {} at {}", p.is_last_byte(), offset),
             self.config.is_last_leb_byte,
             offset,
-            || Value::known(F::from(is_last_byte as u64)),
+            || Value::known(F::from(p.is_last_byte() as u64)),
         ).unwrap();
 
-        let leb_byte_mul = if is_byte_has_cb || is_last_byte { pow(0b10000000, rel_byte_offset) } else { 0 };
+        let leb_byte_mul = if p.is_byte_has_cb() || p.is_last_byte() { pow(0b10000000, p.byte_rel_offset) } else { 0 };
         region.assign_advice(
             || format!("assign 'leb_byte_mul' to {} at {}", leb_byte_mul, offset),
             self.config.leb_byte_mul,
@@ -302,25 +297,25 @@ impl<F: Field> LEB128Chip<F>
             || Value::known(F::from(leb_byte_mul)),
         ).unwrap();
 
-        let val = if is_signed {
-            F::from(sn).neg()
+        let val = if p.is_signed {
+            F::from(p.sn).neg()
         } else {
-            F::from(sn)
+            F::from(p.sn)
         };
         region.assign_advice(
-            || format!("assign 'sn' is_signed '{}' to {} at {}", is_signed, sn, offset),
+            || format!("assign 'sn' is_signed '{}' to {} at {}", p.is_signed, p.sn, offset),
             self.config.sn,
             offset,
             || Value::known(F::from(val)),
         ).unwrap();
 
-        let val = if is_signed && is_last_byte {
-            F::from(sn_recovered).neg()
+        let val = if p.is_signed && p.is_last_byte() {
+            F::from(p.sn_recovered_at_pos).neg()
         } else {
-            F::from(sn_recovered)
+            F::from(p.sn_recovered_at_pos)
         };
         region.assign_advice(
-            || format!("assign 'sn_recovered' is_signed '{}' to {} at {}", is_signed, sn_recovered, offset),
+            || format!("assign 'sn_recovered' is_signed '{}' to {} at {}", p.is_signed, p.sn_recovered_at_pos, offset),
             self.config.sn_recovered,
             offset,
             || Value::known(val),

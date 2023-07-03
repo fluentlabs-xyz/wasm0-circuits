@@ -18,13 +18,15 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::table::PoseidonTable;
 use crate::wasm_circuit::common::wasm_compute_section_len;
-use crate::wasm_circuit::consts::{SECTION_ID_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSectionId};
+use crate::wasm_circuit::consts::{SECTION_ID_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
-use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn_recovered_at_position};
+use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::tables::range_table::RangeTableConfig;
+use crate::wasm_circuit::types::AssignType;
 use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::wasm_sections::consts::LebParams;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::wasm_sections::wasm_code_section::wasm_code_section_body::circuit::WasmCodeSectionBodyChip;
 use crate::wasm_circuit::wasm_sections::wasm_data_section::wasm_data_section_body::circuit::WasmDataSectionBodyChip;
@@ -576,7 +578,14 @@ impl<F: Field> WasmChip<F>
         //                 "exactly one section chip is enabled when is_section_body",
         //                 vc.query_fixed(wasm_type_section_body_chip.config.q_enable, Rotation::cur())
         //                 + vc.query_fixed(wasm_import_section_body_chip.config.q_enable, Rotation::cur())
-        //                 + vc.query_fixed(wasm_function_section_body_chip.config.q_enable, Rotation::cur()),
+        //                 + vc.query_fixed(wasm_function_section_body_chip.config.q_enable, Rotation::cur())
+        //                 + vc.query_fixed(wasm_memory_section_body_chip.config.q_enable, Rotation::cur())
+        //                 + vc.query_fixed(wasm_export_section_body_chip.config.q_enable, Rotation::cur())
+        //                 + vc.query_fixed(wasm_data_section_body_chip.config.q_enable, Rotation::cur())
+        //                 + vc.query_fixed(wasm_global_section_body_chip.config.q_enable, Rotation::cur())
+        //                 + vc.query_fixed(wasm_code_section_body_chip.config.q_enable, Rotation::cur())
+        //                 + vc.query_fixed(wasm_start_section_body_chip.config.q_enable, Rotation::cur())
+        //                 ,
         //                 1.expr(),
         //             );
         //         }
@@ -628,86 +637,124 @@ impl<F: Field> WasmChip<F>
         instance
     }
 
-    pub fn assign_init(
+    /// returns sn and leb len
+    fn markup_leb_section(
         &self,
         region: &mut Region<F>,
-        offset_max: usize,
-    ) -> Result<(), Error> {
-        self.config.leb128_chip.assign_init(region, offset_max);
-
-        for offset in 0..=offset_max {
+        bytecode: &WasmBytecode,
+        leb_start_offset: usize,
+        assign_type: AssignType,
+        assign_value: bool,
+    ) -> (u64, usize) {
+        if assign_type != AssignType::IsSectionLen {
+            panic!("unsupported assign_type '{:?}'", assign_type);
+        }
+        const OFFSET: usize = 0;
+        let is_signed_leb = false;
+        let (sn, last_byte_rel_offset) = leb128_compute_sn(&bytecode.bytes[leb_start_offset..], is_signed_leb, OFFSET).unwrap();
+        let mut sn_recovered_at_pos = 0;
+        for byte_rel_offset in OFFSET..=last_byte_rel_offset {
+            let offset = leb_start_offset + byte_rel_offset;
+            sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
+                sn_recovered_at_pos,
+                is_signed_leb,
+                byte_rel_offset,
+                last_byte_rel_offset,
+                bytecode.bytes[offset],
+            );
             self.assign(
                 region,
                 offset,
-                false,
-                false,
-                false,
-            )?;
+                assign_type,
+                assign_value as i64,
+                Some(LebParams {
+                    is_signed: is_signed_leb,
+                    byte_rel_offset,
+                    last_byte_rel_offset,
+                    sn,
+                    sn_recovered_at_pos,
+                }),
+            ).unwrap();
         }
 
-        Ok(())
+        (sn, last_byte_rel_offset + 1)
     }
 
     pub fn assign(
         &self,
         region: &mut Region<F>,
         offset: usize,
-        is_enabled: bool,
-        is_first_byte: bool,
-        is_last_byte: bool,
+        assign_type: AssignType,
+        assign_value: i64,
+        leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
+        let q_enable = true;
+        debug!(
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {}",
+            offset,
+            q_enable,
+            assign_type,
+            assign_value,
+        );
         region.assign_fixed(
-            || format!("assign q_enable at {}", offset),
+            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
-            || Value::known(F::from(is_enabled as u64)),
+            || Value::known(F::from(q_enable as u64)),
         )?;
-        region.assign_fixed(
-            || format!("assign q_first at {}", offset),
-            self.config.q_first,
-            offset,
-            || Value::known(F::from(is_first_byte as u64)),
-        )?;
-        region.assign_fixed(
-            || format!("assign q_last at {}", offset),
-            self.config.q_last,
-            offset,
-            || Value::known(F::from(is_last_byte as u64)),
-        )?;
-
-        region.assign_fixed(
-            || format!("assign is_section_id at {}", offset),
-            self.config.is_section_id,
-            offset,
-            || Value::known(F::zero()),
-        )?;
-        region.assign_fixed(
-            || format!("assign is_section_len at {}", offset),
-            self.config.is_section_len,
-            offset,
-            || Value::known(F::zero()),
-        )?;
-        region.assign_fixed(
-            || format!("assign is_section_body at {}", offset),
-            self.config.is_section_body,
-            offset,
-            || Value::known(F::zero()),
-        )?;
-
-        let val: i64 = SECTION_ID_DEFAULT as i64;
-        region.assign_advice(
-            || format!("assign section_id val {} at {}", val, offset),
-            self.config.section_id,
-            offset,
-            || Value::known(if val < 0 { -F::from(val.abs() as u64) } else { F::from(val as u64) })
-        )?;
-        if offset > 0 {
-            self.config.is_section_id_grows_lt_chip.assign(
+        if assign_type == AssignType::IsSectionLen {
+            let p = leb_params.unwrap();
+            self.config.leb128_chip.assign(
                 region,
                 offset,
-                F::zero(),
-                F::zero(),
-            )?;
+                q_enable,
+                p,
+            );
+        }
+        match assign_type {
+            AssignType::Unknown => {
+                panic!("unknown assign type")
+            }
+            AssignType::QFirst => {
+                region.assign_fixed(
+                    || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                    self.config.q_first,
+                    offset,
+                    || Value::known(F::from(assign_value as u64)),
+                )?;
+            }
+            AssignType::QLast => {
+                region.assign_fixed(
+                    || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                    self.config.q_last,
+                    offset,
+                    || Value::known(F::from(assign_value as u64)),
+                )?;
+            }
+            AssignType::IsSectionId => {
+                region.assign_fixed(
+                    || format!("assign 'is_section_id' val {} at {}", assign_value, offset),
+                    self.config.is_section_id,
+                    offset,
+                    || Value::known(F::from(assign_value as u64)),
+                )?;
+            }
+            AssignType::IsSectionLen => {
+                region.assign_fixed(
+                    || format!("assign 'is_section_len' val {} at {}", assign_value, offset),
+                    self.config.is_section_len,
+                    offset,
+                    || Value::known(F::from(assign_value as u64)),
+                )?;
+            }
+            AssignType::IsSectionBody => {
+                region.assign_fixed(
+                    || format!("assign 'is_section_body' val {} at {}", assign_value, offset),
+                    self.config.is_section_body,
+                    offset,
+                    || Value::known(F::from(assign_value as u64)),
+                )?;
+            }
         }
 
         for (index, index_at_magic_prefix) in self.config.index_at_magic_prefix.iter().enumerate() {
@@ -726,23 +773,27 @@ impl<F: Field> WasmChip<F>
         wasm_bytecode: &WasmBytecode,
     ) -> Result<(), Error> {
         debug!("wasm_bytecode.bytes {:x?}", wasm_bytecode.bytes);
-        for (offset, &byte) in wasm_bytecode.bytes.iter().enumerate() {
-            self.assign(
-                region,
-                offset,
-                true,
-                offset == 0,
-                offset == wasm_bytecode.bytes.len() - 1
-            )?;
-        }
+        self.assign(
+            region,
+            0,
+            AssignType::QFirst,
+            1,
+            None,
+        )?;
+        self.assign(
+            region,
+            wasm_bytecode.bytes.len() - 1,
+            AssignType::QLast,
+            1,
+            None,
+        )?;
 
-        // scan wasm_bytes for sections
         let mut wasm_bytes_offset = WASM_SECTIONS_START_INDEX;
         let mut section_id_prev: i64 = SECTION_ID_DEFAULT as i64;
         loop {
             let section_start_offset = wasm_bytes_offset;
             let section_len_start_offset = section_start_offset + 1;
-            let section_id = wasm_bytecode.bytes[wasm_bytes_offset];
+            let wasm_section_id = wasm_bytecode.bytes[wasm_bytes_offset];
             wasm_bytes_offset += 1;
             let (section_len, section_len_leb_bytes_count) = wasm_compute_section_len(&wasm_bytecode.bytes, wasm_bytes_offset).unwrap();
             wasm_bytes_offset += section_len_leb_bytes_count as usize;
@@ -752,157 +803,130 @@ impl<F: Field> WasmChip<F>
             let section_body_end_offset = section_start_offset + section_len_leb_bytes_count as usize + section_len;
             let section_end_offset = section_body_end_offset;
 
-            // debug!("");
-            // debug!("section_id_prev: {}", section_id_prev);
-            // debug!("section_id: {}", section_id);
-            // debug!("section_start_offset: {}", section_start_offset);
-            // debug!("section_start_offset: {}", section_end_offset);
-            // debug!("section_len: {}", section_len);
-            // debug!("section_len_start_offset: {}", section_len_start_offset);
-            // debug!("section_len_end_offset: {}", section_len_end_offset);
-            // debug!("section_body_start_offset: {}", section_body_start_offset);
-            // debug!("section_body_end_offset: {}", section_body_end_offset);
-            // debug!("");
+            self.assign(
+                region,
+                section_start_offset,
+                AssignType::IsSectionId,
+                1,
+                None,
+            )?;
 
-            {
-                let offset = section_start_offset;
-                region.assign_fixed(
-                    || format!("assign is_section_id at {}", offset),
-                    self.config.is_section_id,
-                    offset,
-                    || Value::known(F::one()),
-                )?;
-            }
-            for i in 0..section_len_leb_bytes_count {
-                let offset = section_len_start_offset + (i as usize);
-                region.assign_fixed(
-                    || format!("assign is_section_len at {}", offset),
-                    self.config.is_section_len,
-                    offset,
-                    || Value::known(F::one()),
-                )?;
-            }
+            let (_section_len, _section_len_leb_len) = self.markup_leb_section(
+                region,
+                &wasm_bytecode,
+                section_len_start_offset,
+                AssignType::IsSectionLen,
+                true,
+            );
+
             for i in 0..section_len {
                 let offset = section_body_start_offset + i;
-                let val = 1;
-                region.assign_fixed(
-                    || format!("assign 'is_section_body' to {} at {}", val, offset),
-                    self.config.is_section_body,
-                    offset,
-                    || Value::known(F::from(val)),
-                )?;
-            }
-
-            let mut sn_recovered_at_pos: u64 = 0;
-            let is_signed = false;
-            for offset in section_len_start_offset..=section_len_end_offset {
-                let rel_byte_offset = offset - section_len_start_offset;
-                let rel_last_byte_offset = section_len_end_offset - section_len_start_offset;
-                let is_first_leb_byte = rel_byte_offset == 0;
-                let is_last_leb_byte = rel_byte_offset == rel_last_byte_offset;
-                let is_byte_has_cb = rel_byte_offset < rel_last_byte_offset;
-
-                sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
-                    sn_recovered_at_pos,
-                    is_signed,
-                    rel_byte_offset,
-                    rel_last_byte_offset,
-                    wasm_bytecode.bytes[offset],
-                );
-                self.config.leb128_chip.assign(
+                let val = true;
+                self.assign(
                     region,
                     offset,
-                    rel_byte_offset,
-                    true,
-                    is_first_leb_byte,
-                    is_last_leb_byte,
-                    is_byte_has_cb,
-                    is_signed,
-                    section_len as u64,
-                    sn_recovered_at_pos,
-                );
+                    AssignType::IsSectionBody,
+                    1,
+                    None,
+                )?;
             }
 
             for offset in section_start_offset..=section_end_offset {
                 if offset == section_start_offset {
-                    debug!("section_id {} offset {}", section_id, offset);
-                    let mut new_offset = 0;
-                    let mut section_body_offset = offset + 1; // +1 - skips section_id
-                    let last_byte_offset = leb128_compute_last_byte_offset(
-                        &wasm_bytecode.bytes.as_slice(),
+                    debug!("section_id {} offset {}", wasm_section_id, offset);
+                    let mut next_section_offset = 0;
+                    let section_body_offset = offset + 1; // skip section_id
+                    let section_len_last_byte_offset = leb128_compute_last_byte_offset(
+                        &wasm_bytecode.bytes[..],
                         section_body_offset,
                     ).unwrap();
-                    section_body_offset = last_byte_offset + 1;
-                    if section_id == WasmSectionId::Type as u8 {
-                        new_offset = self.config.wasm_type_section_body_chip.assign_auto(
-                            region,
-                            wasm_bytecode,
-                            section_body_offset,
-                        ).unwrap();
-                    } else if section_id == WasmSectionId::Import as u8 {
-                        let new_offset = self.config.wasm_import_section_body_chip.assign_auto(
-                            region,
-                            wasm_bytecode,
-                            section_body_offset,
-                        ).unwrap();
-                    } else if section_id == WasmSectionId::Function as u8 {
-                        let new_offset = self.config.wasm_function_section_body_chip.assign_auto(
-                            region,
-                            wasm_bytecode,
-                            section_body_offset,
-                        ).unwrap();
-                    } else if section_id == WasmSectionId::Memory as u8 {
-                        let new_offset = self.config.wasm_memory_section_body_chip.assign_auto(
-                            region,
-                            wasm_bytecode,
-                            section_body_offset,
-                        ).unwrap();
-                    } else if section_id == WasmSectionId::Export as u8 {
-                        let new_offset = self.config.wasm_export_section_body_chip.assign_auto(
-                            region,
-                            wasm_bytecode,
-                            section_body_offset,
-                        ).unwrap();
-                    } else if section_id == WasmSectionId::Data as u8 {
-                        let new_offset = self.config.wasm_data_section_body_chip.assign_auto(
-                            region,
-                            wasm_bytecode,
-                            section_body_offset,
-                        ).unwrap();
-                    } else if section_id == WasmSectionId::Global as u8 {
-                        let new_offset = self.config.wasm_global_section_body_chip.assign_auto(
-                            region,
-                            wasm_bytecode,
-                            section_body_offset,
-                        ).unwrap();
-                    } else if section_id == WasmSectionId::Code as u8 {
-                        let new_offset = self.config.wasm_code_section_body_chip.assign_auto(
-                            region,
-                            wasm_bytecode,
-                            section_body_offset,
-                        ).unwrap();
-                    } else if section_id == WasmSectionId::Start as u8 {
-                        let new_offset = self.config.wasm_start_section_body_chip.assign_auto(
-                            region,
-                            wasm_bytecode,
-                            section_body_offset,
-                        ).unwrap();
+                    let section_body_offset = section_len_last_byte_offset + 1;
+
+                    let wasm_section: WasmSection = (wasm_section_id as i32).try_into().unwrap();
+                    match wasm_section {
+                        WasmSection::Custom => {}
+                        WasmSection::Type => {
+                            next_section_offset = self.config.wasm_type_section_body_chip.assign_auto(
+                                region,
+                                wasm_bytecode,
+                                section_body_offset,
+                            ).unwrap();
+                        }
+                        WasmSection::Import => {
+                            let new_offset = self.config.wasm_import_section_body_chip.assign_auto(
+                                region,
+                                wasm_bytecode,
+                                section_body_offset,
+                            ).unwrap();
+                        }
+                        WasmSection::Function => {
+                            let new_offset = self.config.wasm_function_section_body_chip.assign_auto(
+                                region,
+                                wasm_bytecode,
+                                section_body_offset,
+                            ).unwrap();
+                        }
+                        WasmSection::Table => {}
+                        WasmSection::Memory => {
+                            let new_offset = self.config.wasm_memory_section_body_chip.assign_auto(
+                                region,
+                                wasm_bytecode,
+                                section_body_offset,
+                            ).unwrap();
+                        }
+                        WasmSection::Global => {
+                            let new_offset = self.config.wasm_global_section_body_chip.assign_auto(
+                                region,
+                                wasm_bytecode,
+                                section_body_offset,
+                            ).unwrap();
+                        }
+                        WasmSection::Export => {
+                            let new_offset = self.config.wasm_export_section_body_chip.assign_auto(
+                                region,
+                                wasm_bytecode,
+                                section_body_offset,
+                            ).unwrap();
+                        }
+                        WasmSection::Start => {
+                            let new_offset = self.config.wasm_start_section_body_chip.assign_auto(
+                                region,
+                                wasm_bytecode,
+                                section_body_offset,
+                            ).unwrap();
+                        }
+                        WasmSection::Element => {}
+                        WasmSection::Code => {
+                            let new_offset = self.config.wasm_code_section_body_chip.assign_auto(
+                                region,
+                                wasm_bytecode,
+                                section_body_offset,
+                            ).unwrap();
+                        }
+                        WasmSection::Data => {
+                            let new_offset = self.config.wasm_data_section_body_chip.assign_auto(
+                                region,
+                                wasm_bytecode,
+                                section_body_offset,
+                            ).unwrap();
+                        }
+                        WasmSection::DataCount => {}
                     }
-                    debug!("section_id {} section_body_offset {} after assign_auto new_offset {}", section_id, section_body_offset, new_offset);
+                    debug!("wasm_section {:?} section_body_offset {} after assign_auto next_section_offset {}", wasm_section, section_body_offset, next_section_offset);
                 }
                 region.assign_advice(
-                    || format!("assign 'section_id' to {} at {}", section_id, offset),
+                    || format!("assign 'section_id' to {} at {}", wasm_section_id, offset),
                     self.config.section_id,
                     offset,
-                    || Value::known(F::from(section_id as u64))
+                    || Value::known(F::from(wasm_section_id as u64))
                 )?;
                 self.config.is_section_id_grows_lt_chip.assign(
                     region,
                     offset,
                     F::from(section_id_prev as u64),
-                    F::from(section_id as u64),
+                    F::from(wasm_section_id as u64),
                 )?;
-                section_id_prev = section_id as i64;
+                section_id_prev = wasm_section_id as i64;
             }
 
             if wasm_bytes_offset >= wasm_bytecode.bytes.len() { break }

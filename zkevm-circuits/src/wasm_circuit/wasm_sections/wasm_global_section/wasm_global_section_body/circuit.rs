@@ -18,6 +18,7 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::wasm_sections::consts::LebParams;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 
 #[derive(Debug, Clone)]
@@ -281,14 +282,11 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         is_init_opcode: bool,
         is_init_val: bool,
         is_expr_delimiter: bool,
-        leb_byte_rel_offset: usize,
-        leb_last_byte_rel_offset: usize,
-        leb_sn: u64,
-        leb_sn_recovered_at_pos: u64,
+        leb_params: Option<LebParams>,
     ) {
-        let q_enable = is_items_count || is_global_type || is_mut_prop || is_init_opcode || is_init_val || is_expr_delimiter;
+        let q_enable = true;
         debug!(
-            "offset {} q_enable {} is_items_count {} is_global_type {} is_mut_prop {} is_init_opcode {} is_init_val {} is_expr_delimiter {}",
+            "assign at offset {} q_enable {} is_items_count {} is_global_type {} is_mut_prop {} is_init_opcode {} is_init_val {} is_expr_delimiter {}",
             offset,
             q_enable,
             is_items_count,
@@ -299,20 +297,12 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             is_expr_delimiter,
         );
         if is_items_count || is_init_val {
-            let is_first_leb_byte = leb_byte_rel_offset == 0;
-            let is_last_leb_byte = leb_byte_rel_offset == leb_last_byte_rel_offset;
-            let is_leb_byte_has_cb = leb_byte_rel_offset < leb_last_byte_rel_offset;
+            let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
                 region,
                 offset,
-                leb_byte_rel_offset,
                 q_enable,
-                is_first_leb_byte,
-                is_last_leb_byte,
-                is_leb_byte_has_cb,
-                false,
-                leb_sn,
-                leb_sn_recovered_at_pos,
+                p,
             );
         }
         region.assign_fixed(
@@ -369,17 +359,18 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         is_init_val: bool,
     ) -> (u64, usize) {
         const OFFSET: usize = 0;
-        let (leb_sn, last_byte_offset) = leb128_compute_sn(leb_bytes, false, OFFSET).unwrap();
-        let mut leb_sn_recovered_at_pos = 0;
-        for byte_offset in OFFSET..=last_byte_offset {
-            leb_sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
-                leb_sn_recovered_at_pos,
+        let is_signed_leb = false;
+        let (sn, last_byte_rel_offset) = leb128_compute_sn(leb_bytes, is_signed_leb, OFFSET).unwrap();
+        let mut sn_recovered_at_pos = 0;
+        for byte_rel_offset in OFFSET..=last_byte_rel_offset {
+            let offset = leb_bytes_start_offset + byte_rel_offset;
+            sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
+                sn_recovered_at_pos,
                 false,
-                byte_offset,
-                last_byte_offset,
-                leb_bytes[byte_offset],
+                byte_rel_offset,
+                last_byte_rel_offset,
+                leb_bytes[byte_rel_offset],
             );
-            let offset = leb_bytes_start_offset + byte_offset;
             self.assign(
                 region,
                 offset,
@@ -389,14 +380,17 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 false,
                 is_init_val,
                 false,
-                byte_offset,
-                last_byte_offset,
-                leb_sn,
-                leb_sn_recovered_at_pos,
+                Some(LebParams{
+                    is_signed: is_signed_leb,
+                    byte_rel_offset,
+                    last_byte_rel_offset,
+                    sn,
+                    sn_recovered_at_pos,
+                }),
             );
         }
 
-        (leb_sn, last_byte_offset + 1)
+        (sn, last_byte_rel_offset + 1)
     }
 
     /// returns new offset
@@ -415,7 +409,6 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             true,
             false,
         );
-        debug!("offset {} items_count {} items_count_leb_len {}", offset, items_count, items_count_leb_len);
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
@@ -429,12 +422,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 false,
                 false,
                 false,
-                0,
-                0,
-                0,
-                0,
+                None,
             );
-            debug!("offset {} is_global_type", offset);
             offset += 1;
 
             // is_mut_prop{1}
@@ -447,12 +436,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 false,
                 false,
                 false,
-                0,
-                0,
-                0,
-                0,
+                None,
             );
-            debug!("offset {} is_mut_prop", offset);
             offset += 1;
 
             // is_init_opcode{1}
@@ -465,12 +450,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 true,
                 false,
                 false,
-                0,
-                0,
-                0,
-                0,
+                None,
             );
-            debug!("offset {} is_init_opcode", offset);
             offset += 1;
 
             // is_init_val+
@@ -481,7 +462,6 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 false,
                 true,
             );
-            debug!("offset {} init_val {} init_val_leb_len {}", offset, init_val, init_val_leb_len);
             offset += init_val_leb_len;
 
             // is_expr_delimiter{1}
@@ -494,12 +474,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 false,
                 false,
                 true,
-                0,
-                0,
-                0,
-                0,
+                None,
             );
-            debug!("offset {} is_expr_delimiter", offset);
             offset += 1;
         }
 

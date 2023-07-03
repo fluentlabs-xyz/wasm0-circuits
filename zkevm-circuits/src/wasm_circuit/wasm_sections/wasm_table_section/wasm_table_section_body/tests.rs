@@ -11,7 +11,7 @@ use crate::wasm_circuit::tables::range_table::RangeTableConfig;
 use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::wasm_sections::wasm_start_section::wasm_start_section_body::circuit::WasmStartSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::wasm_table_section::wasm_table_section_body::circuit::WasmTableSectionBodyChip;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -23,7 +23,7 @@ struct TestCircuit<'a, F> {
 
 #[derive(Clone)]
 struct TestCircuitConfig<F: Field> {
-    wasm_start_section_body_chip: Rc<WasmStartSectionBodyChip<F>>,
+    wasm_table_section_body_chip: Rc<WasmTableSectionBodyChip<F>>,
     wasm_bytecode_table: Rc<WasmBytecodeTable>,
     _marker: PhantomData<F>,
 }
@@ -45,14 +45,14 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         );
         let leb128_chip = Rc::new(LEB128Chip::construct(leb128_config));
 
-        let wasm_start_section_body_config = WasmStartSectionBodyChip::configure(
+        let wasm_table_section_body_config = WasmTableSectionBodyChip::configure(
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
         );
-        let wasm_start_section_body_chip = WasmStartSectionBodyChip::construct(wasm_start_section_body_config);
+        let wasm_table_section_body_chip = WasmTableSectionBodyChip::construct(wasm_table_section_body_config);
         let test_circuit_config = TestCircuitConfig {
-            wasm_start_section_body_chip: Rc::new(wasm_start_section_body_chip),
+            wasm_table_section_body_chip: Rc::new(wasm_table_section_body_chip),
             wasm_bytecode_table: wasm_bytecode_table.clone(),
             _marker: Default::default(),
         };
@@ -68,9 +68,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         let wasm_bytecode = WasmBytecode::new(self.bytecode.to_vec().clone(), self.code_hash.to_word());
         config.wasm_bytecode_table.load(&mut layouter, &wasm_bytecode)?;
         layouter.assign_region(
-            || "wasm_start_section_body region",
+            || "wasm_table_section_body region",
             |mut region| {
-                config.wasm_start_section_body_chip.assign_auto(
+                config.wasm_table_section_body_chip.assign_auto(
                     &mut region,
                     &wasm_bytecode,
                     self.offset_start,
@@ -85,7 +85,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 }
 
 #[cfg(test)]
-mod wasm_start_section_body_tests {
+mod wasm_table_section_body_tests {
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
@@ -94,7 +94,7 @@ mod wasm_start_section_body_tests {
     use eth_types::Field;
     use crate::wasm_circuit::common::{wat_extract_section_body_bytecode, wat_extract_section_bytecode};
     use crate::wasm_circuit::consts::MemSegmentType;
-    use crate::wasm_circuit::wasm_sections::wasm_start_section::wasm_start_section_body::tests::TestCircuit;
+    use crate::wasm_circuit::wasm_sections::wasm_table_section::wasm_table_section_body::tests::TestCircuit;
 
     fn test<'a, F: Field>(
         test_circuit: TestCircuit<'_, F>,
@@ -109,14 +109,16 @@ mod wasm_start_section_body_tests {
         }
     }
 
+
+
     #[test]
     pub fn section_body_bytecode_is_ok() {
         let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
-        let kind = Kind::Start;
+        let kind = Kind::Table;
         // expected
-        // raw (hex): [8, 1, 2, ]
+        // raw (hex): [4, 5, 1, 70, 1, 10,  10, ]
         let expected = [
-            8, 1, 2,
+            4, 5, 1, 112, 1, 16, 16,
         ].as_slice().to_vec();
 
         let section_bytecode = wat_extract_section_bytecode(path_to_file, kind, );
@@ -128,8 +130,14 @@ mod wasm_start_section_body_tests {
         assert_eq!(expected, section_bytecode);
 
         // expected
-        // raw (hex): [2]
+        // reference_type_count+ -> reference_type(1) -> limits_type(1) -> limits_min+ -> limits_max*
+        // raw (hex): [1, 70, 1, 10,  10, ]
+        let expected = [
+            1, 112, 1, 16, 16,
+        ].as_slice().to_vec();
         let section_body_bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
+        assert_eq!(expected, section_body_bytecode);
+
         debug!("section_body_bytecode (len {}) (hex): {:x?}", section_body_bytecode.len(), section_body_bytecode);
         let code_hash = CodeDB::hash(&section_body_bytecode);
         let test_circuit = TestCircuit::<Fr> {

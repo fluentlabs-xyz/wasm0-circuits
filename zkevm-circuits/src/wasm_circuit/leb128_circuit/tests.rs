@@ -8,6 +8,7 @@ use log::debug;
 use eth_types::Field;
 use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip, LEB128Config};
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_sn_recovered_at_position;
+use crate::wasm_circuit::wasm_sections::consts::LebParams;
 
 #[derive(Default)]
 struct TestCircuit<'a, F, const IS_SIGNED: bool> {
@@ -59,46 +60,44 @@ impl<'a, F: Field, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, IS_S
         layouter.assign_region(
             || "leb128 region",
             |mut region| {
-                leb128_chip.assign_init(&mut region, self.offset_shift + self.leb_bytes.len() - 1);
+                // leb128_chip.assign_init(&mut region, self.offset_shift + self.leb_bytes.len() - 1);
 
                 let mut sn_recovered_at_pos: u64 = 0;
-                for (leb_byte_offset, &leb_byte) in self.leb_bytes.iter().enumerate() {
-                    let offset = leb_byte_offset + self.offset_shift;
+                for (byte_rel_offset, &leb_byte) in self.leb_bytes.iter().enumerate() {
+                    let offset = byte_rel_offset + self.offset_shift;
                     region.assign_advice(
-                        || format!("assign 'leb_byte' to {} at {}", leb_byte, leb_byte_offset),
+                        || format!("assign 'leb_byte' to {} at {}", leb_byte, byte_rel_offset),
                         config.leb_bytes,
                         offset,
                         || Value::known(F::from(leb_byte as u64)),
                     ).unwrap();
-                    let is_first_leb_byte = leb_byte_offset == 0;
-                    let is_last_leb_byte = leb_byte_offset == self.leb_bytes_last_byte_index as usize;
-                    let is_leb_byte_has_cb = leb_byte_offset < self.leb_bytes_last_byte_index as usize;
                     sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
                         sn_recovered_at_pos,
                         self.is_signed,
-                        leb_byte_offset,
+                        byte_rel_offset,
                         self.leb_bytes_last_byte_index as usize,
                         leb_byte,
                     );
+                    let p = LebParams{
+                        is_signed: self.is_signed,
+                        byte_rel_offset,
+                        last_byte_rel_offset: self.leb_bytes_last_byte_index as usize,
+                        sn: self.sn,
+                        sn_recovered_at_pos,
+                    };
                     debug!(
                         "offset {} is_signed '{}' leb_byte_offset '{}' sn_recovered_at_pos '{}' is_last_leb_byte '{}'",
-                        leb_byte_offset,
+                        byte_rel_offset,
                         self.is_signed,
-                        leb_byte_offset,
+                        byte_rel_offset,
                         sn_recovered_at_pos,
-                        is_last_leb_byte,
+                        p.is_last_byte(),
                     );
                     leb128_chip.assign(
                         &mut region,
                         offset,
-                        leb_byte_offset,
                         true,
-                        is_first_leb_byte,
-                        is_last_leb_byte,
-                        is_leb_byte_has_cb,
-                        self.is_signed,
-                        self.sn,
-                        sn_recovered_at_pos,
+                        p,
                     );
                 }
 

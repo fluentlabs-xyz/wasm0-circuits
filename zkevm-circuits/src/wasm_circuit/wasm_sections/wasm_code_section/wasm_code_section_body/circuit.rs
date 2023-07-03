@@ -650,21 +650,12 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             AssignType::NumericInstructionLebArg |
             AssignType::VariableInstructionLebArg |
             AssignType::ControlInstructionLebArg => {
-                let leb_params = leb_params.unwrap();
-                let is_first_leb_byte = leb_params.byte_rel_offset == 0;
-                let is_last_leb_byte = leb_params.byte_rel_offset == leb_params.last_byte_rel_offset;
-                let is_leb_byte_has_cb = leb_params.byte_rel_offset < leb_params.last_byte_rel_offset;
+                let p = leb_params.unwrap();
                 self.config.leb128_chip.assign(
                     region,
                     offset,
-                    leb_params.byte_rel_offset,
                     q_enable,
-                    is_first_leb_byte,
-                    is_last_leb_byte,
-                    is_leb_byte_has_cb,
-                    false,
-                    leb_params.sn,
-                    leb_params.sn_recovered_at_pos,
+                    p,
                 );
             }
             _ => {}
@@ -846,7 +837,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             _ => { panic!("unsupported assign_type {:?}", assign_type) }
         }
         const OFFSET: usize = 0;
-        let (sn, last_byte_rel_offset) = leb128_compute_sn(&wasm_bytecode.bytes[leb_bytes_start_offset..], false, OFFSET).unwrap();
+        let is_signed_leb = false;
+        let (sn, last_byte_rel_offset) = leb128_compute_sn(&wasm_bytecode.bytes[leb_bytes_start_offset..], is_signed_leb, OFFSET).unwrap();
         let mut sn_recovered_at_pos = 0;
         for byte_rel_offset in OFFSET..=last_byte_rel_offset {
             let offset = leb_bytes_start_offset + byte_rel_offset;
@@ -864,6 +856,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 assign_type,
                 assign_value,
                 Some(LebParams {
+                    is_signed: is_signed_leb,
                     byte_rel_offset,
                     last_byte_rel_offset,
                     sn,
@@ -914,7 +907,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             }
         }
 
-        if let Ok(opcode) = <i32 as TryInto<ParametricInstruction>>::try_into(opcode) {
+        if let Ok(_opcode) = <i32 as TryInto<ParametricInstruction>>::try_into(opcode) {
             assign_type = AssignType::ParametricInstruction;
         }
 
@@ -922,12 +915,13 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             assign_type = AssignType::BlockEnd;
         };
 
-        if assign_type == AssignType::NumericInstruction
-            || assign_type == AssignType::VariableInstruction
-            || assign_type == AssignType::ControlInstruction
-            || assign_type == AssignType::ParametricInstruction
-            || assign_type == AssignType::BlockEnd
-        {
+        if [
+            AssignType::NumericInstruction,
+            AssignType::VariableInstruction,
+            AssignType::ControlInstruction,
+            AssignType::ParametricInstruction,
+            AssignType::BlockEnd,
+        ].contains(&assign_type) {
             self.assign(
                 region,
                 wasm_bytecode,
@@ -951,26 +945,17 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             offset += 1;
         }
 
-        if assign_type_argument == AssignType::NumericInstructionLebArg
-            || assign_type_argument == AssignType::VariableInstructionLebArg
-            || assign_type_argument == AssignType::ControlInstructionLebArg {
-            let (instruction_leb_argument, instruction_leb_argument_leb_len) = self.markup_leb_section(
+        if [
+            AssignType::NumericInstructionLebArg,
+            AssignType::VariableInstructionLebArg,
+            AssignType::ControlInstructionLebArg,
+        ].contains(&assign_type_argument) {
+            let (_instruction_leb_argument, instruction_leb_argument_leb_len) = self.markup_leb_section(
                 region,
                 wasm_bytecode,
                 offset,
                 assign_type_argument,
                 true,
-            );
-            debug!(
-                "offset {} \
-                assign_type_argument {:?} \
-                instruction_leb_argument {} \
-                instruction_leb_argument_leb_len {} \
-                ",
-                offset,
-                assign_type_argument,
-                instruction_leb_argument,
-                instruction_leb_argument_leb_len,
             );
             offset += instruction_leb_argument_leb_len;
         }
@@ -999,7 +984,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             AssignType::FuncsCount,
             true,
         );
-        debug!("offset {} funcs_count {} funcs_count_leb_len {}", offset, funcs_count, funcs_count_leb_len);
         offset += funcs_count_leb_len;
 
         for _func_index in 0..funcs_count {
@@ -1012,11 +996,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
             );
             let func_body_start_offset = offset;
-            debug!("offset {} func_body_len {} func_body_len_leb_len {} func_body_start_offset {}", offset, func_body_len, func_body_len_leb_len, func_body_start_offset);
             offset += func_body_len_leb_len;
 
             let func_body_end_offset = offset + (func_body_len as usize) - 1;
-            debug!("offset {} func_body_end_offset {}", offset, func_body_end_offset);
 
             //  locals(1)(is_local_type_transitions_count+ ...
             let (is_local_type_transitions_count, is_local_type_transitions_count_leb_len) = self.markup_leb_section(
@@ -1026,7 +1008,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 AssignType::LocalTypeTransitionsCount,
                 true,
             );
-            debug!("offset {} is_local_type_transitions_count {} is_local_type_transitions_count_leb_len {}", offset, is_local_type_transitions_count, is_local_type_transitions_count_leb_len);
             offset += is_local_type_transitions_count_leb_len;
 
             for is_valtype_transition_index in 0..is_local_type_transitions_count {
@@ -1038,7 +1019,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     AssignType::LocalRepetitionCount,
                     true,
                 );
-                debug!("offset {} is_local_repetition_count {} is_local_repetition_count_leb_len {}", offset, is_local_repetition_count, is_local_repetition_count_leb_len);
                 offset += is_local_repetition_count_leb_len;
 
                 // is_local_type(1)
@@ -1050,7 +1030,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     true,
                     None,
                 );
-                debug!("offset {} is_local_type true", offset);
                 offset += 1;
             }
 

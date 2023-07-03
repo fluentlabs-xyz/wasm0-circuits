@@ -44,10 +44,10 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
             || "wasm_chip region",
             |mut region| {
                 let offset_max = self.bytes.len() -1;
-                wasm_chip.assign_init(
-                    &mut region,
-                    offset_max,
-                )?;
+                // wasm_chip.assign_init(
+                //     &mut region,
+                //     offset_max,
+                // )?;
                 wasm_chip.assign_auto(
                     &mut region,
                     &wasm_bytecode,

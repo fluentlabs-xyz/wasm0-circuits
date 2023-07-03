@@ -110,27 +110,19 @@ impl<F: Field> WasmStartSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "offset {} q_enable {} assign_type {:?}",
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {}",
             offset,
             q_enable,
             assign_type,
+            assign_value,
         );
         if assign_type == AssignType::FuncsIndex {
-            let leb_params = leb_params.unwrap();
-            let is_first_leb_byte = leb_params.byte_rel_offset == 0;
-            let is_last_leb_byte = leb_params.byte_rel_offset == leb_params.last_byte_rel_offset;
-            let is_leb_byte_has_cb = leb_params.byte_rel_offset < leb_params.last_byte_rel_offset;
+            let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
                 region,
                 offset,
-                leb_params.byte_rel_offset,
                 q_enable,
-                is_first_leb_byte,
-                is_last_leb_byte,
-                is_leb_byte_has_cb,
-                false,
-                leb_params.sn,
-                leb_params.sn_recovered_at_pos,
+                p,
             );
         }
         region.assign_fixed(
@@ -159,15 +151,19 @@ impl<F: Field> WasmStartSectionBodyChip<F>
         &self,
         region: &mut Region<F>,
         bytecode: &WasmBytecode,
-        leb_bytes_start_offset: usize,
+        leb_start_offset: usize,
         assign_type: AssignType,
         assign_value: bool,
     ) -> (u64, usize) {
+        if assign_type != AssignType::FuncsIndex {
+            panic!("unsupported assign_type '{:?}'", assign_type);
+        }
         const OFFSET: usize = 0;
-        let (sn, last_byte_rel_offset) = leb128_compute_sn(&bytecode.bytes[leb_bytes_start_offset..], false, OFFSET).unwrap();
+        let is_signed_leb = false;
+        let (sn, last_byte_rel_offset) = leb128_compute_sn(&bytecode.bytes[leb_start_offset..], is_signed_leb, OFFSET).unwrap();
         let mut sn_recovered_at_pos = 0;
         for byte_rel_offset in OFFSET..=last_byte_rel_offset {
-            let offset = leb_bytes_start_offset + byte_rel_offset;
+            let offset = leb_start_offset + byte_rel_offset;
             sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
                 sn_recovered_at_pos,
                 false,
@@ -181,6 +177,7 @@ impl<F: Field> WasmStartSectionBodyChip<F>
                 assign_type,
                 assign_value,
                 Some(LebParams {
+                    is_signed: is_signed_leb,
                     byte_rel_offset,
                     last_byte_rel_offset,
                     sn,

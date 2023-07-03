@@ -11,3 +11,4 @@ pub mod common;
 pub mod wasm_sections;
 pub mod error;
 pub mod utf8_circuit;
+pub mod types;

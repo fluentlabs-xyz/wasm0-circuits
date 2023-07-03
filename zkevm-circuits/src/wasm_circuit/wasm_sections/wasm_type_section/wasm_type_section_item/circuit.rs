@@ -15,6 +15,7 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::wasm_sections::consts::LebParams;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::consts::Type::FuncType;
 
@@ -212,31 +213,23 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         is_input_type: bool,
         is_output_count: bool,
         is_output_type: bool,
-        leb_byte_rel_offset: usize,
-        leb_last_byte_rel_offset: usize,
-        leb_sn: u64,
-        leb_sn_recovered_at_pos: u64,
+        leb_params: Option<LebParams>,
     ) {
         if is_input_count || is_output_count {
+            let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
                 region,
                 offset,
-                leb_byte_rel_offset,
                 true,
-                leb_byte_rel_offset == 0,
-                leb_byte_rel_offset == leb_last_byte_rel_offset,
-                leb_byte_rel_offset < leb_last_byte_rel_offset,
-                false,
-                leb_sn,
-                leb_sn_recovered_at_pos,
+                p,
             );
         }
-        let val = is_type || is_input_count || is_input_type || is_output_count || is_output_type;
+        let q_enable = true;
         region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", val, offset),
+            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
-            || Value::known(F::from(val as u64)),
+            || Value::known(F::from(q_enable as u64)),
         ).unwrap();
         region.assign_fixed(
             || format!("assign 'is_type' val {} at {}", is_type, offset),
@@ -280,32 +273,37 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         is_output_count: bool,
     ) -> (u64, usize) {
         const OFFSET: usize = 0;
-        let (leb_sn, last_byte_offset) = leb128_compute_sn(leb_bytes, false, OFFSET).unwrap();
-        let mut leb_sn_recovered_at_pos = 0;
-        for byte_offset in OFFSET..=last_byte_offset {
-            leb_sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
-                leb_sn_recovered_at_pos,
+        let is_signed_leb = false;
+        let (sn, last_byte_rel_offset) = leb128_compute_sn(leb_bytes, is_signed_leb, OFFSET).unwrap();
+        let mut sn_recovered_at_pos = 0;
+        for byte_rel_offset in OFFSET..=last_byte_rel_offset {
+            let offset = leb_bytes_start_offset + byte_rel_offset;
+            sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
+                sn_recovered_at_pos,
                 false,
-                byte_offset,
-                last_byte_offset,
-                leb_bytes[OFFSET],
+                byte_rel_offset,
+                last_byte_rel_offset,
+                leb_bytes[byte_rel_offset],
             );
             self.assign(
                 region,
-                leb_bytes_start_offset + byte_offset,
+                offset,
                 false,
                 is_input_count,
                 false,
                 is_output_count,
                 false,
-                byte_offset,
-                last_byte_offset,
-                leb_sn,
-                leb_sn_recovered_at_pos,
+                Some(LebParams{
+                    is_signed: is_signed_leb,
+                    byte_rel_offset,
+                    last_byte_rel_offset,
+                    sn,
+                    sn_recovered_at_pos,
+                }),
             );
         }
 
-        (leb_sn, last_byte_offset + 1)
+        (sn, last_byte_rel_offset + 1)
     }
 
     /// returns new offset
@@ -324,10 +322,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             false,
             false,
             false,
-            0,
-            0,
-            0,
-            0,
+            None,
         );
         offset += 1;
 
@@ -349,10 +344,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 true,
                 false,
                 false,
-                0,
-                0,
-                0,
-                0,
+                None,
             );
         }
         offset += input_count_sn as usize;
@@ -375,10 +367,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 false,
                 false,
                 true,
-                0,
-                0,
-                0,
-                0,
+                None,
             );
         }
         offset += output_count_sn as usize;

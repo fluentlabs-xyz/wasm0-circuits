@@ -3,6 +3,7 @@
   (global $g2 (mut i32) (i32.const 0))
   (global $g3 (mut i64) (i64.const 0))
   (global $g4 (mut i64) (i64.const 77777))
+  (table $t 0x10 0x10 funcref)
   (type (;0;) (func))
   (type (;1;) (func))
   (type (;2;) (func (param i32)))

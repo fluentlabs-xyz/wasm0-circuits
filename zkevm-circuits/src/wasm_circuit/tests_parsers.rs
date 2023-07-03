@@ -43,41 +43,16 @@ mod wasm_parsers_tests {
         let mut m = Module::decode_from(data.as_slice()).unwrap();
         for s in m.sections.iter_mut() {
             wasmbin_unlazify_with_opt(s, false).unwrap();
+            println!("---Kind::{:?}:", s.kind());
+            let mut bytes = Vec::<u8>::new();
+            s.encode(&mut bytes).unwrap();
+            println!("section len: {:?}", compute_section_len(&bytes));
+            println!("raw (hex): {:x?}", bytes);
+            println!("raw (decimal): {:?}", bytes);
+            println!("{:#?}", s);
             match s.kind() {
-                Kind::Type => {
-                    println!("---Kind::Type:");
-                    let mut bytes = Vec::<u8>::new();
-                    s.encode(&mut bytes).unwrap();
-                    println!("section len: {:?}", compute_section_len(&bytes));
-                    println!("raw (hex): {:x?}", bytes);
-                    println!("raw (decimal): {:?}", bytes);
-                    println!("{:#?}", s);
-                }
-                Kind::Import => {
-                    println!("---Kind::Import:");
-                    let mut bytes = Vec::<u8>::new();
-                    s.encode(&mut bytes).unwrap();
-                    println!("section len: {:?}", compute_section_len(&bytes));
-                    println!("raw (hex): {:x?}", bytes);
-                    println!("raw (decimal): {:?}", bytes);
-                    println!("{:#?}", s);
-                }
-                Kind::Function => {
-                    println!("---Kind::Function:");
-                    let mut bytes = Vec::<u8>::new();
-                    s.encode(&mut bytes).unwrap();
-                    println!("section len: {:?}", compute_section_len(&bytes));
-                    println!("raw (hex): {:x?}", bytes);
-                    println!("raw (decimal): {:?}", bytes);
-                    println!("{:#?}", s);
-                }
+                Kind::Type => {}
                 Kind::Code => {
-                    println!("---Kind::Code:");
-                    let mut bytes = Vec::<u8>::new();
-                    s.encode(&mut bytes).unwrap();
-                    println!("section len: {:?}", compute_section_len(&bytes));
-                    println!("raw (hex): {:x?}", bytes);
-                    println!("raw (decimal): {:?}", bytes);
                     for c1 in s.try_as_mut::<wasmbin::sections::payload::Code>().into_iter().enumerate() {
                         let code_contents = c1.1.try_contents().unwrap();
                         for c2 in code_contents.as_slice() {
@@ -90,52 +65,19 @@ mod wasm_parsers_tests {
                     };
                     println!("{:#?}", s);
                 },
-                Kind::Memory => {
-                    println!("---Kind::Memory:");
-                    let mut bytes = Vec::<u8>::new();
-                    s.encode(&mut bytes).unwrap();
-                    println!("section len: {:?}", compute_section_len(&bytes));
-                    println!("raw (hex): {:x?}", bytes);
-                    println!("raw (decimal): {:?}", bytes);
-                    println!("{:#?}", s);
-                }
-                Kind::Export => {
-                    println!("---Kind::Export:");
-                    let mut bytes = Vec::<u8>::new();
-                    s.encode(&mut bytes).unwrap();
-                    println!("section len: {:?}", compute_section_len(&bytes));
-                    println!("raw (hex): {:x?}", bytes);
-                    println!("raw (decimal): {:?}", bytes);
-                    println!("{:#?}", s);
-                }
-                Kind::Data => {
-                    println!("---Kind::Data:");
-                    let mut bytes = Vec::<u8>::new();
-                    s.encode(&mut bytes).unwrap();
-                    println!("section len: {:?}", compute_section_len(&bytes));
-                    println!("raw (hex): {:x?}", bytes);
-                    println!("raw (decimal): {:?}", bytes);
-                    println!("{:#?}", s);
-                }
-                Kind::Start => {
-                    println!("---Kind::Start:");
-                    let mut bytes = Vec::<u8>::new();
-                    s.encode(&mut bytes).unwrap();
-                    println!("section len: {:?}", compute_section_len(&bytes));
-                    println!("raw (hex): {:x?}", bytes);
-                    println!("raw (decimal): {:?}", bytes);
-                    println!("{:#?}", s);
-                },
-                Kind::Global => {
-                    println!("---Kind::Global:");
-                    let mut bytes = Vec::<u8>::new();
-                    s.encode(&mut bytes).unwrap();
-                    println!("section len: {:?}", compute_section_len(&bytes));
-                    println!("raw (hex): {:x?}", bytes);
-                    println!("raw (decimal): {:?}", bytes);
-                    println!("{:#?}", s);
-                },
-                _ => println!("UNKNOWN/UNPROCESSED section kind: {:?}", s.kind()),
+                Kind::Table => {},
+                Kind::Custom => {}
+                Kind::Element => {}
+                Kind::DataCount => {}
+                Kind::Import => {}
+                Kind::Function => {}
+                Kind::Memory => {}
+                Kind::Global => {}
+                Kind::Export => {}
+                Kind::Start => {}
+                Kind::Data => {}
+
+                _ => {println!("UNPROCESSED/UNKNOWN section '{:?}'", s.kind())}
             }
         }
         println!("Found {} sections.", m.sections.len());

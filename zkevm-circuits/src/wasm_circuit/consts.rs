@@ -11,7 +11,7 @@ pub static WASM_BLOCK_END: i32 = 0xB;
 pub static WASM_BLOCKTYPE_DELIMITER: i32 = 0x40;
 
 #[derive(Copy, Clone, Debug)]
-pub enum WasmSectionId {
+pub enum WasmSection {
     Custom = 0,
     Type = 1,
     Import = 2,
@@ -26,7 +26,33 @@ pub enum WasmSectionId {
     Data = 11,
     DataCount = 12,
 }
-pub const WASM_SECTION_ID_MAX: usize = WasmSectionId::DataCount as usize;
+pub const WASM_SECTION_IDS: &[WasmSection] = &[
+    WasmSection::Custom,
+    WasmSection::Type,
+    WasmSection::Import,
+    WasmSection::Function,
+    WasmSection::Table,
+    WasmSection::Memory,
+    WasmSection::Global,
+    WasmSection::Export,
+    WasmSection::Start,
+    WasmSection::Element,
+    WasmSection::Code,
+    WasmSection::Data,
+    WasmSection::DataCount,
+
+];
+impl TryFrom<i32> for WasmSection {
+    type Error = ();
+
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        for instr in WASM_SECTION_IDS {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+pub const WASM_SECTION_ID_MAX: usize = WasmSection::DataCount as usize;
 
 /// https://webassembly.github.io/spec/core/binary/types.html#number-types
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -37,10 +63,17 @@ pub enum NumType {
     F64 = 0x7C,
 }
 
+/// https://webassembly.github.io/spec/core/binary/types.html#reference-types
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum ReferenceType {
+    FuncRef = 0x70,
+    ExternRef = 0x71,
+}
+
 // TODO make it differ from custom section id (which is 0 too)
 pub const SECTION_ID_DEFAULT: i32 = 0;
 
-// https://webassembly.github.io/spec/core/binary/types.html#limits
+/// https://webassembly.github.io/spec/core/binary/types.html#limits
 #[derive(Copy, Clone, Debug)]
 pub enum LimitsType {
     MinOnly = 0x0,
