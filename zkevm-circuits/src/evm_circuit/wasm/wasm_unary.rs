@@ -47,6 +47,7 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
         let is_clz = cb.alloc_bit_value();
         let is_popcnt = cb.alloc_bit_value();
         let is_64bits = cb.alloc_bit_value();
+        let is_32bits = || 1.expr() - is_64bits.expr();
 
         let arg_limbs = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
                          cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
@@ -78,18 +79,19 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
         cb.add_lookup("Using CzOut fixed table for Ctz", Lookup::Fixed {
             tag: FixedTableTag::CzOut.expr(),
             values: [(terms[0].expr() + terms[1].expr() * 17.expr()) * is_ctz.expr(),
-                     (terms[2].expr() + terms[3].expr() * 17.expr()) * is_ctz.expr(),
+                     (terms[2].expr() + terms[3].expr() * 17.expr()) * is_64bits.expr() * is_ctz.expr(),
                      result.expr() * is_ctz.expr()],
         });
 
-/*
         cb.add_lookup("Using CzOut fixed table for Clz", Lookup::Fixed {
             tag: FixedTableTag::CzOut.expr(),
-            values: [(terms[3].expr() + terms[2].expr() * 17.expr()) * is_clz.expr(),
-                     (terms[1].expr() + terms[0].expr() * 17.expr()) * is_clz.expr(),
+            values: [(
+                         (terms[3].expr() + terms[2].expr() * 17.expr()) * is_64bits.expr() +
+                         (terms[1].expr() + terms[0].expr() * 17.expr()) * is_32bits()
+                     ) * is_clz.expr(),
+                     (terms[1].expr() + terms[0].expr() * 17.expr()) * is_64bits.expr() * is_clz.expr(),
                      result.expr() * is_clz.expr()],
         });
-*/
 
         cb.require_zero(
             "op_unary: selector",
@@ -168,8 +170,8 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
             _ => unreachable!("not supported opcode for unary operation: {:?}", step.opcode)
         };
         selector.assign(region, offset, Value::known(F::one()))?;
+        self.is_64bits.assign(region, offset, Value::<F>::known(F::from(bits == 64)))?;
 
-        println!("DEBUG RESULT {:#}", result.0[0]);
         for idx in 0..4 {
             let pair = (operand.0[0] >> (idx * 16)) & 0xffff;
             let even = pair & 0xff;
@@ -178,7 +180,6 @@ impl<F: Field> ExecutionGadget<F> for WasmUnaryGadget<F> {
             self.arg_limbs[idx*2+1].assign(region, offset, Value::<F>::known(F::from(odd)))?;
             match opcode {
                 OpcodeId::I32Ctz | OpcodeId::I64Ctz => {
-                    println!("DEBUG TERMS {idx} {:#}", bitintr::Tzcnt::tzcnt(pair as u16) as u64);
                     self.terms[idx].assign(region, offset, Value::<F>::known(F::from(bitintr::Tzcnt::tzcnt(pair as u16) as u64)))?;
                 }
                 OpcodeId::I32Clz | OpcodeId::I64Clz => {
@@ -211,27 +212,27 @@ mod test {
     #[test]
     fn test_ctz() {
         run_test(bytecode! {
-            // I32Const[0x00100000]
-            // I32Ctz
-            // Drop
-            //I32Const[0x00000001]
-            //I32Ctz
-            //Drop
-            // I32Const[0x80000000]
-            // I32Ctz
-            // Drop
-            // I32Const[0x00000000]
-            // I32Ctz
-            // Drop
-            // I64Const[0x0010000000000000]
-            // I64Ctz
-            // Drop
-            // I64Const[0x0000000000000001]
-            // I64Ctz
-            // Drop
-            // I64Const[0x8000000000000000]
-            // I64Ctz
-            // Drop
+            I32Const[0x00100000]
+            I32Ctz
+            Drop
+            I32Const[0x00000001]
+            I32Ctz
+            Drop
+            I32Const[0x80000000]
+            I32Ctz
+            Drop
+            I32Const[0x00000000]
+            I32Ctz
+            Drop
+            I64Const[0x0010000000000000]
+            I64Ctz
+            Drop
+            I64Const[0x0000000000000001]
+            I64Ctz
+            Drop
+            I64Const[0x8000000000000000]
+            I64Ctz
+            Drop
             I64Const[0x0000000000000000]
             I64Ctz
             Drop
@@ -241,7 +242,6 @@ mod test {
     #[test]
     fn test_clz() {
         run_test(bytecode! {
-/*
             I32Const[0x00000001]
             I32Clz
             Drop
@@ -254,7 +254,6 @@ mod test {
             I32Const[0xffffffff]
             I32Clz
             Drop
-*/
             I64Const[0x0000000000000001]
             I64Clz
             Drop
