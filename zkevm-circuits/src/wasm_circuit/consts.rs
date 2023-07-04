@@ -26,7 +26,7 @@ pub enum WasmSection {
     Data = 11,
     DataCount = 12,
 }
-pub const WASM_SECTION_IDS: &[WasmSection] = &[
+pub const WASM_SECTION_ALL: &[WasmSection] = &[
     WasmSection::Custom,
     WasmSection::Type,
     WasmSection::Import,
@@ -40,13 +40,12 @@ pub const WASM_SECTION_IDS: &[WasmSection] = &[
     WasmSection::Code,
     WasmSection::Data,
     WasmSection::DataCount,
-
 ];
 impl TryFrom<i32> for WasmSection {
     type Error = ();
 
     fn try_from(v: i32) -> Result<Self, Self::Error> {
-        for instr in WASM_SECTION_IDS {
+        for instr in WASM_SECTION_ALL {
             if v == *instr as i32 { return Ok(*instr); }
         }
         Err(())
@@ -267,7 +266,7 @@ pub enum VariableInstruction {
     GlobalGet = 0x23,
     GlobalSet = 0x24,
 }
-pub static VARIABLE_INSTRUCTIONS_WITH_LEB_ARG: &[VariableInstruction] = &[
+pub const VARIABLE_INSTRUCTIONS_WITH_LEB_ARG: &[VariableInstruction] = &[
     VariableInstruction::LocalGet,
     VariableInstruction::LocalSet,
     VariableInstruction::LocalTee,
@@ -305,14 +304,14 @@ pub enum ControlInstruction {
     Call = 0x10,
     CallIndirect = 0x11,
 }
-pub static CONTROL_INSTRUCTIONS_WITHOUT_ARGS: &[ControlInstruction] = &[
+pub const CONTROL_INSTRUCTIONS_WITHOUT_ARGS: &[ControlInstruction] = &[
     ControlInstruction::Unreachable,
 ];
-pub static CONTROL_INSTRUCTIONS_WITH_LEB_ARG: &[ControlInstruction] = &[
+pub const CONTROL_INSTRUCTIONS_WITH_LEB_ARG: &[ControlInstruction] = &[
     ControlInstruction::Br,
     ControlInstruction::BrIf,
 ];
-pub static CONTROL_INSTRUCTIONS_BLOCK: &[ControlInstruction] = &[
+pub const CONTROL_INSTRUCTIONS_BLOCK: &[ControlInstruction] = &[
     ControlInstruction::Block,
     ControlInstruction::Loop,
 ];

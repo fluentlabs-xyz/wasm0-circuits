@@ -3,7 +3,22 @@
   (global $g2 (mut i32) (i32.const 0))
   (global $g3 (mut i64) (i64.const 0))
   (global $g4 (mut i64) (i64.const 77777))
-  (table $t 0x10 0x10 funcref)
+
+  (table $t 300 funcref)
+  (func $f)
+  (func $g)
+
+  ;; Passive
+    (elem funcref)
+    (elem func)
+    (elem func $f $f $g)
+    (elem func $f $f $g $g)
+
+    (elem $t funcref)
+    (elem (i32.const 0))
+    (elem (i32.const 299) $f)
+;;    (elem (table $t) (i32.const 0) func $f $g)
+
   (type (;0;) (func))
   (type (;1;) (func))
   (type (;2;) (func (param i32)))

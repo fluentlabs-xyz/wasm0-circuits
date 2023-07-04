@@ -232,10 +232,11 @@ impl<F: Field> WasmTableSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "assign at offset {} q_enable {} assign_type {:?}",
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {}",
             offset,
             q_enable,
             assign_type,
+            assign_value,
         );
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),

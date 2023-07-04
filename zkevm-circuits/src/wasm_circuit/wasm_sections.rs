@@ -10,3 +10,4 @@ pub mod wasm_global_section;
 pub mod consts;
 pub mod wasm_start_section;
 pub mod wasm_table_section;
+pub mod wasm_element_section;

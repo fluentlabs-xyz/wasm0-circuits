@@ -637,10 +637,11 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             "assign at offset {} \
             q_enable {} \
             assign_type {:?} \
-            ",
+            assign_value {}",
             offset,
             q_enable,
             assign_type,
+            assign_value,
         );
         match assign_type {
             AssignType::FuncsCount |
