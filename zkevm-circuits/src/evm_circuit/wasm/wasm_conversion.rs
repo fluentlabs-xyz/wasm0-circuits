@@ -25,10 +25,11 @@ pub(crate) struct WasmConversionGadget<F> {
     same_context: SameContextGadget<F>,
 
     value: Cell<F>,
-    value_type: Cell<F>,
+    //value_type: Cell<F>,
     res: Cell<F>,
-    res_type: Cell<F>,
+    //res_type: Cell<F>,
 
+/*
     flag_bit: Cell<F>,
     flag_u8_rem: Cell<F>,
     flag_u8_rem_diff: Cell<F>,
@@ -36,6 +37,7 @@ pub(crate) struct WasmConversionGadget<F> {
     is_i32_wrap_i64: Cell<F>,
     is_i64_extend_i32_u: Cell<F>,
     is_i64_extend_i32_s: Cell<F>,
+*/
 }
 
 pub(crate) mod types {
@@ -50,10 +52,11 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let value = cb.alloc_u64_on_u8();
-        let value_type = cb.alloc_common_range_value();
+        //let value_type = cb.alloc_common_range_value();
         let res = cb.alloc_u64();
-        let res_type = cb.alloc_common_range_value();
+        //let res_type = cb.alloc_common_range_value();
 
+/*
         let flag_bit = cb.alloc_bit_value();
         let flag_u8_rem = cb.alloc_common_range_value();
         let flag_u8_rem_diff = cb.alloc_common_range_value();
@@ -61,10 +64,12 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
         let is_i32_wrap_i64 = cb.alloc_bit_value();
         let is_i64_extend_i32_u = cb.alloc_bit_value();
         let is_i64_extend_i32_s = cb.alloc_bit_value();
+*/
 
         cb.stack_pop(value.expr());
         cb.stack_push(res.expr());
 
+/*
         cb.require_zeros("op_conversion: pick one", vec![
               is_i32_wrap_i64.expr()
             + is_i64_extend_i32_u.expr()
@@ -105,6 +110,7 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
             let pad = flag_bit.expr() * ((u32::MAX as u64) << 32).expr();
             vec![is_i64_extend_i32_s.expr() * (pad + value.expr() - res.expr())]
         });
+*/
 
         let opcode = cb.query_cell();
 
@@ -121,15 +127,17 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
         Self {
             same_context,
             value,
-            value_type,
+            //value_type,
             res,
-            res_type,
+            //res_type,
+/*
             flag_bit,
             flag_u8_rem,
             flag_u8_rem_diff,
             is_i32_wrap_i64,
             is_i64_extend_i32_u,
             is_i64_extend_i32_s,
+*/
         }
     }
 
@@ -152,13 +160,14 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
         match opcode {
             OpcodeId::I32WrapI64 => {
                 self.value.assign(region, offset, Value::known(value.to_scalar().unwrap()))?;
-                self.value_type.assign(region, offset, Value::known(types::I64.to_scalar().unwrap()))?;
+                //self.value_type.assign(region, offset, Value::known(types::I64.to_scalar().unwrap()))?;
                 self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
-                self.res_type.assign(region, offset, Value::known(types::I32.to_scalar().unwrap()))?;
+                //self.res_type.assign(region, offset, Value::known(types::I32.to_scalar().unwrap()))?;
 
-                self.is_i32_wrap_i64.assign(region, offset, Value::known(true.to_scalar().unwrap()))?;
+                //self.is_i32_wrap_i64.assign(region, offset, Value::known(true.to_scalar().unwrap()))?;
             }
             OpcodeId::I64ExtendI32 => {
+                /*
                 let is_psign = true;
                 if is_psign {
                     self.is_i64_extend_i32_u.assign(region, offset, Value::known(true.to_scalar().unwrap()))?;
@@ -174,11 +183,12 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
                 self.flag_bit.assign(region, offset, Value::known((flag_bit == 1).to_scalar().unwrap()))?;
                 self.flag_u8_rem.assign(region, offset, Value::known((flag_u8_rem as u64).to_scalar().unwrap()))?;
                 self.flag_u8_rem_diff.assign(region, offset, Value::known((flag_u8_rem_diff as u64).to_scalar().unwrap()))?;
+                */
 
                 self.value.assign(region, offset, Value::known(value.to_scalar().unwrap()))?;
-                self.value_type.assign(region, offset, Value::known(types::I32.to_scalar().unwrap()))?;
+                //self.value_type.assign(region, offset, Value::known(types::I32.to_scalar().unwrap()))?;
                 self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
-                self.res_type.assign(region, offset, Value::known(types::I64.to_scalar().unwrap()))?;
+                //self.res_type.assign(region, offset, Value::known(types::I64.to_scalar().unwrap()))?;
             }
             _ => unreachable!("not supported opcode: {:?}", opcode),
         };
