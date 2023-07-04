@@ -64,7 +64,7 @@ impl Opcode for Sload {
         let key_bytes = key.to_be_bytes();
 
         // Storage read
-        let value = geth_step.storage.get_or_err(&key)?;
+        let value = geth_step.global_memory.read_u256(value_offset)?;
 
         let is_warm = state
             .sdb

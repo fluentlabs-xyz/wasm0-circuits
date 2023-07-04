@@ -5,7 +5,8 @@ use crate::{
     operation::{CallContextField, StorageOp, TxAccessListAccountStorageOp, RW},
     Error,
 };
-use eth_types::{GethExecStep, ToBigEndian, ToU256, ToWord};
+use eth_types::{GethExecStep, ToBigEndian, ToLittleEndian, ToU256, ToWord};
+use eth_types::evm_types::MemoryAddress;
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the
@@ -61,7 +62,11 @@ impl Opcode for OOGSloadSstore {
         let key_bytes = key.to_be_bytes();
 
         // Storage read
-        let value = geth_step.storage.get_or_err(&key)?;
+        let value = geth_step.global_memory.read_u256(value_offset)?;
+        let value_bytes = value.to_be_bytes();
+
+        state.memory_read_n(&mut exec_step, MemoryAddress::from(key_offset.as_u64()), &key_bytes)?;
+        state.memory_write_n(&mut exec_step, MemoryAddress::from(value_offset.as_u64()), &value_bytes)?;
 
         let is_warm = state
             .sdb
