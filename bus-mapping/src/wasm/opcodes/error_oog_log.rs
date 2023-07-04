@@ -31,11 +31,11 @@ impl Opcode for ErrorOOGLog {
             OpcodeId::LOG4
         ]
         .contains(&geth_step.op));
-        let mstart = geth_step.stack.nth_last(0)?;
-        let msize = geth_step.stack.nth_last(1)?;
+        let mstart = geth_step.stack.nth_last(1)?;
+        let msize = geth_step.stack.nth_last(0)?;
 
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), mstart)?;
-        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), msize)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), msize)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), mstart)?;
         // read static call property
         state.call_context_read(
             &mut exec_step,

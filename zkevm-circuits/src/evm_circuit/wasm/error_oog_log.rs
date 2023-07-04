@@ -21,13 +21,14 @@ use eth_types::{
 };
 use halo2_proofs::{circuit::Value, plonk::Error};
 use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
-use crate::evm_circuit::util::memory_gadget::CommonMemoryAddressGadget;
+use crate::evm_circuit::util::memory_gadget::{CommonMemoryAddressGadget, MemoryAddress64Gadget, MemoryExpandedAddressGadget};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ErrorOOGLogGadget<F> {
     opcode: Cell<F>,
+    opcode_call_index: Cell<F>,
     // memory address
-    memory_address: MemoryAddressGadget<F>,
+    memory_address: MemoryAddress64Gadget<F>,
     is_static_call: Cell<F>,
     is_opcode_logn: LtGadget<F, 1>,
     // constrain gas left is less than gas cost
@@ -44,11 +45,12 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGLogGadget<F> {
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
         let mstart = cb.query_cell_phase2();
-        let msize = cb.query_word_rlc();
+        let msize = cb.query_cell();
+        let opcode_call_index= cb.query_cell();
 
         // Pop mstart_address, msize from stack
-        cb.stack_pop(mstart.expr());
         cb.stack_pop(msize.expr());
+        cb.stack_pop(mstart.expr());
 
         // constrain not in static call
         let is_static_call = cb.call_context(None, CallContextFieldTag::IsStatic);
@@ -63,7 +65,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGLogGadget<F> {
         );
 
         // check memory
-        let memory_address = MemoryAddressGadget::construct(cb, mstart, msize);
+        let memory_address = MemoryAddress64Gadget::construct(cb, mstart, msize);
 
         // Calculate the next memory size and the gas cost for this memory
         // access
@@ -74,16 +76,17 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGLogGadget<F> {
             + 8.expr() * memory_address.length()
             + memory_expansion.gas_cost();
 
+
         // Check if the amount of gas available is less than the amount of gas
         // required
-        let insufficient_gas = LtGadget::construct(cb, cb.curr.state.gas_left.expr(), gas_cost);
+        let insufficient_gas = LtGadget::construct(cb, cb.curr.state.gas_left.expr(), gas_cost.expr());
         cb.require_equal(
             "gas left is less than gas required ",
             insufficient_gas.expr(),
             1.expr(),
         );
 
-        let common_error_gadget = CommonErrorGadget::construct(cb, opcode.expr(), 5.expr());
+        let common_error_gadget = CommonErrorGadget::construct(cb, OpcodeId::Call.as_u64().expr(), 5.expr());
 
         Self {
             opcode,
@@ -93,6 +96,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGLogGadget<F> {
             memory_expansion,
             insufficient_gas,
             common_error_gadget,
+            opcode_call_index,
         }
     }
 
@@ -108,8 +112,11 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGLogGadget<F> {
         let opcode = step.opcode.unwrap();
         self.opcode
             .assign(region, offset, Value::known(F::from(opcode.as_u64())))?;
+        //TODO: Set correct call function index
+        self.opcode_call_index
+            .assign(region, offset, Value::known(F::from(1)))?;
 
-        let [memory_start, msize] =
+        let [msize, memory_start] =
             [step.rw_indices[0], step.rw_indices[1]].map(|idx| block.rws[idx].stack_value());
 
         let memory_address = self
@@ -167,12 +174,19 @@ mod test {
     }
 
     fn test_oog_log(tx: eth_types::Transaction) {
-        let code = bytecode! {
-                PUSH1(0)
-                PUSH1(0)
-                PUSH1(100)
+        let mut code = bytecode! {
+                I32Const[20]
+                GAS
+                I32Const[0]
+                I32Const[0]
+                I32Const[100]
                 LOG0
+                Drop
         };
+        //TODO: Fix memory expansion gas calculation.
+        // Now this is not taken into account in  gas_cost the calculations.
+        // It's needed for not memory expanding
+        code.fill_default_global_data([0;1].to_vec());
 
         // Get the execution steps from the external tracer
         let ctx = TestContext::<2, 1>::new(
