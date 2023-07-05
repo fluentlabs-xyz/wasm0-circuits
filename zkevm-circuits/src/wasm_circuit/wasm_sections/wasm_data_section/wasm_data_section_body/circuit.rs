@@ -7,6 +7,7 @@ use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::{Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
+use itertools::Itertools;
 use log::debug;
 use eth_types::Field;
 use gadgets::util::{Expr, or};
@@ -20,6 +21,7 @@ use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::LebParams;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::wasm_sections::wasm_data_section::wasm_data_section_body::types::AssignType;
 
 #[derive(Debug, Clone)]
 pub struct WasmDataSectionBodyConfig<F: Field> {
@@ -89,7 +91,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             cb.require_boolean("is_mem_segment_type is boolean", is_mem_segment_type_expr.clone());
             cb.require_boolean("is_mem_segment_size_opcode is boolean", is_mem_segment_size_opcode_expr.clone());
             cb.require_boolean("is_mem_segment_size is boolean", is_mem_segment_size_expr.clone());
-            cb.require_boolean("is_block_end_expr is boolean", is_block_end_expr.clone());
+            cb.require_boolean("is_block_end is boolean", is_block_end_expr.clone());
             cb.require_boolean("is_mem_segment_len is boolean", is_mem_segment_len_expr.clone());
             cb.require_boolean("is_mem_segment_bytes is boolean", is_mem_segment_bytes_expr.clone());
 
@@ -121,7 +123,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 }
             );
 
-            // is_items_count+ -> item+ (is_mem_segment_type{1} -> is_mem_segment_size_opcode{1} -> is_mem_segment_size+ -> is_block_end_expr{1} -> is_mem_segment_len+ -> is_mem_segment_bytes+)
+            // is_items_count+ -> item+ (is_mem_segment_type{1} -> is_mem_segment_size_opcode{1} -> is_mem_segment_size+ -> is_block_end{1} -> is_mem_segment_len+ -> is_mem_segment_bytes+)
             configure_check_for_transition(
                 &mut cb,
                 vc,
@@ -173,7 +175,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_mem_segment_size+ -> is_block_end_expr{1}",
+                "check next: is_mem_segment_size+ -> is_block_end{1}",
                 is_mem_segment_size_expr.clone(),
                 true,
                 &[is_mem_segment_size, is_block_end],
@@ -181,7 +183,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_mem_segment_size+ -> is_block_end_expr{1}",
+                "check prev: is_mem_segment_size+ -> is_block_end{1}",
                 is_block_end_expr.clone(),
                 false,
                 &[is_mem_segment_size],
@@ -189,7 +191,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_block_end_expr{1} -> is_mem_segment_len+",
+                "check next: is_block_end{1} -> is_mem_segment_len+",
                 is_block_end_expr.clone(),
                 true,
                 &[is_mem_segment_len],
@@ -223,7 +225,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 is_block_end_expr.clone(),
                 |bcb| {
                     bcb.require_equal(
-                        "is_block_end_expr -> byte value == WASM_BLOCK_END",
+                        "is_block_end -> byte value == WASM_BLOCK_END",
                         byte_val_expr.clone(),
                         WASM_BLOCK_END.expr(),
                     )
@@ -282,39 +284,26 @@ impl<F: Field> WasmDataSectionBodyChip<F>
     pub fn assign(
         &self,
         region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
         offset: usize,
-        is_items_count: bool,
-        is_mem_segment_type: bool,
-        is_mem_segment_size_opcode: bool,
-        is_mem_segment_size: bool,
-        is_block_end_expr: bool,
-        is_mem_segment_len: bool,
-        is_mem_segment_bytes: bool,
+        assign_type: AssignType,
+        assign_value: u64,
         leb_params: Option<LebParams>,
     ) {
         let q_enable = true;
         debug!(
-            "assign at offset {} \
-            q_enable {} \
-            is_items_count {} \
-            is_mem_segment_type {} \
-            is_mem_segment_size_opcode {} \
-            is_mem_segment_size {} \
-            is_block_end_expr {} \
-            is_mem_segment_len {} \
-            is_mem_segment_bytes {} \
-            ",
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
             offset,
             q_enable,
-            is_items_count,
-            is_mem_segment_type,
-            is_mem_segment_size_opcode,
-            is_mem_segment_size,
-            is_block_end_expr,
-            is_mem_segment_len,
-            is_mem_segment_bytes,
+            assign_type,
+            assign_value,
+            wasm_bytecode.bytes[offset],
         );
-        if is_items_count || is_mem_segment_size || is_mem_segment_len {
+        if [
+            AssignType::IsItemsCount,
+            AssignType::IsMemSegmentSize,
+            AssignType::IsMemSegmentLen,
+        ].contains(&assign_type) {
             let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
                 region,
@@ -329,85 +318,95 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_items_count' val {} at {}", is_items_count, offset),
-            self.config.is_items_count,
-            offset,
-            || Value::known(F::from(is_items_count as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_mem_segment_type' val {} at {}", is_mem_segment_type, offset),
-            self.config.is_mem_segment_type,
-            offset,
-            || Value::known(F::from(is_mem_segment_type as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_mem_segment_size_opcode' val {} at {}", is_mem_segment_size_opcode, offset),
-            self.config.is_mem_segment_size_opcode,
-            offset,
-            || Value::known(F::from(is_mem_segment_size_opcode as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_mem_segment_size' val {} at {}", is_mem_segment_size, offset),
-            self.config.is_mem_segment_size,
-            offset,
-            || Value::known(F::from(is_mem_segment_size as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_block_end_expr' val {} at {}", is_block_end_expr, offset),
-            self.config.is_block_end,
-            offset,
-            || Value::known(F::from(is_block_end_expr as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_mem_segment_len' val {} at {}", is_mem_segment_len, offset),
-            self.config.is_mem_segment_len,
-            offset,
-            || Value::known(F::from(is_mem_segment_len as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_mem_segment_bytes' val {} at {}", is_mem_segment_bytes, offset),
-            self.config.is_mem_segment_bytes,
-            offset,
-            || Value::known(F::from(is_mem_segment_bytes as u64)),
-        ).unwrap();
+        match assign_type {
+            AssignType::IsItemsCount => {
+                region.assign_fixed(
+                    || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
+                    self.config.is_items_count,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsMemSegmentType => {
+                region.assign_fixed(
+                    || format!("assign 'is_mem_segment_type' val {} at {}", assign_value, offset),
+                    self.config.is_mem_segment_type,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsMemSegmentSizeOpcode => {
+                region.assign_fixed(
+                    || format!("assign 'is_mem_segment_size_opcode' val {} at {}", assign_value, offset),
+                    self.config.is_mem_segment_size_opcode,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsMemSegmentSize => {
+                region.assign_fixed(
+                    || format!("assign 'is_mem_segment_size' val {} at {}", assign_value, offset),
+                    self.config.is_mem_segment_size,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsBlockEnd => {
+                region.assign_fixed(
+                    || format!("assign 'is_block_end' val {} at {}", assign_value, offset),
+                    self.config.is_block_end,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsMemSegmentLen => {
+                region.assign_fixed(
+                    || format!("assign 'is_mem_segment_len' val {} at {}", assign_value, offset),
+                    self.config.is_mem_segment_len,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsMemSegmentBytes => {
+                region.assign_fixed(
+                    || format!("assign 'is_mem_segment_bytes' val {} at {}", assign_value, offset),
+                    self.config.is_mem_segment_bytes,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+        }
     }
 
     /// returns sn and leb len
     fn markup_leb_section(
         &self,
         region: &mut Region<F>,
-        leb_bytes: &[u8],
-        leb_bytes_start_offset: usize,
-        is_items_count: bool,
-        is_mem_segment_size: bool,
-        is_mem_segment_len: bool,
+        wasm_bytecode: &WasmBytecode,
+        leb_bytes_offset: usize,
+        assign_type: AssignType,
     ) -> (u64, usize) {
-        const OFFSET: usize = 0;
-        let is_signed_leb = false;
-        let (sn, last_byte_rel_offset) = leb128_compute_sn(leb_bytes, is_signed_leb, OFFSET).unwrap();
+        let is_signed = false;
+        let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
         let mut sn_recovered_at_pos = 0;
-        for byte_rel_offset in OFFSET..=last_byte_rel_offset {
-            let offset = leb_bytes_start_offset + byte_rel_offset;
+        let last_byte_rel_offset = last_byte_offset - leb_bytes_offset;
+        for byte_rel_offset in 0..=last_byte_rel_offset {
+            let offset = leb_bytes_offset + byte_rel_offset;
             sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
                 sn_recovered_at_pos,
-                false,
+                is_signed,
                 byte_rel_offset,
                 last_byte_rel_offset,
-                leb_bytes[byte_rel_offset],
+                wasm_bytecode.bytes[offset],
             );
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                is_items_count,
-                false,
-                false,
-                is_mem_segment_size,
-                false,
-                is_mem_segment_len,
-                false,
+                assign_type,
+                1,
                 Some(LebParams{
-                    is_signed: is_signed_leb,
+                    is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
                     sn,
@@ -423,20 +422,17 @@ impl<F: Field> WasmDataSectionBodyChip<F>
     fn markup_bytes_section(
         &self,
         region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
         offset: usize,
         len: usize,
     ) -> usize {
-        for (_rel_offset, byte_offset) in (offset..offset + len).enumerate() {
+        for rel_offset in 0..len {
             self.assign(
                 region,
-                byte_offset,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                true,
+                wasm_bytecode,
+                offset + rel_offset,
+                AssignType::IsMemSegmentBytes,
+                1,
                 None,
             );
         }
@@ -452,29 +448,23 @@ impl<F: Field> WasmDataSectionBodyChip<F>
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
+        // items_count+
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            &wasm_bytecode.bytes.as_slice()[offset..],
+            wasm_bytecode,
             offset,
-            true,
-            false,
-            false,
+            AssignType::IsItemsCount,
         );
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
-
             // is_mem_segment_type{1}
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                false,
-                true,
-                false,
-                false,
-                false,
-                false,
-                false,
+                AssignType::IsMemSegmentType,
+                1,
                 None,
             );
             offset += 1;
@@ -482,14 +472,10 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             // is_mem_segment_size_opcode{1}
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                false,
-                false,
-                true,
-                false,
-                false,
-                false,
-                false,
+                AssignType::IsMemSegmentSizeOpcode,
+                1,
                 None,
             );
             offset += 1;
@@ -497,25 +483,19 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             // is_mem_segment_size+
             let (mem_segment_size, mem_segment_size_leb_len) = self.markup_leb_section(
                 region,
-                &wasm_bytecode.bytes.as_slice()[offset..],
+                wasm_bytecode,
                 offset,
-                false,
-                true,
-                false,
+                AssignType::IsMemSegmentSize,
             );
             offset += mem_segment_size_leb_len;
 
-            // is_block_end_expr{1}
+            // is_block_end{1}
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                false,
-                false,
-                false,
-                false,
-                true,
-                false,
-                false,
+                AssignType::IsBlockEnd,
+                1,
                 None,
             );
             offset += 1;
@@ -523,11 +503,9 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             // is_mem_segment_len+
             let (mem_segment_len, mem_segment_len_leb_len) = self.markup_leb_section(
                 region,
-                &wasm_bytecode.bytes.as_slice()[offset..],
+                wasm_bytecode,
                 offset,
-                false,
-                false,
-                true,
+                AssignType::IsMemSegmentLen,
             );
             offset += mem_segment_len_leb_len;
 
@@ -535,14 +513,10 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             for rel_offset in 0..(mem_segment_len as usize) {
                 self.assign(
                     region,
+                    wasm_bytecode,
                     offset + rel_offset,
-                    false,
-                    false,
-                    false,
-                    false,
-                    false,
-                    false,
-                    true,
+                    AssignType::IsMemSegmentBytes,
+                    1,
                     None,
                 );
             }

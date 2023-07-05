@@ -6,6 +6,8 @@ use std::rc::Rc;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::{Expression, Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
+use itertools::Itertools;
+use log::debug;
 use eth_types::Field;
 use gadgets::util::{Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
@@ -18,6 +20,7 @@ use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::LebParams;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::consts::Type::FuncType;
+use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::types::AssignType;
 
 #[derive(Debug, Clone)]
 pub struct WasmTypeSectionItemConfig<F> {
@@ -207,15 +210,25 @@ impl<F: Field> WasmTypeSectionItemChip<F>
     pub fn assign(
         &self,
         region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
         offset: usize,
-        is_type: bool,
-        is_input_count: bool,
-        is_input_type: bool,
-        is_output_count: bool,
-        is_output_type: bool,
+        assign_type: AssignType,
+        assign_value: u64,
         leb_params: Option<LebParams>,
     ) {
-        if is_input_count || is_output_count {
+        let q_enable = true;
+        debug!(
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
+            offset,
+            q_enable,
+            assign_type,
+            assign_value,
+            wasm_bytecode.bytes[offset],
+        );
+        if [
+            AssignType::IsInputCount,
+            AssignType::IsOutputCount,
+        ].contains(&assign_type) {
             let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
                 region,
@@ -224,77 +237,85 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 p,
             );
         }
-        let q_enable = true;
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_type' val {} at {}", is_type, offset),
-            self.config.is_type,
-            offset,
-            || Value::known(F::from(is_type as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_input_count' val {} at {}", is_input_count, offset),
-            self.config.is_input_count,
-            offset,
-            || Value::known(F::from(is_input_count as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_input_type' val {} at {}", is_input_type, offset),
-            self.config.is_input_type,
-            offset,
-            || Value::known(F::from(is_input_type as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_output_count' val {} at {}", is_output_count, offset),
-            self.config.is_output_count,
-            offset,
-            || Value::known(F::from(is_output_count as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_output_type' val {} at {}", is_output_type, offset),
-            self.config.is_output_type,
-            offset,
-            || Value::known(F::from(is_output_type as u64)),
-        ).unwrap();
+        match assign_type {
+            AssignType::IsType => {
+                region.assign_fixed(
+                    || format!("assign 'is_type' val {} at {}", assign_value, offset),
+                    self.config.is_type,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsInputCount => {
+                region.assign_fixed(
+                    || format!("assign 'is_input_count' val {} at {}", assign_value, offset),
+                    self.config.is_input_count,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsInputType => {
+                region.assign_fixed(
+                    || format!("assign 'is_input_type' val {} at {}", assign_value, offset),
+                    self.config.is_input_type,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsOutputCount => {
+                region.assign_fixed(
+                    || format!("assign 'is_output_count' val {} at {}", assign_value, offset),
+                    self.config.is_output_count,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsOutputType => {
+                region.assign_fixed(
+                    || format!("assign 'is_output_type' val {} at {}", assign_value, offset),
+                    self.config.is_output_type,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+        }
     }
 
     /// returns sn and leb len
     fn markup_leb_section(
         &self,
         region: &mut Region<F>,
-        leb_bytes: &[u8],
-        leb_bytes_start_offset: usize,
-        is_input_count: bool,
-        is_output_count: bool,
+        wasm_bytecode: &WasmBytecode,
+        leb_bytes_offset: usize,
+        assign_type: AssignType,
     ) -> (u64, usize) {
-        const OFFSET: usize = 0;
-        let is_signed_leb = false;
-        let (sn, last_byte_rel_offset) = leb128_compute_sn(leb_bytes, is_signed_leb, OFFSET).unwrap();
+        let is_signed = false;
+        let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
         let mut sn_recovered_at_pos = 0;
-        for byte_rel_offset in OFFSET..=last_byte_rel_offset {
-            let offset = leb_bytes_start_offset + byte_rel_offset;
+        let last_byte_rel_offset = last_byte_offset - leb_bytes_offset;
+        for byte_rel_offset in 0..=last_byte_rel_offset {
+            let offset = leb_bytes_offset + byte_rel_offset;
             sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
                 sn_recovered_at_pos,
-                false,
+                is_signed,
                 byte_rel_offset,
                 last_byte_rel_offset,
-                leb_bytes[byte_rel_offset],
+                wasm_bytecode.bytes[offset],
             );
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                false,
-                is_input_count,
-                false,
-                is_output_count,
-                false,
+                assign_type,
+                1,
                 Some(LebParams{
-                    is_signed: is_signed_leb,
+                    is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
                     sn,
@@ -314,63 +335,60 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
+        // is_type{1}
         self.assign(
             region,
+            wasm_bytecode,
             offset,
-            true,
-            false,
-            false,
-            false,
-            false,
+            AssignType::IsType,
+            1,
             None,
         );
         offset += 1;
 
-        let (input_count_sn, input_count_leb_len) = self.markup_leb_section(
+        // is_input_count+
+        let (input_count, input_count_leb_len) = self.markup_leb_section(
             region,
-            &wasm_bytecode.bytes[offset..],
+            wasm_bytecode,
             offset,
-            true,
-            false,
+            AssignType::IsInputCount,
         );
         offset += input_count_leb_len;
 
-        for byte_offset in offset..(offset + input_count_sn as usize) {
+        // is_input_type*
+        for byte_offset in offset..(offset + input_count as usize) {
             self.assign(
                 region,
+                wasm_bytecode,
                 byte_offset,
-                false,
-                false,
-                true,
-                false,
-                false,
+                AssignType::IsInputType,
+                1,
                 None,
             );
         }
-        offset += input_count_sn as usize;
+        offset += input_count as usize;
 
-        let (output_count_sn, output_count_leb_len) = self.markup_leb_section(
+        // is_output_count+
+        let (output_count, output_count_leb_len) = self.markup_leb_section(
             region,
-            &wasm_bytecode.bytes[offset..],
+            wasm_bytecode,
             offset,
-            false,
-            true,
+            AssignType::IsOutputCount,
         );
         offset += output_count_leb_len;
 
-        for byte_offset in offset..(offset + output_count_sn as usize) {
+        // is_output_type*
+        for byte_offset in offset..(offset + output_count as usize) {
             self.assign(
                 region,
+                wasm_bytecode,
                 byte_offset,
-                false,
-                false,
-                false,
-                false,
-                true,
+                AssignType::IsOutputType,
+                1,
                 None,
             );
         }
-        offset += output_count_sn as usize;
+        offset += output_count as usize;
 
         Ok(offset)
     }

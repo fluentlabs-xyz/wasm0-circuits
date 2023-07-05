@@ -400,7 +400,7 @@ impl<F: Field> UTF8Chip<F>
         &self,
         region: &mut Region<F>,
         offset: usize,
-        enabled: bool,
+        q_enable: bool,
         byte_val: u8,
         // is_first_byte: bool,
         // is_last_byte: bool,
@@ -412,10 +412,10 @@ impl<F: Field> UTF8Chip<F>
         self.config.byte_val_is_zero_chip.assign(region, offset, Value::known(F::from(byte_val as u64))).unwrap();
 
         region.assign_fixed(
-            || format!("assign 'q_enable' to {} at {}", enabled, offset),
+            || format!("assign 'q_enable' to {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
-            || Value::known(F::from(enabled as u64)),
+            || Value::known(F::from(q_enable as u64)),
         ).unwrap();
 
         // region.assign_fixed(

@@ -5,20 +5,20 @@ use crate::wasm_circuit::leb128_circuit::consts::{EIGHT_MS_BIT_MASK, LEB128_MAX_
 pub fn leb128_compute_sn_recovered_at_position(
     sn_recovered_at_prev_pos: u64,
     is_signed: bool,
-    rel_byte_offset: usize,
-    rel_last_byte_offset: usize,
+    byte_rel_offset: usize,
+    last_byte_rel_offset: usize,
     byte_val: u8,
 ) -> u64 {
-    let is_last_leb_byte = rel_byte_offset == rel_last_byte_offset;
-    let is_byte_has_cb = rel_byte_offset < rel_last_byte_offset;
-    let is_consider_byte = rel_byte_offset <= rel_last_byte_offset;
+    let is_last_leb_byte = byte_rel_offset == last_byte_rel_offset;
+    let is_byte_has_cb = byte_rel_offset < last_byte_rel_offset;
+    let is_consider_byte = byte_rel_offset <= last_byte_rel_offset;
     let mut sn_recovered_at_pos = 0;
     if is_consider_byte {
-        let leb_byte_mul: u64 = pow(0b10000000, rel_byte_offset);
+        let leb_byte_mul: u64 = pow(0b10000000, byte_rel_offset);
         sn_recovered_at_pos = sn_recovered_at_prev_pos + (byte_val as u64 - if is_byte_has_cb { 0b10000000 } else { 0 }) * leb_byte_mul;
     }
     if is_signed && is_last_leb_byte {
-        let number_for_signed_revert = pow(0b10000000, rel_byte_offset + 1) - 1;
+        let number_for_signed_revert = pow(0b10000000, byte_rel_offset + 1) - 1;
         sn_recovered_at_pos = number_for_signed_revert - (sn_recovered_at_pos - 1);
     }
 
@@ -27,16 +27,16 @@ pub fn leb128_compute_sn_recovered_at_position(
 
 pub fn leb128_compute_last_byte_offset(
     bytes: &[u8],
-    first_leb_byte_offset: usize,
+    first_byte_offset: usize,
 ) -> Result<usize, Error> {
-    let mut offset = first_leb_byte_offset;
+    let mut offset = first_byte_offset;
     loop {
         if bytes[offset] & EIGHT_MS_BIT_MASK == 0 {
             break
         }
 
         offset += 1;
-        let byte_offset = offset - first_leb_byte_offset;
+        let byte_offset = offset - first_byte_offset;
         if byte_offset >= LEB128_MAX_BYTES_COUNT {
             return Err(Error::UnsupportedBytesCount(format!("bytes count {} when max allowed {}", byte_offset + 1, LEB128_MAX_BYTES_COUNT)))
         }

@@ -19,6 +19,7 @@ use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::LebParams;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::wasm_sections::wasm_memory_section::wasm_memory_section_body::types::AssignType;
 
 #[derive(Debug, Clone)]
 pub struct WasmMemorySectionBodyConfig<F: Field> {
@@ -159,20 +160,30 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
     pub fn assign(
         &self,
         region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
         offset: usize,
-        is_items_count: bool,
-        is_limit_type: bool,
-        is_limit_type_val: bool,
+        assign_type: AssignType,
+        assign_value: u64,
         leb_params: Option<LebParams>,
     ) {
         let q_enable = true;
-        debug!("assign at offset {} q_enable {} is_items_count {} is_typeidx {} is_limit_type_val {}", offset, q_enable, is_items_count, is_limit_type, is_limit_type_val);
-        if is_items_count || is_limit_type_val {
+        debug!(
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
+            offset,
+            q_enable,
+            assign_type,
+            assign_value,
+            wasm_bytecode.bytes[offset],
+        );
+        if [
+            AssignType::IsItemsCount,
+            AssignType::IsLimitTypeVal,
+        ].contains(&assign_type) {
             let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
                 region,
                 offset,
-                true,
+                q_enable,
                 p,
             );
         }
@@ -182,65 +193,72 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_items_count' val {} at {}", is_items_count, offset),
-            self.config.is_items_count,
-            offset,
-            || Value::known(F::from(is_items_count as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_limit_type' val {} at {}", is_limit_type, offset),
-            self.config.is_limit_type,
-            offset,
-            || Value::known(F::from(is_limit_type as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_limit_type_val' val {} at {}", is_limit_type_val, offset),
-            self.config.is_limit_type_val,
-            offset,
-            || Value::known(F::from(is_limit_type_val as u64)),
-        ).unwrap();
+        match assign_type {
+            AssignType::IsItemsCount => {
+                region.assign_fixed(
+                    || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
+                    self.config.is_items_count,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsLimitType => {
+                region.assign_fixed(
+                    || format!("assign 'is_limit_type' val {} at {}", assign_value, offset),
+                    self.config.is_limit_type,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsLimitTypeVal => {
+                region.assign_fixed(
+                    || format!("assign 'is_limit_type_val' val {} at {}", assign_value, offset),
+                    self.config.is_limit_type_val,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+        }
     }
 
     /// returns sn and leb len
     fn markup_leb_section(
         &self,
         region: &mut Region<F>,
-        leb_bytes: &[u8],
-        leb_bytes_start_offset: usize,
-        is_items_count: bool,
-        is_limit_type_val: bool,
+        wasm_bytecode: &WasmBytecode,
+        leb_bytes_offset: usize,
+        assign_type: AssignType,
     ) -> (u64, usize) {
-        const OFFSET: usize = 0;
-        let is_signed_leb = false;
-        let (leb_sn, last_byte_offset) = leb128_compute_sn(leb_bytes, is_signed_leb, OFFSET).unwrap();
-        let mut leb_sn_recovered_at_pos = 0;
-        for byte_offset in OFFSET..=last_byte_offset {
-            leb_sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
-                leb_sn_recovered_at_pos,
-                false,
-                byte_offset,
-                last_byte_offset,
-                leb_bytes[byte_offset],
+        let is_signed = false;
+        let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
+        let mut sn_recovered_at_pos = 0;
+        let last_byte_rel_offset = last_byte_offset - leb_bytes_offset;
+        for byte_rel_offset in 0..=last_byte_rel_offset {
+            let offset = leb_bytes_offset + byte_rel_offset;
+            sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
+                sn_recovered_at_pos,
+                is_signed,
+                byte_rel_offset,
+                last_byte_rel_offset,
+                wasm_bytecode.bytes[offset],
             );
-            let offset = leb_bytes_start_offset + byte_offset;
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                is_items_count,
-                false,
-                is_limit_type_val,
+                assign_type,
+                1,
                 Some(LebParams{
-                    is_signed: is_signed_leb,
-                    byte_rel_offset: byte_offset,
-                    last_byte_rel_offset: last_byte_offset,
-                    sn: leb_sn,
-                    sn_recovered_at_pos: leb_sn_recovered_at_pos,
-                })
+                    is_signed,
+                    byte_rel_offset,
+                    last_byte_rel_offset,
+                    sn,
+                    sn_recovered_at_pos,
+                }),
             );
         }
 
-        (leb_sn, last_byte_offset + 1)
+        (sn, last_byte_rel_offset + 1)
     }
 
     /// returns new offset
@@ -254,10 +272,9 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
 
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            &wasm_bytecode.bytes.as_slice()[offset..],
+            wasm_bytecode,
             offset,
-            true,
-            false,
+            AssignType::IsItemsCount,
         );
         offset += items_count_leb_len;
 
@@ -265,31 +282,29 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             let limit_type = wasm_bytecode.bytes.as_slice()[offset];
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                false,
-                true,
-                false,
+                AssignType::IsLimitType,
+                1,
                 None,
             );
             offset += 1;
 
             // at least 1 limit exists
-            let (min_limit_type_val, min_limit_type_val_leb_len) = self.markup_leb_section(
+            let (_min_limit_type_val, min_limit_type_val_leb_len) = self.markup_leb_section(
                 region,
-                &wasm_bytecode.bytes.as_slice()[offset..],
+                wasm_bytecode,
                 offset,
-                false,
-                true,
+                AssignType::IsLimitTypeVal,
             );
             offset += min_limit_type_val_leb_len;
 
             if limit_type == LimitsType::MinMax as u8 {
-                let (max_limit_type_val, max_limit_type_val_leb_len) = self.markup_leb_section(
+                let (_max_limit_type_val, max_limit_type_val_leb_len) = self.markup_leb_section(
                     region,
-                    &wasm_bytecode.bytes.as_slice()[offset..],
+                    wasm_bytecode,
                     offset,
-                    false,
-                    true,
+                    AssignType::IsLimitTypeVal,
                 );
                 offset += max_limit_type_val_leb_len;
             }

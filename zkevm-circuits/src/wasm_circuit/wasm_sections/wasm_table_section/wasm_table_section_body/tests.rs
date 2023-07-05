@@ -129,7 +129,7 @@ mod wasm_table_section_body_tests {
         assert_eq!(expected, section_bytecode);
 
         // expected
-        // reference_type_count+ -> reference_type(1) -> limits_type(1) -> limits_min+ -> limits_max*
+        // reference_type_count+ -> reference_type{1} -> limits_type{1} -> limits_min+ -> limits_max*
         // raw (hex): [1, 70, 1, 10,  10, ]
         let expected = [
             1, 112, 0, 172, 2,

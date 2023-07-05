@@ -137,7 +137,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                 }
             );
 
-            // reference_type_count+ -> reference_type(1) -> limit_type(1) -> limit_min+ -> limit_max*
+            // reference_type_count+ -> reference_type{1} -> limit_type{1} -> limit_min+ -> limit_max*
             configure_check_for_transition(
                 &mut cb,
                 vc,
@@ -225,18 +225,20 @@ impl<F: Field> WasmTableSectionBodyChip<F>
     pub fn assign(
         &self,
         region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
         offset: usize,
         assign_type: AssignType,
-        assign_value: bool,
+        assign_value: u64,
         leb_params: Option<LebParams>,
     ) {
         let q_enable = true;
         debug!(
-            "assign at offset {} q_enable {} assign_type {:?} assign_value {}",
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
             offset,
             q_enable,
             assign_type,
             assign_value,
+            wasm_bytecode.bytes[offset],
         );
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
@@ -258,15 +260,12 @@ impl<F: Field> WasmTableSectionBodyChip<F>
             );
         }
         match assign_type {
-            AssignType::Unknown => {
-                panic!("unknown assign type")
-            }
             AssignType::ReferenceTypeCount => {
                 region.assign_fixed(
                     || format!("assign 'is_reference_type_count' val {} at {}", assign_value, offset),
                     self.config.is_reference_type_count,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
             AssignType::ReferenceType => {
@@ -274,7 +273,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                     || format!("assign 'is_reference_type' val {} at {}", assign_value, offset),
                     self.config.is_reference_type,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
             AssignType::LimitType => {
@@ -282,7 +281,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                     || format!("assign 'is_limit_type' val {} at {}", assign_value, offset),
                     self.config.is_limit_type,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
             AssignType::LimitMin => {
@@ -290,7 +289,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                     || format!("assign 'is_limit_min' val {} at {}", assign_value, offset),
                     self.config.is_limit_min,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
             AssignType::LimitMax => {
@@ -298,7 +297,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                     || format!("assign 'is_limit_max' val {} at {}", assign_value, offset),
                     self.config.is_limit_max,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
         }
@@ -308,31 +307,31 @@ impl<F: Field> WasmTableSectionBodyChip<F>
     fn markup_leb_section(
         &self,
         region: &mut Region<F>,
-        bytecode: &WasmBytecode,
-        leb_start_offset: usize,
+        wasm_bytecode: &WasmBytecode,
+        leb_bytes_offset: usize,
         assign_type: AssignType,
-        assign_value: bool,
     ) -> (u64, usize) {
-        const OFFSET: usize = 0;
-        let is_signed_leb = false;
-        let (sn, last_byte_rel_offset) = leb128_compute_sn(&bytecode.bytes[leb_start_offset..], is_signed_leb, OFFSET).unwrap();
+        let is_signed = false;
+        let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
         let mut sn_recovered_at_pos = 0;
-        for byte_rel_offset in OFFSET..=last_byte_rel_offset {
-            let offset = leb_start_offset + byte_rel_offset;
+        let last_byte_rel_offset = last_byte_offset - leb_bytes_offset;
+        for byte_rel_offset in 0..=last_byte_rel_offset {
+            let offset = leb_bytes_offset + byte_rel_offset;
             sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
                 sn_recovered_at_pos,
-                false,
+                is_signed,
                 byte_rel_offset,
                 last_byte_rel_offset,
-                bytecode.bytes[offset],
+                wasm_bytecode.bytes[offset],
             );
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
                 assign_type,
-                assign_value,
-                Some(LebParams {
-                    is_signed: is_signed_leb,
+                1,
+                Some(LebParams{
+                    is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
                     sn,
@@ -356,30 +355,31 @@ impl<F: Field> WasmTableSectionBodyChip<F>
         // reference_type_count+
         let (_reference_type_count, reference_type_count_leb_len) = self.markup_leb_section(
             region,
-            &wasm_bytecode,
+            wasm_bytecode,
             offset,
             AssignType::ReferenceTypeCount,
-            true,
         );
         offset += reference_type_count_leb_len;
 
-        // reference_type(1)
+        // reference_type{1}
         self.assign(
             region,
+            wasm_bytecode,
             offset,
             AssignType::ReferenceType,
-            true,
+            1,
             None,
         );
         offset += 1;
 
-        // limit_type(1)
+        // limit_type{1}
         let limit_type = wasm_bytecode.bytes[offset];
         self.assign(
             region,
+            wasm_bytecode,
             offset,
             AssignType::LimitType,
-            true,
+            1,
             None,
         );
         offset += 1;
@@ -387,10 +387,9 @@ impl<F: Field> WasmTableSectionBodyChip<F>
         // limit_min+
         let (_limit_min, limit_min_leb_len) = self.markup_leb_section(
             region,
-            &wasm_bytecode,
+            wasm_bytecode,
             offset,
             AssignType::LimitMin,
-            true,
         );
         offset += limit_min_leb_len;
 
@@ -398,10 +397,9 @@ impl<F: Field> WasmTableSectionBodyChip<F>
         if limit_type == LimitsType::MinMax as u8 {
             let (_limit_max, limit_max_leb_len) = self.markup_leb_section(
                 region,
-                &wasm_bytecode,
+                wasm_bytecode,
                 offset,
                 AssignType::LimitMax,
-                true,
             );
             offset += limit_max_leb_len;
         }

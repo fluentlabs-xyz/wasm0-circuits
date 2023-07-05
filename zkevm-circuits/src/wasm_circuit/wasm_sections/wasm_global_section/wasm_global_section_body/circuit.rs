@@ -7,6 +7,7 @@ use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::{Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
+use itertools::Itertools;
 use log::debug;
 use eth_types::Field;
 use gadgets::util::{Expr, or};
@@ -20,6 +21,7 @@ use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::LebParams;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::wasm_sections::wasm_global_section::wasm_global_section_body::types::AssignType;
 
 #[derive(Debug, Clone)]
 pub struct WasmGlobalSectionBodyConfig<F: Field> {
@@ -275,28 +277,25 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
     pub fn assign(
         &self,
         region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
         offset: usize,
-        is_items_count: bool,
-        is_global_type: bool,
-        is_mut_prop: bool,
-        is_init_opcode: bool,
-        is_init_val: bool,
-        is_expr_delimiter: bool,
+        assign_type: AssignType,
+        assign_value: u64,
         leb_params: Option<LebParams>,
     ) {
         let q_enable = true;
         debug!(
-            "assign at offset {} q_enable {} is_items_count {} is_global_type {} is_mut_prop {} is_init_opcode {} is_init_val {} is_expr_delimiter {}",
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
             offset,
             q_enable,
-            is_items_count,
-            is_global_type,
-            is_mut_prop,
-            is_init_opcode,
-            is_init_val,
-            is_expr_delimiter,
+            assign_type,
+            assign_value,
+            wasm_bytecode.bytes[offset],
         );
-        if is_items_count || is_init_val {
+        if [
+            AssignType::IsItemsCount,
+            AssignType::IsInitVal,
+        ].contains(&assign_type) {
             let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
                 region,
@@ -311,77 +310,87 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_items_count' val {} at {}", is_items_count, offset),
-            self.config.is_items_count,
-            offset,
-            || Value::known(F::from(is_items_count as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_global_type' val {} at {}", is_global_type, offset),
-            self.config.is_global_type,
-            offset,
-            || Value::known(F::from(is_global_type as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_mut_prop' val {} at {}", is_mut_prop, offset),
-            self.config.is_mut_prop,
-            offset,
-            || Value::known(F::from(is_mut_prop as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_init_opcode' val {} at {}", is_init_opcode, offset),
-            self.config.is_init_opcode,
-            offset,
-            || Value::known(F::from(is_init_opcode as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_init_val' val {} at {}", is_init_val, offset),
-            self.config.is_init_val,
-            offset,
-            || Value::known(F::from(is_init_val as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_expr_delimiter' val {} at {}", is_expr_delimiter, offset),
-            self.config.is_expr_delimiter,
-            offset,
-            || Value::known(F::from(is_expr_delimiter as u64)),
-        ).unwrap();
+        match assign_type {
+            AssignType::IsItemsCount => {
+                region.assign_fixed(
+                    || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
+                    self.config.is_items_count,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsGlobalType => {
+                region.assign_fixed(
+                    || format!("assign 'is_global_type' val {} at {}", assign_value, offset),
+                    self.config.is_global_type,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsMutProp => {
+                region.assign_fixed(
+                    || format!("assign 'is_mut_prop' val {} at {}", assign_value, offset),
+                    self.config.is_mut_prop,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsInitOpcode => {
+                region.assign_fixed(
+                    || format!("assign 'is_init_opcode' val {} at {}", assign_value, offset),
+                    self.config.is_init_opcode,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsInitVal => {
+                region.assign_fixed(
+                    || format!("assign 'is_init_val' val {} at {}", assign_value, offset),
+                    self.config.is_init_val,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsExprDelimiter => {
+                region.assign_fixed(
+                    || format!("assign 'is_expr_delimiter' val {} at {}", assign_value, offset),
+                    self.config.is_expr_delimiter,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+        }
     }
 
     /// returns sn and leb len
     fn markup_leb_section(
         &self,
         region: &mut Region<F>,
-        leb_bytes: &[u8],
-        leb_bytes_start_offset: usize,
-        is_items_count: bool,
-        is_init_val: bool,
+        wasm_bytecode: &WasmBytecode,
+        leb_bytes_offset: usize,
+        assign_type: AssignType,
     ) -> (u64, usize) {
-        const OFFSET: usize = 0;
-        let is_signed_leb = false;
-        let (sn, last_byte_rel_offset) = leb128_compute_sn(leb_bytes, is_signed_leb, OFFSET).unwrap();
+        let is_signed = false;
+        let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
         let mut sn_recovered_at_pos = 0;
-        for byte_rel_offset in OFFSET..=last_byte_rel_offset {
-            let offset = leb_bytes_start_offset + byte_rel_offset;
+        let last_byte_rel_offset = last_byte_offset - leb_bytes_offset;
+        for byte_rel_offset in 0..=last_byte_rel_offset {
+            let offset = leb_bytes_offset + byte_rel_offset;
             sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
                 sn_recovered_at_pos,
-                false,
+                is_signed,
                 byte_rel_offset,
                 last_byte_rel_offset,
-                leb_bytes[byte_rel_offset],
+                wasm_bytecode.bytes[offset],
             );
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                is_items_count,
-                false,
-                false,
-                false,
-                is_init_val,
-                false,
+                assign_type,
+                1,
                 Some(LebParams{
-                    is_signed: is_signed_leb,
+                    is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
                     sn,
@@ -404,10 +413,9 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
 
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            &wasm_bytecode.bytes.as_slice()[offset..],
+            wasm_bytecode,
             offset,
-            true,
-            false,
+            AssignType::IsItemsCount,
         );
         offset += items_count_leb_len;
 
@@ -415,13 +423,10 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             // is_global_type{1}
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                false,
-                true,
-                false,
-                false,
-                false,
-                false,
+                AssignType::IsGlobalType,
+                1,
                 None,
             );
             offset += 1;
@@ -429,13 +434,10 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             // is_mut_prop{1}
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                false,
-                false,
-                true,
-                false,
-                false,
-                false,
+                AssignType::IsMutProp,
+                1,
                 None,
             );
             offset += 1;
@@ -443,37 +445,30 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             // is_init_opcode{1}
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                false,
-                false,
-                false,
-                true,
-                false,
-                false,
+                AssignType::IsInitOpcode,
+                1,
                 None,
             );
             offset += 1;
 
             // is_init_val+
-            let (init_val, init_val_leb_len) = self.markup_leb_section(
+            let (_init_val, init_val_leb_len) = self.markup_leb_section(
                 region,
-                &wasm_bytecode.bytes.as_slice()[offset..],
+                wasm_bytecode,
                 offset,
-                false,
-                true,
+                AssignType::IsInitVal,
             );
             offset += init_val_leb_len;
 
             // is_expr_delimiter{1}
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                false,
-                false,
-                false,
-                false,
-                false,
-                true,
+                AssignType::IsExprDelimiter,
+                1,
                 None,
             );
             offset += 1;

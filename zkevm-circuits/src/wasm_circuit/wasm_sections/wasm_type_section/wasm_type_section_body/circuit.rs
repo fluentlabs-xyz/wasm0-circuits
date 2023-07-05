@@ -6,6 +6,7 @@ use std::rc::Rc;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
+use itertools::Itertools;
 use log::debug;
 use eth_types::Field;
 use gadgets::util::not;
@@ -16,6 +17,7 @@ use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_com
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::LebParams;
+use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_body::types::AssignType;
 use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::circuit::WasmTypeSectionItemChip;
 
 #[derive(Debug, Clone)]
@@ -108,12 +110,24 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
     pub fn assign(
         &self,
         region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
         offset: usize,
-        is_body_items_count: bool,
-        is_body: bool,
+        assign_type: AssignType,
+        assign_value: u64,
         leb_params: Option<LebParams>,
     ) {
-        if is_body_items_count || is_body_items_count {
+        let q_enable = true;
+        debug!(
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
+            offset,
+            q_enable,
+            assign_type,
+            assign_value,
+            wasm_bytecode.bytes[offset],
+        );
+        if [
+            AssignType::IsBodyItemsCount,
+        ].contains(&assign_type) {
             let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
                 region,
@@ -122,55 +136,61 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
                 p,
             );
         }
-        let val = is_body_items_count || is_body;
         region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", val, offset),
+            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
-            || Value::known(F::from(val as u64)),
+            || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_body_items_count' val {} at {}", is_body_items_count, offset),
-            self.config.is_body_items_count,
-            offset,
-            || Value::known(F::from(is_body_items_count as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_body' val {} at {}", is_body, offset),
-            self.config.is_body,
-            offset,
-            || Value::known(F::from(is_body as u64)),
-        ).unwrap();
+        match assign_type {
+            AssignType::IsBodyItemsCount => {
+                region.assign_fixed(
+                    || format!("assign 'is_body_items_count' val {} at {}", assign_value, offset),
+                    self.config.is_body_items_count,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsBody => {
+                region.assign_fixed(
+                    || format!("assign 'is_body' val {} at {}", assign_value, offset),
+                    self.config.is_body,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+        }
     }
 
     /// returns sn and leb len
     fn markup_leb_section(
         &self,
         region: &mut Region<F>,
-        leb_bytes: &[u8],
-        leb_bytes_start_offset: usize,
-        is_body_items_count: bool,
+        wasm_bytecode: &WasmBytecode,
+        leb_bytes_offset: usize,
+        assign_type: AssignType,
     ) -> (u64, usize) {
-        const OFFSET: usize = 0;
-        let is_signed_leb = false;
-        let (sn, last_byte_rel_offset) = leb128_compute_sn(leb_bytes, is_signed_leb, OFFSET).unwrap();
+        let is_signed = false;
+        let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
         let mut sn_recovered_at_pos = 0;
-        for byte_rel_offset in OFFSET..=last_byte_rel_offset {
-            let offset = leb_bytes_start_offset + byte_rel_offset;
+        let last_byte_rel_offset = last_byte_offset - leb_bytes_offset;
+        for byte_rel_offset in 0..=last_byte_rel_offset {
+            let offset = leb_bytes_offset + byte_rel_offset;
             sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
                 sn_recovered_at_pos,
-                false,
+                is_signed,
                 byte_rel_offset,
                 last_byte_rel_offset,
-                leb_bytes[byte_rel_offset],
+                wasm_bytecode.bytes[offset],
             );
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                is_body_items_count,
-                false,
+                assign_type,
+                1,
                 Some(LebParams{
-                    is_signed: is_signed_leb,
+                    is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
                     sn,
@@ -189,15 +209,15 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
-        let (body_items_count_sn, body_items_count_leb_len) = self.markup_leb_section(
+        let (body_items_count, body_items_count_leb_len) = self.markup_leb_section(
             region,
-            &wasm_bytecode.bytes[offset..],
+            wasm_bytecode,
             offset,
-            true,
+            AssignType::IsBodyItemsCount,
         );
         offset += body_items_count_leb_len;
 
-        for _body_item_index in 0..body_items_count_sn {
+        for _body_item_index in 0..body_items_count {
             let next_body_item_offset = self.config.wasm_type_section_item_chip.assign_auto(
                 region,
                 wasm_bytecode,
@@ -206,9 +226,10 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
             for offset in offset..next_body_item_offset {
                 self.assign(
                     region,
+                    wasm_bytecode,
                     offset,
-                    false,
-                    true,
+                    AssignType::IsBody,
+                    1,
                     None,
                 );
             }

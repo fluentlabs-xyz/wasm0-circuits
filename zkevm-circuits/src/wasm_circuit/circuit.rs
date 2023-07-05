@@ -641,40 +641,37 @@ impl<F: Field> WasmChip<F>
     fn markup_leb_section(
         &self,
         region: &mut Region<F>,
-        bytecode: &WasmBytecode,
-        leb_start_offset: usize,
+        wasm_bytecode: &WasmBytecode,
+        leb_bytes_offset: usize,
         assign_type: AssignType,
-        assign_value: bool,
     ) -> (u64, usize) {
-        if assign_type != AssignType::IsSectionLen {
-            panic!("unsupported assign_type '{:?}'", assign_type);
-        }
-        const OFFSET: usize = 0;
-        let is_signed_leb = false;
-        let (sn, last_byte_rel_offset) = leb128_compute_sn(&bytecode.bytes[leb_start_offset..], is_signed_leb, OFFSET).unwrap();
+        let is_signed = false;
+        let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
         let mut sn_recovered_at_pos = 0;
-        for byte_rel_offset in OFFSET..=last_byte_rel_offset {
-            let offset = leb_start_offset + byte_rel_offset;
+        let last_byte_rel_offset = last_byte_offset - leb_bytes_offset;
+        for byte_rel_offset in 0..=last_byte_rel_offset {
+            let offset = leb_bytes_offset + byte_rel_offset;
             sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
                 sn_recovered_at_pos,
-                is_signed_leb,
+                is_signed,
                 byte_rel_offset,
                 last_byte_rel_offset,
-                bytecode.bytes[offset],
+                wasm_bytecode.bytes[offset],
             );
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
                 assign_type,
-                assign_value as i64,
-                Some(LebParams {
-                    is_signed: is_signed_leb,
+                1,
+                Some(LebParams{
+                    is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
                     sn,
                     sn_recovered_at_pos,
                 }),
-            ).unwrap();
+            );
         }
 
         (sn, last_byte_rel_offset + 1)
@@ -683,6 +680,7 @@ impl<F: Field> WasmChip<F>
     pub fn assign(
         &self,
         region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
         offset: usize,
         assign_type: AssignType,
         assign_value: i64,
@@ -690,11 +688,12 @@ impl<F: Field> WasmChip<F>
     ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
-            "assign at offset {} q_enable {} assign_type {:?} assign_value {}",
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
             offset,
             q_enable,
             assign_type,
             assign_value,
+            wasm_bytecode.bytes[offset],
         );
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
@@ -775,6 +774,7 @@ impl<F: Field> WasmChip<F>
         debug!("wasm_bytecode.bytes {:x?}", wasm_bytecode.bytes);
         self.assign(
             region,
+            wasm_bytecode,
             0,
             AssignType::QFirst,
             1,
@@ -782,6 +782,7 @@ impl<F: Field> WasmChip<F>
         )?;
         self.assign(
             region,
+            wasm_bytecode,
             wasm_bytecode.bytes.len() - 1,
             AssignType::QLast,
             1,
@@ -805,6 +806,7 @@ impl<F: Field> WasmChip<F>
 
             self.assign(
                 region,
+                wasm_bytecode,
                 section_start_offset,
                 AssignType::IsSectionId,
                 1,
@@ -816,7 +818,6 @@ impl<F: Field> WasmChip<F>
                 &wasm_bytecode,
                 section_len_start_offset,
                 AssignType::IsSectionLen,
-                true,
             );
 
             for i in 0..section_len {
@@ -824,6 +825,7 @@ impl<F: Field> WasmChip<F>
                 let val = true;
                 self.assign(
                     region,
+                    wasm_bytecode,
                     offset,
                     AssignType::IsSectionBody,
                     1,

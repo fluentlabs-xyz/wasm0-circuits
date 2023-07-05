@@ -133,9 +133,9 @@ mod wasm_element_section_body_tests {
         // (elem func $f $f $g $g)
         // (elem $t funcref)
 
-        // items_count+ -> elem+(elem_type(1) -> elem_body+)
-        // elem_body+(elem_type(1)==0 -> numeric_instruction(1) -> numeric_instruction_leb_arg+ -> numeric_instruction_block_end+ -> funcs_idx_count+ -> func_idxs+)
-        // elem_body+(elem_type(1)==1 -> elem_kind(1) -> funcs_idx_count+ -> func_idxs+)
+        // items_count+ -> elem+(elem_type{1} -> elem_body+)
+        // elem_body+(elem_type{1}==0 -> numeric_instruction{1} -> numeric_instruction_leb_arg+ -> numeric_instruction_block_end+ -> funcs_idx_count+ -> func_idxs+)
+        // elem_body+(elem_type{1}==1 -> elem_kind{1} -> funcs_idx_count+ -> func_idxs+)
         // expected body
         // raw (hex): [
         // 7,

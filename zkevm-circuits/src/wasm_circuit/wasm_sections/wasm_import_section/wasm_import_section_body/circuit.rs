@@ -6,6 +6,7 @@ use std::rc::Rc;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::{Expression, Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
+use itertools::Itertools;
 use log::debug;
 use eth_types::Field;
 use gadgets::util::{Expr, not, or};
@@ -19,6 +20,7 @@ use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::LebParams;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section_body::consts::ImportDescType;
+use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section_body::types::AssignType;
 
 #[derive(Debug, Clone)]
 pub struct WasmImportSectionBodyConfig<F: Field> {
@@ -270,18 +272,27 @@ impl<F: Field> WasmImportSectionBodyChip<F>
     pub fn assign(
         &self,
         region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
         offset: usize,
-        is_items_count: bool,
-        is_mod_name_len: bool,
-        is_mod_name: bool,
-        is_import_name_len: bool,
-        is_import_name: bool,
-        is_importdesc_type: bool,
-        is_importdesc_val: bool,
+        assign_type: AssignType,
+        assign_value: u64,
         leb_params: Option<LebParams>,
-        byte_val: u8,
     ) {
-        if is_items_count || is_mod_name_len || is_import_name_len || is_importdesc_val {
+        let q_enable = true;
+        debug!(
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
+            offset,
+            q_enable,
+            assign_type,
+            assign_value,
+            wasm_bytecode.bytes[offset],
+        );
+        if [
+            AssignType::IsItemsCount,
+            AssignType::IsModNameLen,
+            AssignType::IsImportNameLen,
+            AssignType::IsImportdescVal,
+        ].contains(&assign_type) {
             let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
                 region,
@@ -290,7 +301,11 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 p,
             );
         }
-        if is_mod_name || is_import_name {
+        if [
+            AssignType::IsModName,
+            AssignType::IsImportName,
+        ].contains(&assign_type) {
+            let byte_val = wasm_bytecode.bytes[offset];
             self.config.utf8_chip.assign(
                 region,
                 offset,
@@ -298,99 +313,106 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 byte_val,
             );
         }
-        let q_enable = is_items_count || is_mod_name_len || is_mod_name || is_import_name_len || is_import_name || is_importdesc_type || is_importdesc_val;
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_items_count' val {} at {}", is_items_count, offset),
-            self.config.is_items_count,
-            offset,
-            || Value::known(F::from(is_items_count as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_mod_name_len' val {} at {}", is_mod_name_len, offset),
-            self.config.is_mod_name_len,
-            offset,
-            || Value::known(F::from(is_mod_name_len as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_mod_name' val {} at {}", is_mod_name, offset),
-            self.config.is_mod_name,
-            offset,
-            || Value::known(F::from(is_mod_name as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_import_name_len' val {} at {}", is_import_name_len, offset),
-            self.config.is_import_name_len,
-            offset,
-            || Value::known(F::from(is_import_name_len as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_import_name' val {} at {}", is_import_name, offset),
-            self.config.is_import_name,
-            offset,
-            || Value::known(F::from(is_import_name as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_importdesc_type' val {} at {}", is_importdesc_type, offset),
-            self.config.is_importdesc_type,
-            offset,
-            || Value::known(F::from(is_importdesc_type as u64)),
-        ).unwrap();
-        region.assign_fixed(
-            || format!("assign 'is_importdesc_val' val {} at {}", is_importdesc_val, offset),
-            self.config.is_importdesc_val,
-            offset,
-            || Value::known(F::from(is_importdesc_val as u64)),
-        ).unwrap();
+        match assign_type {
+            AssignType::IsItemsCount => {
+                region.assign_fixed(
+                    || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
+                    self.config.is_items_count,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsModNameLen => {
+                region.assign_fixed(
+                    || format!("assign 'is_mod_name_len' val {} at {}", assign_value, offset),
+                    self.config.is_mod_name_len,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsModName => {
+                region.assign_fixed(
+                    || format!("assign 'is_mod_name' val {} at {}", assign_value, offset),
+                    self.config.is_mod_name,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsImportNameLen => {
+                region.assign_fixed(
+                    || format!("assign 'is_import_name_len' val {} at {}", assign_value, offset),
+                    self.config.is_import_name_len,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsImportName => {
+                region.assign_fixed(
+                    || format!("assign 'is_import_name' val {} at {}", assign_value, offset),
+                    self.config.is_import_name,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsImportdescType => {
+                region.assign_fixed(
+                    || format!("assign 'is_importdesc_type' val {} at {}", assign_value, offset),
+                    self.config.is_importdesc_type,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsImportdescVal => {
+                region.assign_fixed(
+                    || format!("assign 'is_importdesc_val' val {} at {}", assign_value, offset),
+                    self.config.is_importdesc_val,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+        }
     }
 
     /// returns sn and leb len
     fn markup_leb_section(
         &self,
         region: &mut Region<F>,
-        leb_bytes: &[u8],
-        leb_bytes_start_offset: usize,
-        is_items_count: bool,
-        is_mod_name_len: bool,
-        is_import_name_len: bool,
-        is_importdesc_val: bool,
+        wasm_bytecode: &WasmBytecode,
+        leb_bytes_offset: usize,
+        assign_type: AssignType,
     ) -> (u64, usize) {
-        const OFFSET: usize = 0;
-        let is_signed_leb = false;
-        let (sn, last_byte_rel_offset) = leb128_compute_sn(leb_bytes, is_signed_leb, OFFSET).unwrap();
+        let is_signed = false;
+        let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
         let mut sn_recovered_at_pos = 0;
-        for byte_rel_offset in OFFSET..=last_byte_rel_offset {
-            let offset = leb_bytes_start_offset + byte_rel_offset;
+        let last_byte_rel_offset = last_byte_offset - leb_bytes_offset;
+        for byte_rel_offset in 0..=last_byte_rel_offset {
+            let offset = leb_bytes_offset + byte_rel_offset;
             sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
                 sn_recovered_at_pos,
-                false,
+                is_signed,
                 byte_rel_offset,
                 last_byte_rel_offset,
-                leb_bytes[byte_rel_offset],
+                wasm_bytecode.bytes[offset],
             );
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                is_items_count,
-                is_mod_name_len,
-                false,
-                is_import_name_len,
-                false,
-                false,
-                is_importdesc_val,
+                assign_type,
+                1,
                 Some(LebParams{
-                    is_signed: is_signed_leb,
+                    is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
                     sn,
                     sn_recovered_at_pos,
                 }),
-                0,
             );
         }
 
@@ -400,25 +422,25 @@ impl<F: Field> WasmImportSectionBodyChip<F>
     fn markup_name_section(
         &self,
         region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
+        assign_type: AssignType,
         offset: usize,
-        is_mod_name: bool,
-        is_import_name: bool,
         name_len: usize,
-        name_bytes: &[u8],
     ) {
-        for (rel_offset, byte_offset) in (offset..offset + name_len).enumerate() {
+        if ![
+            AssignType::IsModName,
+            AssignType::IsImportName,
+        ].contains(&assign_type) {
+            panic!("unsupported assign type {:?}", assign_type)
+        }
+        for byte_offset in 0..name_len {
             self.assign(
                 region,
-                byte_offset,
-                false,
-                false,
-                is_mod_name,
-                false,
-                is_import_name,
-                false,
-                false,
+                wasm_bytecode,
+                offset + byte_offset,
+                assign_type,
+                1,
                 None,
-                name_bytes[rel_offset],
             );
         }
     }
@@ -432,83 +454,71 @@ impl<F: Field> WasmImportSectionBodyChip<F>
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
+        // is_items_count+
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            &wasm_bytecode.bytes.as_slice()[offset..],
+            wasm_bytecode,
             offset,
-            true,
-            false,
-            false,
-            false,
+            AssignType::IsItemsCount,
         );
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
+            // is_mod_name_len+
             let (mod_name_len, mod_name_leb_len) = self.markup_leb_section(
                 region,
-                &wasm_bytecode.bytes.as_slice()[offset..],
+                wasm_bytecode,
                 offset,
-                false,
-                true,
-                false,
-                false,
+                AssignType::IsModNameLen,
             );
             offset += mod_name_leb_len;
 
+            // is_mod_name*
             self.markup_name_section(
                 region,
+                wasm_bytecode,
+                AssignType::IsModName,
                 offset,
-                true,
-                false,
                 mod_name_len as usize,
-                &wasm_bytecode.bytes.as_slice()[offset..],
             );
             offset += mod_name_len as usize;
 
+            // is_import_name_len+
             let (import_name_len, import_name_leb_len) = self.markup_leb_section(
                 region,
-                &wasm_bytecode.bytes.as_slice()[offset..],
+                wasm_bytecode,
                 offset,
-                false,
-                false,
-                true,
-                false,
+                AssignType::IsImportNameLen,
             );
             offset += import_name_leb_len;
 
+            // is_import_name*
             self.markup_name_section(
                 region,
+                wasm_bytecode,
+                AssignType::IsImportName,
                 offset,
-                false,
-                true,
                 import_name_len as usize,
-                &wasm_bytecode.bytes.as_slice()[offset..],
             );
             offset += import_name_len as usize;
 
+            // is_importdesc_type{1}
             self.assign(
                 region,
+                wasm_bytecode,
                 offset,
-                false,
-                false,
-                false,
-                false,
-                false,
-                true,
-                false,
+                AssignType::IsImportdescType,
+                1,
                 None,
-                wasm_bytecode.bytes.as_slice()[offset],
             );
             offset += 1;
 
-            let (importdesc_val, importdesc_val_leb_len) = self.markup_leb_section(
+            // is_importdesc_val+
+            let (_importdesc_val, importdesc_val_leb_len) = self.markup_leb_section(
                 region,
-                &wasm_bytecode.bytes.as_slice()[offset..],
+                wasm_bytecode,
                 offset,
-                false,
-                false,
-                false,
-                true,
+                AssignType::IsImportdescVal,
             );
             offset += importdesc_val_leb_len;
         }
