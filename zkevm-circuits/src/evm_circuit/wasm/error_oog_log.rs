@@ -183,10 +183,6 @@ mod test {
                 LOG0
                 Drop
         };
-        //TODO: Fix memory expansion gas calculation.
-        // Now this is not taken into account in  gas_cost the calculations.
-        // It's needed for not memory expanding
-        code.fill_default_global_data([0;1].to_vec());
 
         // Get the execution steps from the external tracer
         let ctx = TestContext::<2, 1>::new(

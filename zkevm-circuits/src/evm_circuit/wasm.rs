@@ -1294,6 +1294,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::WASM_GLOBAL => assign_exec_step!(self.wasm_global),
             ExecutionState::WASM_LOCAL => assign_exec_step!(self.wasm_local),
             ExecutionState::WASM_UNARY => assign_exec_step!(self.wasm_unary),
+            ExecutionState::WASM_CONVERSION => assign_exec_step!(self.wasm_conversion),
             ExecutionState::WASM_END => assign_exec_step!(self.wasm_end),
             ExecutionState::WASM_BREAK => assign_exec_step!(self.wasm_break),
             ExecutionState::WASM_CALL => assign_exec_step!(self.wasm_call),

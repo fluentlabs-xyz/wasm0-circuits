@@ -298,6 +298,10 @@ impl ExecutionState {
                 OpcodeId::I32Popcnt,
                 OpcodeId::I64Popcnt,
             ],
+            Self::WASM_CONVERSION => vec![
+                OpcodeId::I32WrapI64,
+                OpcodeId::I64ExtendI32,
+            ],
             Self::WASM_GLOBAL => vec![
                 OpcodeId::GetGlobal,
                 OpcodeId::SetGlobal,
