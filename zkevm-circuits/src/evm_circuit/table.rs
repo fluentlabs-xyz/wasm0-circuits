@@ -19,6 +19,7 @@ pub enum FixedTableTag {
     Range64,
     Range128,
     Range256,
+    Range256x2,
     Range512,
     Range1024,
     SignByte,
@@ -59,6 +60,9 @@ impl FixedTableTag {
             Self::Range256 => {
                 Box::new((0..256).map(move |value| [tag, F::from(value), F::zero(), F::zero()]))
             }
+            Self::Range256x2 => Box::new((0..256).flat_map(move |lhs| {
+                (0..256).map(move |rhs| [tag, F::from(lhs), F::from(rhs), F::zero()])
+            })),
             Self::Range512 => {
                 Box::new((0..512).map(move |value| [tag, F::from(value), F::zero(), F::zero()]))
             }

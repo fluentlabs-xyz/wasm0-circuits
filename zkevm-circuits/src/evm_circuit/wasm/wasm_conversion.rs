@@ -7,6 +7,7 @@ use eth_types::{Field, ToScalar};
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
+        table::{FixedTableTag, Lookup},
         step::ExecutionState,
         util::{
             CachedRegion,
@@ -25,6 +26,7 @@ pub(crate) struct WasmConversionGadget<F> {
     same_context: SameContextGadget<F>,
 
     value: Cell<F>,
+    value_limbs: [Cell<F>; 8],
     //value_type: Cell<F>,
     res: Cell<F>,
     //res_type: Cell<F>,
@@ -33,11 +35,11 @@ pub(crate) struct WasmConversionGadget<F> {
     flag_bit: Cell<F>,
     flag_u8_rem: Cell<F>,
     flag_u8_rem_diff: Cell<F>,
+*/
 
     is_i32_wrap_i64: Cell<F>,
     is_i64_extend_i32_u: Cell<F>,
     is_i64_extend_i32_s: Cell<F>,
-*/
 }
 
 pub(crate) mod types {
@@ -51,25 +53,38 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_CONVERSION;
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
+
         let value = cb.alloc_u64_on_u8();
+        let value_limbs = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
+                           cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
+
         //let value_type = cb.alloc_common_range_value();
+
         let res = cb.alloc_u64();
         //let res_type = cb.alloc_common_range_value();
+ 
 
 /*
         let flag_bit = cb.alloc_bit_value();
         let flag_u8_rem = cb.alloc_common_range_value();
         let flag_u8_rem_diff = cb.alloc_common_range_value();
+*/
 
         let is_i32_wrap_i64 = cb.alloc_bit_value();
         let is_i64_extend_i32_u = cb.alloc_bit_value();
         let is_i64_extend_i32_s = cb.alloc_bit_value();
-*/
 
         cb.stack_pop(value.expr());
         cb.stack_push(res.expr());
 
-/*
+        for i in 0..4 {
+            cb.add_lookup("op_conversion: Using Range256x2 fixed table", Lookup::Fixed {
+                tag: FixedTableTag::Range256x2.expr(),
+                values: [value_limbs[i*2].expr(), value_limbs[i*2+1].expr(), 0.expr()],
+            });
+        }
+           
+
         cb.require_zeros("op_conversion: pick one", vec![
               is_i32_wrap_i64.expr()
             + is_i64_extend_i32_u.expr()
@@ -77,6 +92,30 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
             - 1.expr()
         ]);
 
+        cb.require_zeros(
+            "op_conversion: argument from limbs",
+            vec![{
+                let mut out = value_limbs[0].expr();
+                for i in 1..8 {
+                  out = out + value_limbs[i].expr() * (1_u64 << i*8).expr();
+                }
+                out - value.expr()
+            }],
+        );
+
+        cb.require_zeros(
+            "op_conversion: result from limbs in case of i32_wrap_i64",
+            vec![{
+                let mut out = value_limbs[0].expr();
+                for i in 1..4 {
+                  out = out + value_limbs[i].expr() * (1_u64 << i*8).expr();
+                }
+                ( out - res.expr() ) * is_i32_wrap_i64.expr()
+            }],
+        );
+
+
+/*
         cb.require_zeros("op_conversion: type matches op", vec![
             is_i32_wrap_i64.expr() * (value_type.expr() - types::I64.expr()),
             is_i32_wrap_i64.expr() * (res_type.expr() - types::I32.expr()),
@@ -127,6 +166,7 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
         Self {
             same_context,
             value,
+            value_limbs,
             //value_type,
             res,
             //res_type,
@@ -134,10 +174,10 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
             flag_bit,
             flag_u8_rem,
             flag_u8_rem_diff,
+*/
             is_i32_wrap_i64,
             is_i64_extend_i32_u,
             is_i64_extend_i32_s,
-*/
         }
     }
 
@@ -164,10 +204,13 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
                 self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
                 //self.res_type.assign(region, offset, Value::known(types::I32.to_scalar().unwrap()))?;
 
-                //self.is_i32_wrap_i64.assign(region, offset, Value::known(true.to_scalar().unwrap()))?;
+                self.is_i32_wrap_i64.assign(region, offset, Value::known(true.to_scalar().unwrap()))?;
+                for idx in 0..8 {
+                    let limb = (value.0[0] >> (idx * 8)) & 0xff;
+                    self.value_limbs[idx].assign(region, offset, Value::<F>::known(F::from(limb)))?;
+                }
             }
             OpcodeId::I64ExtendI32 => {
-                /*
                 let is_psign = true;
                 if is_psign {
                     self.is_i64_extend_i32_u.assign(region, offset, Value::known(true.to_scalar().unwrap()))?;
@@ -175,6 +218,7 @@ impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
                     self.is_i64_extend_i32_s.assign(region, offset, Value::known(true.to_scalar().unwrap()))?;
                 }
 
+                /*
                 let flag_u8 = value.0[0] as u32 >> (32 - 8);
                 let flag_bit = flag_u8 >> 7;
                 let flag_u8_rem = flag_u8 & 0x7f;
