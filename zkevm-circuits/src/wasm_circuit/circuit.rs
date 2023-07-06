@@ -28,16 +28,18 @@ use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::LebParams;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
-use crate::wasm_circuit::wasm_sections::wasm_code_section::wasm_code_section_body::circuit::WasmCodeSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::wasm_data_section::wasm_data_section_body::circuit::WasmDataSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::wasm_export_section::wasm_export_section_body::circuit::WasmExportSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::wasm_function_section::wasm_function_section_body::circuit::WasmFunctionSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::wasm_global_section::wasm_global_section_body::bcb::WasmGlobalSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section_body::circuit::WasmImportSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::wasm_memory_section::wasm_memory_section_body::circuit::WasmMemorySectionBodyChip;
-use crate::wasm_circuit::wasm_sections::wasm_start_section::wasm_start_section_body::circuit::WasmStartSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_body::circuit::WasmTypeSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::wasm_type_section::wasm_type_section_item::circuit::{WasmTypeSectionItemChip};
+use crate::wasm_circuit::wasm_sections::code::code_body::circuit::WasmCodeSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::data::data_body::circuit::WasmDataSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::element::element_body::circuit::WasmElementSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::export::export_body::circuit::WasmExportSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::function::function_body::circuit::WasmFunctionSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::global::global_body::circuit::WasmGlobalSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::import::import_body::circuit::WasmImportSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::memory::memory_body::circuit::WasmMemorySectionBodyChip;
+use crate::wasm_circuit::wasm_sections::start::start_body::circuit::WasmStartSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::table::table_body::circuit::WasmTableSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::r#type::type_body::circuit::WasmTypeSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::r#type::type_item::circuit::{WasmTypeSectionItemChip};
 
 pub struct WasmSectionConfig<F: Field> {
     _marker: PhantomData<F>,
@@ -66,6 +68,8 @@ pub struct WasmConfig<F: Field> {
     wasm_global_section_body_chip: Rc<WasmGlobalSectionBodyChip<F>>,
     wasm_code_section_body_chip: Rc<WasmCodeSectionBodyChip<F>>,
     wasm_start_section_body_chip: Rc<WasmStartSectionBodyChip<F>>,
+    wasm_table_section_body_chip: Rc<WasmTableSectionBodyChip<F>>,
+    wasm_element_section_body_chip: Rc<WasmElementSectionBodyChip<F>>,
     is_section_id_grows_lt_chip: LtChip<F, 1>,
     index_at_magic_prefix_count: usize,
     index_at_magic_prefix: Vec<IsZeroChip<F>>,
@@ -200,6 +204,20 @@ impl<F: Field> WasmChip<F>
             leb128_chip.clone(),
         );
         let wasm_start_section_body_chip = Rc::new(WasmStartSectionBodyChip::construct(config));
+
+        let config = WasmElementSectionBodyChip::configure(
+            cs,
+            wasm_bytecode_table.clone(),
+            leb128_chip.clone(),
+        );
+        let wasm_element_section_body_chip = Rc::new(WasmElementSectionBodyChip::construct(config));
+
+        let config = WasmTableSectionBodyChip::configure(
+            cs,
+            wasm_bytecode_table.clone(),
+            leb128_chip.clone(),
+        );
+        let wasm_table_section_body_chip = Rc::new(WasmTableSectionBodyChip::construct(config));
 
         let index_at_magic_prefix_count = WASM_PREAMBLE_MAGIC_PREFIX.len() + WASM_VERSION_PREFIX_LENGTH;
 
@@ -362,7 +380,32 @@ impl<F: Field> WasmChip<F>
                 }
             );
 
-            cb.gate(q_enable_expr)
+            // TODO uncomment when all section body chips are ready
+            cb.condition(
+                is_section_body_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_section_body -> exactly one section chip is enabled",
+                        vc.query_fixed(wasm_type_section_body_chip.config.q_enable, Rotation::cur())
+                            + vc.query_fixed(wasm_import_section_body_chip.config.q_enable, Rotation::cur())
+                            + vc.query_fixed(wasm_function_section_body_chip.config.q_enable, Rotation::cur())
+                            + vc.query_fixed(wasm_memory_section_body_chip.config.q_enable, Rotation::cur())
+                            + vc.query_fixed(wasm_export_section_body_chip.config.q_enable, Rotation::cur())
+                            + vc.query_fixed(wasm_data_section_body_chip.config.q_enable, Rotation::cur())
+                            + vc.query_fixed(wasm_global_section_body_chip.config.q_enable, Rotation::cur())
+                            + vc.query_fixed(wasm_code_section_body_chip.config.q_enable, Rotation::cur())
+                            + vc.query_fixed(wasm_start_section_body_chip.config.q_enable, Rotation::cur())
+                            + vc.query_fixed(wasm_table_section_body_chip.config.q_enable, Rotation::cur())
+                            + vc.query_fixed(wasm_element_section_body_chip.config.q_enable, Rotation::cur())
+                            + is_section_id_expr.clone()
+                            + is_section_len_expr.clone()
+                        ,
+                        1.expr(),
+                    );
+                }
+            );
+
+            cb.gate(q_enable_expr.clone())
         });
         cs.create_gate("wasm section layout check", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -564,36 +607,6 @@ impl<F: Field> WasmChip<F>
             vec![(section_id_expr.clone(), section_id_range_table_config.value)]
         });
 
-        // TODO uncomment when all section body chips are ready
-        // cs.create_gate("exactly one section chip is enabled when is_section_body", |vc| {
-        //     let mut cb = BaseConstraintBuilder::default();
-        //
-        //     let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-        //     let is_section_body_expr = vc.query_fixed(is_section_body, Rotation::cur());
-        //
-        //     cb.condition(
-        //         is_section_body_expr.clone(),
-        //         |bcb| {
-        //             bcb.require_equal(
-        //                 "exactly one section chip is enabled when is_section_body",
-        //                 vc.query_fixed(wasm_type_section_body_chip.config.q_enable, Rotation::cur())
-        //                 + vc.query_fixed(wasm_import_section_body_chip.config.q_enable, Rotation::cur())
-        //                 + vc.query_fixed(wasm_function_section_body_chip.config.q_enable, Rotation::cur())
-        //                 + vc.query_fixed(wasm_memory_section_body_chip.config.q_enable, Rotation::cur())
-        //                 + vc.query_fixed(wasm_export_section_body_chip.config.q_enable, Rotation::cur())
-        //                 + vc.query_fixed(wasm_data_section_body_chip.config.q_enable, Rotation::cur())
-        //                 + vc.query_fixed(wasm_global_section_body_chip.config.q_enable, Rotation::cur())
-        //                 + vc.query_fixed(wasm_code_section_body_chip.config.q_enable, Rotation::cur())
-        //                 + vc.query_fixed(wasm_start_section_body_chip.config.q_enable, Rotation::cur())
-        //                 ,
-        //                 1.expr(),
-        //             );
-        //         }
-        //     );
-        //
-        //     cb.gate(q_enable_expr.clone())
-        // });
-
         let config = WasmConfig {
             poseidon_table,
             wasm_bytecode_table,
@@ -621,6 +634,8 @@ impl<F: Field> WasmChip<F>
             wasm_global_section_body_chip,
             wasm_code_section_body_chip,
             wasm_start_section_body_chip,
+            wasm_table_section_body_chip,
+            wasm_element_section_body_chip,
             is_section_id_grows_lt_chip,
             _marker: PhantomData,
             range_table_config_0_128,
@@ -664,14 +679,14 @@ impl<F: Field> WasmChip<F>
                 offset,
                 assign_type,
                 1,
-                Some(LebParams{
+                Some(LebParams {
                     is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
                     sn,
                     sn_recovered_at_pos,
                 }),
-            );
+            ).unwrap();
         }
 
         (sn, last_byte_rel_offset + 1)
@@ -688,7 +703,7 @@ impl<F: Field> WasmChip<F>
     ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
-            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
+            "wasm_circuit: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
             offset,
             q_enable,
             assign_type,
@@ -701,15 +716,6 @@ impl<F: Field> WasmChip<F>
             offset,
             || Value::known(F::from(q_enable as u64)),
         )?;
-        if assign_type == AssignType::IsSectionLen {
-            let p = leb_params.unwrap();
-            self.config.leb128_chip.assign(
-                region,
-                offset,
-                q_enable,
-                p,
-            );
-        }
         match assign_type {
             AssignType::Unknown => {
                 panic!("unknown assign type")
@@ -745,6 +751,13 @@ impl<F: Field> WasmChip<F>
                     offset,
                     || Value::known(F::from(assign_value as u64)),
                 )?;
+                let p = leb_params.unwrap();
+                self.config.leb128_chip.assign(
+                    region,
+                    offset,
+                    q_enable,
+                    p,
+                );
             }
             AssignType::IsSectionBody => {
                 region.assign_fixed(
@@ -804,38 +817,17 @@ impl<F: Field> WasmChip<F>
             let section_body_end_offset = section_start_offset + section_len_leb_bytes_count as usize + section_len;
             let section_end_offset = section_body_end_offset;
 
-            self.assign(
-                region,
-                wasm_bytecode,
-                section_start_offset,
-                AssignType::IsSectionId,
-                1,
-                None,
-            )?;
-
-            let (_section_len, _section_len_leb_len) = self.markup_leb_section(
-                region,
-                &wasm_bytecode,
-                section_len_start_offset,
-                AssignType::IsSectionLen,
-            );
-
-            for i in 0..section_len {
-                let offset = section_body_start_offset + i;
-                let val = true;
-                self.assign(
-                    region,
-                    wasm_bytecode,
-                    offset,
-                    AssignType::IsSectionBody,
-                    1,
-                    None,
-                )?;
-            }
-
             for offset in section_start_offset..=section_end_offset {
                 if offset == section_start_offset {
-                    debug!("section_id {} offset {}", wasm_section_id, offset);
+                    let wasm_section: WasmSection = (wasm_section_id as i32).try_into().unwrap();
+                    debug!(
+                        "wasm_section {:?}(id={}) at offset {} len {} bytecode(hex) {:x?}",
+                        wasm_section,
+                        wasm_section_id,
+                        offset,
+                        section_end_offset - section_start_offset + 1,
+                        &wasm_bytecode.bytes[section_start_offset..=section_end_offset],
+                    );
                     let mut next_section_offset = 0;
                     let section_body_offset = offset + 1; // skip section_id
                     let section_len_last_byte_offset = leb128_compute_last_byte_offset(
@@ -843,8 +835,6 @@ impl<F: Field> WasmChip<F>
                         section_body_offset,
                     ).unwrap();
                     let section_body_offset = section_len_last_byte_offset + 1;
-
-                    let wasm_section: WasmSection = (wasm_section_id as i32).try_into().unwrap();
                     match wasm_section {
                         WasmSection::Custom => {}
                         WasmSection::Type => {
@@ -868,7 +858,13 @@ impl<F: Field> WasmChip<F>
                                 section_body_offset,
                             ).unwrap();
                         }
-                        WasmSection::Table => {}
+                        WasmSection::Table => {
+                            let new_offset = self.config.wasm_table_section_body_chip.assign_auto(
+                                region,
+                                wasm_bytecode,
+                                section_body_offset,
+                            ).unwrap();
+                        }
                         WasmSection::Memory => {
                             let new_offset = self.config.wasm_memory_section_body_chip.assign_auto(
                                 region,
@@ -897,7 +893,13 @@ impl<F: Field> WasmChip<F>
                                 section_body_offset,
                             ).unwrap();
                         }
-                        WasmSection::Element => {}
+                        WasmSection::Element => {
+                            let new_offset = self.config.wasm_element_section_body_chip.assign_auto(
+                                region,
+                                wasm_bytecode,
+                                section_body_offset,
+                            ).unwrap();
+                        }
                         WasmSection::Code => {
                             let new_offset = self.config.wasm_code_section_body_chip.assign_auto(
                                 region,
@@ -929,6 +931,35 @@ impl<F: Field> WasmChip<F>
                     F::from(wasm_section_id as u64),
                 )?;
                 section_id_prev = wasm_section_id as i64;
+            }
+
+            self.assign(
+                region,
+                wasm_bytecode,
+                section_start_offset,
+                AssignType::IsSectionId,
+                1,
+                None,
+            )?;
+
+            let (_section_len, _section_len_leb_len) = self.markup_leb_section(
+                region,
+                &wasm_bytecode,
+                section_len_start_offset,
+                AssignType::IsSectionLen,
+            );
+
+            for i in 0..section_len {
+                let offset = section_body_start_offset + i;
+                let val = true;
+                self.assign(
+                    region,
+                    wasm_bytecode,
+                    offset,
+                    AssignType::IsSectionBody,
+                    1,
+                    None,
+                )?;
             }
 
             if wasm_bytes_offset >= wasm_bytecode.bytes.len() { break }
