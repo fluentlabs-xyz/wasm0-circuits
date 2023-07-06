@@ -97,8 +97,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                     is_export_name_len_expr.clone(),
                     is_exportdesc_val_expr.clone(),
                 ]),
-                |cbc| {
-                    cbc.require_equal(
+                |bcb| {
+                    bcb.require_equal(
                         "is_items_count || is_export_name_len || is_exportdesc_val -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),

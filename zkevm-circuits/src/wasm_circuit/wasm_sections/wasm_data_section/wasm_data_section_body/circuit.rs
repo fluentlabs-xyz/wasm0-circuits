@@ -114,8 +114,8 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     is_mem_segment_size_expr.clone(),
                     is_mem_segment_len_expr.clone(),
                 ]),
-                |cbc| {
-                    cbc.require_equal(
+                |bcb| {
+                    bcb.require_equal(
                         "is_items_count || is_mem_segment_size || is_mem_segment_len -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),

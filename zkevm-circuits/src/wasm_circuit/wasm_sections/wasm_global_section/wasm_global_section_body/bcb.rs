@@ -108,8 +108,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                     is_items_count_expr.clone(),
                     is_init_val_expr.clone(),
                 ]),
-                |cbc| {
-                    cbc.require_equal(
+                |bcb| {
+                    bcb.require_equal(
                         "is_items_count || is_init_val -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),

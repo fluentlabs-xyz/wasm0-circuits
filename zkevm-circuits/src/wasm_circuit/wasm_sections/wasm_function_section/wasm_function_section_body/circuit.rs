@@ -80,8 +80,8 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
                     is_items_count_expr.clone(),
                     is_typeidx_expr.clone(),
                 ]),
-                |cbc| {
-                    cbc.require_equal(
+                |bcb| {
+                    bcb.require_equal(
                         "is_items_count || is_typeidx -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),

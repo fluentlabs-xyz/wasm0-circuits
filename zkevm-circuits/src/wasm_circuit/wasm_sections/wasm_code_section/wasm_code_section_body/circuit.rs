@@ -400,8 +400,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     is_local_repetition_count_expr.clone(),
                     is_instruction_leb_arg_expr.clone(),
                 ]),
-                |cbc| {
-                    cbc.require_equal(
+                |bcb| {
+                    bcb.require_equal(
                         "leb128 flag is active => leb128_chip enabled",
                         is_leb128_expr.clone(),
                         1.expr(),

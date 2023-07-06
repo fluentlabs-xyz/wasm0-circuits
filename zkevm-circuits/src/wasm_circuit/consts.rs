@@ -74,7 +74,7 @@ pub const SECTION_ID_DEFAULT: i32 = 0;
 
 /// https://webassembly.github.io/spec/core/binary/types.html#limits
 #[derive(Copy, Clone, Debug)]
-pub enum LimitsType {
+pub enum LimitType {
     MinOnly = 0x0,
     MinMax = 0x1,
 }

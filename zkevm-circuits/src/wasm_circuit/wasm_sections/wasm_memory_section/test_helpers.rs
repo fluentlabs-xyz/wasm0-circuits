@@ -1,9 +1,9 @@
-use crate::wasm_circuit::consts::LimitsType;
+use crate::wasm_circuit::consts::LimitType;
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_convert;
 
 #[derive(Clone)]
 pub struct WasmMemorySectionBodyItemLimitsDescriptor {
-    pub limits_type: LimitsType,
+    pub limits_type: LimitType,
     pub min: u64,
     pub max: u64,
 }
@@ -23,7 +23,7 @@ pub fn generate_wasm_memory_section_item_bytecode(descriptor: &WasmMemorySection
     bytecode.extend(leb128_convert(false, descriptor.limits.limits_type.clone() as i128));
     bytecode.extend(leb128_convert(false, descriptor.limits.min as i128));
     match descriptor.limits.limits_type {
-        LimitsType::MinMax => {
+        LimitType::MinMax => {
             bytecode.extend(leb128_convert(false, descriptor.limits.max as i128));
         },
         _ => {}
@@ -47,7 +47,7 @@ pub fn generate_wasm_memory_section_body_bytecode(descriptor: &WasmMemorySection
 
 #[cfg(test)]
 mod test_helpers {
-    use crate::wasm_circuit::consts::LimitsType;
+    use crate::wasm_circuit::consts::LimitType;
     use crate::wasm_circuit::wasm_sections::wasm_memory_section::test_helpers::{generate_wasm_memory_section_body_bytecode, WasmMemorySectionBodyDescriptor, WasmMemorySectionBodyItemDescriptor, WasmMemorySectionBodyItemLimitsDescriptor};
 
     #[test]
@@ -58,7 +58,7 @@ mod test_helpers {
             items: vec![
                 WasmMemorySectionBodyItemDescriptor {
                     limits: WasmMemorySectionBodyItemLimitsDescriptor {
-                        limits_type: LimitsType::MinOnly,
+                        limits_type: LimitType::MinOnly,
                         min: 1,
                         max: 0,
                     }

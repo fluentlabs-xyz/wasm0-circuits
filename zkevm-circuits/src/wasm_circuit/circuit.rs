@@ -32,7 +32,7 @@ use crate::wasm_circuit::wasm_sections::wasm_code_section::wasm_code_section_bod
 use crate::wasm_circuit::wasm_sections::wasm_data_section::wasm_data_section_body::circuit::WasmDataSectionBodyChip;
 use crate::wasm_circuit::wasm_sections::wasm_export_section::wasm_export_section_body::circuit::WasmExportSectionBodyChip;
 use crate::wasm_circuit::wasm_sections::wasm_function_section::wasm_function_section_body::circuit::WasmFunctionSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::wasm_global_section::wasm_global_section_body::circuit::WasmGlobalSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::wasm_global_section::wasm_global_section_body::bcb::WasmGlobalSectionBodyChip;
 use crate::wasm_circuit::wasm_sections::wasm_import_section::wasm_import_section_body::circuit::WasmImportSectionBodyChip;
 use crate::wasm_circuit::wasm_sections::wasm_memory_section::wasm_memory_section_body::circuit::WasmMemorySectionBodyChip;
 use crate::wasm_circuit::wasm_sections::wasm_start_section::wasm_start_section_body::circuit::WasmStartSectionBodyChip;

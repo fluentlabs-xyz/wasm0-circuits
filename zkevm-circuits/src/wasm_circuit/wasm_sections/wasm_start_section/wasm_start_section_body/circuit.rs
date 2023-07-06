@@ -78,8 +78,8 @@ impl<F: Field> WasmStartSectionBodyChip<F>
 
             cb.condition(
                 is_func_index_expr.clone(),
-                |cbc| {
-                    cbc.require_equal(
+                |bcb| {
+                    bcb.require_equal(
                         "is_func_index => leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -118,7 +118,7 @@ impl<F: Field> WasmStartSectionBodyChip<F>
             assign_value,
             wasm_bytecode.bytes[offset],
         );
-        if assign_type == AssignType::FuncsIndex {
+        if assign_type == AssignType::IsFuncsIndex {
             let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
                 region,
@@ -134,7 +134,7 @@ impl<F: Field> WasmStartSectionBodyChip<F>
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
         match assign_type {
-            AssignType::FuncsIndex => {
+            AssignType::IsFuncsIndex => {
                 region.assign_fixed(
                     || format!("assign 'is_func_index' val {} at {}", assign_value, offset),
                     self.config.is_func_index,
@@ -198,7 +198,7 @@ impl<F: Field> WasmStartSectionBodyChip<F>
             region,
             &wasm_bytecode,
             offset,
-            AssignType::FuncsIndex,
+            AssignType::IsFuncsIndex,
         );
         offset += funcs_index_leb_len;
 

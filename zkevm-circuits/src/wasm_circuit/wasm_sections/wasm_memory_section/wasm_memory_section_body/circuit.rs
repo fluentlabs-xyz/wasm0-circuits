@@ -11,7 +11,7 @@ use log::debug;
 use eth_types::Field;
 use gadgets::util::{Expr, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::consts::LimitsType;
+use crate::wasm_circuit::consts::LimitType;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -88,8 +88,8 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                     is_items_count_expr.clone(),
                     is_limit_type_val_expr.clone(),
                 ]),
-                |cbc| {
-                    cbc.require_equal(
+                |bcb| {
+                    bcb.require_equal(
                         "is_items_count || is_limit_type_val -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -137,7 +137,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                     bcb.require_in_set(
                         "is_limit_type -> byte_val has valid value",
                         byte_val_expr.clone(),
-                        vec![(LimitsType::MinOnly as i32).expr(), (LimitsType::MinMax as i32).expr()],
+                        vec![(LimitType::MinOnly as i32).expr(), (LimitType::MinMax as i32).expr()],
                     );
                 }
             );
@@ -299,7 +299,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             );
             offset += min_limit_type_val_leb_len;
 
-            if limit_type == LimitsType::MinMax as u8 {
+            if limit_type == LimitType::MinMax as u8 {
                 let (_max_limit_type_val, max_limit_type_val_leb_len) = self.markup_leb_section(
                     region,
                     wasm_bytecode,

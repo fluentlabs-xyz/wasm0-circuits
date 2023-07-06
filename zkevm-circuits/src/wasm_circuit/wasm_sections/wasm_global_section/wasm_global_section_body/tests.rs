@@ -11,7 +11,7 @@ use crate::wasm_circuit::tables::range_table::RangeTableConfig;
 use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::wasm_sections::wasm_global_section::wasm_global_section_body::circuit::WasmGlobalSectionBodyChip;
+use crate::wasm_circuit::wasm_sections::wasm_global_section::wasm_global_section_body::bcb::WasmGlobalSectionBodyChip;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
