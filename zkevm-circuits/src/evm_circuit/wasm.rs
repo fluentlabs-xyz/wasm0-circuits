@@ -178,6 +178,7 @@ use crate::evm_circuit::wasm::end_inner_block::EndInnerBlockGadget;
 use crate::evm_circuit::wasm::error_code_store::ErrorCodeStoreGadget;
 use crate::evm_circuit::wasm::error_invalid_creation_code::ErrorInvalidCreationCodeGadget;
 use crate::evm_circuit::wasm::error_precompile_failed::ErrorPrecompileFailedGadget;
+use crate::evm_circuit::wasm::error_oog_account_access::ErrorOOGAccountAccessGadget;
 use crate::table::{RwTableTag, TxReceiptFieldTag};
 
 use once_cell::sync::Lazy;
@@ -247,7 +248,7 @@ pub(crate) struct ExecutionConfig<F> {
     error_write_protection: Box<ErrorWriteProtectionGadget<F>>,
     error_oog_dynamic_memory_gadget: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasDynamicMemoryExpansion }>>,
     error_oog_log: Box<ErrorOOGLogGadget<F>>,
-    error_oog_account_access: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasAccountAccess }>>,
+    error_oog_account_access: Box<ErrorOOGAccountAccessGadget<F>>,
     error_oog_sha3: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasSHA3 }>>,
     error_oog_create2: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::ErrorOutOfGasCREATE }>>,
     error_code_store: Box<ErrorCodeStoreGadget<F>>,
