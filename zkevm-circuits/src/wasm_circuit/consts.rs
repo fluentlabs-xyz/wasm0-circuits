@@ -87,6 +87,47 @@ pub enum MemSegmentType {
     ActiveVariadic = 0x2,
 }
 
+/// https://webassembly.github.io/spec/core/binary/modules.html#binary-importdesc
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ImportDescType {
+    Typeidx = 0x0,
+    Table = 0x1,
+    Mem = 0x2,
+    Global = 0x3,
+}
+pub const IMPORT_DESC_TYPE_VALUES: &[ImportDescType] = &[
+    ImportDescType::Typeidx,
+    ImportDescType::Table,
+    ImportDescType::Mem,
+    ImportDescType::Global,
+];
+impl TryFrom<i32> for ImportDescType {
+    type Error = ();
+
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        for instr in IMPORT_DESC_TYPE_VALUES {
+            if v == *instr as i32 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+impl From<ImportDescType> for usize {
+    fn from(t: ImportDescType) -> Self {
+        t as usize
+    }
+}
+
+/// https://webassembly.github.io/spec/core/binary/types.html#global-types
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Mutability {
+    Const = 0x0,
+    Var = 0x1,
+}
+pub const MUTABILITY_VALUES: &[Mutability] = &[
+    Mutability::Const,
+    Mutability::Var,
+];
+
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NumericInstruction {
     I32Const = 0x41,

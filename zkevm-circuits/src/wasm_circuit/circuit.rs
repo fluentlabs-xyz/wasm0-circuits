@@ -703,7 +703,7 @@ impl<F: Field> WasmChip<F>
     ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
-            "wasm_circuit: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
+            "wasm_circuit: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_type,

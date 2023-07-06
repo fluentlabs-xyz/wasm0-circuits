@@ -11,6 +11,7 @@ use log::debug;
 use eth_types::Field;
 use gadgets::util::{Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::consts::{ImportDescType, Mutability, MUTABILITY_VALUES};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -19,7 +20,6 @@ use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::wasm_sections::consts::LebParams;
 use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
-use crate::wasm_circuit::wasm_sections::import::import_body::consts::ImportDescType;
 use crate::wasm_circuit::wasm_sections::import::import_body::types::AssignType;
 
 #[derive(Debug, Clone)]
@@ -32,6 +32,7 @@ pub struct WasmImportSectionBodyConfig<F: Field> {
     pub is_import_name: Column<Fixed>,
     pub is_importdesc_type: Column<Fixed>,
     pub is_importdesc_val: Column<Fixed>,
+    pub is_mutability: Column<Fixed>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
     pub utf8_chip: Rc<UTF8Chip<F>>,
@@ -72,6 +73,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         let is_import_name = cs.fixed_column();
         let is_importdesc_type = cs.fixed_column();
         let is_importdesc_val = cs.fixed_column();
+        let is_mutability = cs.fixed_column();
 
         cs.create_gate("WasmImportSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -84,6 +86,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             let is_import_name_expr = vc.query_fixed(is_import_name, Rotation::cur());
             let is_importdesc_type_expr = vc.query_fixed(is_importdesc_type, Rotation::cur());
             let is_importdesc_val_expr = vc.query_fixed(is_importdesc_val, Rotation::cur());
+            let is_mutability_expr = vc.query_fixed(is_mutability, Rotation::cur());
 
             let byte_value_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
 
@@ -97,10 +100,19 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             cb.require_boolean("is_import_name is boolean", is_import_name_expr.clone());
             cb.require_boolean("is_importdesc_type is boolean", is_importdesc_type_expr.clone());
             cb.require_boolean("is_importdesc_val is boolean", is_importdesc_val_expr.clone());
+            cb.require_boolean("is_mutability is boolean", is_mutability_expr.clone());
 
             cb.require_equal(
                 "exactly one mark flag active at the same time",
-                is_items_count_expr.clone() + is_mod_name_len_expr.clone() + is_mod_name_expr.clone() + is_import_name_len_expr.clone() + is_import_name_expr.clone() + is_importdesc_type_expr.clone() + is_importdesc_val_expr.clone(),
+                is_items_count_expr.clone()
+                    + is_mod_name_len_expr.clone()
+                    + is_mod_name_expr.clone()
+                    + is_import_name_len_expr.clone()
+                    + is_import_name_expr.clone()
+                    + is_importdesc_type_expr.clone()
+                    + is_importdesc_val_expr.clone()
+                    + is_mutability_expr.clone()
+                ,
                 1.expr(),
             );
 
@@ -127,7 +139,20 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 }
             );
 
-            // is_items_count+ -> is_item+ (is_mod_name_len+ -> is_mod_name* -> is_import_name_len+ -> is_import_name* -> is_importdesc_type{1} -> is_importdesc_val+
+            cb.condition(
+                is_mutability_expr.clone(),
+                |bcb| {
+                    bcb.require_in_set(
+                        "is_mutability -> byte_val is valid",
+                        byte_value_expr.clone(),
+                        MUTABILITY_VALUES.iter().map(|&v| (v as i32).expr()).collect_vec(),
+                    )
+                }
+            );
+
+            // is_items_count+ -> is_item+ (is_mod_name_len+ -> is_mod_name* -> is_import_name_len+ -> is_import_name* -> import_desc+)
+            // is_importdesc_type{1}==0(ImportDescType::Typeidx): import_desc+(is_importdesc_type{1} -> is_importdesc_val+)
+            // is_importdesc_type{1}==3(ImportDescType::Globaltype): import_desc+(is_importdesc_type{1} -> is_importdesc_val+)
             configure_check_for_transition(
                 &mut cb,
                 vc,
@@ -233,12 +258,17 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         // TODO add support for other types
                         byte_value_expr.clone(),
                         vec![
-                            (ImportDescType::Type as i32).expr(),
+                            (ImportDescType::Typeidx as i32).expr(),
+                            // (ImportDescType::Table as i32).expr(),
+                            // (ImportDescType::Mem as i32).expr(),
                             (ImportDescType::Global as i32).expr(),
                         ]
                     )
                 }
             );
+
+            // TODO add checks base on is_importdesc_type value, eg. for is_importdesc_type==3
+            //  we also have mutability(is_mutability) following after importdesc_val(is_importdesc_val)
 
             cb.require_equal(
                 "is_mod_name || is_import_name -> utf8",
@@ -261,6 +291,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             is_import_name,
             is_importdesc_type,
             is_importdesc_val,
+            is_mutability,
             leb128_chip,
             utf8_chip,
             _marker: PhantomData,
@@ -280,7 +311,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "import_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
+            "import_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_type,
@@ -372,6 +403,14 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 region.assign_fixed(
                     || format!("assign 'is_importdesc_val' val {} at {}", assign_value, offset),
                     self.config.is_importdesc_val,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::IsMutability => {
+                region.assign_fixed(
+                    || format!("assign 'is_mutability' val {} at {}", assign_value, offset),
+                    self.config.is_mutability,
                     offset,
                     || Value::known(F::from(assign_value)),
                 ).unwrap();
@@ -503,6 +542,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             offset += import_name_len as usize;
 
             // is_importdesc_type{1}
+            let import_desc_type_val = wasm_bytecode.bytes[offset];
+            let import_desc_type: ImportDescType = (import_desc_type_val as i32).try_into().unwrap();
             self.assign(
                 region,
                 wasm_bytecode,
@@ -514,13 +555,37 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             offset += 1;
 
             // is_importdesc_val+
-            let (_importdesc_val, importdesc_val_leb_len) = self.markup_leb_section(
-                region,
-                wasm_bytecode,
-                offset,
-                AssignType::IsImportdescVal,
-            );
-            offset += importdesc_val_leb_len;
+            match import_desc_type {
+                ImportDescType::Typeidx => {
+                    let (_importdesc_val, importdesc_val_leb_len) = self.markup_leb_section(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        AssignType::IsImportdescVal,
+                    );
+                    offset += importdesc_val_leb_len;
+                }
+                ImportDescType::Global => {
+                    let (_importdesc_val, importdesc_val_leb_len) = self.markup_leb_section(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        AssignType::IsImportdescVal,
+                    );
+                    offset += importdesc_val_leb_len;
+
+                    self.assign(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        AssignType::IsMutability,
+                        1,
+                        None,
+                    );
+                    offset += 1;
+                }
+                _ => { panic!("unsupported import_desc_type {:?}", import_desc_type) }
+            }
         }
 
         Ok(offset)

@@ -168,7 +168,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "memory_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
+            "memory_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_type,

@@ -107,7 +107,6 @@ mod wasm_import_section_body_tests {
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
     use crate::wasm_circuit::common::wat_extract_section_body_bytecode;
-    use crate::wasm_circuit::wasm_sections::import::import_body::consts::ImportDescType;
     use crate::wasm_circuit::wasm_sections::import::import_body::tests::TestCircuit;
 
     fn test<'a, F: Field>(
@@ -125,43 +124,44 @@ mod wasm_import_section_body_tests {
 
     #[test]
     pub fn section_body_bytecode_from_file1() {
-        let mut bytecodes: Vec<Vec<u8>> = Vec::new();
+        // [1, - IsItemsCount
+        // 2, - mod_name_len=2
+        // 6a, 73, - 'js'
+        // 6, - mod_name_len=6
+        // 67, 6c, 6f, 62, 61, 6c, - 'global'
+        // 3, 7f, 1 - globaltype i32 mut
+        // ]
+        // 'env' in hex [65, 6e, 76] in decimal [101, 110, 118]
+        // 'global' in hex [67, 6c, 6f, 62, 61, 6c] in decimal [103, 108, 111, 98, 97, 108]
         let bytecode = wat_extract_section_body_bytecode(
             "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
             Kind::Import,
         );
         debug!("bytecode (len {}) (hex): {:x?}", bytecode.len(), bytecode);
-        bytecodes.push(bytecode);
-        for bytecode in &bytecodes {
-            let code_hash = CodeDB::hash(&bytecode);
-            let test_circuit = TestCircuit::<Fr> {
-                code_hash,
-                bytecode: &bytecode,
-                offset_start: 0,
-                _marker: Default::default(),
-            };
-            test(test_circuit, true);
-        }
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
     }
 
     #[test]
     pub fn section_body_bytecode_from_file2() {
-        let mut bytecodes: Vec<Vec<u8>> = Vec::new();
         let bytecode = wat_extract_section_body_bytecode(
             "./src/wasm_circuit/test_data/files/br_breaks_1.wat",
             Kind::Import,
         );
         debug!("bytecode (len {}) (hex): {:x?}", bytecode.len(), bytecode);
-        bytecodes.push(bytecode);
-        for bytecode in &bytecodes {
-            let code_hash = CodeDB::hash(&bytecode);
-            let test_circuit = TestCircuit::<Fr> {
-                code_hash,
-                bytecode: &bytecode,
-                offset_start: 0,
-                _marker: Default::default(),
-            };
-            test(test_circuit, true);
-        }
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
     }
 }

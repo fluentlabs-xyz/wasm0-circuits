@@ -216,7 +216,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "export_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
+            "export_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_type,

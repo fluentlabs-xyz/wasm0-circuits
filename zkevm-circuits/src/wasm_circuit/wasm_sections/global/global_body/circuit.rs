@@ -285,7 +285,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "global_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {}",
+            "global_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_type,
