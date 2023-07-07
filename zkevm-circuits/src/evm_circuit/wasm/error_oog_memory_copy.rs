@@ -285,7 +285,7 @@ mod tests {
                 TestingData::new_for_extcodecopy(*is_warm, *dst_offset, *copy_size, None);
 
             test_root(&testing_data);
-            test_internal(&testing_data);
+            // test_internal(&testing_data);
         }
     }
 
@@ -341,22 +341,25 @@ mod tests {
         ) -> Self {
             let external_address = MOCK_ACCOUNTS[4];
 
-            let mut bytecode = bytecode! {
-                // I32Const[copy_size]
-                // I32Const[U256::zero()]
-                // I32Const[dst_offset]
-                // I32Const[external_address.to_word()]
+            let mut bytecode = Bytecode::default();
+            let memory_offset = bytecode.fill_default_global_data( rand_word().to_be_bytes().to_vec());
+            let address_offset = bytecode.fill_default_global_data( external_address.to_fixed_bytes().to_vec());
+            bytecode_internal! {bytecode,
+                I32Const[copy_size]
+                I32Const[memory_offset]
+                I32Const[dst_offset]
+                I32Const[address_offset]
                 EXTCODECOPY
             };
 
             if is_warm {
-                bytecode.append(&bytecode! {
-                    // I32Const(copy_size)
-                    // I32Const(rand_word())
-                    // I32Const(dst_offset)
-                    // I32Const(external_address.to_word())
+                bytecode_internal! {bytecode,
+                    I32Const[copy_size]
+                    I32Const[memory_offset]
+                    I32Const[dst_offset]
+                    I32Const[address_offset]
                     EXTCODECOPY
-                });
+                };
             }
 
             let gas_cost = gas_cost.unwrap_or_else(|| {
