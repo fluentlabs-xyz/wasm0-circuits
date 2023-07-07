@@ -1,3 +1,4 @@
+use ethers_core::types::transaction::eip712::Eip712Error::TryFromSliceError;
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
@@ -15,18 +16,19 @@ use crate::{
     table::CallContextFieldTag,
     util::Expr,
 };
-use eth_types::{
-    evm_types::{GasCost, OpcodeId},
-    Field, ToLittleEndian,
-};
+use eth_types::{evm_types::{GasCost, OpcodeId}, Field, ToLittleEndian, ToScalar};
 use halo2_proofs::{circuit::Value, plonk::Error};
+use crate::evm_circuit::util::RandomLinearCombination;
+use crate::table::RwTableTag;
 
 /// Gadget to implement the corresponding out of gas errors for
 /// [`OpcodeId::EXP`].
 #[derive(Clone, Debug)]
 pub(crate) struct ErrorOOGAccountAccessGadget<F> {
     opcode: Cell<F>,
-    address_word: Word<F>,
+    address_offset: Cell<F>,
+    address_word: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
+    result_offset: Cell<F>,
     tx_id: Cell<F>,
     is_warm: Cell<F>,
     insufficient_gas_cost: LtGadget<F, N_BYTES_GAS>,
@@ -50,16 +52,22 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGAccountAccessGadget<F> {
             ],
         );
 
+        let address_offset = cb.query_cell();
+        let result_offset = cb.query_cell();
+
         let address_word = cb.query_word_rlc();
         let address = from_bytes::expr(&address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]);
-        cb.stack_pop(address_word.expr());
+
+        cb.stack_pop(result_offset.expr());
+        cb.stack_pop(address_offset.expr());
+
+        cb.memory_rlc_lookup(0.expr(), &address_offset, &address_word);
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let is_warm = cb.query_bool();
         // read is_warm
         cb.account_access_list_read(tx_id.expr(), address.expr(), is_warm.expr());
 
-        //TODO: Add constrait for memory check
 
         let gas_cost = select::expr(
             is_warm.expr(),
@@ -79,7 +87,9 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGAccountAccessGadget<F> {
         let common_error_gadget = CommonErrorGadget::construct(cb, opcode.expr(), 5.expr());
         Self {
             opcode,
+            address_offset,
             address_word,
+            result_offset,
             tx_id,
             is_warm,
             insufficient_gas_cost,
@@ -100,14 +110,33 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGAccountAccessGadget<F> {
         self.opcode
             .assign(region, offset, Value::known(F::from(opcode.as_u64())))?;
 
-        let address = block.rws[step.rw_indices[0]].stack_value();
-        self.address_word
-            .assign(region, offset, Some(address.to_le_bytes()))?;
+        let result_offset = block.rws[step.rw_indices[0]].stack_value();
+        self.result_offset
+            .assign(region, offset, Value::<F>::known(result_offset.to_scalar().unwrap()))?;
+        let address_offset = block.rws[step.rw_indices[1]].stack_value();
+        self.address_offset
+            .assign(region, offset, Value::<F>::known(address_offset.to_scalar().unwrap()))?;
+
+        println!("Assign Address offset: {}, result offset: {}", address_offset, result_offset);
 
         self.tx_id
             .assign(region, offset, Value::known(F::from(tx.id as u64)))?;
 
-        let (_, is_warm) = block.rws[step.rw_indices[2]].tx_access_list_value_pair();
+        let address_rw_index = 2;
+
+        let address = {
+            let address_rw_tup_vec: Vec<(RwTableTag, usize)> = step.rw_indices[address_rw_index..(address_rw_index + N_BYTES_ACCOUNT_ADDRESS)].to_vec();
+            let address_bytes_vec: Vec<u8> = address_rw_tup_vec
+                .iter()
+                .map(|&b| block.rws[b].memory_value())
+                .collect();
+            eth_types::Word::from_big_endian(address_bytes_vec.as_slice())
+        };
+
+        self.address_word
+            .assign(region, offset, Some(address.to_le_bytes()[0..N_BYTES_ACCOUNT_ADDRESS].try_into().unwrap()))?;
+
+        let (_, is_warm) = block.rws[step.rw_indices[23]].tx_access_list_value_pair();
         self.is_warm
             .assign(region, offset, Value::known(F::from(is_warm)))?;
 

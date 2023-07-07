@@ -6,6 +6,8 @@ use crate::{
     Error,
 };
 use eth_types::{GethExecStep, ToAddress, U256};
+use eth_types::evm_types::MemoryAddress;
+use crate::wasm::opcodes::address::ADDRESS_BYTE_LENGTH;
 
 #[derive(Debug, Copy, Clone)]
 pub struct ErrorOOGAccountAccess;
@@ -27,9 +29,17 @@ impl Opcode for ErrorOOGAccountAccess {
         ]
         .contains(&geth_step.op));
         // Read account address from stack.
-        let address_word = geth_step.stack.last()?;
-        let address = address_word.to_address();
-        state.stack_read(&mut exec_step, geth_step.stack.last_filled(), address_word)?;
+        let result_offset = geth_step.stack.nth_last(0)?;
+        let address_offset = geth_step.stack.nth_last(1)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(0), result_offset)?;
+        state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(1), address_offset)?;
+
+        let address = geth_steps[0].global_memory.read_address(address_offset)?;
+
+        let address_offset_addr = MemoryAddress::try_from(address_offset)?;
+        for i in 0..ADDRESS_BYTE_LENGTH {
+            state.memory_read(&mut exec_step, address_offset_addr.map(|a| a + i), address[i])?;
+        }
 
         // Read transaction ID from call context.
         state.call_context_read(
