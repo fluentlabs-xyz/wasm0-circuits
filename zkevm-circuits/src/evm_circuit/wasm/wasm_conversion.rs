@@ -24,7 +24,6 @@ use crate::evm_circuit::util::constraint_builder::EVMConstraintBuilder;
 #[derive(Clone, Debug)]
 pub(crate) struct WasmConversionGadget<F> {
     same_context: SameContextGadget<F>,
-
     value: Cell<F>,
     value_limbs: [Cell<F>; 8],
     res: Cell<F>,
@@ -34,22 +33,15 @@ pub(crate) struct WasmConversionGadget<F> {
     is_i64_extend_i32_s: Cell<F>,
 }
 
-pub(crate) mod types {
-    pub(crate) const I32: u64 = 10;
-    pub(crate) const I64: u64 = 11;
-}
-
 impl<F: Field> ExecutionGadget<F> for WasmConversionGadget<F> {
     const NAME: &'static str = "WASM_CONVERSION";
 
     const EXECUTION_STATE: ExecutionState = ExecutionState::WASM_CONVERSION;
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
-
         let value = cb.alloc_u64_on_u8();
         let value_limbs = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
                            cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
-
         let res = cb.alloc_u64();
 
         let is_value_pos = cb.alloc_bit_value();
@@ -240,6 +232,4 @@ mod test {
             Drop
         });
     }
-
-
 }

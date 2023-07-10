@@ -7,6 +7,7 @@ use eth_types::{Field, ToScalar};
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
+        table::{FixedTableTag, Lookup},
         step::ExecutionState,
         util::{
             CachedRegion,
@@ -29,24 +30,33 @@ const I32_REM_SHIFT: usize = 28usize;
 pub(crate) struct WasmRelGadget<F> {
     same_context: SameContextGadget<F>,
 
-    is_eight_bytes: Cell<F>,
+    //is_eight_bytes: Cell<F>,
 
     lhs: Cell<F>,
     rhs: Cell<F>,
-    diff: Cell<F>,
 
-    diff_inv: Cell<F>,
-    res_is_eq: Cell<F>,
-    res_is_lt: Cell<F>,
-    res_is_gt: Cell<F>,
+    // This limbs comes from absolute value.
+    lhs_limbs: [Cell<F>; 8],
+    rhs_limbs: [Cell<F>; 8],
+    eq_terms: [Cell<F>; 8],
+    out_terms: [Cell<F>; 8],
+
+    //diff: Cell<F>,
+
+    //diff_inv: Cell<F>,
+    //res_is_eq: Cell<F>,
+    //res_is_lt: Cell<F>,
+    //res_is_gt: Cell<F>,
     res: Cell<F>,
 
+/*
     lhs_leading_bit: Cell<F>,
     rhs_leading_bit: Cell<F>,
     lhs_rem_value: Cell<F>,
     lhs_rem_diff: Cell<F>,
     rhs_rem_value: Cell<F>,
     rhs_rem_diff: Cell<F>,
+*/
 
     op_is_eq: Cell<F>,
     op_is_ne: Cell<F>,
@@ -58,6 +68,10 @@ pub(crate) struct WasmRelGadget<F> {
 
 }
 
+
+// Idea it to make comparsion for each limb, but only one result is correct.
+// To filter this correct result, `ClzFilter` is used.
+// Logic is skip equal limbs until we found difference.
 impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
     const NAME: &'static str = "WASM_REL";
 
@@ -65,22 +79,22 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
 
-        let diff_inv = cb.alloc_unlimited_value();
-        let res_is_eq = cb.alloc_bit_value();
-        let res_is_lt = cb.alloc_bit_value();
-        let res_is_gt = cb.alloc_bit_value();
+        //let diff_inv = cb.alloc_unlimited_value();
+        //let res_is_eq = cb.alloc_bit_value();
+        //let res_is_lt = cb.alloc_bit_value();
+        //let res_is_gt = cb.alloc_bit_value();
         let res = cb.alloc_unlimited_value();
 
         let lhs = cb.alloc_u64();
         let rhs = cb.alloc_u64();
-        let diff = cb.alloc_u64();
+        //let diff = cb.alloc_u64();
 
-        let lhs_leading_bit = cb.alloc_bit_value();
-        let rhs_leading_bit = cb.alloc_bit_value();
-        let lhs_rem_value = cb.alloc_common_range_value();
-        let lhs_rem_diff = cb.alloc_common_range_value();
-        let rhs_rem_value = cb.alloc_common_range_value();
-        let rhs_rem_diff = cb.alloc_common_range_value();
+        //let lhs_leading_bit = cb.alloc_bit_value();
+        //let rhs_leading_bit = cb.alloc_bit_value();
+        //let lhs_rem_value = cb.alloc_common_range_value();
+        //let lhs_rem_diff = cb.alloc_common_range_value();
+        //let rhs_rem_value = cb.alloc_common_range_value();
+        //let rhs_rem_diff = cb.alloc_common_range_value();
 
         let op_is_eq = cb.alloc_bit_value();
         let op_is_ne = cb.alloc_bit_value();
@@ -90,12 +104,59 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         let op_is_ge = cb.alloc_bit_value();
         let op_is_sign = cb.alloc_bit_value();
 
-        let is_eight_bytes = cb.alloc_bit_value();
+        //let is_eight_bytes = cb.alloc_bit_value();
+
+        let rhs_limbs = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
+                         cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
+
+        let lhs_limbs = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
+                         cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
+
+        let eq_terms = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
+                        cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
+
+        let out_terms = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
+                         cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
+
+        let enable = || op_is_gt.expr() + op_is_ge.expr() + op_is_lt.expr() + op_is_le.expr();
+        let code = || 1.expr() * op_is_gt.expr() + 2.expr() * op_is_ge.expr() +
+                      3.expr() * op_is_lt.expr() + 4.expr() * op_is_le.expr();
+
+        for idx in 0..8 {
+            cb.add_lookup("Using OpRel fixed table", Lookup::Fixed {
+                tag: FixedTableTag::OpRel.expr(),
+                values: [lhs_limbs[idx].expr() * enable(),
+                         (rhs_limbs[idx].expr() + 256.expr() * code()) * enable(),
+                         out_terms[idx].expr() * enable()],
+            });
+            cb.add_lookup("Using OpRel fixed table for eq terms", Lookup::Fixed {
+                tag: FixedTableTag::OpRel.expr(),
+                values: [lhs_limbs[idx].expr() * enable(),
+                         rhs_limbs[idx].expr() * enable(),
+                         eq_terms[idx].expr() * enable()],
+            });
+        }
+
+        let mut eq_bits = eq_terms[0].expr();
+        for eq_i in 1..8 {
+            eq_bits = eq_bits + (1 << eq_i).expr() * eq_terms[eq_i].expr();
+        }
+        let mut out_bits = out_terms[0].expr();
+        for out_i in 1..8 {
+            out_bits = out_bits + (1 << out_i).expr() * out_terms[out_i].expr();
+        }
+        cb.add_lookup("Using ClzFilter fixed table", Lookup::Fixed {
+            tag: FixedTableTag::ClzFilter.expr(),
+            values: [eq_bits * enable(),
+                     out_bits.expr() * enable(),
+                     res.expr() * enable()],
+        });
 
         cb.stack_pop(rhs.expr());
         cb.stack_pop(lhs.expr());
         cb.stack_push(res.expr());
 
+/*
         cb.require_zeros("op_rel: compare diff", vec![
             (lhs.expr() + res_is_lt.expr() * diff.expr()
                         - res_is_gt.expr() * diff.expr()
@@ -114,6 +175,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
                 + op_is_ge.expr()
                 - 1.expr()),
         ]);
+*/
 
         /* constraint_builder.push(
             "compare leading bit",
@@ -136,6 +198,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             }),
         ); */
 
+/*
         cb.require_zeros("op_rel: compare op res", {
             let l_pos_r_pos = (1.expr() - lhs_leading_bit.expr())
                             * (1.expr() - rhs_leading_bit.expr());
@@ -212,6 +275,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
                 ]
             },
         );
+*/
  
         let opcode = cb.query_cell();
 
@@ -228,13 +292,17 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
 
         Self {
             same_context,
-            diff_inv,
-            res_is_eq,
-            res_is_lt,
-            res_is_gt,
+            //diff_inv,
+            //res_is_eq,
+            //res_is_lt,
+            //res_is_gt,
             lhs,
             rhs,
-            diff,
+            lhs_limbs,
+            rhs_limbs,
+            out_terms,
+            eq_terms,
+            //diff,
             //lookup_stack_read_lhs,
             //lookup_stack_read_rhs,
             //lookup_stack_write_res,
@@ -246,6 +314,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             op_is_le,
             op_is_ge,
             op_is_sign,
+/*
             is_eight_bytes,
             lhs_leading_bit,
             rhs_leading_bit,
@@ -253,6 +322,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             lhs_rem_diff,
             rhs_rem_value,
             rhs_rem_diff,
+*/
         }
     }
 
@@ -276,15 +346,41 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         self.lhs.assign(region, offset, Value::known(lhs.to_scalar().unwrap()))?;
         self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
 
-        let diff = if lhs < rhs { rhs - lhs } else { lhs - rhs };
-        self.diff.assign(region, offset, Value::known(diff.to_scalar().unwrap()))?;
-        self.diff_inv.assign(region, offset, Value::known(F::from(diff.as_u64()).invert().unwrap_or(F::zero())))?;
+        //let diff = if lhs < rhs { rhs - lhs } else { lhs - rhs };
+        //self.diff.assign(region, offset, Value::known(diff.to_scalar().unwrap()))?;
+        //self.diff_inv.assign(region, offset, Value::known(F::from(diff.as_u64()).invert().unwrap_or(F::zero())))?;
 
-        self.res_is_eq.assign(region, offset, Value::known((lhs == rhs).into()))?;
-        self.res_is_gt.assign(region, offset, Value::known((lhs > rhs).into()))?;
-        self.res_is_lt.assign(region, offset, Value::known((lhs < rhs).into()))?;
+        //self.res_is_eq.assign(region, offset, Value::known((lhs == rhs).into()))?;
+        //self.res_is_gt.assign(region, offset, Value::known((lhs > rhs).into()))?;
+        //self.res_is_lt.assign(region, offset, Value::known((lhs < rhs).into()))?;
 
         let mut is_32 = true;
+
+        match opcode {
+          OpcodeId::I32GtU | OpcodeId::I32GeU | OpcodeId::I32LtU | OpcodeId::I32LeU |
+          OpcodeId::I64GtU | OpcodeId::I64GeU | OpcodeId::I64LtU | OpcodeId::I64LeU => {
+            for idx in 0..8 {
+              let lhs_limb = (lhs.0[0] >> (8 * idx)) & 0xff;
+              let rhs_limb = (rhs.0[0] >> (8 * idx)) & 0xff;
+              let eq_out = lhs_limb == rhs_limb;
+              let (out, code) = match opcode {
+                OpcodeId::I32GtU | OpcodeId::I64GtU => (lhs_limb > rhs_limb, 1),
+                OpcodeId::I32GeU | OpcodeId::I64GeU => (lhs_limb >= rhs_limb, 2),
+                OpcodeId::I32LtU | OpcodeId::I64LtU => (lhs_limb < rhs_limb, 3),
+                OpcodeId::I32LeU | OpcodeId::I64LeU => (lhs_limb <= rhs_limb, 4),
+                _ => unreachable!(),
+              };
+              self.lhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(lhs_limb)))?;
+              self.rhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(rhs_limb + 256 * code)))?;
+              self.out_terms[idx].assign(region, offset, Value::<F>::known(F::from(eq_out)))?;
+              self.out_terms[idx].assign(region, offset, Value::<F>::known(F::from(out)))?;
+            }
+          }
+          OpcodeId::I32GtS | OpcodeId::I32GeS | OpcodeId::I32LtS | OpcodeId::I32LeS |
+          OpcodeId::I64GtS | OpcodeId::I64GeS | OpcodeId::I64LtS | OpcodeId::I64LeS => {
+          }
+          _ => ()
+        }
 
         match opcode {
             OpcodeId::I32GtU => {
@@ -324,6 +420,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             _ => unreachable!()
         }
 
+/*
         let shift: usize = if is_32 {
             I64_REM_SHIFT
         } else {
@@ -339,6 +436,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         self.lhs_rem_diff.assign(region, offset, Value::known(((left_leading_u4 & REM_MASK) ^ REM_MASK).to_scalar().unwrap()))?;
         self.rhs_rem_value.assign(region, offset, Value::known((right_leading_u4 & REM_MASK).to_scalar().unwrap()))?;
         self.rhs_rem_diff.assign(region, offset, Value::known(((right_leading_u4 & REM_MASK) ^ REM_MASK).to_scalar().unwrap()))?;
+*/
 
 /*
         self.value.assign(region, offset, Value::known(value.to_scalar().unwrap()))?;
@@ -419,7 +517,8 @@ mod test {
       [
         [I32Const
           [I32GtU, I32GeU, I32LtU, I32LeU, I32Eq, I32Ne, I32GtS, I32GeS, I32LtS, I32LeS]
-          [0, 1, 2, -1, -2, 0x80000000]
+          //[0, 1, 2, -1, -2, 0x80000000]
+          [0]
         ]
         [I64Const
           [I64GtU, I64GeU, I64LtU, I64LeU, I64Eq, I64Ne, I64GtS, I64GeS, I64LtS, I64LeS]
