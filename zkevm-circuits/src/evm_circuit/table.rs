@@ -170,8 +170,10 @@ impl FixedTableTag {
                 (0..256).map(move |rhs| {
                     let lzcnt = bitintr::Lzcnt::lzcnt(lhs as u8) as u64;
                     let pos = 8 - lzcnt;
-                    let bit = 1 << pos;
-                    let filtred = (rhs & bit) >> pos;
+                    // If lzcnt is 8 that means that all zeros, mask is empty in this case.
+                    let bit = (1 << pos) >> 1;
+                    // In both cases, than mask is empty and if position is smallest, we do not shift after.
+                    let filtred = (rhs & bit) >> (pos.max(1) - 1);
                     [tag, F::from(lhs), F::from(rhs), F::from(filtred)]
                 })
             })),

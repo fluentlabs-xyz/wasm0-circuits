@@ -178,6 +178,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
 
         let mut is_32 = true;
 
+        println!("DEBUG rhs {rhs} lhs {lhs} res {res}");
         match opcode {
           OpcodeId::I32GtU | OpcodeId::I32GeU | OpcodeId::I32LtU | OpcodeId::I32LeU |
           OpcodeId::I64GtU | OpcodeId::I64GeU | OpcodeId::I64LtU | OpcodeId::I64LeU => {
@@ -196,6 +197,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
               self.rhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(rhs_limb)))?;
               self.neq_terms[idx].assign(region, offset, Value::<F>::known(F::from(neq_out)))?;
               self.out_terms[idx].assign(region, offset, Value::<F>::known(F::from(out)))?;
+              println!("DEBUG {idx} {lhs_limb} {rhs_limb} {neq_out} {out}");
             }
           }
           OpcodeId::I32GtS | OpcodeId::I32GeS | OpcodeId::I32LtS | OpcodeId::I32LeS |
@@ -260,29 +262,27 @@ mod test {
     }
 
     macro_rules! tests_from_data_lhs_rhs_matrix {
-        ([$Const:ident] [$op:ident]) => {
+        ([$Const:ident] [$op:ident] [$a:expr, $b:expr]) => {
             let lhs = make_args();
             let rhs = make_args();
-            //for rhs in args() {
-                run_test(bytecode! {
-                   $Const[lhs[0]]
-                   $Const[rhs[0]]
-                   $op
-                   Drop
-                   $Const[lhs[1]]
-                   $Const[rhs[1]]
-                   $op
-                   Drop
-                   $Const[lhs[0]]
-                   $Const[rhs[1]]
-                   $op
-                   Drop
-                   $Const[lhs[1]]
-                   $Const[rhs[0]]
-                   $op
-                   Drop
-                });
-            //}
+            run_test(bytecode! {
+               $Const[lhs[$a]]
+               $Const[rhs[$a]]
+               $op
+               Drop
+               $Const[lhs[$b]]
+               $Const[rhs[$b]]
+               $op
+               Drop
+               $Const[lhs[$a]]
+               $Const[rhs[$b]]
+               $op
+               Drop
+               $Const[lhs[$b]]
+               $Const[rhs[$a]]
+               $op
+               Drop
+            });
         }
     }
 
@@ -296,16 +296,18 @@ mod test {
                     fn make_args() -> Vec<i64> {
                       vec![$($t)*]
                     }
-                    $(#[test]
-                      fn $op() {
-                        tests_from_data_lhs_rhs_matrix! { [$Const] [$op] }
+                    $(mod $op {
+                      use super::*;
+                      #[test] fn test_0_1() { tests_from_data_lhs_rhs_matrix! { [$Const] [$op] [0, 1] } }
+                      #[test] fn test_1_2() { tests_from_data_lhs_rhs_matrix! { [$Const] [$op] [1, 2] } }
+                      #[test] fn test_2_3() { tests_from_data_lhs_rhs_matrix! { [$Const] [$op] [2, 3] } }
                     })*
                 })*
             }
         }
     }
 
-    // Example command to run test: cargo test generated_tests::I32Const::I32GtU
+    // Example command to run test: cargo test generated_tests::I32Const::I32GtU::test_0_1
     tests_from_data! {
       [
         [I32Const
