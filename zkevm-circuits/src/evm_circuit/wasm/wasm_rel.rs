@@ -261,28 +261,25 @@ mod test {
         ).run()
     }
 
-    macro_rules! tests_from_data_lhs_rhs_matrix {
-        ([$Const:ident] [$op:ident] [$a:expr, $b:expr]) => {
-            let lhs = make_args();
-            let rhs = make_args();
-            run_test(bytecode! {
-               $Const[lhs[$a]]
-               $Const[rhs[$a]]
-               $op
-               Drop
-               $Const[lhs[$b]]
-               $Const[rhs[$b]]
-               $op
-               Drop
-               $Const[lhs[$a]]
-               $Const[rhs[$b]]
-               $op
-               Drop
-               $Const[lhs[$b]]
-               $Const[rhs[$a]]
-               $op
-               Drop
-            });
+    // Idea here is to run only lower triangle of pair matrix, and do four operations at once (four tests inside).
+    // If any argument is not exist than test is skipped, also it is skippend out of triangle.
+    macro_rules! try_test_by_number {
+        ([$Const:ident] [$op:ident] [$n:expr, $m:expr]) => {
+            let run = || {
+                let i = $n % $m;
+                let j = $n / $m;
+                if i >= j { return Ok(()) }
+                let a = try_get_arg($n % $m)?;
+                let b = try_get_arg($n / $m)?;
+                run_test(bytecode! {
+                    $Const[a] $Const[a] $op Drop
+                    $Const[b] $Const[b] $op Drop
+                    $Const[a] $Const[b] $op Drop
+                    $Const[b] $Const[a] $op Drop
+                });
+                Ok(())
+            };
+            let _: Result<(),()> = run();
         }
     }
 
@@ -293,21 +290,23 @@ mod test {
                 use super::*;
                 $(mod $Const {
                     use super::*;
-                    fn make_args() -> Vec<i64> {
-                      vec![$($t)*]
+                    fn try_get_arg(idx: usize) -> Result<i64, ()> {
+                      vec![$($t)*].get(idx).ok_or(()).map(|x| *x)
                     }
                     $(mod $op {
                       use super::*;
-                      #[test] fn test_0_1() { tests_from_data_lhs_rhs_matrix! { [$Const] [$op] [0, 1] } }
-                      #[test] fn test_1_2() { tests_from_data_lhs_rhs_matrix! { [$Const] [$op] [1, 2] } }
-                      #[test] fn test_2_3() { tests_from_data_lhs_rhs_matrix! { [$Const] [$op] [2, 3] } }
+                      use seq_macro::seq;
+                      seq!(N in 0..100 {
+                        #[test] fn test_~N() { try_test_by_number! { [$Const] [$op] [N, 10] } }
+                      });
                     })*
                 })*
             }
         }
     }
 
-    // Example command to run test: cargo test generated_tests::I32Const::I32GtU::test_0_1
+    // Example command to run test: cargo test generated_tests::I32Const::I32GtU::test_0
+    // Encoding of test number is decimal pair by ten, ones and tens, a + b * 10
     tests_from_data! {
       [
         [I32Const
