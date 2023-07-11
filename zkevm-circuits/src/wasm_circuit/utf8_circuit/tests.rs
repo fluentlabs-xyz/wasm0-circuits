@@ -7,9 +7,9 @@ use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::{Advice, Circuit, Column};
 use bus_mapping::state_db::CodeDB;
 use eth_types::{Field, ToWord};
-use crate::wasm_circuit::tables::range_table::RangeTableConfig;
 use crate::wasm_circuit::utf8_circuit::circuit::{UTF8Chip, UTF8Config};
-use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -65,8 +65,6 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         layouter.assign_region(
             || "utf8 region",
             |mut region| {
-                utf8_chip.assign_init(&mut region, self.offset_shift + self.bytes.len() - 1);
-
                 for (offset, &byte_val) in self.bytes.iter().enumerate() {
                     let offset = offset + self.offset_shift;
                     region.assign_advice(

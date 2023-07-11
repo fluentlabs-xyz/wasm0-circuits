@@ -7,8 +7,8 @@ use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
 use eth_types::{Field, Hash, ToWord};
 use crate::wasm_circuit::circuit::{WasmChip, WasmConfig};
-use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 
 #[derive(Default)]
 struct TestCircuit<F> {
@@ -35,7 +35,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let wasm_chip = WasmChip::construct(config);
+        let mut wasm_chip = WasmChip::construct(config);
         let wasm_bytecode = WasmBytecode::new(self.bytes.clone(), self.code_hash.to_word());
 
         wasm_chip.load(&mut layouter, &wasm_bytecode)?;
@@ -43,11 +43,6 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         layouter.assign_region(
             || "wasm_chip region",
             |mut region| {
-                let offset_max = self.bytes.len() -1;
-                // wasm_chip.assign_init(
-                //     &mut region,
-                //     offset_max,
-                // )?;
                 wasm_chip.assign_auto(
                     &mut region,
                     &wasm_bytecode,
@@ -92,7 +87,7 @@ mod wasm_circuit_tests {
     }
 
     #[test]
-    pub fn test_wasm_bytecode_from_file1_must_succeed() {
+    pub fn file1_succeeds() {
         let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
         let wasm_binary = wat2wasm(data).unwrap();
@@ -158,7 +153,7 @@ mod wasm_circuit_tests {
     }
 
     #[test]
-    pub fn test_wasm_bytecode_from_file2_must_succeed() {
+    pub fn file2_succeeds() {
         let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
         let wasm_binary = wat2wasm(data).unwrap();
@@ -199,7 +194,7 @@ mod wasm_circuit_tests {
     }
 
     #[test]
-    pub fn test_wasm_bytecode_has_bad_prefix_must_fail() {
+    pub fn bad_magic_prefix_fails() {
         let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
         let mut wasm_binary = wat2wasm(data).unwrap();

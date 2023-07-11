@@ -8,7 +8,7 @@ use log::debug;
 use eth_types::Field;
 use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip, LEB128Config};
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_sn_recovered_at_position;
-use crate::wasm_circuit::wasm_sections::consts::LebParams;
+use crate::wasm_circuit::sections::consts::LebParams;
 
 #[derive(Default)]
 struct TestCircuit<'a, F, const IS_SIGNED: bool> {
@@ -60,8 +60,6 @@ impl<'a, F: Field, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, IS_S
         layouter.assign_region(
             || "leb128 region",
             |mut region| {
-                // leb128_chip.assign_init(&mut region, self.offset_shift + self.leb_bytes.len() - 1);
-
                 let mut sn_recovered_at_pos: u64 = 0;
                 for (byte_rel_offset, &leb_byte) in self.leb_bytes.iter().enumerate() {
                     let offset = byte_rel_offset + self.offset_shift;

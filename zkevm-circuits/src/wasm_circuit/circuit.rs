@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -21,25 +22,27 @@ use crate::wasm_circuit::common::wasm_compute_section_len;
 use crate::wasm_circuit::consts::{SECTION_ID_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
-use crate::wasm_circuit::tables::range_table::RangeTableConfig;
 use crate::wasm_circuit::types::AssignType;
 use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
-use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::wasm_bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::wasm_sections::consts::LebParams;
-use crate::wasm_circuit::wasm_sections::helpers::configure_check_for_transition;
-use crate::wasm_circuit::wasm_sections::code::code_body::circuit::WasmCodeSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::data::data_body::circuit::WasmDataSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::element::element_body::circuit::WasmElementSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::export::export_body::circuit::WasmExportSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::function::function_body::circuit::WasmFunctionSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::global::global_body::circuit::WasmGlobalSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::import::import_body::circuit::WasmImportSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::memory::memory_body::circuit::WasmMemorySectionBodyChip;
-use crate::wasm_circuit::wasm_sections::start::start_body::circuit::WasmStartSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::table::table_body::circuit::WasmTableSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::r#type::type_body::circuit::WasmTypeSectionBodyChip;
-use crate::wasm_circuit::wasm_sections::r#type::type_item::circuit::{WasmTypeSectionItemChip};
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::sections::consts::LebParams;
+use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::sections::code::code_body::circuit::WasmCodeSectionBodyChip;
+use crate::wasm_circuit::sections::data::data_body::circuit::WasmDataSectionBodyChip;
+use crate::wasm_circuit::sections::element::element_body::circuit::WasmElementSectionBodyChip;
+use crate::wasm_circuit::sections::export::export_body::circuit::WasmExportSectionBodyChip;
+use crate::wasm_circuit::sections::function::function_body::circuit::WasmFunctionSectionBodyChip;
+use crate::wasm_circuit::sections::global::global_body::circuit::WasmGlobalSectionBodyChip;
+use crate::wasm_circuit::sections::import::import_body::circuit::WasmImportSectionBodyChip;
+use crate::wasm_circuit::sections::memory::memory_body::circuit::WasmMemorySectionBodyChip;
+use crate::wasm_circuit::sections::start::start_body::circuit::WasmStartSectionBodyChip;
+use crate::wasm_circuit::sections::table::table_body::circuit::WasmTableSectionBodyChip;
+use crate::wasm_circuit::sections::r#type::type_body::circuit::WasmTypeSectionBodyChip;
+use crate::wasm_circuit::sections::r#type::type_item::circuit::{WasmTypeSectionItemChip};
+use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
+use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
+use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
 
 pub struct WasmSectionConfig<F: Field> {
     _marker: PhantomData<F>,
@@ -71,6 +74,7 @@ pub struct WasmConfig<F: Field> {
     wasm_table_section_body_chip: Rc<WasmTableSectionBodyChip<F>>,
     wasm_element_section_body_chip: Rc<WasmElementSectionBodyChip<F>>,
     is_section_id_grows_lt_chip: LtChip<F, 1>,
+    dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     index_at_magic_prefix_count: usize,
     index_at_magic_prefix: Vec<IsZeroChip<F>>,
     index_at_magic_prefix_prev: Vec<IsZeroChip<F>>,
@@ -134,6 +138,9 @@ impl<F: Field> WasmChip<F>
         );
         let mut utf8_chip = Rc::new(UTF8Chip::construct(utf8_config));
 
+        let config = DynamicIndexesChip::configure(cs);
+        let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(config));
+
         let config = WasmTypeSectionItemChip::configure(
             cs,
             wasm_bytecode_table.clone(),
@@ -145,6 +152,7 @@ impl<F: Field> WasmChip<F>
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
             wasm_type_section_item_chip.clone(),
+            dynamic_indexes_chip.clone(),
         );
         let wasm_type_section_body_chip = Rc::new(WasmTypeSectionBodyChip::construct(config));
 
@@ -195,6 +203,7 @@ impl<F: Field> WasmChip<F>
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
+            dynamic_indexes_chip.clone(),
         );
         let wasm_code_section_body_chip = Rc::new(WasmCodeSectionBodyChip::construct(config));
 
@@ -311,9 +320,9 @@ impl<F: Field> WasmChip<F>
             ]))
         });
         cs.lookup("all bytecode values are byte values", |vc| {
-            let bytecode_value = vc.query_advice(wasm_bytecode_table.value, Rotation::cur());
+            let bytecode_value_expr = vc.query_advice(wasm_bytecode_table.value, Rotation::cur());
 
-            vec![(bytecode_value, range_table_config_0_256.value)]
+            vec![(bytecode_value_expr, range_table_config_0_256.value)]
         });
 
         cs.create_gate("wasm magic prefix check", |vc| {
@@ -380,7 +389,6 @@ impl<F: Field> WasmChip<F>
                 }
             );
 
-            // TODO uncomment when all section body chips are ready
             cb.condition(
                 is_section_body_expr.clone(),
                 |bcb| {
@@ -607,6 +615,33 @@ impl<F: Field> WasmChip<F>
             vec![(section_id_expr.clone(), section_id_range_table_config.value)]
         });
 
+        dynamic_indexes_chip.lookup_args(
+            "code section func indexes is a valid setup",
+            cs,
+            |vc| {
+                let sn_expr = vc.query_advice(wasm_code_section_body_chip.config.leb128_chip.config.sn, Rotation::cur());
+                [
+                    vc.query_fixed(wasm_code_section_body_chip.config.is_funcs_count, Rotation::cur()),
+                    sn_expr.clone(),
+                    (Tag::CodeSectionFuncIndex as i32).expr(),
+                    true.expr(),
+                ]
+            }
+        );
+        dynamic_indexes_chip.lookup_args(
+            "start section func indexes are valid",
+            cs,
+            |vc| {
+                let sn_expr = vc.query_advice(wasm_start_section_body_chip.config.leb128_chip.config.sn, Rotation::cur());
+                [
+                    vc.query_fixed(wasm_start_section_body_chip.config.is_func_index, Rotation::cur()),
+                    sn_expr.clone(),
+                    (Tag::CodeSectionFuncIndex as i32).expr(),
+                    false.expr(),
+                ]
+            }
+        );
+
         let config = WasmConfig {
             poseidon_table,
             wasm_bytecode_table,
@@ -639,6 +674,7 @@ impl<F: Field> WasmChip<F>
             is_section_id_grows_lt_chip,
             _marker: PhantomData,
             range_table_config_0_128,
+            dynamic_indexes_chip,
         };
 
         config
@@ -780,7 +816,7 @@ impl<F: Field> WasmChip<F>
     }
 
     pub fn assign_auto(
-        &self,
+        &mut self,
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
     ) -> Result<(), Error> {
@@ -802,6 +838,7 @@ impl<F: Field> WasmChip<F>
             None,
         )?;
 
+        let mut dynamic_indexes_offset = 0;
         let mut wasm_bytes_offset = WASM_SECTIONS_START_INDEX;
         let mut section_id_prev: i64 = SECTION_ID_DEFAULT as i64;
         loop {
@@ -836,12 +873,12 @@ impl<F: Field> WasmChip<F>
                     ).unwrap();
                     let section_body_offset = section_len_last_byte_offset + 1;
                     match wasm_section {
-                        WasmSection::Custom => {}
                         WasmSection::Type => {
                             next_section_offset = self.config.wasm_type_section_body_chip.assign_auto(
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
+                                &mut dynamic_indexes_offset,
                             ).unwrap();
                         }
                         WasmSection::Import => {
@@ -905,6 +942,7 @@ impl<F: Field> WasmChip<F>
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
+                                &mut dynamic_indexes_offset,
                             ).unwrap();
                         }
                         WasmSection::Data => {
@@ -914,7 +952,7 @@ impl<F: Field> WasmChip<F>
                                 section_body_offset,
                             ).unwrap();
                         }
-                        WasmSection::DataCount => {}
+                        _ => { panic!("unsupported section '{:x?}'", wasm_section) }
                     }
                     debug!("wasm_section {:?} section_body_offset {} after assign_auto next_section_offset {}", wasm_section, section_body_offset, next_section_offset);
                 }

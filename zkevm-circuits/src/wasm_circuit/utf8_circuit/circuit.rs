@@ -11,8 +11,8 @@ use eth_types::Field;
 use gadgets::is_zero::{IsZeroChip, IsZeroInstruction};
 use gadgets::util::{Expr, not};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::tables::range_table::RangeTableConfig;
-use crate::wasm_circuit::wasm_bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
 
 #[derive(Debug, Clone)]
 pub struct UTF8Config<F: Field> {
@@ -373,27 +373,6 @@ impl<F: Field> UTF8Chip<F>
         };
 
         config
-    }
-
-    pub fn assign_init(
-        &self,
-        region: &mut Region<F>,
-        offset_max: usize,
-    ) {
-        for offset in 0..=offset_max {
-            self.assign(
-                region,
-                offset,
-                false,
-                0,
-                // false,
-                // false,
-                // 0,
-                // 0,
-                // 0,
-                // 0,
-            );
-        }
     }
 
     pub fn assign(

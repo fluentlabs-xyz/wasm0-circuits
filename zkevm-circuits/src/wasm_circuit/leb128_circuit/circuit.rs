@@ -9,7 +9,7 @@ use num_traits::pow;
 use eth_types::Field;
 use gadgets::util::{and, Expr, not, or, select};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::wasm_sections::consts::LebParams;
+use crate::wasm_circuit::sections::consts::LebParams;
 
 #[derive(Debug, Clone)]
 pub struct LEB128Config<F> {
@@ -225,27 +225,6 @@ impl<F: Field> LEB128Chip<F>
 
         config
     }
-
-    // pub fn assign_init(
-    //     &self,
-    //     region: &mut Region<F>,
-    //     offset_max: usize,
-    // ) {
-    //     for offset in 0..=offset_max {
-    //         self.assign(
-    //             region,
-    //             offset,
-    //             0,
-    //             false,
-    //             false,
-    //             false,
-    //             false,
-    //             false,
-    //             0,
-    //             0,
-    //         );
-    //     }
-    // }
 
     pub fn assign(
         &self,
