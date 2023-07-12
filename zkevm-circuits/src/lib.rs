@@ -21,6 +21,7 @@
 #![feature(thread_local)]
 
 #![feature(box_syntax)]
+#![feature(proc_macro_hygiene)]
 
 extern crate core;
 

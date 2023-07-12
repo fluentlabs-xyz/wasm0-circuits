@@ -30,33 +30,15 @@ const I32_REM_SHIFT: usize = 28usize;
 pub(crate) struct WasmRelGadget<F> {
     same_context: SameContextGadget<F>,
 
-    //is_eight_bytes: Cell<F>,
-
     lhs: Cell<F>,
     rhs: Cell<F>,
 
     // This limbs comes from absolute value.
     lhs_limbs: [Cell<F>; 8],
     rhs_limbs: [Cell<F>; 8],
-    eq_terms: [Cell<F>; 8],
+    neq_terms: [Cell<F>; 8],
     out_terms: [Cell<F>; 8],
-
-    //diff: Cell<F>,
-
-    //diff_inv: Cell<F>,
-    //res_is_eq: Cell<F>,
-    //res_is_lt: Cell<F>,
-    //res_is_gt: Cell<F>,
     res: Cell<F>,
-
-/*
-    lhs_leading_bit: Cell<F>,
-    rhs_leading_bit: Cell<F>,
-    lhs_rem_value: Cell<F>,
-    lhs_rem_diff: Cell<F>,
-    rhs_rem_value: Cell<F>,
-    rhs_rem_diff: Cell<F>,
-*/
 
     op_is_eq: Cell<F>,
     op_is_ne: Cell<F>,
@@ -79,22 +61,9 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
 
-        //let diff_inv = cb.alloc_unlimited_value();
-        //let res_is_eq = cb.alloc_bit_value();
-        //let res_is_lt = cb.alloc_bit_value();
-        //let res_is_gt = cb.alloc_bit_value();
-        let res = cb.alloc_unlimited_value();
-
         let lhs = cb.alloc_u64();
         let rhs = cb.alloc_u64();
-        //let diff = cb.alloc_u64();
-
-        //let lhs_leading_bit = cb.alloc_bit_value();
-        //let rhs_leading_bit = cb.alloc_bit_value();
-        //let lhs_rem_value = cb.alloc_common_range_value();
-        //let lhs_rem_diff = cb.alloc_common_range_value();
-        //let rhs_rem_value = cb.alloc_common_range_value();
-        //let rhs_rem_diff = cb.alloc_common_range_value();
+        let res = cb.alloc_u64();
 
         let op_is_eq = cb.alloc_bit_value();
         let op_is_ne = cb.alloc_bit_value();
@@ -104,16 +73,14 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         let op_is_ge = cb.alloc_bit_value();
         let op_is_sign = cb.alloc_bit_value();
 
-        //let is_eight_bytes = cb.alloc_bit_value();
-
         let rhs_limbs = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
                          cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
 
         let lhs_limbs = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
                          cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
 
-        let eq_terms = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
-                        cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
+        let neq_terms = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
+                         cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
 
         let out_terms = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
                          cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
@@ -129,17 +96,17 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
                          (rhs_limbs[idx].expr() + 256.expr() * code()) * enable(),
                          out_terms[idx].expr() * enable()],
             });
-            cb.add_lookup("Using OpRel fixed table for eq terms", Lookup::Fixed {
+            cb.add_lookup("Using OpRel fixed table for neq terms", Lookup::Fixed {
                 tag: FixedTableTag::OpRel.expr(),
                 values: [lhs_limbs[idx].expr() * enable(),
                          rhs_limbs[idx].expr() * enable(),
-                         eq_terms[idx].expr() * enable()],
+                         neq_terms[idx].expr() * enable()],
             });
         }
 
-        let mut eq_bits = eq_terms[0].expr();
-        for eq_i in 1..8 {
-            eq_bits = eq_bits + (1 << eq_i).expr() * eq_terms[eq_i].expr();
+        let mut neq_bits = neq_terms[0].expr();
+        for neq_i in 1..8 {
+            neq_bits = neq_bits + (1 << neq_i).expr() * neq_terms[neq_i].expr();
         }
         let mut out_bits = out_terms[0].expr();
         for out_i in 1..8 {
@@ -147,7 +114,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         }
         cb.add_lookup("Using ClzFilter fixed table", Lookup::Fixed {
             tag: FixedTableTag::ClzFilter.expr(),
-            values: [eq_bits * enable(),
+            values: [neq_bits * enable(),
                      out_bits.expr() * enable(),
                      res.expr() * enable()],
         });
@@ -156,127 +123,6 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         cb.stack_pop(lhs.expr());
         cb.stack_push(res.expr());
 
-/*
-        cb.require_zeros("op_rel: compare diff", vec![
-            (lhs.expr() + res_is_lt.expr() * diff.expr()
-                        - res_is_gt.expr() * diff.expr()
-                        - rhs.expr()),
-            (res_is_gt.expr() + res_is_lt.expr() + res_is_eq.expr() - 1.expr()),
-            (diff.expr() * res_is_eq.expr()),
-            (diff.expr() * diff_inv.expr() + res_is_eq.expr() - 1.expr()),
-        ]);
-
-        cb.require_zeros("op_rel: compare op", vec![
-            (op_is_eq.expr()
-                + op_is_ne.expr()
-                + op_is_lt.expr()
-                + op_is_gt.expr()
-                + op_is_le.expr()
-                + op_is_ge.expr()
-                - 1.expr()),
-        ]);
-*/
-
-        /* constraint_builder.push(
-            "compare leading bit",
-            Box::new(move |meta| {
-                let is_four_bytes = constant_from!(1) - is_eight_bytes.expr(meta);
-                vec![
-                    lhs_leading_bit.expr(meta) * constant_from!(8) + lhs_rem_value.expr(meta)
-                        - (is_four_bytes.clone() * lhs.u4_expr(meta, 7)
-                            + is_eight_bytes.expr(meta) * lhs.u4_expr(meta, 15))
-                            * op_is_sign.expr(meta),
-                    rhs_leading_bit.expr(meta) * constant_from!(8) + rhs_rem_value.expr(meta)
-                        - (is_four_bytes * rhs.u4_expr(meta, 7)
-                            + is_eight_bytes.expr(meta) * rhs.u4_expr(meta, 15))
-                            * op_is_sign.expr(meta),
-                    (rhs_rem_diff.expr(meta) + rhs_rem_value.expr(meta) - constant_from!(7))
-                        * op_is_sign.expr(meta),
-                    (lhs_rem_diff.expr(meta) + lhs_rem_value.expr(meta) - constant_from!(7))
-                        * op_is_sign.expr(meta),
-                ]
-            }),
-        ); */
-
-/*
-        cb.require_zeros("op_rel: compare op res", {
-            let l_pos_r_pos = (1.expr() - lhs_leading_bit.expr())
-                            * (1.expr() - rhs_leading_bit.expr());
-            let l_pos_r_neg = (1.expr() - lhs_leading_bit.expr()) * rhs_leading_bit.expr();
-            let l_neg_r_pos =
-                              lhs_leading_bit.expr() * (1.expr() - rhs_leading_bit.expr());
-            let l_neg_r_neg = lhs_leading_bit.expr() * rhs_leading_bit.expr();
-            vec![
-                op_is_eq.expr() * (res.expr() - res_is_eq.expr()),
-                op_is_ne.expr()
-                    * (res.expr() - 1.expr() + res_is_eq.expr()),
-                op_is_lt.expr()
-                    * (res.expr()
-                        - l_neg_r_pos.clone()
-                        - l_pos_r_pos.clone() * res_is_lt.expr()
-                        - l_neg_r_neg.clone() * res_is_lt.expr()),
-                op_is_le.expr()
-                    * (res.expr()
-                        - l_neg_r_pos.clone()
-                        - l_pos_r_pos.clone() * res_is_lt.expr()
-                        - l_neg_r_neg.clone() * res_is_lt.expr()
-                        - res_is_eq.expr()),
-                op_is_gt.expr()
-                    * (res.expr()
-                        - l_pos_r_neg.clone()
-                        - l_pos_r_pos.clone() * res_is_gt.expr()
-                        - l_neg_r_neg.clone() * res_is_gt.expr()),
-                op_is_ge.expr()
-                    * (res.expr()
-                        - l_pos_r_neg.clone()
-                        - l_pos_r_pos.clone() * res_is_gt.expr()
-                        - l_neg_r_neg.clone() * res_is_gt.expr()
-                        - res_is_eq.expr()),
-            ]
-        });
-
-        cb.require_zeros("compare op res", {
-
-                let l_pos_r_pos = (1.expr() - lhs_leading_bit.expr())
-                    * (1.expr() - rhs_leading_bit.expr());
-                let l_pos_r_neg =
-                    (1.expr() - lhs_leading_bit.expr()) * rhs_leading_bit.expr();
-                let l_neg_r_pos =
-                    lhs_leading_bit.expr() * (1.expr() - rhs_leading_bit.expr());
-                let l_neg_r_neg = lhs_leading_bit.expr() * rhs_leading_bit.expr();
-
-                vec![
-                    op_is_eq.expr() * (res.expr() - res_is_eq.expr()),
-                    op_is_ne.expr()
-                        * (res.expr() - 1.expr() + res_is_eq.expr()),
-                    op_is_lt.expr()
-                        * (res.expr()
-                            - l_neg_r_pos.clone()
-                            - l_pos_r_pos.clone() * res_is_lt.expr()
-                            - l_neg_r_neg.clone() * res_is_lt.expr()),
-                    op_is_le.expr()
-                        * (res.expr()
-                            - l_neg_r_pos.clone()
-                            - l_pos_r_pos.clone() * res_is_lt.expr()
-                            - l_neg_r_neg.clone() * res_is_lt.expr()
-                            - res_is_eq.expr()),
-                    op_is_gt.expr()
-                        * (res.expr()
-                            - l_pos_r_neg.clone()
-                            - l_pos_r_pos.clone() * res_is_gt.expr()
-                            - l_neg_r_neg.clone() * res_is_gt.expr()),
-                    op_is_ge.expr()
-                        * (res.expr()
-                            - l_pos_r_neg.clone()
-                            - l_pos_r_pos.clone() * res_is_gt.expr()
-                            - l_neg_r_neg.clone() * res_is_gt.expr()
-                            - res_is_eq.expr()),
-
-                ]
-            },
-        );
-*/
- 
         let opcode = cb.query_cell();
 
         // State transition
@@ -292,21 +138,14 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
 
         Self {
             same_context,
-            //diff_inv,
-            //res_is_eq,
-            //res_is_lt,
-            //res_is_gt,
             lhs,
             rhs,
             lhs_limbs,
             rhs_limbs,
+            neq_terms,
             out_terms,
-            eq_terms,
-            //diff,
-            //lookup_stack_read_lhs,
-            //lookup_stack_read_rhs,
-            //lookup_stack_write_res,
             res,
+
             op_is_eq,
             op_is_ne,
             op_is_lt,
@@ -314,15 +153,6 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             op_is_le,
             op_is_ge,
             op_is_sign,
-/*
-            is_eight_bytes,
-            lhs_leading_bit,
-            rhs_leading_bit,
-            lhs_rem_value,
-            lhs_rem_diff,
-            rhs_rem_value,
-            rhs_rem_diff,
-*/
         }
     }
 
@@ -346,34 +176,28 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         self.lhs.assign(region, offset, Value::known(lhs.to_scalar().unwrap()))?;
         self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
 
-        //let diff = if lhs < rhs { rhs - lhs } else { lhs - rhs };
-        //self.diff.assign(region, offset, Value::known(diff.to_scalar().unwrap()))?;
-        //self.diff_inv.assign(region, offset, Value::known(F::from(diff.as_u64()).invert().unwrap_or(F::zero())))?;
-
-        //self.res_is_eq.assign(region, offset, Value::known((lhs == rhs).into()))?;
-        //self.res_is_gt.assign(region, offset, Value::known((lhs > rhs).into()))?;
-        //self.res_is_lt.assign(region, offset, Value::known((lhs < rhs).into()))?;
-
         let mut is_32 = true;
 
+        println!("DEBUG rhs {rhs} lhs {lhs} res {res}");
         match opcode {
           OpcodeId::I32GtU | OpcodeId::I32GeU | OpcodeId::I32LtU | OpcodeId::I32LeU |
           OpcodeId::I64GtU | OpcodeId::I64GeU | OpcodeId::I64LtU | OpcodeId::I64LeU => {
             for idx in 0..8 {
               let lhs_limb = (lhs.0[0] >> (8 * idx)) & 0xff;
               let rhs_limb = (rhs.0[0] >> (8 * idx)) & 0xff;
-              let eq_out = lhs_limb == rhs_limb;
-              let (out, code) = match opcode {
-                OpcodeId::I32GtU | OpcodeId::I64GtU => (lhs_limb > rhs_limb, 1),
+              let neq_out = lhs_limb != rhs_limb;
+              let (out, _code) = match opcode {
+                OpcodeId::I32GtU | OpcodeId::I64GtU => (lhs_limb >  rhs_limb, 1),
                 OpcodeId::I32GeU | OpcodeId::I64GeU => (lhs_limb >= rhs_limb, 2),
-                OpcodeId::I32LtU | OpcodeId::I64LtU => (lhs_limb < rhs_limb, 3),
+                OpcodeId::I32LtU | OpcodeId::I64LtU => (lhs_limb <  rhs_limb, 3),
                 OpcodeId::I32LeU | OpcodeId::I64LeU => (lhs_limb <= rhs_limb, 4),
                 _ => unreachable!(),
               };
               self.lhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(lhs_limb)))?;
-              self.rhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(rhs_limb + 256 * code)))?;
-              self.out_terms[idx].assign(region, offset, Value::<F>::known(F::from(eq_out)))?;
+              self.rhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(rhs_limb)))?;
+              self.neq_terms[idx].assign(region, offset, Value::<F>::known(F::from(neq_out)))?;
               self.out_terms[idx].assign(region, offset, Value::<F>::known(F::from(out)))?;
+              println!("DEBUG {idx} {lhs_limb} {rhs_limb} {neq_out} {out}");
             }
           }
           OpcodeId::I32GtS | OpcodeId::I32GeS | OpcodeId::I32LtS | OpcodeId::I32LeS |
@@ -420,47 +244,6 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             _ => unreachable!()
         }
 
-/*
-        let shift: usize = if is_32 {
-            I64_REM_SHIFT
-        } else {
-            I32_REM_SHIFT
-        };
-
-        let left_leading_u4: u64 = lhs.0[0] >> (shift as u64);
-        let right_leading_u4: u64 = rhs.0[0] >> (shift as u64);
-
-        self.lhs_leading_bit.assign(region, offset, Value::known((left_leading_u4 >> REM_SHIFT != 0).to_scalar().unwrap()))?;
-        self.rhs_leading_bit.assign(region, offset, Value::known((right_leading_u4 >> REM_SHIFT != 0).to_scalar().unwrap()))?;
-        self.lhs_rem_value.assign(region, offset, Value::known((left_leading_u4 & REM_MASK).to_scalar().unwrap()))?;
-        self.lhs_rem_diff.assign(region, offset, Value::known(((left_leading_u4 & REM_MASK) ^ REM_MASK).to_scalar().unwrap()))?;
-        self.rhs_rem_value.assign(region, offset, Value::known((right_leading_u4 & REM_MASK).to_scalar().unwrap()))?;
-        self.rhs_rem_diff.assign(region, offset, Value::known(((right_leading_u4 & REM_MASK) ^ REM_MASK).to_scalar().unwrap()))?;
-*/
-
-/*
-        self.value.assign(region, offset, Value::known(value.to_scalar().unwrap()))?;
-        self.value_inv.assign(region, offset, Value::known(F::from(value.as_u64()).invert().unwrap_or(F::zero())))?;
-        self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
-
-        match opcode {
-            OpcodeId::I64Eqz => {
-                let zero_or_one = (value.as_u64() == 0) as u64;
-                self.res.assign(region, offset, Value::known(F::from(zero_or_one)))?;
-            }
-            OpcodeId::I32Eqz => {
-                let zero_or_one = (value.as_u32() == 0) as u64;
-                self.res.assign(region, offset, Value::known(F::from(zero_or_one)))?;
-            }
-            _ => unreachable!("not supported opcode: {:?}", opcode),
-        };
- 
-        let is_i64 = matches!(opcode,
-            OpcodeId::I64Eqz
-        );
-        self.is_i64.assign(region, offset, Value::known(F::from(is_i64 as u64)))?;
-*/
-
         Ok(())
     }
 }
@@ -478,18 +261,25 @@ mod test {
         ).run()
     }
 
-    macro_rules! tests_from_data_lhs_rhs_matrix {
-        ([$Const:ident] [$op:ident]) => {
-            for lhs in args() {
-               for rhs in args() {
-                    run_test(bytecode! {
-                      $Const[lhs]
-                      $Const[rhs]
-                      $op
-                      Drop
-                    });
-                }
-            }
+    // Idea here is to run only lower triangle of pair matrix, and do four operations at once (four tests inside).
+    // If any argument is not exist than test is skipped, also it is skippend out of triangle.
+    macro_rules! try_test_by_number {
+        ([$Const:ident] [$op:ident] [$n:expr, $m:expr]) => {
+            let run = || {
+                let i = $n % $m;
+                let j = $n / $m;
+                if i >= j { return Ok(()) }
+                let a = try_get_arg($n % $m)?;
+                let b = try_get_arg($n / $m)?;
+                run_test(bytecode! {
+                    $Const[a] $Const[a] $op Drop
+                    $Const[b] $Const[b] $op Drop
+                    $Const[a] $Const[b] $op Drop
+                    $Const[b] $Const[a] $op Drop
+                });
+                Ok(())
+            };
+            let _: Result<(),()> = run();
         }
     }
 
@@ -500,28 +290,33 @@ mod test {
                 use super::*;
                 $(mod $Const {
                     use super::*;
-                    fn args() -> Vec<i64> {
-                      vec![$($t)*]
+                    fn try_get_arg(idx: usize) -> Result<i64, ()> {
+                      vec![$($t)*].get(idx).ok_or(()).map(|x| *x)
                     }
-                    $(#[test]
-                      fn $op() {
-                        tests_from_data_lhs_rhs_matrix! { [$Const] [$op] }
+                    $(mod $op {
+                      use super::*;
+                      use seq_macro::seq;
+                      seq!(N in 0..100 {
+                        #[test] fn test_~N() { try_test_by_number! { [$Const] [$op] [N, 10] } }
+                      });
                     })*
                 })*
             }
         }
     }
 
-    // Example command to run test: cargo test generated_tests::I32Const::I32GtU
+    // Example command to run test: cargo test generated_tests::I32Const::I32GtU::test_0
+    // Encoding of test number is decimal pair by ten, ones and tens, a + b * 10
     tests_from_data! {
       [
         [I32Const
-          [I32GtU, I32GeU, I32LtU, I32LeU, I32Eq, I32Ne, I32GtS, I32GeS, I32LtS, I32LeS]
-          //[0, 1, 2, -1, -2, 0x80000000]
-          [0]
+          //[I32GtU, I32GeU, I32LtU, I32LeU, I32Eq, I32Ne, I32GtS, I32GeS, I32LtS, I32LeS]
+          [I32GtU, I32GeU, I32LtU, I32LeU]
+          [0, 1, 2, -1, -2, 0x80000000]
         ]
         [I64Const
-          [I64GtU, I64GeU, I64LtU, I64LeU, I64Eq, I64Ne, I64GtS, I64GeS, I64LtS, I64LeS]
+          //[I64GtU, I64GeU, I64LtU, I64LeU, I64Eq, I64Ne, I64GtS, I64GeS, I64LtS, I64LeS]
+          [I64GtU, I64GeU, I64LtU, I64LeU]
           [0, 1, 2, -1, -2, -0x100000001, -0x100000002, 0x100000001, 0x100000002]
         ]
       ]
