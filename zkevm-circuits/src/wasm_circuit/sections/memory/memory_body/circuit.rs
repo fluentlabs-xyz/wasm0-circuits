@@ -137,7 +137,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                     bcb.require_in_set(
                         "is_limit_type -> byte_val has valid value",
                         byte_val_expr.clone(),
-                        vec![(LimitType::MinOnly as i32).expr(), (LimitType::MinMax as i32).expr()],
+                        vec![LimitType::MinOnly.expr(), LimitType::MinMax.expr()],
                     );
                 }
             );

@@ -105,10 +105,10 @@ impl<F: Field> WasmElementSectionBodyChip<F>
 
             let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
 
-            let elem_type_is_0_expr= elem_type_chip.config.value_equals(ElementType::Zero, Rotation::cur())(vc);
-            let elem_type_is_1_expr= elem_type_chip.config.value_equals(ElementType::One, Rotation::cur())(vc);
-            let elem_type_is_0_next_expr= elem_type_chip.config.value_equals(ElementType::Zero, Rotation::next())(vc);
-            let elem_type_is_1_next_expr= elem_type_chip.config.value_equals(ElementType::One, Rotation::next())(vc);
+            let elem_type_is_0_expr= elem_type_chip.config.value_equals(ElementType::_0, Rotation::cur())(vc);
+            let elem_type_is_1_expr= elem_type_chip.config.value_equals(ElementType::_1, Rotation::cur())(vc);
+            let elem_type_is_0_next_expr= elem_type_chip.config.value_equals(ElementType::_0, Rotation::next())(vc);
+            let elem_type_is_1_next_expr= elem_type_chip.config.value_equals(ElementType::_1, Rotation::next())(vc);
 
             let leb128_sn_expr = vc.query_advice(leb128_chip.config.sn, Rotation::cur());
 
@@ -170,14 +170,15 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         "is_elem_type -> byte_val has valid value",
                         byte_val_expr.clone(),
                         vec![
-                            (ElementType::Zero as i32).expr(),
-                            (ElementType::One as i32).expr(),
-                            // (ElementType::ElementType2 as i32).expr(),
-                            // (ElementType::ElementType3 as i32).expr(),
-                            // (ElementType::ElementType4 as i32).expr(),
-                            // (ElementType::ElementType5 as i32).expr(),
-                            // (ElementType::ElementType6 as i32).expr(),
-                            // (ElementType::ElementType7 as i32).expr(),
+                            ElementType::_0.expr(),
+                            ElementType::_1.expr(),
+                            // TODO
+                            // ElementType::_2.expr(),
+                            // ElementType::_3.expr(),
+                            // ElementType::_4.expr(),
+                            // ElementType::_5.expr(),
+                            // ElementType::_6.expr(),
+                            // ElementType::_7.expr(),
                         ],
                     );
                 }
@@ -188,7 +189,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 |bcb| {
                     let elem_type_next_expr = elem_type_chip.config.value(Rotation::next())(vc);
                     bcb.require_equal(
-                        "is_elem_type -> byte_val==elem_type_next",
+                        "is_elem_type -> byte_val=elem_type_next",
                         byte_val_expr.clone(),
                         elem_type_next_expr.clone(),
                     );
@@ -201,7 +202,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                     let elem_type_prev_expr = elem_type_chip.config.value(Rotation::prev())(vc);
                     let is_not_elem_type_prev_expr = not::expr(vc.query_fixed(is_elem_type, Rotation::prev()));
                     bcb.require_equal(
-                        "is_elem_body && is_not_elem_type_prev -> elem_type==elem_type_prev",
+                        "is_elem_body && is_not_elem_type_prev -> elem_type=elem_type_prev",
                         is_not_elem_type_prev_expr.clone() * elem_type_expr.clone(),
                         is_not_elem_type_prev_expr.clone() * elem_type_prev_expr.clone(),
                     );
@@ -209,8 +210,8 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             );
 
             // is_items_count+ -> elem+(is_elem_type{1} -> elem_body+)
-            // elem_body+(is_elem_type{1}==0 -> is_numeric_instruction{1} -> is_numeric_instruction_leb_arg+ -> is_block_end{1} -> is_funcs_idx_count+ -> is_func_idx*)
-            // elem_body+(is_elem_type{1}==1 -> is_elem_kind{1} -> is_funcs_idx_count+ -> is_func_idx*)
+            // elem_body+(is_elem_type{1}=0 -> is_numeric_instruction{1} -> is_numeric_instruction_leb_arg+ -> is_block_end{1} -> is_funcs_idx_count+ -> is_func_idx*)
+            // elem_body+(is_elem_type{1}=1 -> is_elem_kind{1} -> is_funcs_idx_count+ -> is_func_idx*)
             configure_check_for_transition(
                 &mut cb,
                 vc,
@@ -227,11 +228,11 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 false,
                 &[is_items_count, is_func_idx, is_funcs_idx_count, ],
             );
-            // elem_body+(is_elem_type{1}==0 -> is_numeric_instruction{1} -> is_numeric_instruction_leb_arg+ -> is_block_end{1} -> is_funcs_idx_count+ -> is_func_idx*)
+            // elem_body+(is_elem_type{1}=0 -> is_numeric_instruction{1} -> is_numeric_instruction_leb_arg+ -> is_block_end{1} -> is_funcs_idx_count+ -> is_func_idx*)
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_elem_type{1}==0 -> is_numeric_instruction{1}",
+                "check next: is_elem_type{1}=0 -> is_numeric_instruction{1}",
                 and::expr([
                     is_elem_type_expr.clone(),
                     elem_type_is_0_next_expr.clone(),
@@ -242,7 +243,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_elem_type{1}==0 -> is_numeric_instruction{1}",
+                "check prev: is_elem_type{1}=0 -> is_numeric_instruction{1}",
                 and::expr([
                     is_numeric_instruction_expr.clone(),
                     elem_type_is_0_expr.clone(),
@@ -338,11 +339,11 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 false,
                 &[is_funcs_idx_count, is_func_idx, ],
             );
-            // elem_body+(is_elem_type{1}==1 -> is_elem_kind{1} -> is_funcs_idx_count+ -> is_func_idx*)
+            // elem_body+(is_elem_type{1}=1 -> is_elem_kind{1} -> is_funcs_idx_count+ -> is_func_idx*)
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_elem_type{1}==1 -> is_elem_kind{1}",
+                "check next: is_elem_type{1}=1 -> is_elem_kind{1}",
                 and::expr([
                     is_elem_type_expr.clone(),
                     elem_type_is_1_next_expr.clone(),
@@ -353,7 +354,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check prev: is_elem_type{1}==1 -> is_elem_kind{1}",
+                "check prev: is_elem_type{1}=1 -> is_elem_kind{1}",
                 and::expr([
                     is_elem_kind_expr.clone(),
                     elem_type_is_1_expr.clone(),
@@ -492,7 +493,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                     offset,
                     || Value::known(F::from(assign_value)),
                 ).unwrap();
-                let opcode = (assign_value as i32).try_into().unwrap();
+                let opcode: ElementType = (assign_value as u8).try_into().unwrap();
                 self.config.elem_type_chip.assign(
                     region,
                     offset,

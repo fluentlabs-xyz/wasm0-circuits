@@ -92,7 +92,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                     bcb.require_equal(
                         "type_section_item type has valid value",
                         byte_value_expr.clone(),
-                        (FuncType as i32).expr()
+                        FuncType.expr()
                     )
                 }
             );
@@ -107,8 +107,8 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                         "type_section_item input/output type has valid value",
                         byte_value_expr.clone(),
                         vec![
-                            (NumType::I32 as i32).expr(),
-                            (NumType::I64 as i32).expr(),
+                            NumType::I32.expr(),
+                            NumType::I64.expr(),
                         ]
                     )
                 }

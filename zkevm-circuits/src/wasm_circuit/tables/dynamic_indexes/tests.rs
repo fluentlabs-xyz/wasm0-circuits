@@ -51,12 +51,12 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         test_circuit_config.chip.lookup_args(
             "start section func index lookup test not_terminator",
             cs,
-            |vc| [1.expr(), 1.expr(), (Tag::CodeSectionFuncIndex as i32).expr(), false.expr(), ]
+            |vc| [1.expr(), 1.expr(), Tag::CodeSectionFuncIndex.expr(), false.expr(), ]
         );
         test_circuit_config.chip.lookup_args(
             "start section func index lookup test not_terminator",
             cs,
-            |vc| [1.expr(), 5.expr(), (Tag::CodeSectionFuncIndex as i32).expr(), true.expr(), ]
+            |vc| [1.expr(), 5.expr(), Tag::CodeSectionFuncIndex.expr(), true.expr(), ]
         );
 
         test_circuit_config

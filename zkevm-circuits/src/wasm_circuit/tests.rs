@@ -146,6 +146,8 @@ mod wasm_circuit_tests {
             "_evm_address",
             "_evm_balance",
             "_evm_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func",
+            "test",
+            "global-i32",
         ];
         for str in strings {
             debug!("'{}' in hex {:x?} in decimal {:?}", str, str.to_string().as_bytes(), str.to_string().as_bytes());

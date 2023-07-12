@@ -179,10 +179,10 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                         "is_exportdesc_type -> byte_val has valid value",
                         byte_val_expr.clone(),
                         vec![
-                            (ExportDesc::FuncExportDesc as i32).expr(),
-                            (ExportDesc::TableExportDesc as i32).expr(),
-                            (ExportDesc::MemExportDesc as i32).expr(),
-                            (ExportDesc::GlobalExportDesc as i32).expr(),
+                            ExportDesc::FuncExportDesc.expr(),
+                            ExportDesc::TableExportDesc.expr(),
+                            ExportDesc::MemExportDesc.expr(),
+                            ExportDesc::GlobalExportDesc.expr(),
                         ],
                     );
                 }

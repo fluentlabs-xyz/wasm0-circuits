@@ -3,7 +3,6 @@ use halo2_proofs::{
 };
 use std::{marker::PhantomData};
 use std::rc::Rc;
-use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::{Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
@@ -12,8 +11,7 @@ use log::debug;
 use eth_types::Field;
 use gadgets::util::{Expr, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::consts::NumericInstruction::I32Const;
-use crate::wasm_circuit::consts::{MemSegmentType, WASM_BLOCK_END};
+use crate::wasm_circuit::consts::{MemSegmentType, NumericInstruction, WASM_BLOCK_END};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -225,7 +223,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 is_block_end_expr.clone(),
                 |bcb| {
                     bcb.require_equal(
-                        "is_block_end -> byte value == WASM_BLOCK_END",
+                        "is_block_end -> byte value = WASM_BLOCK_END",
                         byte_val_expr.clone(),
                         WASM_BLOCK_END.expr(),
                     )
@@ -239,10 +237,10 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         "is_mem_segment_type -> byte value is correct",
                         byte_val_expr.clone(),
                         vec![
-                            (MemSegmentType::ActiveZero as i32).expr(),
+                            MemSegmentType::ActiveZero.expr(),
                             // TODO add support for other types
-                            // (MemSegmentType::Passive as i32).expr(),
-                            // (MemSegmentType::ActiveVariadic as i32).expr(),
+                            // MemSegmentType::Passive.expr(),
+                            // MemSegmentType::ActiveVariadic.expr(),
                         ],
                     )
                 }
@@ -255,7 +253,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         "is_mem_segment_size_opcode -> byte value is correct",
                         byte_val_expr.clone(),
                         vec![
-                            (I32Const as i32).expr(),
+                            NumericInstruction::I32Const.expr(),
                             // TODO add support for other types?
                         ],
                     )

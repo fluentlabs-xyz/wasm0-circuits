@@ -78,7 +78,7 @@ impl<F: Field> UTF8Chip<F>
         );
         let byte_val_is_zero_chip = IsZeroChip::construct(byte_val_is_zero_config);
 
-        cs.create_gate("UTF8 gate: q_enable==1", |vc| {
+        cs.create_gate("UTF8 gate: q_enable=1", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
@@ -103,7 +103,7 @@ impl<F: Field> UTF8Chip<F>
             // cb.require_boolean("is_bytes_count_3 is bool", is_bytes_count_3_expr.clone());
             // cb.require_boolean("is_bytes_count_4 is bool", is_bytes_count_4_expr.clone());
 
-            cb.require_zero("q_enable==1 -> byte_val!=0", byte_val_is_zero_chip.config().expr());
+            cb.require_zero("q_enable=1 -> byte_val!=0", byte_val_is_zero_chip.config().expr());
 
             // TODO test
             // cb.condition(
@@ -129,13 +129,13 @@ impl<F: Field> UTF8Chip<F>
             //     not::expr(is_first_byte_expr.clone()),
             //     |bcb| {
             //         let is_bytes_count_1_prev_expr = vc.query_fixed(is_bytes_count_1, Rotation::prev());
-            //         bcb.require_equal("is_first_byte==0 -> prev.is_byte_count_1 = cur.is_byte_count_1", is_bytes_count_1_prev_expr, is_bytes_count_1_expr.clone());
+            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_1 = cur.is_byte_count_1", is_bytes_count_1_prev_expr, is_bytes_count_1_expr.clone());
             //         let is_bytes_count_2_prev_expr = vc.query_fixed(is_bytes_count_2, Rotation::prev());
-            //         bcb.require_equal("is_first_byte==0 -> prev.is_byte_count_2 = cur.is_byte_count_2", is_bytes_count_2_prev_expr, is_bytes_count_2_expr.clone());
+            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_2 = cur.is_byte_count_2", is_bytes_count_2_prev_expr, is_bytes_count_2_expr.clone());
             //         let is_bytes_count_3_prev_expr = vc.query_fixed(is_bytes_count_3, Rotation::prev());
-            //         bcb.require_equal("is_first_byte==0 -> prev.is_byte_count_3 = cur.is_byte_count_3", is_bytes_count_3_prev_expr, is_bytes_count_3_expr.clone());
+            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_3 = cur.is_byte_count_3", is_bytes_count_3_prev_expr, is_bytes_count_3_expr.clone());
             //         let is_bytes_count_4_prev_expr = vc.query_fixed(is_bytes_count_4, Rotation::prev());
-            //         bcb.require_equal("is_first_byte==0 -> prev.is_byte_count_4 = cur.is_byte_count_4", is_bytes_count_4_prev_expr, is_bytes_count_4_expr.clone());
+            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_4 = cur.is_byte_count_4", is_bytes_count_4_prev_expr, is_bytes_count_4_expr.clone());
             //     }
             // );
             //
@@ -189,7 +189,7 @@ impl<F: Field> UTF8Chip<F>
             //     is_last_byte_expr.clone(),
             //     |cbc| {
             //         cbc.require_equal(
-            //             "is_last_byte==1 -> byte_mul==1",
+            //             "is_last_byte=1 -> byte_mul=1",
             //             byte_mul_expr.clone(),
             //             1.expr(),
             //         )
@@ -200,7 +200,7 @@ impl<F: Field> UTF8Chip<F>
             //     |cbc| {
             //         let byte_mul_next = vc.query_advice(byte_mul, Rotation::next());
             //         cbc.require_equal(
-            //             "is_last_byte==0 -> cur.byte_mul==next.byte_mul * 0b1000000",
+            //             "is_last_byte=0 -> cur.byte_mul=next.byte_mul * 0b1000000",
             //             byte_mul_expr.clone(),
             //             byte_mul_next * 0b1000000.expr(),
             //         )
@@ -224,7 +224,7 @@ impl<F: Field> UTF8Chip<F>
             //             0b10000000.expr(),
             //         );
             //         bcb.require_equal(
-            //             "is_last_byte==0 -> codepoint_recovered == codepoint_recovered_prev + (byte_val - byte_mask) * byte_mul",
+            //             "is_last_byte=0 -> codepoint_recovered = codepoint_recovered_prev + (byte_val - byte_mask) * byte_mul",
             //             codepoint_recovered_expr.clone(),
             //             codepoint_recovered_prev_expr.clone() + (byte_val_expr.clone() - bit_mask_expr.clone()) * byte_mul_expr.clone(),
             //         )
@@ -234,28 +234,28 @@ impl<F: Field> UTF8Chip<F>
             //     is_last_byte_expr.clone(),
             //     |bcb| {
             //         bcb.require_equal(
-            //             "is_last_byte==1 -> codepoint_recovered==codepoint",
+            //             "is_last_byte=1 -> codepoint_recovered=codepoint",
             //             codepoint_recovered_expr.clone(),
             //             codepoint_expr.clone(),
             //         )
             //     }
             // );
 
-            // to do: is_first_byte==1 -> remove bit mask and check that value greater 0 (checks for 'overlong encoding' -> not a valid utf8 according to specs)
+            // to do: is_first_byte=1 -> remove bit mask and check that value greater 0 (checks for 'overlong encoding' -> not a valid utf8 according to specs)
 
             // cb.condition(
             //     not::expr(is_first_byte_expr.clone()),
             //     |bcb| {
             //         let codepoint_prev_expr = vc.query_advice(codepoint, Rotation::prev());
             //         bcb.require_equal(
-            //             "is_first_byte==0 -> prev.codepoint = cur.codepoint",
+            //             "is_first_byte=0 -> prev.codepoint = cur.codepoint",
             //             codepoint_prev_expr,
             //             codepoint_expr.clone(),
             //         )
             //     }
             // );
             //
-            // // block of checks below is for: is_first_byte==1 -> bit mask is valid according to number of bytes for encoding
+            // // block of checks below is for: is_first_byte=1 -> bit mask is valid according to number of bytes for encoding
             // cb.condition(
             //     and::expr([
             //         is_first_byte_expr.clone(),
@@ -266,7 +266,7 @@ impl<F: Field> UTF8Chip<F>
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
             //         bcb.require_equal(
-            //             "is_first_byte==0 -> byte_val-0b00000000 must belong to [1..2^7-1]",
+            //             "is_first_byte=0 -> byte_val-0b00000000 must belong to [1..2^7-1]",
             //             (1..pow(2, 7)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
             //         )
@@ -282,7 +282,7 @@ impl<F: Field> UTF8Chip<F>
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
             //         bcb.require_equal(
-            //             "is_first_byte==0 -> byte_val-0b11000000 must belong to [1..2^5-1]",
+            //             "is_first_byte=0 -> byte_val-0b11000000 must belong to [1..2^5-1]",
             //             (1..pow(2, 5)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
             //         )
@@ -298,7 +298,7 @@ impl<F: Field> UTF8Chip<F>
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
             //         bcb.require_equal(
-            //             "is_first_byte==0 -> byte_val-0b11000000 must belong to [1..2^4-1]",
+            //             "is_first_byte=0 -> byte_val-0b11000000 must belong to [1..2^4-1]",
             //             (1..pow(2, 4)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
             //         )
@@ -314,7 +314,7 @@ impl<F: Field> UTF8Chip<F>
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
             //         bcb.require_equal(
-            //             "is_first_byte==0 -> byte_val-0b11000000 must belong to [1..2^3-1]",
+            //             "is_first_byte=0 -> byte_val-0b11000000 must belong to [1..2^3-1]",
             //             (1..pow(2, 3)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
             //         )
@@ -327,7 +327,7 @@ impl<F: Field> UTF8Chip<F>
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr;
             //         // TODO replace with lookup
             //         bcb.require_equal(
-            //             "is_first_byte==0 -> byte_val-0b10000000 must belong to [1..2^6-1]",
+            //             "is_first_byte=0 -> byte_val-0b10000000 must belong to [1..2^6-1]",
             //             (1..pow(2, 6)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
             //         )
@@ -344,14 +344,14 @@ impl<F: Field> UTF8Chip<F>
             vec![(q_enable_expr * byte_val_expr, eligible_byte_vals_range_table_config.value)]
         });
 
-        // cs.create_gate("UTF8 gate: q_enable==0", |vc| {
+        // cs.create_gate("UTF8 gate: q_enable=0", |vc| {
         //     let mut cb = BaseConstraintBuilder::default();
         //
         //     let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
         //     let is_first_byte_expr = vc.query_fixed(is_first_byte, Rotation::cur());
         //
-        //     cb.require_zero("is_first_byte==0", is_first_byte_expr.clone());
-        //     cb.require_zero("is_last_byte==0", is_first_byte_expr.clone());
+        //     cb.require_zero("is_first_byte=0", is_first_byte_expr.clone());
+        //     cb.require_zero("is_last_byte=0", is_first_byte_expr.clone());
         //
         //     cb.gate(not::expr(q_enable_expr.clone()))
         // });
@@ -412,28 +412,28 @@ impl<F: Field> UTF8Chip<F>
         // ).unwrap();
         //
         // region.assign_fixed(
-        //     || format!("assign 'is_bytes_count_1' to {} at {}", bytes_count==1, offset),
+        //     || format!("assign 'is_bytes_count_1' to {} at {}", bytes_count=1, offset),
         //     self.config.is_bytes_count_1,
         //     offset,
-        //     || Value::known(F::from((bytes_count==1) as u64)),
+        //     || Value::known(F::from((bytes_count=1) as u64)),
         // ).unwrap();
         // region.assign_fixed(
-        //     || format!("assign 'is_bytes_count_2' to {} at {}", bytes_count==2, offset),
+        //     || format!("assign 'is_bytes_count_2' to {} at {}", bytes_count=2, offset),
         //     self.config.is_bytes_count_2,
         //     offset,
-        //     || Value::known(F::from((bytes_count==2) as u64)),
+        //     || Value::known(F::from((bytes_count=2) as u64)),
         // ).unwrap();
         // region.assign_fixed(
-        //     || format!("assign 'is_bytes_count_3' to {} at {}", bytes_count==3, offset),
+        //     || format!("assign 'is_bytes_count_3' to {} at {}", bytes_count=3, offset),
         //     self.config.is_bytes_count_3,
         //     offset,
-        //     || Value::known(F::from((bytes_count==3) as u64)),
+        //     || Value::known(F::from((bytes_count=3) as u64)),
         // ).unwrap();
         // region.assign_fixed(
-        //     || format!("assign 'is_bytes_count_4' to {} at {}", bytes_count==4, offset),
+        //     || format!("assign 'is_bytes_count_4' to {} at {}", bytes_count=4, offset),
         //     self.config.is_bytes_count_4,
         //     offset,
-        //     || Value::known(F::from((bytes_count==4) as u64)),
+        //     || Value::known(F::from((bytes_count=4) as u64)),
         // ).unwrap();
         //
         // region.assign_advice(

@@ -116,8 +116,8 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                         "reference_type => byte value is correct",
                         byte_val_expr.clone(),
                         vec![
-                            (ReferenceType::FuncRef as i32).expr(),
-                            (ReferenceType::ExternRef as i32).expr(),
+                            ReferenceType::FuncRef.expr(),
+                            ReferenceType::ExternRef.expr(),
                         ],
                     )
                 }
@@ -130,8 +130,8 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                         "limit_type => byte value is correct",
                         byte_val_expr.clone(),
                         vec![
-                            (LimitType::MinOnly as i32).expr(),
-                            (LimitType::MinMax as i32).expr(),
+                            LimitType::MinOnly.expr(),
+                            LimitType::MinMax.expr(),
                         ],
                     )
                 }

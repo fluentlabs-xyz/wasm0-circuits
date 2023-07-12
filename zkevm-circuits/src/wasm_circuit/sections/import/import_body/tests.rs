@@ -11,6 +11,7 @@ use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::import::import_body::circuit::WasmImportSectionBodyChip;
+use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
 
 #[derive(Default)]
@@ -42,6 +43,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 
         let range_table_config_0_128 = Rc::new(RangeTableConfig::configure(cs));
 
+        let config = DynamicIndexesChip::configure(cs);
+        let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(config));
+
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
             &wasm_bytecode_table.value,
@@ -60,6 +64,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
             utf8_chip.clone(),
+            dynamic_indexes_chip.clone(),
         );
         let wasm_import_section_body_chip = WasmImportSectionBodyChip::construct(wasm_import_section_body_config);
         let test_circuit_config = TestCircuitConfig {
@@ -106,7 +111,6 @@ mod wasm_import_section_body_tests {
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
-    use rand::Rng;
     use wasmbin::sections::Kind;
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
@@ -127,21 +131,12 @@ mod wasm_import_section_body_tests {
     }
 
     #[test]
-    pub fn section_body_bytecode_from_file1() {
-        // [1, - IsItemsCount
-        // 2, - mod_name_len=2
-        // 6a, 73, - 'js'
-        // 6, - mod_name_len=6
-        // 67, 6c, 6f, 62, 61, 6c, - 'global'
-        // 3, 7f, 1 - globaltype i32 mut
-        // ]
-        // 'env' in hex [65, 6e, 76] in decimal [101, 110, 118]
-        // 'global' in hex [67, 6c, 6f, 62, 61, 6c] in decimal [103, 108, 111, 98, 97, 108]
+    pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode(
             "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
             Kind::Import,
         );
-        debug!("bytecode (len {}) (hex): {:x?}", bytecode.len(), bytecode);
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
         let code_hash = CodeDB::hash(&bytecode);
         let test_circuit = TestCircuit::<Fr> {
             code_hash,
@@ -153,12 +148,12 @@ mod wasm_import_section_body_tests {
     }
 
     #[test]
-    pub fn section_body_bytecode_from_file2() {
+    pub fn file2_ok() {
         let bytecode = wat_extract_section_body_bytecode(
             "./src/wasm_circuit/test_data/files/br_breaks_1.wat",
             Kind::Import,
         );
-        debug!("bytecode (len {}) (hex): {:x?}", bytecode.len(), bytecode);
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
         let code_hash = CodeDB::hash(&bytecode);
         let test_circuit = TestCircuit::<Fr> {
             code_hash,

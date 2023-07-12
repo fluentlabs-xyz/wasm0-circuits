@@ -206,11 +206,11 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                         "is_global_type has eligible byte value",
                         byte_val_expr.clone(),
                         vec![
-                            (NumType::I32 as i32).expr(),
-                            (NumType::I64 as i32).expr(),
+                            NumType::I32.expr(),
+                            NumType::I64.expr(),
                             // TODO add support for float types
-                            // (NumType::F32 as i32).expr(),
-                            // (NumType::F64 as i32).expr(),
+                            // NumType::F32.expr(),
+                            // NumType::F64.expr(),
                         ],
                     )
                 }
@@ -233,11 +233,11 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                         "is_init_opcode has eligible byte value",
                         byte_val_expr.clone(),
                         vec![
-                            (I32Const as i32).expr(),
-                            (I64Const as i32).expr(),
+                            I32Const.expr(),
+                            I64Const.expr(),
                             // TODO add support for float types
-                            // (F32Const as i32).expr(),
-                            // (F64Const as i32).expr(),
+                            // F32Const.expr(),
+                            // F64Const.expr(),
                         ],
                     )
                 }
@@ -249,7 +249,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 is_expr_delimiter_expr.clone(),
                 |bcb| {
                     bcb.require_equal(
-                        "is_expr_delimiter -> byte value == WASM_BLOCK_END",
+                        "is_expr_delimiter -> byte value = WASM_BLOCK_END",
                         byte_val_expr.clone(),
                         WASM_BLOCK_END.expr(),
                     )

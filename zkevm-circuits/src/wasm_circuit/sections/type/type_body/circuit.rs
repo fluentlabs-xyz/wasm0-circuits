@@ -21,6 +21,7 @@ use crate::wasm_circuit::sections::r#type::type_body::types::AssignType;
 use crate::wasm_circuit::sections::r#type::type_item::circuit::WasmTypeSectionItemChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
 pub struct WasmTypeSectionBodyConfig<F> {
@@ -207,14 +208,15 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         (sn, last_byte_rel_offset + 1)
     }
 
-    /// updates `dynamic_indexes_offset` to new offset
+    /// updates `shared_state.dynamic_indexes_offset` to a new offset
+    ///
     /// returns new offset
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset_start: usize,
-        dynamic_indexes_offset: &mut usize,
+        shared_state: &mut SharedState,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
         let (body_items_count, body_items_count_leb_len) = self.markup_leb_section(
@@ -225,9 +227,9 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         );
         offset += body_items_count_leb_len;
 
-        *dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
+        shared_state.dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
-            *dynamic_indexes_offset,
+            shared_state.dynamic_indexes_offset,
             body_items_count as usize,
             Tag::TypeSectionTypeIndex,
         ).unwrap();

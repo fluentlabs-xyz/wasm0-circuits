@@ -6,6 +6,8 @@ pub enum AssignType {
     IsImportNameLen,
     IsImportName,
     IsImportdescType,
+    ImportdescType,
+    IsImportdescTypeCtx,
     IsImportdescVal,
-    IsMutability,
+    IsMut,
 }

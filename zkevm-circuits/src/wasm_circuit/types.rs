@@ -7,3 +7,8 @@ pub enum AssignType {
     IsSectionLen,
     IsSectionBody,
 }
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct SharedState {
+    pub dynamic_indexes_offset: usize,
+}

@@ -14,6 +14,7 @@ use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::code::code_body::circuit::WasmCodeSectionBodyChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -76,14 +77,14 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         layouter.assign_region(
             || "wasm_code_section_body region",
             |mut region| {
-                let mut dynamic_indexes_offset = 0;
+                let mut shared_state = SharedState::default();
                 let mut offset_start = self.offset_start;
                 loop {
                     offset_start = config.body_chip.assign_auto(
                         &mut region,
                         &wasm_bytecode,
                         offset_start,
-                        &mut dynamic_indexes_offset,
+                        &mut shared_state,
                     ).unwrap();
                     if offset_start > wasm_bytecode.bytes.len() - 1 { break }
                 }

@@ -2,11 +2,9 @@ use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
 use std::{marker::PhantomData};
-use std::cell::RefCell;
 use std::rc::Rc;
-use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Any, Expression, Fixed, VirtualCells};
+use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
 use itertools::Itertools;
 use log::debug;
@@ -14,7 +12,6 @@ use eth_types::Field;
 use gadgets::binary_number::BinaryNumberChip;
 use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::evm_circuit::util::math_gadget::BinaryNumberGadget;
 use crate::wasm_circuit::consts::{CONTROL_INSTRUCTIONS_BLOCK, CONTROL_INSTRUCTIONS_WITH_LEB_ARG, CONTROL_INSTRUCTIONS_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTIONS_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, VARIABLE_INSTRUCTIONS_WITH_LEB_ARG, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -26,6 +23,7 @@ use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::sections::code::code_body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
 pub struct WasmCodeSectionBodyConfig<F: Field> {
@@ -717,7 +715,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || Value::known(F::from(assign_value)),
                 ).unwrap();
                 if assign_value == 1 {
-                    let opcode = (wasm_bytecode.bytes[offset] as i32).try_into().unwrap();
+                    let opcode: NumericInstruction = wasm_bytecode.bytes[offset].try_into().unwrap();
                     self.config.numeric_instructions_chip.assign(
                         region,
                         offset,
@@ -741,7 +739,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || Value::known(F::from(assign_value)),
                 ).unwrap();
                 if assign_value == 1 {
-                    let opcode = (wasm_bytecode.bytes[offset] as i32).try_into().unwrap();
+                    let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
                     self.config.variable_instruction_chip.assign(
                         region,
                         offset,
@@ -765,7 +763,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || Value::known(F::from(assign_value)),
                 ).unwrap();
                 if assign_value == 1 {
-                    let opcode = (wasm_bytecode.bytes[offset] as i32).try_into().unwrap();
+                    let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
                     self.config.control_instruction_chip.assign(
                         region,
                         offset,
@@ -789,7 +787,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     || Value::known(F::from(assign_value)),
                 ).unwrap();
                 if assign_value == 1 {
-                    let opcode = (wasm_bytecode.bytes[offset] as i32).try_into().unwrap();
+                    let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
                     self.config.parametric_instruction_chip.assign(
                         region,
                         offset,
@@ -861,30 +859,30 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         &self,
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
-        start_offset: usize,
+        offset_start: usize,
     ) -> Result<usize, Error> {
-        let mut offset = start_offset;
+        let mut offset = offset_start;
 
-        let opcode = wasm_bytecode.bytes[offset] as i32;
+        let opcode = wasm_bytecode.bytes[offset];
 
         let mut assign_type = AssignType::Unknown;
         let mut assign_type_argument = AssignType::Unknown;
 
-        if let Ok(opcode) = <i32 as TryInto<NumericInstruction>>::try_into(opcode) {
+        if let Ok(opcode) = <u8 as TryInto<NumericInstruction>>::try_into(opcode) {
             assign_type = AssignType::IsNumericInstruction;
             if NUMERIC_INSTRUCTIONS_WITH_LEB_ARG.contains(&opcode) {
                 assign_type_argument = AssignType::IsNumericInstructionLebArg;
             }
         }
 
-        if let Ok(opcode) = <i32 as TryInto<VariableInstruction>>::try_into(opcode) {
+        if let Ok(opcode) = <u8 as TryInto<VariableInstruction>>::try_into(opcode) {
             assign_type = AssignType::IsVariableInstruction;
             if VARIABLE_INSTRUCTIONS_WITH_LEB_ARG.contains(&opcode) {
                 assign_type_argument = AssignType::IsVariableInstructionLebArg;
             }
         }
 
-        if let Ok(opcode) = <i32 as TryInto<ControlInstruction>>::try_into(opcode) {
+        if let Ok(opcode) = <u8 as TryInto<ControlInstruction>>::try_into(opcode) {
             assign_type = AssignType::IsControlInstruction;
             if CONTROL_INSTRUCTIONS_BLOCK.contains(&opcode) {
                 assign_type_argument = AssignType::IsBlocktypeDelimiter
@@ -894,11 +892,11 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             }
         }
 
-        if let Ok(_opcode) = <i32 as TryInto<ParametricInstruction>>::try_into(opcode) {
+        if let Ok(_opcode) = <u8 as TryInto<ParametricInstruction>>::try_into(opcode) {
             assign_type = AssignType::IsParametricInstruction;
         }
 
-        if opcode == WASM_BLOCK_END {
+        if opcode == WASM_BLOCK_END as u8 {
             assign_type = AssignType::IsBlockEnd;
         };
 
@@ -946,21 +944,22 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             offset += instruction_leb_argument_leb_len;
         }
 
-        if offset == start_offset {
+        if offset == offset_start {
             panic!("failed to detect opcode {} at offset {}", opcode, offset)
         }
 
         Ok(offset)
     }
 
-    /// updates `dynamic_indexes_offset` to new offset
+    /// updates `shared_state.dynamic_indexes_offset` to a new offset
+    ///
     /// returns new offset
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset_start: usize,
-        dynamic_indexes_offset: &mut usize,
+        shared_state: &mut SharedState,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
@@ -973,9 +972,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         );
         offset += funcs_count_leb_len;
 
-        *dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
+        shared_state.dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
-            *dynamic_indexes_offset,
+            shared_state.dynamic_indexes_offset,
             funcs_count as usize,
             Tag::CodeSectionFuncIndex,
         ).unwrap();

@@ -2,24 +2,16 @@ use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
 use std::{marker::PhantomData};
-use std::io::BufRead;
-use std::rc::Rc;
-use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::{Advice, Expression, Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
-use itertools::Itertools;
 use log::debug;
 use eth_types::Field;
 use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::consts::NumericInstruction::I32Const;
-use crate::wasm_circuit::consts::{MemSegmentType, WASM_BLOCK_END};
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
-use crate::wasm_circuit::tables::dynamic_indexes::types::{AssignType, Tag, TAG_ALL};
+use crate::wasm_circuit::tables::dynamic_indexes::types::{AssignType, Tag, TAG_VALUES};
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
 pub struct DynamicIndexesConfig<F> {
@@ -82,7 +74,7 @@ impl<F: Field> DynamicIndexesChip<F>
             cb.require_in_set(
                 "tag => value is valid",
                 tag_expr.clone(),
-                TAG_ALL.iter().map(|v| (*v as i32).expr()).collect(),
+                TAG_VALUES.iter().map(|v| (*v).expr()).collect(),
             );
 
             cb.condition(
@@ -91,12 +83,12 @@ impl<F: Field> DynamicIndexesChip<F>
                     let is_terminator_prev_expr = vc.query_fixed(is_terminator, Rotation::prev());
                     let is_terminator_next_expr = vc.query_fixed(is_terminator, Rotation::next());
                     bcb.require_equal(
-                        "is_terminator -> prev.is_terminator==0",
+                        "is_terminator -> prev.is_terminator=0",
                         is_terminator_prev_expr.clone(),
                         0.expr(),
                     );
                     bcb.require_equal(
-                        "is_terminator -> next.is_terminator==0",
+                        "is_terminator -> next.is_terminator=0",
                         is_terminator_next_expr.clone(),
                         0.expr(),
                     );
@@ -154,7 +146,7 @@ impl<F: Field> DynamicIndexesChip<F>
         cs.lookup_any(name, |vc| {
             vec![
                 index.expr(),
-                (tag as i32).expr(),
+                tag.expr(),
                 is_terminator.expr(),
             ]
                 .into_iter()
@@ -168,7 +160,7 @@ impl<F: Field> DynamicIndexesChip<F>
         });
     }
 
-    /// `row` param must return [cond, index, tag, is_terminator]
+    /// `params` must return exprs: [cond, index, tag, is_terminator]
     pub fn lookup_args(
         &self,
         name: &'static str,

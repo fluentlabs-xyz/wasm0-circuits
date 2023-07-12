@@ -1,13 +1,14 @@
-use std::convert::Into;
 use std::iter::{IntoIterator, Iterator};
-use itertools::Itertools;
+use halo2_proofs::arithmetic::FieldExt;
+use halo2_proofs::plonk::Expression;
 use strum_macros::EnumIter;
+use gadgets::util::Expr;
 
 pub static WASM_VERSION_PREFIX_BASE_INDEX: usize = 4;
 pub static WASM_VERSION_PREFIX_LENGTH: usize = 4;
 pub static WASM_SECTIONS_START_INDEX: usize = WASM_VERSION_PREFIX_BASE_INDEX + WASM_VERSION_PREFIX_LENGTH;
 pub static WASM_PREAMBLE_MAGIC_PREFIX: &'static str = "\0asm";
-pub static WASM_BLOCK_END: i32 = 0xB;
+pub static WASM_BLOCK_END: u8 = 0xB;
 pub static WASM_BLOCKTYPE_DELIMITER: i32 = 0x40;
 
 #[derive(Copy, Clone, Debug)]
@@ -26,7 +27,7 @@ pub enum WasmSection {
     Data = 11,
     DataCount = 12,
 }
-pub const WASM_SECTION_ALL: &[WasmSection] = &[
+pub const WASM_SECTION_VALUES: &[WasmSection] = &[
     WasmSection::Custom,
     WasmSection::Type,
     WasmSection::Import,
@@ -45,13 +46,19 @@ impl TryFrom<i32> for WasmSection {
     type Error = ();
 
     fn try_from(v: i32) -> Result<Self, Self::Error> {
-        for instr in WASM_SECTION_ALL {
+        for instr in WASM_SECTION_VALUES {
             if v == *instr as i32 { return Ok(*instr); }
         }
         Err(())
     }
 }
 pub const WASM_SECTION_ID_MAX: usize = WasmSection::DataCount as usize;
+impl<F: FieldExt> Expr<F> for WasmSection {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
+    }
+}
 
 /// https://webassembly.github.io/spec/core/binary/types.html#number-types
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -61,12 +68,24 @@ pub enum NumType {
     F32 = 0x7D,
     F64 = 0x7C,
 }
+impl<F: FieldExt> Expr<F> for NumType {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
+    }
+}
 
 /// https://webassembly.github.io/spec/core/binary/types.html#reference-types
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ReferenceType {
     FuncRef = 0x70,
     ExternRef = 0x71,
+}
+impl<F: FieldExt> Expr<F> for ReferenceType {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
+    }
 }
 
 // TODO make it differ from custom section id (which is 0 too)
@@ -78,6 +97,12 @@ pub enum LimitType {
     MinOnly = 0x0,
     MinMax = 0x1,
 }
+impl<F: FieldExt> Expr<F> for LimitType {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
+    }
+}
 
 /// https://webassembly.github.io/spec/core/binary/modules.html#data-section
 #[derive(Copy, Clone, Debug)]
@@ -86,27 +111,33 @@ pub enum MemSegmentType {
     Passive = 0x1,
     ActiveVariadic = 0x2,
 }
+impl<F: FieldExt> Expr<F> for MemSegmentType {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
+    }
+}
 
 /// https://webassembly.github.io/spec/core/binary/modules.html#binary-importdesc
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ImportDescType {
     Typeidx = 0x0,
-    Table = 0x1,
-    Mem = 0x2,
-    Global = 0x3,
+    TableType = 0x1,
+    MemType = 0x2,
+    GlobalType = 0x3,
 }
 pub const IMPORT_DESC_TYPE_VALUES: &[ImportDescType] = &[
     ImportDescType::Typeidx,
-    ImportDescType::Table,
-    ImportDescType::Mem,
-    ImportDescType::Global,
+    ImportDescType::TableType,
+    ImportDescType::MemType,
+    ImportDescType::GlobalType,
 ];
-impl TryFrom<i32> for ImportDescType {
+impl TryFrom<u8> for ImportDescType {
     type Error = ();
 
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in IMPORT_DESC_TYPE_VALUES {
-            if v == *instr as i32 { return Ok(*instr); }
+            if v == *instr as u8 { return Ok(*instr); }
         }
         Err(())
     }
@@ -114,6 +145,12 @@ impl TryFrom<i32> for ImportDescType {
 impl From<ImportDescType> for usize {
     fn from(t: ImportDescType) -> Self {
         t as usize
+    }
+}
+impl<F: FieldExt> Expr<F> for ImportDescType {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
     }
 }
 
@@ -127,6 +164,12 @@ pub const MUTABILITY_VALUES: &[Mutability] = &[
     Mutability::Const,
     Mutability::Var,
 ];
+impl<F: FieldExt> Expr<F> for Mutability {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
+    }
+}
 
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NumericInstruction {
@@ -280,15 +323,15 @@ pub const NUMERIC_INSTRUCTIONS_WITH_LEB_ARG: &[NumericInstruction] = &[
     NumericInstruction::I32Const,
     NumericInstruction::I64Const,
 ];
-impl TryFrom<i32> for NumericInstruction {
+impl TryFrom<u8> for NumericInstruction {
     type Error = ();
 
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in NUMERIC_INSTRUCTIONS_WITH_LEB_ARG {
-            if v == *instr as i32 { return Ok(*instr); }
+            if v == *instr as u8 { return Ok(*instr); }
         }
         for instr in NUMERIC_INSTRUCTIONS_WITHOUT_ARGS {
-            if v == *instr as i32 { return Ok(*instr); }
+            if v == *instr as u8 { return Ok(*instr); }
         }
         Err(())
     }
@@ -296,6 +339,12 @@ impl TryFrom<i32> for NumericInstruction {
 impl From<NumericInstruction> for usize {
     fn from(t: NumericInstruction) -> Self {
         t as usize
+    }
+}
+impl<F: FieldExt> Expr<F> for NumericInstruction {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
     }
 }
 
@@ -314,12 +363,12 @@ pub const VARIABLE_INSTRUCTIONS_WITH_LEB_ARG: &[VariableInstruction] = &[
     VariableInstruction::GlobalGet,
     VariableInstruction::GlobalSet,
 ];
-impl TryFrom<i32> for VariableInstruction {
+impl TryFrom<u8> for VariableInstruction {
     type Error = ();
 
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in VARIABLE_INSTRUCTIONS_WITH_LEB_ARG {
-            if v == *instr as i32 { return Ok(*instr); }
+            if v == *instr as u8 { return Ok(*instr); }
         }
         Err(())
     }
@@ -327,6 +376,12 @@ impl TryFrom<i32> for VariableInstruction {
 impl From<VariableInstruction> for usize {
     fn from(t: VariableInstruction) -> Self {
         t as usize
+    }
+}
+impl<F: FieldExt> Expr<F> for VariableInstruction {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
     }
 }
 
@@ -356,18 +411,18 @@ pub const CONTROL_INSTRUCTIONS_BLOCK: &[ControlInstruction] = &[
     ControlInstruction::Block,
     ControlInstruction::Loop,
 ];
-impl TryFrom<i32> for ControlInstruction {
+impl TryFrom<u8> for ControlInstruction {
     type Error = ();
 
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in CONTROL_INSTRUCTIONS_WITH_LEB_ARG {
-            if v == *instr as i32 { return Ok(*instr); }
+            if v == *instr as u8 { return Ok(*instr); }
         }
         for instr in CONTROL_INSTRUCTIONS_WITHOUT_ARGS {
-            if v == *instr as i32 { return Ok(*instr); }
+            if v == *instr as u8 { return Ok(*instr); }
         }
         for instr in CONTROL_INSTRUCTIONS_BLOCK {
-            if v == *instr as i32 { return Ok(*instr); }
+            if v == *instr as u8 { return Ok(*instr); }
         }
         Err(())
     }
@@ -375,6 +430,12 @@ impl TryFrom<i32> for ControlInstruction {
 impl From<ControlInstruction> for usize {
     fn from(t: ControlInstruction) -> Self {
         t as usize
+    }
+}
+impl<F: FieldExt> Expr<F> for ControlInstruction {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
     }
 }
 
@@ -388,12 +449,12 @@ pub const PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS: &[ParametricInstruction] = &[
     ParametricInstruction::Drop,
     ParametricInstruction::Select,
 ];
-impl TryFrom<i32> for ParametricInstruction {
+impl TryFrom<u8> for ParametricInstruction {
     type Error = ();
 
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS {
-            if v == *instr as i32 { return Ok(*instr); }
+            if v == *instr as u8 { return Ok(*instr); }
         }
         Err(())
     }
@@ -401,5 +462,11 @@ impl TryFrom<i32> for ParametricInstruction {
 impl From<ParametricInstruction> for usize {
     fn from(t: ParametricInstruction) -> Self {
         t as usize
+    }
+}
+impl<F: FieldExt> Expr<F> for ParametricInstruction {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
     }
 }

@@ -4,7 +4,6 @@ use wasmbin::io::{DecodeError, Encode};
 use wasmbin::Module;
 use wasmbin::sections::Kind;
 use wasmbin::visit::{Visit, VisitError};
-use gadgets::binary_number::AsBits;
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_last_byte_offset;
 
 /// Returns section len and leb bytes count representing section len
