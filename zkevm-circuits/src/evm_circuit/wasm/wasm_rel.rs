@@ -126,15 +126,13 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         for idx in 0..8 {
             cb.add_lookup("Using OpRel fixed table", Lookup::Fixed {
                 tag: FixedTableTag::OpRel.expr(),
-                values: [mayinv(&lhs_limbs[idx]) * enable(),
-                         (mayinv(&rhs_limbs[idx]) + 256.expr() * code()) * enable(),
-                         out_terms[idx].expr() * enable()],
+                values: [ mayinv(&lhs_limbs[idx]),
+                          mayinv(&rhs_limbs[idx]) + 256.expr() * code(),
+                          out_terms[idx].expr() ].map(|x| x * enable()),
             });
             cb.add_lookup("Using OpRel fixed table for neq terms", Lookup::Fixed {
                 tag: FixedTableTag::OpRel.expr(),
-                values: [lhs_limbs[idx].expr() * enable(),
-                         rhs_limbs[idx].expr() * enable(),
-                         neq_terms[idx].expr() * enable()],
+                values: [lhs_limbs[idx].expr(), rhs_limbs[idx].expr(), neq_terms[idx].expr()].map(|x| x * enable()),
             });
         }
 
@@ -148,9 +146,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         }
         cb.add_lookup("Using ClzFilter fixed table", Lookup::Fixed {
             tag: FixedTableTag::ClzFilter.expr(),
-            values: [neq_bits * enable(),
-                     out_bits.expr() * enable(),
-                     res.expr() * enable()],
+            values: [neq_bits, out_bits.expr(), res.expr()].map(|x| x * enable()),
         });
 
         cb.require_zeros(
@@ -177,6 +173,7 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             ]},
         );
 
+        // Sometimes modular zero is larger than u64, but it can fit into `Cell`, just adding one as expr.
         let modular_zero32 = || 1.expr() + 0xffffffff_u64.expr();
         let modular_zero64 = || 1.expr() + 0xffffffff_ffffffff_u64.expr();
 
@@ -255,9 +252,20 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         let [rhs, lhs, res] = [step.rw_indices[0], step.rw_indices[1], step.rw_indices[2]]
             .map(|idx| block.rws[idx].stack_value());
 
-        self.rhs.assign(region, offset, Value::known(rhs.to_scalar().unwrap()))?;
-        self.lhs.assign(region, offset, Value::known(lhs.to_scalar().unwrap()))?;
-        self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
+        macro_rules! assigns {
+            ($([$a:ident$([$b:ident])?, $c:expr])*) => {{
+                $(self.$a$([$b])?.assign(region, offset, Value::<F>::known($c))?;)*
+            }}
+        }
+
+        macro_rules! assign {($a:ident, $b:expr) => { assigns! {[$a, $b]} }}
+        macro_rules! assign_bits {($($a:ident),*) => { assigns! { $([ $a, 1.into() ])* } } }
+
+        assigns! {
+            [rhs, rhs.to_scalar().unwrap()]
+            [lhs, lhs.to_scalar().unwrap()]
+            [res, res.to_scalar().unwrap()]
+        }
 
         let (is_neg_lhs, is_neg_rhs, abs_lhs, abs_rhs) = match opcode {
           OpcodeId::I32GtS | OpcodeId::I32GeS | OpcodeId::I32LtS | OpcodeId::I32LeS => {
@@ -277,10 +285,13 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
           _ => (0, 0, lhs.as_u64(), rhs.as_u64())
         };
 
-        self.is_neg_rhs.assign(region, offset, Value::<F>::known(F::from(is_neg_rhs)))?;
-        self.is_neg_lhs.assign(region, offset, Value::<F>::known(F::from(is_neg_lhs)))?;
-        if is_neg_rhs > 0 { self.neg_rhs.assign(region, offset, Value::<F>::known(F::from(abs_rhs)))?; }
-        if is_neg_lhs > 0 { self.neg_lhs.assign(region, offset, Value::<F>::known(F::from(abs_lhs)))?; }
+        assigns! {
+            [is_neg_rhs, F::from(is_neg_rhs)]
+            [is_neg_lhs, F::from(is_neg_lhs)]
+        }
+
+        if is_neg_rhs > 0 { assign!(neg_rhs, F::from(abs_rhs)); }
+        if is_neg_lhs > 0 { assign!(neg_lhs, F::from(abs_lhs)); }
 
         println!("DEBUG rhs {rhs} lhs {lhs} res {res} abs_rhs {abs_rhs} abs_lhs {abs_lhs}");
         for idx in 0..8 {
@@ -298,10 +309,12 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             OpcodeId::I32LeU | OpcodeId::I64LeU | OpcodeId::I32LeS | OpcodeId::I64LeS => mi_lhs_limb <= mi_rhs_limb,
             _ => false,
           };
-          self.lhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(lhs_limb)))?;
-          self.rhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(rhs_limb)))?;
-          self.neq_terms[idx].assign(region, offset, Value::<F>::known(F::from(neq_out)))?;
-          self.out_terms[idx].assign(region, offset, Value::<F>::known(F::from(out)))?;
+          assigns! {
+              [lhs_limbs[idx], F::from(lhs_limb)]
+              [rhs_limbs[idx], F::from(rhs_limb)]
+              [neq_terms[idx], F::from(neq_out)]
+              [out_terms[idx], F::from(out)]
+          }
           println!("DEBUG {idx} {lhs_limb} {rhs_limb} {neq_out} {out}");
         }
 
@@ -311,8 +324,6 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             _ => false
         };
         self.op_is_32bit.assign(region, offset, Value::known(is_32.into()))?;
-
-        macro_rules! assign_bits {($($a:ident),*) => {{ $(self.$a.assign(region, offset, Value::known(1.into()))?;)* }}}
 
         match opcode {
             OpcodeId::I32GtU | OpcodeId::I64GtU => assign_bits! { op_is_gt },
