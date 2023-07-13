@@ -97,22 +97,31 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         let out_terms = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
                          cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
 
-        // Is must be three ones (without any zero), to be on same negative side.
-        let sign_and_one_side = || op_is_sign.expr() * is_neg_lhs.expr() * is_neg_rhs.expr();
+        let is_pos_lhs = || 1.expr() - is_neg_lhs.expr();
+        let is_pos_rhs = || 1.expr() - is_neg_rhs.expr();
+
+        // Is must be three ones (without any zero), to be on same negative side, and 1 0 0 for positive.
+        let sign_and_all_neg = || op_is_sign.expr() * is_neg_lhs.expr() * is_neg_rhs.expr();
+        let sign_and_all_pos = || op_is_sign.expr() * is_pos_lhs() * is_pos_rhs();
         // This logic is exclusive to previous one.
         let positive = || 1.expr() - op_is_sign.expr();
-        let enable_case = || sign_and_one_side() + positive();
+        let enable_case = || sign_and_all_neg() + sign_and_all_pos() + positive();
         let enable = || ( op_is_gt.expr() + op_is_ge.expr() + op_is_lt.expr() + op_is_le.expr() ) * enable_case();
         let code = || 1.expr() * op_is_gt.expr() + 2.expr() * op_is_ge.expr() +
                       3.expr() * op_is_lt.expr() + 4.expr() * op_is_le.expr();
         // Means that fixed lookup table is disabled, and we can just use bits of negativity to make result.
         let disabled = || 1.expr() - enable();
 
+        // To be correct comparsion, if all on negative side, than limbs is inverted (negated as 255 - x).
+        let mayinv = |limb: &Cell<F>|
+            ( positive() + sign_and_all_pos() ) * limb.expr() +
+            sign_and_all_neg() * (255.expr() - limb.expr());
+
         for idx in 0..8 {
             cb.add_lookup("Using OpRel fixed table", Lookup::Fixed {
                 tag: FixedTableTag::OpRel.expr(),
-                values: [lhs_limbs[idx].expr() * enable(),
-                         (rhs_limbs[idx].expr() + 256.expr() * code()) * enable(),
+                values: [mayinv(&lhs_limbs[idx]) * enable(),
+                         (mayinv(&rhs_limbs[idx]) + 256.expr() * code()) * enable(),
                          out_terms[idx].expr() * enable()],
             });
             cb.add_lookup("Using OpRel fixed table for neq terms", Lookup::Fixed {
@@ -246,17 +255,17 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
 
         let (is_neg_lhs, is_neg_rhs, abs_lhs, abs_rhs) = match opcode {
           OpcodeId::I32GtS | OpcodeId::I32GeS | OpcodeId::I32LtS | OpcodeId::I32LeS => {
-              let is_neg_lhs = (lhs.as_u32() <= i32::MAX as u32) as u64;
-              let is_neg_rhs = (rhs.as_u32() <= i32::MAX as u32) as u64;
+              let is_neg_lhs = (lhs.as_u32() > i32::MAX as u32) as u64;
+              let is_neg_rhs = (rhs.as_u32() > i32::MAX as u32) as u64;
               let abs_lhs = (lhs.as_u32() as i32).abs() as u64;
-              let abs_rhs = (lhs.as_u32() as i32).abs() as u64;
+              let abs_rhs = (rhs.as_u32() as i32).abs() as u64;
               (is_neg_lhs, is_neg_rhs, abs_lhs, abs_rhs)
           }
           OpcodeId::I64GtS | OpcodeId::I64GeS | OpcodeId::I64LtS | OpcodeId::I64LeS => {
-              let is_neg_lhs = (lhs.as_u64() <= i64::MAX as u64) as u64;
-              let is_neg_rhs = (rhs.as_u64() <= i64::MAX as u64) as u64;
+              let is_neg_lhs = (lhs.as_u64() > i64::MAX as u64) as u64;
+              let is_neg_rhs = (rhs.as_u64() > i64::MAX as u64) as u64;
               let abs_lhs = (lhs.as_u64() as i64).abs() as u64;
-              let abs_rhs = (lhs.as_u64() as i64).abs() as u64;
+              let abs_rhs = (rhs.as_u64() as i64).abs() as u64;
               (is_neg_lhs, is_neg_rhs, abs_lhs, abs_rhs)
           }
           _ => (0, 0, lhs.as_u64(), rhs.as_u64())
@@ -269,15 +278,19 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
 
         println!("DEBUG rhs {rhs} lhs {lhs} res {res} abs_rhs {abs_rhs} abs_lhs {abs_lhs}");
         for idx in 0..8 {
+          // This is additive inversion to make comparsion correct for case if all args on negative side.
+          let mayinv = |x| if is_neg_lhs > 0 && is_neg_rhs > 0 { 255_u64 - x } else { x };
           let lhs_limb = (abs_lhs >> (8 * idx)) & 0xff;
           let rhs_limb = (abs_rhs >> (8 * idx)) & 0xff;
+          let mi_lhs_limb = mayinv(lhs_limb);
+          let mi_rhs_limb = mayinv(rhs_limb);
           let neq_out = lhs_limb != rhs_limb;
-          let (out, _code) = match opcode {
-            OpcodeId::I32GtU | OpcodeId::I64GtU | OpcodeId::I32GtS | OpcodeId::I64GtS => (lhs_limb >  rhs_limb, 1),
-            OpcodeId::I32GeU | OpcodeId::I64GeU | OpcodeId::I32GeS | OpcodeId::I64GeS => (lhs_limb >= rhs_limb, 2),
-            OpcodeId::I32LtU | OpcodeId::I64LtU | OpcodeId::I32LtS | OpcodeId::I64LtS => (lhs_limb <  rhs_limb, 3),
-            OpcodeId::I32LeU | OpcodeId::I64LeU | OpcodeId::I32LeS | OpcodeId::I64LeS => (lhs_limb <= rhs_limb, 4),
-            _ => (false, 0_u64),
+          let out = match opcode {
+            OpcodeId::I32GtU | OpcodeId::I64GtU | OpcodeId::I32GtS | OpcodeId::I64GtS => mi_lhs_limb >  mi_rhs_limb,
+            OpcodeId::I32GeU | OpcodeId::I64GeU | OpcodeId::I32GeS | OpcodeId::I64GeS => mi_lhs_limb >= mi_rhs_limb,
+            OpcodeId::I32LtU | OpcodeId::I64LtU | OpcodeId::I32LtS | OpcodeId::I64LtS => mi_lhs_limb <  mi_rhs_limb,
+            OpcodeId::I32LeU | OpcodeId::I64LeU | OpcodeId::I32LeS | OpcodeId::I64LeS => mi_lhs_limb <= mi_rhs_limb,
+            _ => false,
           };
           self.lhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(lhs_limb)))?;
           self.rhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(rhs_limb)))?;
