@@ -97,18 +97,24 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         let out_terms = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
                          cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
 
+        let op_is_64bit = || 1.expr() - op_is_32bit.expr();
+
         let is_pos_lhs = || 1.expr() - is_neg_lhs.expr();
         let is_pos_rhs = || 1.expr() - is_neg_rhs.expr();
 
         // Is must be three ones (without any zero), to be on same negative side, and 1 0 0 for positive.
         let sign_and_all_neg = || op_is_sign.expr() * is_neg_lhs.expr() * is_neg_rhs.expr();
         let sign_and_all_pos = || op_is_sign.expr() * is_pos_lhs() * is_pos_rhs();
+
         // This logic is exclusive to previous one.
         let positive = || 1.expr() - op_is_sign.expr();
+
         let enable_case = || sign_and_all_neg() + sign_and_all_pos() + positive();
         let enable = || ( op_is_gt.expr() + op_is_ge.expr() + op_is_lt.expr() + op_is_le.expr() ) * enable_case();
+
         let code = || 1.expr() * op_is_gt.expr() + 2.expr() * op_is_ge.expr() +
                       3.expr() * op_is_lt.expr() + 4.expr() * op_is_le.expr();
+
         // Means that fixed lookup table is disabled, and we can just use bits of negativity to make result.
         let disabled = || 1.expr() - enable();
 
@@ -164,9 +170,9 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
                 rhs_expr
             };
             vec![
-                ( abs_lhs() - lhs.expr() ) * (1.expr() - is_neg_lhs.expr()),
+                ( abs_lhs() - lhs.expr() ) * is_pos_lhs(),
                 ( abs_lhs() - neg_lhs.expr() ) * is_neg_lhs.expr(),
-                ( abs_rhs() - rhs.expr() ) * (1.expr() - is_neg_rhs.expr()),
+                ( abs_rhs() - rhs.expr() ) * is_pos_rhs(),
                 ( abs_rhs() - neg_rhs.expr() ) * is_neg_rhs.expr(),
             ]},
         );
@@ -177,8 +183,8 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         cb.require_zeros("op_rel: neg version is correct", vec![
             ( neg_lhs.expr() + lhs.expr() - modular_zero32() ) * is_neg_lhs.expr() * op_is_32bit.expr(),
             ( neg_rhs.expr() + rhs.expr() - modular_zero32() ) * is_neg_rhs.expr() * op_is_32bit.expr(),
-            ( neg_lhs.expr() + lhs.expr() - modular_zero64() ) * is_neg_lhs.expr() * (1.expr() - op_is_32bit.expr()),
-            ( neg_rhs.expr() + rhs.expr() - modular_zero64() ) * is_neg_rhs.expr() * (1.expr() - op_is_32bit.expr()),
+            ( neg_lhs.expr() + lhs.expr() - modular_zero64() ) * is_neg_lhs.expr() * op_is_64bit(),
+            ( neg_rhs.expr() + rhs.expr() - modular_zero64() ) * is_neg_rhs.expr() * op_is_64bit(),
         ]);
 
         cb.require_zeros("op_rel: if 32bit then limbs must be zero", vec![
@@ -306,41 +312,19 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         };
         self.op_is_32bit.assign(region, offset, Value::known(is_32.into()))?;
 
+        macro_rules! assign_bits {($($a:ident),*) => {{ $(self.$a.assign(region, offset, Value::known(1.into()))?;)* }}}
+
         match opcode {
-            OpcodeId::I32GtU | OpcodeId::I64GtU => {
-              self.op_is_gt.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32GeU | OpcodeId::I64GeU => {
-              self.op_is_ge.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32LtU | OpcodeId::I64LtU => {
-              self.op_is_lt.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32LeU | OpcodeId::I64LeU => {
-              self.op_is_le.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32Eq | OpcodeId::I64Eq => {
-              self.op_is_eq.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32Ne | OpcodeId::I64Ne => {
-              self.op_is_ne.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32GtS | OpcodeId::I64GtS => {
-              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
-              self.op_is_gt.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32GeS | OpcodeId::I64GeS => {
-              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
-              self.op_is_ge.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32LtS | OpcodeId::I64LtS => {
-              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
-              self.op_is_lt.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32LeS | OpcodeId::I64LeS => {
-              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
-              self.op_is_le.assign(region, offset, Value::known(1.into()))?;
-            }
+            OpcodeId::I32GtU | OpcodeId::I64GtU => assign_bits! { op_is_gt },
+            OpcodeId::I32GeU | OpcodeId::I64GeU => assign_bits! { op_is_ge },
+            OpcodeId::I32LtU | OpcodeId::I64LtU => assign_bits! { op_is_lt },
+            OpcodeId::I32LeU | OpcodeId::I64LeU => assign_bits! { op_is_le },
+            OpcodeId::I32Eq  | OpcodeId::I64Eq  => assign_bits! { op_is_eq },
+            OpcodeId::I32Ne  | OpcodeId::I64Ne  => assign_bits! { op_is_ne },
+            OpcodeId::I32GtS | OpcodeId::I64GtS => assign_bits! { op_is_gt, op_is_sign },
+            OpcodeId::I32GeS | OpcodeId::I64GeS => assign_bits! { op_is_ge, op_is_sign },
+            OpcodeId::I32LtS | OpcodeId::I64LtS => assign_bits! { op_is_lt, op_is_sign },
+            OpcodeId::I32LeS | OpcodeId::I64LeS => assign_bits! { op_is_le, op_is_sign },
             _ => (),
         }
 
