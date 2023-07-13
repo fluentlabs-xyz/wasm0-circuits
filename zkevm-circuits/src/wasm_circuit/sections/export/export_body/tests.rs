@@ -7,7 +7,6 @@ use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
 use eth_types::{Field, Hash, ToWord};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
-use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::export::export_body::circuit::WasmExportSectionBodyChip;
@@ -70,13 +69,12 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             || "wasm_export_section_body region",
             |mut region| {
                 let mut offset_start = self.offset_start;
-                loop {
+                while offset_start < wasm_bytecode.bytes.len() {
                     offset_start = config.body_chip.assign_auto(
                         &mut region,
                         &wasm_bytecode,
                         offset_start,
                     ).unwrap();
-                    if offset_start > wasm_bytecode.bytes.len() - 1 { break }
                 }
 
                 Ok(())
@@ -92,10 +90,10 @@ mod wasm_export_section_body_tests {
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
+    use wasmbin::sections::Kind;
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
-    use crate::wasm_circuit::sections::export::test_helpers::{generate_wasm_export_section_body_bytecode, WasmExportSectionBodyDescriptor, WasmExportSectionBodyItemDescriptor};
-    use crate::wasm_circuit::sections::export::export_body::consts::ExportDesc;
+    use crate::wasm_circuit::common::wat_extract_section_body_bytecode;
     use crate::wasm_circuit::sections::export::export_body::tests::TestCircuit;
 
     fn test<'a, F: Field>(
@@ -112,35 +110,36 @@ mod wasm_export_section_body_tests {
     }
 
     #[test]
-    pub fn section_body_bytecode_is_ok() {
-        let mut bytecodes: Vec<Vec<u8>> = Vec::new();
-        // expected (hex): [2, 4, 6d, 61, 69, 6e, 0, 0, 6, 6d, 65, 6d, 6f, 72, 79, 2, 0]
-        let descriptor = WasmExportSectionBodyDescriptor {
-            items: vec![
-                WasmExportSectionBodyItemDescriptor {
-                    export_name: "main".to_string(),
-                    export_desc_type: ExportDesc::FuncExportDesc,
-                    export_desc_val: 0,
-                },
-                WasmExportSectionBodyItemDescriptor {
-                    export_name: "memory".to_string(),
-                    export_desc_type: ExportDesc::MemExportDesc,
-                    export_desc_val: 0,
-                },
-            ],
+    pub fn file1_ok() {
+        let bytecode = wat_extract_section_body_bytecode(
+            "./src/wasm_circuit/test_data/files/br_breaks_1.wat",
+            Kind::Export,
+        );
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
         };
-        let bytecode = generate_wasm_export_section_body_bytecode(&descriptor);
-        debug!("bytecode (len {}) (hex): {:x?}", bytecode.len(), bytecode);
-        bytecodes.push(bytecode);
-        for bytecode in &bytecodes {
-            let code_hash = CodeDB::hash(&bytecode);
-            let test_circuit = TestCircuit::<Fr> {
-                code_hash,
-                bytecode: &bytecode,
-                offset_start: 0,
-                _marker: Default::default(),
-            };
-            test(test_circuit, true);
-        }
+        test(test_circuit, true);
+    }
+
+    #[test]
+    pub fn file2_ok() {
+        let bytecode = wat_extract_section_body_bytecode(
+            "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
+            Kind::Export,
+        );
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
     }
 }

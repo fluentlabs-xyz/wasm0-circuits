@@ -124,6 +124,19 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         );
         let variable_instruction_chip = Rc::new(BinaryNumberChip::construct(binary_number_config));
 
+        dynamic_indexes_chip.lookup_args(
+            "code section has valid setup for func indexes",
+            cs,
+            |vc| {
+                [
+                    vc.query_fixed(is_funcs_count, Rotation::cur()),
+                    vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
+                    Tag::CodeSectionFuncIndex.expr(),
+                    true.expr(),
+                ]
+            }
+        );
+
         cs.create_gate("WasmCodeSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
@@ -143,9 +156,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             let is_blocktype_delimiter_expr = vc.query_fixed(is_blocktype_delimiter, Rotation::cur());
             let is_block_end_expr = vc.query_fixed(is_block_end, Rotation::cur());
 
-            let is_leb128_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur());
-            let is_leb128_next_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::next());
-            let leb128_sn_expr = vc.query_advice(leb128_chip.config.sn, Rotation::cur());
+            let leb128_chip_q_enable_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur());
+            let leb128_chip_q_enable_next_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::next());
+            let leb128_chip_sn_expr = vc.query_advice(leb128_chip.config.sn, Rotation::cur());
 
             let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
 
@@ -406,7 +419,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 |bcb| {
                     bcb.require_equal(
                         "leb128 flag is active => leb128_chip enabled",
-                        is_leb128_expr.clone(),
+                        leb128_chip_q_enable_expr.clone(),
                         1.expr(),
                     )
                 }
@@ -442,7 +455,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 |bcb| {
                     bcb.require_equal(
                         "is_numeric_opcode_with_leb_param(1) -> is_leb128",
-                        is_leb128_next_expr.clone(),
+                        leb128_chip_q_enable_next_expr.clone(),
                         1.expr(),
                     );
                 }

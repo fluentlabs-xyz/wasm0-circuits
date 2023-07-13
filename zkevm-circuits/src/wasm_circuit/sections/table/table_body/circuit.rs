@@ -3,16 +3,14 @@ use halo2_proofs::{
 };
 use std::{marker::PhantomData};
 use std::rc::Rc;
-use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Fixed, VirtualCells};
+use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
 use log::debug;
 use eth_types::Field;
-use gadgets::util::{Expr, or};
+use gadgets::util::Expr;
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::consts::NumericInstruction::I32Const;
-use crate::wasm_circuit::consts::{LimitType, MemSegmentType, ReferenceType, WASM_BLOCK_END};
+use crate::wasm_circuit::consts::{LimitType, ReferenceType};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -21,6 +19,9 @@ use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::sections::table::table_body::types::AssignType;
+use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
+use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
 pub struct WasmTableSectionBodyConfig<F: Field> {
@@ -32,6 +33,7 @@ pub struct WasmTableSectionBodyConfig<F: Field> {
     pub is_limit_max: Column<Fixed>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
+    pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
 
     _marker: PhantomData<F>,
 }
@@ -59,6 +61,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
+        dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     ) -> WasmTableSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let is_reference_type_count = cs.fixed_column();
@@ -216,6 +219,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
             is_limit_min,
             is_limit_max,
             leb128_chip,
+            dynamic_indexes_chip,
             _marker: PhantomData,
         };
 
@@ -349,6 +353,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset_start: usize,
+        shared_state: &mut SharedState,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
@@ -370,6 +375,12 @@ impl<F: Field> WasmTableSectionBodyChip<F>
             1,
             None,
         );
+        shared_state.dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
+            region,
+            shared_state.dynamic_indexes_offset,
+            1,
+            Tag::TableSectionTableIndex,
+        ).unwrap();
         offset += 1;
 
         // limit_type{1}

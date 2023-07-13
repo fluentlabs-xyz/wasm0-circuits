@@ -1,25 +1,28 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
-use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Fixed, VirtualCells};
+use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
 use log::debug;
 use eth_types::Field;
 use gadgets::util::{Expr, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::consts::LimitType;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::sections::memory::memory_body::types::AssignType;
+use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
+use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
 pub struct WasmMemorySectionBodyConfig<F: Field> {
@@ -29,6 +32,7 @@ pub struct WasmMemorySectionBodyConfig<F: Field> {
     pub is_limit_type_val: Column<Fixed>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
+    pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
 
     _marker: PhantomData<F>,
 }
@@ -56,11 +60,25 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
+        dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     ) -> WasmMemorySectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let is_items_count = cs.fixed_column();
         let is_limit_type = cs.fixed_column();
         let is_limit_type_val = cs.fixed_column();
+
+        dynamic_indexes_chip.lookup_args(
+            "memory section has valid setup for mem indexes",
+            cs,
+            |vc| {
+                [
+                    vc.query_fixed(is_items_count, Rotation::cur()),
+                    vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
+                    Tag::MemorySectionMemIndex.expr(),
+                    true.expr(),
+                ]
+            }
+        );
 
         cs.create_gate("WasmMemorySectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -79,7 +97,9 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
 
             cb.require_equal(
                 "exactly one mark flag active at the same time",
-                is_items_count_expr.clone() + is_limit_type_expr.clone() + is_limit_type_val_expr.clone(),
+                is_items_count_expr.clone()
+                    + is_limit_type_expr.clone()
+                    + is_limit_type_val_expr.clone(),
                 1.expr(),
             );
 
@@ -92,6 +112,17 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                     bcb.require_equal(
                         "is_items_count || is_limit_type_val -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
+                        1.expr(),
+                    )
+                }
+            );
+
+            cb.condition(
+                is_items_count_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "only 1 memory block is allowed",
+                        vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
                         1.expr(),
                     )
                 }
@@ -151,6 +182,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             is_limit_type,
             is_limit_type_val,
             leb128_chip,
+            dynamic_indexes_chip,
             _marker: PhantomData,
         };
 
@@ -248,7 +280,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 offset,
                 assign_type,
                 1,
-                Some(LebParams{
+                Some(LebParams {
                     is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
@@ -267,6 +299,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset_start: usize,
+        shared_state: &mut SharedState,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
@@ -276,6 +309,12 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             offset,
             AssignType::IsItemsCount,
         );
+        shared_state.dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
+            region,
+            shared_state.dynamic_indexes_offset,
+            items_count as usize,
+            Tag::MemorySectionMemIndex,
+        ).unwrap();
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {

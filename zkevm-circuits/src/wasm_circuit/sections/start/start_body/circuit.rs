@@ -1,26 +1,21 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
 use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
-use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Expression, Fixed, VirtualCells};
+use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
 use log::debug;
 use eth_types::Field;
-use gadgets::util::{and, Expr, not, or};
+use gadgets::util::{and, Expr};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::consts::NumericInstruction::I32Const;
-use crate::wasm_circuit::consts::{MemSegmentType, WASM_BLOCK_END};
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::sections::code::code_body::circuit::WasmCodeSectionBodyChip;
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::sections::start::start_body::types::AssignType;
 
 #[derive(Debug, Clone)]
@@ -160,7 +155,7 @@ impl<F: Field> WasmStartSectionBodyChip<F>
                     || format!("assign 'is_func_index' val {} at {}", assign_value, offset),
                     self.config.is_func_index,
                     offset,
-                    || Value::known(F::from(assign_value as u64)),
+                    || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
         }

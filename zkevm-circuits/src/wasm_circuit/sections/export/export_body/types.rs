@@ -5,4 +5,7 @@ pub enum AssignType {
     IsExportName,
     IsExportdescType,
     IsExportdescVal,
+
+    IsExportdescTypeCtx,
+    ExportdescType,
 }

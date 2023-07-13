@@ -191,7 +191,7 @@ impl<F: Field> DynamicIndexesChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "dynamic_indexes: assign at offset {} q_enable {} assign_type {:?} assign_value {}",
+            "dynamic_indexes: assign at offset {} q_enable {} assign_type {:?} assign_value {:?}",
             offset,
             q_enable,
             assign_type,

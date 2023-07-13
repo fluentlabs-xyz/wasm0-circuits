@@ -1,27 +1,32 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
-use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Fixed, VirtualCells};
+use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
 use itertools::Itertools;
 use log::debug;
+
 use eth_types::Field;
 use gadgets::util::{Expr, or};
+
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::consts::{NumType, WASM_BLOCK_END};
-use crate::wasm_circuit::consts::NumericInstruction::{F32Const, F64Const, I32Const, I64Const};
+use crate::wasm_circuit::consts::NumericInstruction::{I32Const, I64Const};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::sections::global::global_body::types::AssignType;
+use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
+use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
 pub struct WasmGlobalSectionBodyConfig<F: Field> {
@@ -34,6 +39,7 @@ pub struct WasmGlobalSectionBodyConfig<F: Field> {
     pub is_expr_delimiter: Column<Fixed>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
+    pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
 
     _marker: PhantomData<F>,
 }
@@ -61,6 +67,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
+        dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     ) -> WasmGlobalSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let is_items_count = cs.fixed_column();
@@ -69,6 +76,19 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         let is_init_opcode = cs.fixed_column();
         let is_init_val = cs.fixed_column();
         let is_expr_delimiter = cs.fixed_column();
+
+        dynamic_indexes_chip.lookup_args(
+            "global section has valid setup for mem indexes",
+            cs,
+            |vc| {
+                [
+                    vc.query_fixed(is_items_count, Rotation::cur()),
+                    vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
+                    Tag::GlobalSectionGlobalIndex.expr(),
+                    true.expr(),
+                ]
+            }
+        );
 
         cs.create_gate("WasmGlobalSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -268,6 +288,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             is_init_val,
             is_expr_delimiter,
             leb128_chip,
+            dynamic_indexes_chip,
             _marker: PhantomData,
         };
 
@@ -408,6 +429,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset_start: usize,
+        shared_state: &mut SharedState,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
@@ -417,6 +439,12 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             offset,
             AssignType::IsItemsCount,
         );
+        shared_state.dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
+            region,
+            shared_state.dynamic_indexes_offset,
+            items_count as usize,
+            Tag::GlobalSectionGlobalIndex,
+        ).unwrap();
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {

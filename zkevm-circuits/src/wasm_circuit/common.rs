@@ -43,6 +43,7 @@ pub fn wat_extract_section_bytecode(path_to_file: &str, kind: Kind) -> Vec<u8> {
 
 pub fn wat_extract_section_body_bytecode(path_to_file: &str, kind: Kind) -> Vec<u8> {
     let bytecode = &wat_extract_section_bytecode(path_to_file, kind)[..];
+    if bytecode.len() <= 0 { return vec![] }
     let last_byte_offset = leb128_compute_last_byte_offset(bytecode, 1).unwrap();
     return  bytecode[last_byte_offset + 1..].to_vec();
 }

@@ -15,10 +15,16 @@ pub enum Tag {
     #[default]
     CodeSectionFuncIndex,
     TypeSectionTypeIndex,
+    TableSectionTableIndex,
+    MemorySectionMemIndex,
+    GlobalSectionGlobalIndex,
 }
 pub const TAG_VALUES: &[Tag] = &[
     Tag::CodeSectionFuncIndex,
     Tag::TypeSectionTypeIndex,
+    Tag::TableSectionTableIndex,
+    Tag::MemorySectionMemIndex,
+    Tag::GlobalSectionGlobalIndex,
 ];
 impl<F: FieldExt> Expr<F> for Tag {
     fn expr(&self) -> Expression<F> {

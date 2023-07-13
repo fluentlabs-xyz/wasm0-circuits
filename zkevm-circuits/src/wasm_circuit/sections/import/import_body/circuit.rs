@@ -79,9 +79,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         let is_import_name_len = cs.fixed_column();
         let is_import_name = cs.fixed_column();
         let is_importdesc_type = cs.fixed_column();
-        let is_importdesc_type_ctx = cs.fixed_column();
         let is_importdesc_val = cs.fixed_column();
         let is_mut = cs.fixed_column();
+
+        let is_importdesc_type_ctx = cs.fixed_column();
 
         let importdesc_type = cs.advice_column();
 
@@ -101,7 +102,6 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             let is_mod_name_expr = vc.query_fixed(is_mod_name, Rotation::cur());
             let is_import_name_len_expr = vc.query_fixed(is_import_name_len, Rotation::cur());
             let is_import_name_expr = vc.query_fixed(is_import_name, Rotation::cur());
-            let is_importdesc_type_prev_expr = vc.query_fixed(is_importdesc_type, Rotation::prev());
             let is_importdesc_type_expr = vc.query_fixed(is_importdesc_type, Rotation::cur());
             let is_importdesc_type_ctx_prev_expr = vc.query_fixed(is_importdesc_type_ctx, Rotation::prev());
             let is_importdesc_type_ctx_expr = vc.query_fixed(is_importdesc_type_ctx, Rotation::cur());

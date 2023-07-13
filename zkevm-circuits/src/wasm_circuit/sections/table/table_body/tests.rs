@@ -11,6 +11,8 @@ use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::table::table_body::circuit::WasmTableSectionBodyChip;
+use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -38,6 +40,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
 
+        let config = DynamicIndexesChip::configure(cs);
+        let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(config));
+
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
             &wasm_bytecode_table.value,
@@ -48,11 +53,13 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
+            dynamic_indexes_chip.clone(),
         );
-        let wasm_table_section_body_chip = WasmTableSectionBodyChip::construct(wasm_table_section_body_config);
+        let wasm_table_section_body_chip = Rc::new(WasmTableSectionBodyChip::construct(wasm_table_section_body_config));
+
         let test_circuit_config = TestCircuitConfig {
-            body_chip: Rc::new(wasm_table_section_body_chip),
-            wasm_bytecode_table: wasm_bytecode_table.clone(),
+            body_chip: wasm_table_section_body_chip,
+            wasm_bytecode_table,
             _marker: Default::default(),
         };
 
@@ -69,14 +76,15 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         layouter.assign_region(
             || "wasm_table_section_body region",
             |mut region| {
+                let mut shared_state = SharedState::default();
                 let mut offset_start = self.offset_start;
-                loop {
+                while offset_start < wasm_bytecode.bytes.len() {
                     offset_start = config.body_chip.assign_auto(
                         &mut region,
                         &wasm_bytecode,
                         offset_start,
+                        &mut shared_state,
                     ).unwrap();
-                    if offset_start > wasm_bytecode.bytes.len() - 1 { break }
                 }
 
                 Ok(())
@@ -95,8 +103,7 @@ mod wasm_table_section_body_tests {
     use wasmbin::sections::Kind;
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
-    use crate::wasm_circuit::common::{wat_extract_section_body_bytecode, wat_extract_section_bytecode};
-    use crate::wasm_circuit::consts::MemSegmentType;
+    use crate::wasm_circuit::common::wat_extract_section_body_bytecode;
     use crate::wasm_circuit::sections::table::table_body::tests::TestCircuit;
 
     fn test<'a, F: Field>(
@@ -112,39 +119,32 @@ mod wasm_table_section_body_tests {
         }
     }
 
-
-
     #[test]
-    pub fn section_body_bytecode_is_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
+    pub fn file1_ok() {
+        let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
         let kind = Kind::Table;
-        // expected
-        // raw (hex): [4, 5, 1, 70, 1, 10,  10, ]
-        let expected = [
-            4, 5, 1, 112, 0, 172, 2,
-        ].as_slice().to_vec();
-
-        let section_bytecode = wat_extract_section_bytecode(path_to_file, kind, );
-        debug!("expected {:?}", expected);
-        debug!("expected (hex) {:x?}", expected);
-        debug!("section_bytecode {:?}", section_bytecode);
-        debug!("section_bytecode (hex) {:x?}", section_bytecode);
-        assert_eq!(expected, section_bytecode);
-
-        // expected
-        // reference_type_count+ -> reference_type{1} -> limits_type{1} -> limits_min+ -> limits_max*
-        // raw (hex): [1, 70, 1, 10,  10, ]
-        let expected = [
-            1, 112, 0, 172, 2,
-        ].as_slice().to_vec();
-        let section_body_bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
-        assert_eq!(expected, section_body_bytecode);
-
-        debug!("section_body_bytecode (len {}) (hex): {:x?}", section_body_bytecode.len(), section_body_bytecode);
-        let code_hash = CodeDB::hash(&section_body_bytecode);
+        let bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
         let test_circuit = TestCircuit::<Fr> {
             code_hash,
-            bytecode: &section_body_bytecode,
+            bytecode: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
+    }
+
+    #[test]
+    pub fn file2_ok() {
+        let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
+        let kind = Kind::Table;
+        let bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode: &bytecode,
             offset_start: 0,
             _marker: Default::default(),
         };

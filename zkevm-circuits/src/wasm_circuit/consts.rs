@@ -154,6 +154,42 @@ impl<F: FieldExt> Expr<F> for ImportDescType {
     }
 }
 
+/// https://webassembly.github.io/spec/core/binary/modules.html#export-section
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ExportDescType {
+    Funcidx = 0x0,
+    Tableidx = 0x1,
+    Memidx = 0x2,
+    Globalidx = 0x3,
+}
+pub const EXPORT_DESC_TYPE_VALUES: &[ExportDescType] = &[
+    ExportDescType::Funcidx,
+    ExportDescType::Tableidx,
+    ExportDescType::Memidx,
+    ExportDescType::Globalidx,
+];
+impl TryFrom<u8> for ExportDescType {
+    type Error = ();
+
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        for instr in EXPORT_DESC_TYPE_VALUES {
+            if v == *instr as u8 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+impl From<ExportDescType> for usize {
+    fn from(t: ExportDescType) -> Self {
+        t as usize
+    }
+}
+impl<F: FieldExt> Expr<F> for ExportDescType {
+    #[inline]
+    fn expr(&self) -> Expression<F> {
+        Expression::Constant(F::from(*self as u64))
+    }
+}
+
 /// https://webassembly.github.io/spec/core/binary/types.html#global-types
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Mutability {

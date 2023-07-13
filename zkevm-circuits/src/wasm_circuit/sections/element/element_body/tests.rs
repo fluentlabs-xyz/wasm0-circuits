@@ -1,15 +1,17 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
+
 use eth_types::{Field, Hash, ToWord};
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
-use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
+
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::element::element_body::circuit::WasmElementSectionBodyChip;
 
 #[derive(Default)]
@@ -70,13 +72,12 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             || "wasm_element_section_body region",
             |mut region| {
                 let mut offset_start = self.offset_start;
-                loop {
+                while offset_start < wasm_bytecode.bytes.len() {
                     offset_start = config.body_chip.assign_auto(
                         &mut region,
                         &wasm_bytecode,
                         offset_start,
                     ).unwrap();
-                    if offset_start > wasm_bytecode.bytes.len() - 1 { break }
                 }
 
                 Ok(())
@@ -93,10 +94,11 @@ mod wasm_element_section_body_tests {
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use wasmbin::sections::Kind;
+
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
+
     use crate::wasm_circuit::common::{wat_extract_section_body_bytecode, wat_extract_section_bytecode};
-    use crate::wasm_circuit::consts::MemSegmentType;
     use crate::wasm_circuit::sections::element::element_body::tests::TestCircuit;
 
     fn test<'a, F: Field>(
@@ -117,8 +119,6 @@ mod wasm_element_section_body_tests {
     pub fn section_body_bytecode_is_ok() {
         let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
         let kind = Kind::Element;
-        // expected
-        // raw (hex): [9, 35, 7, 1, 0, 0, 1, 0, 0, 1, 0, 3, 0, 0, 1, 1, 0, 4, 0, 0, 1, 1, 1, 0, 0, 0, 65, 0, 11, 0, 0, 65, 171, 2, 11, 1, 0, ]
         let expected = [
             9, 35, 7, 1, 0, 0, 1, 0, 0, 1, 0, 3, 0, 0, 1, 1, 0, 4, 0, 0, 1, 1, 1, 0, 0, 0, 65, 0, 11, 0, 0, 65, 171, 2, 11, 1, 0,
         ].as_slice().to_vec();
@@ -130,27 +130,6 @@ mod wasm_element_section_body_tests {
         debug!("section_bytecode (hex) {:x?}", section_bytecode);
         assert_eq!(expected, section_bytecode);
 
-        // source WAT:
-        // (elem funcref)
-        // (elem func)
-        // (elem func $f $f $g $g)
-        // (elem $t funcref)
-
-        // is_items_count+ -> elem+(is_elem_type{1} -> elem_body+)
-        // elem_body+(is_elem_type{1}=0 -> is_numeric_instruction{1} -> is_numeric_instruction_leb_arg+ -> is_block_end{1} -> is_funcs_idx_count+ -> is_func_idx*)
-        // elem_body+(is_elem_type{1}=1 -> is_elem_kind{1} -> is_funcs_idx_count+ -> is_func_idx*)
-        // expected body
-        // raw (hex): [
-        // 7,
-        // 1, 0, 0, - (elem funcref)
-        // 1, 0, 0, - (elem func)
-        // 1, 0, 3, 0, 0, 1, - (elem func $f $f $g)
-        // 1, 0, 4, 0, 0, 1, 1, - (elem func $f $f $g $g)
-        // 1, 0, 0, - (elem $t funcref)
-        // 0, 41, 0, b, 0, - (elem (i32.const 0))
-        // 0, 41, 9, b, 1, 0, - (elem (i32.const 9) $f)
-        // ]
-        // raw (hex): [7, 1, 0, 0, 1, 0, 0, 1, 0, 3, 0, 0, 1, 1, 0, 4, 0, 0, 1, 1, 1, 0, 0, 0, 41, 0, b, 0, 0, 41, 9, b, 1, 0, ]
         let expected = [
             7, 1, 0, 0, 1, 0, 0, 1, 0, 3, 0, 0, 1, 1, 0, 4, 0, 0, 1, 1, 1, 0, 0, 0, 65, 0, 11, 0, 0, 65, 171, 2, 11, 1, 0,
         ].as_slice().to_vec();

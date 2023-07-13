@@ -85,14 +85,13 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             |mut region| {
                 let mut shared_state = SharedState::default();
                 let mut offset_start = self.offset_start;
-                loop {
+                while offset_start < wasm_bytecode.bytes.len() {
                     offset_start = config.body_chip.assign_auto(
                         &mut region,
                         &wasm_bytecode,
                         offset_start,
                         &mut shared_state,
                     ).unwrap();
-                    if offset_start > wasm_bytecode.bytes.len() - 1 { break }
                 }
 
                 Ok(())

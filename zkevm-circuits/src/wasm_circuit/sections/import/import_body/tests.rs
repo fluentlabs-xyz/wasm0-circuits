@@ -89,13 +89,12 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             || "wasm_import_section_body region",
             |mut region| {
                 let mut offset_start = self.offset_start;
-                loop {
+                while offset_start < wasm_bytecode.bytes.len() {
                     offset_start = config.body_chip.assign_auto(
                         &mut region,
                         &wasm_bytecode,
                         offset_start,
                     ).unwrap();
-                    if offset_start > wasm_bytecode.bytes.len() - 1 { break }
                 }
 
                 Ok(())

@@ -3,22 +3,22 @@ use halo2_proofs::{
 };
 use std::{marker::PhantomData};
 use std::rc::Rc;
-use ethers_core::k256::pkcs8::der::Encode;
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Fixed, VirtualCells};
+use halo2_proofs::plonk::{Advice, Fixed};
 use halo2_proofs::poly::Rotation;
 use log::debug;
 use eth_types::Field;
-use gadgets::util::{Expr, or};
+use gadgets::binary_number::BinaryNumberChip;
+use gadgets::util::{and, Expr, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::consts::ExportDescType;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
-use crate::wasm_circuit::sections::export::export_body::consts::ExportDesc;
 use crate::wasm_circuit::sections::export::export_body::types::AssignType;
 
 #[derive(Debug, Clone)]
@@ -28,9 +28,12 @@ pub struct WasmExportSectionBodyConfig<F: Field> {
     pub is_export_name_len: Column<Fixed>,
     pub is_export_name: Column<Fixed>,
     pub is_exportdesc_type: Column<Fixed>,
+    pub is_exportdesc_type_ctx: Column<Fixed>,
     pub is_exportdesc_val: Column<Fixed>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
+    pub exportdesc_type: Column<Advice>,
+    pub exportdesc_type_chip: Rc<BinaryNumberChip<F, ExportDescType, 8>>,
 
     _marker: PhantomData<F>,
 }
@@ -66,6 +69,17 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         let is_exportdesc_type = cs.fixed_column();
         let is_exportdesc_val = cs.fixed_column();
 
+        let is_exportdesc_type_ctx = cs.fixed_column();
+
+        let exportdesc_type = cs.advice_column();
+
+        let config = BinaryNumberChip::configure(
+            cs,
+            is_exportdesc_type_ctx,
+            Some(exportdesc_type.into()),
+        );
+        let exportdesc_type_chip = Rc::new(BinaryNumberChip::construct(config));
+
         cs.create_gate("WasmExportSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
@@ -76,7 +90,13 @@ impl<F: Field> WasmExportSectionBodyChip<F>
             let is_exportdesc_type_expr = vc.query_fixed(is_exportdesc_type, Rotation::cur());
             let is_exportdesc_val_expr = vc.query_fixed(is_exportdesc_val, Rotation::cur());
 
+            let is_exportdesc_type_ctx_prev_expr = vc.query_fixed(is_exportdesc_type_ctx, Rotation::prev());
+            let is_exportdesc_type_ctx_expr = vc.query_fixed(is_exportdesc_type_ctx, Rotation::cur());
+
             let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+
+            let exportdesc_type_prev_expr = vc.query_advice(exportdesc_type, Rotation::prev());
+            let exportdesc_type_expr = vc.query_advice(exportdesc_type, Rotation::cur());
 
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
             cb.require_boolean("is_items_count is boolean", is_items_count_expr.clone());
@@ -87,7 +107,11 @@ impl<F: Field> WasmExportSectionBodyChip<F>
 
             cb.require_equal(
                 "exactly one mark flag active at the same time",
-                is_items_count_expr.clone() + is_export_name_len_expr.clone() + is_export_name_expr.clone() + is_exportdesc_type_expr.clone() + is_exportdesc_val_expr.clone(),
+                is_items_count_expr.clone()
+                    + is_export_name_len_expr.clone()
+                    + is_export_name_expr.clone()
+                    + is_exportdesc_type_expr.clone()
+                    + is_exportdesc_val_expr.clone(),
                 1.expr(),
             );
 
@@ -102,6 +126,33 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                         "is_items_count || is_export_name_len || is_exportdesc_val -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
+                    )
+                }
+            );
+
+            cb.condition(
+                or::expr([
+                    is_exportdesc_type_expr.clone(),
+                    is_exportdesc_val_expr.clone(),
+                ]),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_exportdesc_type || is_exportdesc_val => is_exportdesc_type_ctx",
+                        is_exportdesc_type_ctx_expr.clone(),
+                        1.expr(),
+                    )
+                }
+            );
+            cb.condition(
+                and::expr([
+                    is_exportdesc_type_ctx_prev_expr.clone(),
+                    is_exportdesc_type_ctx_expr.clone(),
+                ]),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_exportdesc_type_ctx && prev.is_exportdesc_type_ctx => exportdesc_type=prev.exportdesc_type",
+                        exportdesc_type_expr.clone(),
+                        exportdesc_type_prev_expr.clone(),
                     )
                 }
             );
@@ -179,10 +230,10 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                         "is_exportdesc_type -> byte_val has valid value",
                         byte_val_expr.clone(),
                         vec![
-                            ExportDesc::FuncExportDesc.expr(),
-                            ExportDesc::TableExportDesc.expr(),
-                            ExportDesc::MemExportDesc.expr(),
-                            ExportDesc::GlobalExportDesc.expr(),
+                            ExportDescType::Funcidx.expr(),
+                            ExportDescType::Tableidx.expr(),
+                            ExportDescType::Memidx.expr(),
+                            ExportDescType::Globalidx.expr(),
                         ],
                     );
                 }
@@ -197,8 +248,11 @@ impl<F: Field> WasmExportSectionBodyChip<F>
             is_export_name_len,
             is_export_name,
             is_exportdesc_type,
+            is_exportdesc_type_ctx,
             is_exportdesc_val,
             leb128_chip,
+            exportdesc_type,
+            exportdesc_type_chip,
             _marker: PhantomData,
         };
 
@@ -210,78 +264,96 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset: usize,
-        assign_type: AssignType,
+        assign_types: &[AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
     ) {
         let q_enable = true;
         debug!(
-            "export_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
+            "export_section_body: assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
-            assign_type,
+            assign_types,
             assign_value,
             wasm_bytecode.bytes[offset],
         );
-        if [
-            AssignType::IsItemsCount,
-            AssignType::IsExportNameLen,
-            AssignType::IsExportdescVal,
-        ].contains(&assign_type) {
-            let p = leb_params.unwrap();
-            self.config.leb128_chip.assign(
-                region,
-                offset,
-                q_enable,
-                p,
-            );
-        }
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        match assign_type {
-            AssignType::IsItemsCount => {
-                region.assign_fixed(
-                    || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
-                    self.config.is_items_count,
+        for assign_type in assign_types {
+            if [
+                AssignType::IsItemsCount,
+                AssignType::IsExportNameLen,
+                AssignType::IsExportdescVal,
+            ].contains(&assign_type) {
+                let p = leb_params.unwrap();
+                self.config.leb128_chip.assign(
+                    region,
                     offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
+                    q_enable,
+                    p,
+                );
             }
-            AssignType::IsExportNameLen => {
-                region.assign_fixed(
-                    || format!("assign 'is_export_name_len' val {} at {}", assign_value, offset),
-                    self.config.is_export_name_len,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsExportName => {
-                region.assign_fixed(
-                    || format!("assign 'is_export_name' val {} at {}", assign_value, offset),
-                    self.config.is_export_name,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsExportdescType => {
-                region.assign_fixed(
-                    || format!("assign 'is_exportdesc_type' val {} at {}", assign_value, offset),
-                    self.config.is_exportdesc_type,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsExportdescVal => {
-                region.assign_fixed(
-                    || format!("assign 'is_exportdesc_val' val {} at {}", assign_value, offset),
-                    self.config.is_exportdesc_val,
-                    offset,
+            match assign_type {
+                AssignType::IsItemsCount => {
+                    region.assign_fixed(
+                        || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
+                        self.config.is_items_count,
+                        offset,
                         || Value::known(F::from(assign_value)),
-                ).unwrap();
+                    ).unwrap();
+                }
+                AssignType::IsExportNameLen => {
+                    region.assign_fixed(
+                        || format!("assign 'is_export_name_len' val {} at {}", assign_value, offset),
+                        self.config.is_export_name_len,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsExportName => {
+                    region.assign_fixed(
+                        || format!("assign 'is_export_name' val {} at {}", assign_value, offset),
+                        self.config.is_export_name,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsExportdescType => {
+                    region.assign_fixed(
+                        || format!("assign 'is_exportdesc_type' val {} at {}", assign_value, offset),
+                        self.config.is_exportdesc_type,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsExportdescVal => {
+                    region.assign_fixed(
+                        || format!("assign 'is_exportdesc_val' val {} at {}", assign_value, offset),
+                        self.config.is_exportdesc_val,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsExportdescTypeCtx => {
+                    region.assign_fixed(
+                        || format!("assign 'is_exportdesc_type_ctx' val {} at {}", assign_value, offset),
+                        self.config.is_exportdesc_type_ctx,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::ExportdescType => {
+                    region.assign_advice(
+                        || format!("assign 'exportdesc_type' val {} at {}", assign_value, offset),
+                        self.config.exportdesc_type,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
             }
         }
     }
@@ -292,7 +364,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset: usize,
-        assign_type: AssignType,
+        assign_types: &[AssignType],
         name_len: usize,
     ) -> usize {
         for rel_offset in 0..name_len {
@@ -300,7 +372,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset + rel_offset,
-                assign_type,
+                assign_types,
                 1,
                 None,
             );
@@ -314,7 +386,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         leb_bytes_offset: usize,
-        assign_type: AssignType,
+        assign_types: &[AssignType],
     ) -> (u64, usize) {
         let is_signed = false;
         let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
@@ -333,7 +405,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset,
-                assign_type,
+                assign_types,
                 1,
                 Some(LebParams{
                     is_signed,
@@ -361,7 +433,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
             region,
             wasm_bytecode,
             offset,
-            AssignType::IsItemsCount,
+            &[AssignType::IsItemsCount],
         );
         offset += items_count_leb_len;
 
@@ -370,7 +442,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset,
-                AssignType::IsExportNameLen,
+                &[AssignType::IsExportNameLen],
             );
             offset += export_name_len_leb_len;
 
@@ -378,29 +450,54 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset,
-                AssignType::IsExportName,
+                &[AssignType::IsExportName],
                 export_name_len as usize,
             );
             offset = export_name_new_offset;
 
-            let exportdesc_type = wasm_bytecode.bytes.as_slice()[offset];
+            let exportdesc_type_val = wasm_bytecode.bytes.as_slice()[offset];
+            let exportdesc_type: ExportDescType = wasm_bytecode.bytes.as_slice()[offset].try_into().unwrap();
             self.assign(
                 region,
                 wasm_bytecode,
                 offset,
-                AssignType::IsExportdescType,
+                &[AssignType::IsExportdescType, AssignType::IsExportdescTypeCtx],
                 1,
                 None,
             );
+            self.assign(
+                region,
+                &wasm_bytecode,
+                offset,
+                &[AssignType::ExportdescType],
+                exportdesc_type_val as u64,
+                None,
+            );
+            self.config.exportdesc_type_chip.assign(region, offset, &exportdesc_type).unwrap();
             offset += 1;
 
-            let (exportdesc_val, exportdesc_val_leb_len) = self.markup_leb_section(
-                region,
-                wasm_bytecode,
-                offset,
-                AssignType::IsExportdescVal,
-            );
-            offset += exportdesc_val_leb_len;
+            match exportdesc_type {
+                ExportDescType::Funcidx | ExportDescType::Tableidx | ExportDescType::Memidx | ExportDescType::Globalidx => {
+                    let (exportdesc_val, exportdesc_val_leb_len) = self.markup_leb_section(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsExportdescVal, AssignType::IsExportdescTypeCtx],
+                    );
+                    for offset in offset..offset + exportdesc_val_leb_len {
+                        self.assign(
+                            region,
+                            &wasm_bytecode,
+                            offset,
+                            &[AssignType::ExportdescType],
+                            exportdesc_type_val as u64,
+                            None,
+                        );
+                        self.config.exportdesc_type_chip.assign(region, offset, &exportdesc_type).unwrap();
+                    }
+                    offset += exportdesc_val_leb_len;
+                }
+            }
         }
 
         Ok(offset)
