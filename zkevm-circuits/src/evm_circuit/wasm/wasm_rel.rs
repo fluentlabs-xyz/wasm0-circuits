@@ -30,16 +30,23 @@ const I32_REM_SHIFT: usize = 28usize;
 pub(crate) struct WasmRelGadget<F> {
     same_context: SameContextGadget<F>,
 
+    // Neg version of aruments is used to reconstruct it from limbs than `is_neg` makes sense.
     lhs: Cell<F>,
+    is_neg_lhs: Cell<F>,
+    neg_lhs: Cell<F>,
     rhs: Cell<F>,
+    is_neg_rhs: Cell<F>,
+    neg_rhs: Cell<F>,
 
     // This limbs comes from absolute value.
+    // So logic is to compare `is_neg` bits, and if it same than limbs can be used.
     lhs_limbs: [Cell<F>; 8],
     rhs_limbs: [Cell<F>; 8],
     neq_terms: [Cell<F>; 8],
     out_terms: [Cell<F>; 8],
     res: Cell<F>,
 
+    op_is_32bit: Cell<F>,
     op_is_eq: Cell<F>,
     op_is_ne: Cell<F>,
     op_is_lt: Cell<F>,
@@ -62,9 +69,14 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
 
         let lhs = cb.alloc_u64();
+        let is_neg_lhs = cb.alloc_bit_value();
+        let neg_lhs = cb.alloc_u64();
         let rhs = cb.alloc_u64();
+        let is_neg_rhs = cb.alloc_bit_value();
+        let neg_rhs = cb.alloc_u64();
         let res = cb.alloc_u64();
 
+        let op_is_32bit = cb.alloc_bit_value();
         let op_is_eq = cb.alloc_bit_value();
         let op_is_ne = cb.alloc_bit_value();
         let op_is_lt = cb.alloc_bit_value();
@@ -85,15 +97,37 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         let out_terms = [cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(),
                          cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64(), cb.alloc_u64()];
 
-        let enable = || op_is_gt.expr() + op_is_ge.expr() + op_is_lt.expr() + op_is_le.expr();
+        let op_is_64bit = || 1.expr() - op_is_32bit.expr();
+
+        let is_pos_lhs = || 1.expr() - is_neg_lhs.expr();
+        let is_pos_rhs = || 1.expr() - is_neg_rhs.expr();
+
+        // Is must be three ones (without any zero), to be on same negative side, and 1 0 0 for positive.
+        let sign_and_all_neg = || op_is_sign.expr() * is_neg_lhs.expr() * is_neg_rhs.expr();
+        let sign_and_all_pos = || op_is_sign.expr() * is_pos_lhs() * is_pos_rhs();
+
+        // This logic is exclusive to previous one.
+        let positive = || 1.expr() - op_is_sign.expr();
+
+        let enable_case = || sign_and_all_neg() + sign_and_all_pos() + positive();
+        let enable = || ( op_is_gt.expr() + op_is_ge.expr() + op_is_lt.expr() + op_is_le.expr() ) * enable_case();
+
         let code = || 1.expr() * op_is_gt.expr() + 2.expr() * op_is_ge.expr() +
                       3.expr() * op_is_lt.expr() + 4.expr() * op_is_le.expr();
+
+        // Means that fixed lookup table is disabled, and we can just use bits of negativity to make result.
+        let disabled = || 1.expr() - enable();
+
+        // To be correct comparsion, if all on negative side, than limbs is inverted (negated as 255 - x).
+        let mayinv = |limb: &Cell<F>|
+            ( positive() + sign_and_all_pos() ) * limb.expr() +
+            sign_and_all_neg() * (255.expr() - limb.expr());
 
         for idx in 0..8 {
             cb.add_lookup("Using OpRel fixed table", Lookup::Fixed {
                 tag: FixedTableTag::OpRel.expr(),
-                values: [lhs_limbs[idx].expr() * enable(),
-                         (rhs_limbs[idx].expr() + 256.expr() * code()) * enable(),
+                values: [mayinv(&lhs_limbs[idx]) * enable(),
+                         (mayinv(&rhs_limbs[idx]) + 256.expr() * code()) * enable(),
                          out_terms[idx].expr() * enable()],
             });
             cb.add_lookup("Using OpRel fixed table for neq terms", Lookup::Fixed {
@@ -119,6 +153,50 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
                      res.expr() * enable()],
         });
 
+        cb.require_zeros(
+            "op_rel: arguments from limbs", {
+            let abs_lhs = || {
+                let mut lhs_expr = lhs_limbs[0].expr();
+                for i in 1..8 {
+                    lhs_expr = lhs_expr + lhs_limbs[i].expr() * (1_u64 << i*8).expr();
+                }
+                lhs_expr
+            };
+            let abs_rhs = || {
+                let mut rhs_expr = rhs_limbs[0].expr();
+                for i in 1..8 {
+                    rhs_expr = rhs_expr + rhs_limbs[i].expr() * (1_u64 << i*8).expr();
+                }
+                rhs_expr
+            };
+            vec![
+                ( abs_lhs() - lhs.expr() ) * is_pos_lhs(),
+                ( abs_lhs() - neg_lhs.expr() ) * is_neg_lhs.expr(),
+                ( abs_rhs() - rhs.expr() ) * is_pos_rhs(),
+                ( abs_rhs() - neg_rhs.expr() ) * is_neg_rhs.expr(),
+            ]},
+        );
+
+        let modular_zero32 = || 1.expr() + 0xffffffff_u64.expr();
+        let modular_zero64 = || 1.expr() + 0xffffffff_ffffffff_u64.expr();
+
+        cb.require_zeros("op_rel: neg version is correct", vec![
+            ( neg_lhs.expr() + lhs.expr() - modular_zero32() ) * is_neg_lhs.expr() * op_is_32bit.expr(),
+            ( neg_rhs.expr() + rhs.expr() - modular_zero32() ) * is_neg_rhs.expr() * op_is_32bit.expr(),
+            ( neg_lhs.expr() + lhs.expr() - modular_zero64() ) * is_neg_lhs.expr() * op_is_64bit(),
+            ( neg_rhs.expr() + rhs.expr() - modular_zero64() ) * is_neg_rhs.expr() * op_is_64bit(),
+        ]);
+
+        cb.require_zeros("op_rel: if 32bit then limbs must be zero", vec![
+            {
+              let mut check = 0.expr();
+              for i in 4..8 {
+                check = check + rhs_limbs[i].expr() + lhs_limbs[i].expr();
+              }
+              check * op_is_32bit.expr()
+            }
+        ]);
+
         cb.stack_pop(rhs.expr());
         cb.stack_pop(lhs.expr());
         cb.stack_push(res.expr());
@@ -139,13 +217,18 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         Self {
             same_context,
             lhs,
+            is_neg_lhs,
+            neg_lhs,
             rhs,
+            is_neg_rhs,
+            neg_rhs,
             lhs_limbs,
             rhs_limbs,
             neq_terms,
             out_terms,
             res,
 
+            op_is_32bit,
             op_is_eq,
             op_is_ne,
             op_is_lt,
@@ -176,72 +259,73 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         self.lhs.assign(region, offset, Value::known(lhs.to_scalar().unwrap()))?;
         self.res.assign(region, offset, Value::known(res.to_scalar().unwrap()))?;
 
-        let mut is_32 = true;
-
-        println!("DEBUG rhs {rhs} lhs {lhs} res {res}");
-        match opcode {
-          OpcodeId::I32GtU | OpcodeId::I32GeU | OpcodeId::I32LtU | OpcodeId::I32LeU |
-          OpcodeId::I64GtU | OpcodeId::I64GeU | OpcodeId::I64LtU | OpcodeId::I64LeU => {
-            for idx in 0..8 {
-              let lhs_limb = (lhs.0[0] >> (8 * idx)) & 0xff;
-              let rhs_limb = (rhs.0[0] >> (8 * idx)) & 0xff;
-              let neq_out = lhs_limb != rhs_limb;
-              let (out, _code) = match opcode {
-                OpcodeId::I32GtU | OpcodeId::I64GtU => (lhs_limb >  rhs_limb, 1),
-                OpcodeId::I32GeU | OpcodeId::I64GeU => (lhs_limb >= rhs_limb, 2),
-                OpcodeId::I32LtU | OpcodeId::I64LtU => (lhs_limb <  rhs_limb, 3),
-                OpcodeId::I32LeU | OpcodeId::I64LeU => (lhs_limb <= rhs_limb, 4),
-                _ => unreachable!(),
-              };
-              self.lhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(lhs_limb)))?;
-              self.rhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(rhs_limb)))?;
-              self.neq_terms[idx].assign(region, offset, Value::<F>::known(F::from(neq_out)))?;
-              self.out_terms[idx].assign(region, offset, Value::<F>::known(F::from(out)))?;
-              println!("DEBUG {idx} {lhs_limb} {rhs_limb} {neq_out} {out}");
-            }
+        let (is_neg_lhs, is_neg_rhs, abs_lhs, abs_rhs) = match opcode {
+          OpcodeId::I32GtS | OpcodeId::I32GeS | OpcodeId::I32LtS | OpcodeId::I32LeS => {
+              let is_neg_lhs = (lhs.as_u32() > i32::MAX as u32) as u64;
+              let is_neg_rhs = (rhs.as_u32() > i32::MAX as u32) as u64;
+              let abs_lhs = (lhs.as_u32() as i32).abs() as u64;
+              let abs_rhs = (rhs.as_u32() as i32).abs() as u64;
+              (is_neg_lhs, is_neg_rhs, abs_lhs, abs_rhs)
           }
-          OpcodeId::I32GtS | OpcodeId::I32GeS | OpcodeId::I32LtS | OpcodeId::I32LeS |
           OpcodeId::I64GtS | OpcodeId::I64GeS | OpcodeId::I64LtS | OpcodeId::I64LeS => {
+              let is_neg_lhs = (lhs.as_u64() > i64::MAX as u64) as u64;
+              let is_neg_rhs = (rhs.as_u64() > i64::MAX as u64) as u64;
+              let abs_lhs = (lhs.as_u64() as i64).abs() as u64;
+              let abs_rhs = (rhs.as_u64() as i64).abs() as u64;
+              (is_neg_lhs, is_neg_rhs, abs_lhs, abs_rhs)
           }
-          _ => ()
+          _ => (0, 0, lhs.as_u64(), rhs.as_u64())
+        };
+
+        self.is_neg_rhs.assign(region, offset, Value::<F>::known(F::from(is_neg_rhs)))?;
+        self.is_neg_lhs.assign(region, offset, Value::<F>::known(F::from(is_neg_lhs)))?;
+        if is_neg_rhs > 0 { self.neg_rhs.assign(region, offset, Value::<F>::known(F::from(abs_rhs)))?; }
+        if is_neg_lhs > 0 { self.neg_lhs.assign(region, offset, Value::<F>::known(F::from(abs_lhs)))?; }
+
+        println!("DEBUG rhs {rhs} lhs {lhs} res {res} abs_rhs {abs_rhs} abs_lhs {abs_lhs}");
+        for idx in 0..8 {
+          // This is additive inversion to make comparsion correct for case if all args on negative side.
+          let mayinv = |x| if is_neg_lhs > 0 && is_neg_rhs > 0 { 255_u64 - x } else { x };
+          let lhs_limb = (abs_lhs >> (8 * idx)) & 0xff;
+          let rhs_limb = (abs_rhs >> (8 * idx)) & 0xff;
+          let mi_lhs_limb = mayinv(lhs_limb);
+          let mi_rhs_limb = mayinv(rhs_limb);
+          let neq_out = lhs_limb != rhs_limb;
+          let out = match opcode {
+            OpcodeId::I32GtU | OpcodeId::I64GtU | OpcodeId::I32GtS | OpcodeId::I64GtS => mi_lhs_limb >  mi_rhs_limb,
+            OpcodeId::I32GeU | OpcodeId::I64GeU | OpcodeId::I32GeS | OpcodeId::I64GeS => mi_lhs_limb >= mi_rhs_limb,
+            OpcodeId::I32LtU | OpcodeId::I64LtU | OpcodeId::I32LtS | OpcodeId::I64LtS => mi_lhs_limb <  mi_rhs_limb,
+            OpcodeId::I32LeU | OpcodeId::I64LeU | OpcodeId::I32LeS | OpcodeId::I64LeS => mi_lhs_limb <= mi_rhs_limb,
+            _ => false,
+          };
+          self.lhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(lhs_limb)))?;
+          self.rhs_limbs[idx].assign(region, offset, Value::<F>::known(F::from(rhs_limb)))?;
+          self.neq_terms[idx].assign(region, offset, Value::<F>::known(F::from(neq_out)))?;
+          self.out_terms[idx].assign(region, offset, Value::<F>::known(F::from(out)))?;
+          println!("DEBUG {idx} {lhs_limb} {rhs_limb} {neq_out} {out}");
         }
 
+        let is_32 = match opcode {
+            OpcodeId::I32GtU | OpcodeId::I32GeU | OpcodeId::I32LtU | OpcodeId::I32LeU | OpcodeId::I32Eq | OpcodeId::I32Ne |
+            OpcodeId::I32GtS | OpcodeId::I32GeS | OpcodeId::I32LtS | OpcodeId::I32LeS => true,
+            _ => false
+        };
+        self.op_is_32bit.assign(region, offset, Value::known(is_32.into()))?;
+
+        macro_rules! assign_bits {($($a:ident),*) => {{ $(self.$a.assign(region, offset, Value::known(1.into()))?;)* }}}
+
         match opcode {
-            OpcodeId::I32GtU => {
-              self.op_is_gt.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32GeU => {
-              self.op_is_ge.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32LtU => {
-              self.op_is_lt.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32LeU => {
-              self.op_is_le.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32Eq => {
-              self.op_is_eq.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32Ne => {
-              self.op_is_ne.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32GtS => {
-              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
-              self.op_is_gt.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32GeS => {
-              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
-              self.op_is_ge.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32LtS => {
-              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
-              self.op_is_lt.assign(region, offset, Value::known(1.into()))?;
-            }
-            OpcodeId::I32LeS => {
-              self.op_is_sign.assign(region, offset, Value::known(1.into()))?;
-              self.op_is_le.assign(region, offset, Value::known(1.into()))?;
-            }
-            _ => unreachable!()
+            OpcodeId::I32GtU | OpcodeId::I64GtU => assign_bits! { op_is_gt },
+            OpcodeId::I32GeU | OpcodeId::I64GeU => assign_bits! { op_is_ge },
+            OpcodeId::I32LtU | OpcodeId::I64LtU => assign_bits! { op_is_lt },
+            OpcodeId::I32LeU | OpcodeId::I64LeU => assign_bits! { op_is_le },
+            OpcodeId::I32Eq  | OpcodeId::I64Eq  => assign_bits! { op_is_eq },
+            OpcodeId::I32Ne  | OpcodeId::I64Ne  => assign_bits! { op_is_ne },
+            OpcodeId::I32GtS | OpcodeId::I64GtS => assign_bits! { op_is_gt, op_is_sign },
+            OpcodeId::I32GeS | OpcodeId::I64GeS => assign_bits! { op_is_ge, op_is_sign },
+            OpcodeId::I32LtS | OpcodeId::I64LtS => assign_bits! { op_is_lt, op_is_sign },
+            OpcodeId::I32LeS | OpcodeId::I64LeS => assign_bits! { op_is_le, op_is_sign },
+            _ => (),
         }
 
         Ok(())
@@ -305,18 +389,17 @@ mod test {
         }
     }
 
-    // Example command to run test: cargo test generated_tests::I32Const::I32GtU::test_0
+    // Example command to run test: cargo test generated_tests::I32Const::I32GtU::test_10
     // Encoding of test number is decimal pair by ten, ones and tens, a + b * 10
+    // For example test_10 means lhs_index is 1 and rhs_index is 0
     tests_from_data! {
       [
         [I32Const
-          //[I32GtU, I32GeU, I32LtU, I32LeU, I32Eq, I32Ne, I32GtS, I32GeS, I32LtS, I32LeS]
-          [I32GtU, I32GeU, I32LtU, I32LeU]
+          [I32GtU, I32GeU, I32LtU, I32LeU, I32Eq, I32Ne, I32GtS, I32GeS, I32LtS, I32LeS]
           [0, 1, 2, -1, -2, 0x80000000]
         ]
         [I64Const
-          //[I64GtU, I64GeU, I64LtU, I64LeU, I64Eq, I64Ne, I64GtS, I64GeS, I64LtS, I64LeS]
-          [I64GtU, I64GeU, I64LtU, I64LeU]
+          [I64GtU, I64GeU, I64LtU, I64LeU, I64Eq, I64Ne, I64GtS, I64GeS, I64LtS, I64LeS]
           [0, 1, 2, -1, -2, -0x100000001, -0x100000002, 0x100000001, 0x100000002]
         ]
       ]
