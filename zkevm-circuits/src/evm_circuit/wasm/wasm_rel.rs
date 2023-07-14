@@ -109,14 +109,17 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         // This logic is exclusive to previous one.
         let positive = || 1.expr() - op_is_sign.expr();
 
-        let enable_case = || sign_and_all_neg() + sign_and_all_pos() + positive();
-        let enable = || ( op_is_gt.expr() + op_is_ge.expr() + op_is_lt.expr() + op_is_le.expr() ) * enable_case();
+        // Means that fixed lookup table is used for real limbs, and this limbs has same sign.
+        let enable = || sign_and_all_neg() + sign_and_all_pos() + positive();
 
-        let code = || 1.expr() * op_is_gt.expr() + 2.expr() * op_is_ge.expr() +
-                      3.expr() * op_is_lt.expr() + 4.expr() * op_is_le.expr();
-
-        // Means that fixed lookup table is disabled, and we can just use bits of negativity to make result.
+        // Means that fixed lookup table for limbs is disabled, and we can just use bits of negativity to make result.
+        // Means bits instead of real limbs, fake limbs created from `is_pos_lhs` and `is_pos_rhs`.
         let disabled = || 1.expr() - enable();
+
+        // Code like 0.expr() * op_is_nq.expr() is just skipped, because this is zero and exclusive to other ops.
+        let code = || 1.expr() * op_is_eq.expr() +
+                      2.expr() * op_is_gt.expr() + 3.expr() * op_is_ge.expr() +
+                      4.expr() * op_is_lt.expr() + 5.expr() * op_is_le.expr();
 
         // To be correct comparsion, if all on negative side, than limbs is inverted (negated as 255 - x).
         let mayinv = |limb: &Cell<F>|
@@ -148,6 +151,26 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             tag: FixedTableTag::ClzFilter.expr(),
             values: [neq_bits, out_bits.expr(), res.expr()].map(|x| x * enable()),
         });
+
+        // Now constraints for `disabled` case, artifact fake limb is created from bits, sign is not same.
+        // Positive versions is used because in this case positive is bigger than negative.
+        let fake_lhs_limb = || is_pos_lhs(); // Just simple aliases.
+        let fake_rhs_limb = || is_pos_rhs();
+
+        // Like previous lookup constraint, but for only first limb and term.
+        cb.add_lookup("Using OpRel fixed table", Lookup::Fixed {
+            tag: FixedTableTag::OpRel.expr(),
+            values: [ fake_lhs_limb(),
+                      fake_rhs_limb() + 256.expr() * code(),
+                      out_terms[0].expr() ].map(|x| x * disabled()),
+        });
+        // Neq term must be zero because fake limbs is different in disabled case.
+        // If it is zero than `ClzFilter` will get smallest out_term as result of operation, so it is not needed.
+        // This result of operation is comparsion operator of fake limbs (different signs of lhs and rhs).
+        // Result is just in first out_term.
+        cb.require_zeros("op_rel: in case of disabled result is first term", [
+            neq_terms[0].expr(), out_terms[0].expr() - res.expr(),
+        ].map(|x| x * disabled()).into());
 
         cb.require_zeros(
             "op_rel: arguments from limbs", {
@@ -293,29 +316,41 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
         if is_neg_rhs > 0 { assign!(neg_rhs, F::from(abs_rhs)); }
         if is_neg_lhs > 0 { assign!(neg_lhs, F::from(abs_lhs)); }
 
+        // In case of signed or unsigned, then if this equal then real limbs is used.
+        let enable = is_neg_rhs == is_neg_lhs;
+
         println!("DEBUG rhs {rhs} lhs {lhs} res {res} abs_rhs {abs_rhs} abs_lhs {abs_lhs}");
         for idx in 0..8 {
           // This is additive inversion to make comparsion correct for case if all args on negative side.
-          let mayinv = |x| if is_neg_lhs > 0 && is_neg_rhs > 0 { 255_u64 - x } else { x };
           let lhs_limb = (abs_lhs >> (8 * idx)) & 0xff;
           let rhs_limb = (abs_rhs >> (8 * idx)) & 0xff;
-          let mi_lhs_limb = mayinv(lhs_limb);
-          let mi_rhs_limb = mayinv(rhs_limb);
-          let neq_out = lhs_limb != rhs_limb;
+          let mi_lhs_limb = if is_neg_lhs > 0 { 255_u64 - lhs_limb } else { lhs_limb };
+          let mi_rhs_limb = if is_neg_rhs > 0 { 255_u64 - rhs_limb } else { rhs_limb };
+          let neq_out = mi_lhs_limb != mi_rhs_limb;
           let out = match opcode {
+            OpcodeId::I32Ne | OpcodeId::I64Ne => neq_out,
+            OpcodeId::I32Eq | OpcodeId::I64Eq => mi_lhs_limb == mi_rhs_limb,
             OpcodeId::I32GtU | OpcodeId::I64GtU | OpcodeId::I32GtS | OpcodeId::I64GtS => mi_lhs_limb >  mi_rhs_limb,
             OpcodeId::I32GeU | OpcodeId::I64GeU | OpcodeId::I32GeS | OpcodeId::I64GeS => mi_lhs_limb >= mi_rhs_limb,
             OpcodeId::I32LtU | OpcodeId::I64LtU | OpcodeId::I32LtS | OpcodeId::I64LtS => mi_lhs_limb <  mi_rhs_limb,
             OpcodeId::I32LeU | OpcodeId::I64LeU | OpcodeId::I32LeS | OpcodeId::I64LeS => mi_lhs_limb <= mi_rhs_limb,
             _ => false,
           };
-          assigns! {
-              [lhs_limbs[idx], F::from(lhs_limb)]
-              [rhs_limbs[idx], F::from(rhs_limb)]
-              [neq_terms[idx], F::from(neq_out)]
-              [out_terms[idx], F::from(out)]
+          if enable {
+              assigns! {
+                  [lhs_limbs[idx], F::from(lhs_limb)]
+                  [rhs_limbs[idx], F::from(rhs_limb)]
+                  [neq_terms[idx], F::from(neq_out)]
+                  [out_terms[idx], F::from(out)]
+              }
+              println!("DEBUG {idx} {lhs_limb} {rhs_limb} {neq_out} {out}");
+          } else if idx == 0 {
+              assigns! {
+                  [neq_terms[idx], F::from(0)]
+                  [out_terms[idx], F::from(out)]
+              }
+              println!("DEBUG {idx} {out}");
           }
-          println!("DEBUG {idx} {lhs_limb} {rhs_limb} {neq_out} {out}");
         }
 
         let is_32 = match opcode {
@@ -403,6 +438,7 @@ mod test {
     // Example command to run test: cargo test generated_tests::I32Const::I32GtU::test_10
     // Encoding of test number is decimal pair by ten, ones and tens, a + b * 10
     // For example test_10 means lhs_index is 1 and rhs_index is 0
+    // If `test_41` is used then do four comparsions with "-1" and "1" etc, see `try_test_by_number`.
     tests_from_data! {
       [
         [I32Const

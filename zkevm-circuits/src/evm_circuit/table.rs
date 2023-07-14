@@ -143,17 +143,18 @@ impl FixedTableTag {
                 (0..256).map(move |rhs| [tag, F::from(lhs), F::from(rhs), F::from(bitintr::Popcnt::popcnt(lhs | rhs << 8))])
             })),
             Self::OpRel => Box::new((0..256).flat_map(move |lhs| {
-                // OpRel encoding: Neq: 0, Gt: 1, Ge: 2, Lt: 3, Le: 4
+                // OpRel encoding: Neq: 0, Eq: 1, Gt: 2, Ge: 3, Lt: 4, Le: 5
                 // Code part will be constructed from verified bits, so rhs is correct to check by fix table.
-                (0..(256 * 5)).map(move |rhs_and_code| {
+                (0..(256 * 6)).map(move |rhs_and_code| {
                   let rhs = rhs_and_code & 0xff;
                   let code = rhs_and_code >> 8;
                   let out = match code {
                     0 => lhs != rhs,
-                    1 => lhs > rhs,
-                    2 => lhs >= rhs,
-                    3 => lhs < rhs,
-                    4 => lhs <= rhs,
+                    1 => lhs == rhs,
+                    2 => lhs > rhs,
+                    3 => lhs >= rhs,
+                    4 => lhs < rhs,
+                    5 => lhs <= rhs,
                     _ => unreachable!(),
                   };
                   [tag, F::from(lhs), F::from(rhs_and_code), F::from(out)]
@@ -169,11 +170,9 @@ impl FixedTableTag {
             Self::ClzFilter => Box::new((0..256).flat_map(move |lhs| {
                 (0..256).map(move |rhs| {
                     let lzcnt = bitintr::Lzcnt::lzcnt(lhs as u8) as u64;
-                    let pos = 8 - lzcnt;
-                    // If lzcnt is 8 that means that all zeros, mask is empty in this case.
-                    let bit = (1 << pos) >> 1;
-                    // In both cases, than mask is empty and if position is smallest, we do not shift after.
-                    let filtred = (rhs & bit) >> (pos.max(1) - 1);
+                    let pos = 7 - lzcnt.min(7);
+                    let bit = 1 << pos;
+                    let filtred = (rhs & bit) >> pos;
                     [tag, F::from(lhs), F::from(rhs), F::from(filtred)]
                 })
             })),
