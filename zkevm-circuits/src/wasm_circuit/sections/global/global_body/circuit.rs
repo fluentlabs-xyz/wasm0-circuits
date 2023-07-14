@@ -25,7 +25,7 @@ use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::global::global_body::types::AssignType;
 use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
-use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
+use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
@@ -81,12 +81,12 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             "global section has valid setup for mem indexes",
             cs,
             |vc| {
-                [
-                    vc.query_fixed(is_items_count, Rotation::cur()),
-                    vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
-                    Tag::GlobalSectionGlobalIndex.expr(),
-                    true.expr(),
-                ]
+                LookupArgsParams {
+                    cond: vc.query_fixed(is_items_count, Rotation::cur()),
+                    index: vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
+                    tag: Tag::GlobalSectionGlobalIndex.expr(),
+                    is_terminator: true.expr(),
+                }
             }
         );
 

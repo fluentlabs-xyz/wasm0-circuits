@@ -1,25 +1,32 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Fixed, VirtualCells};
+use halo2_proofs::plonk::{Advice, Fixed};
 use halo2_proofs::poly::Rotation;
 use itertools::Itertools;
 use log::debug;
+
 use eth_types::Field;
+use gadgets::binary_number::BinaryNumberChip;
 use gadgets::util::{Expr, or};
+
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::consts::{MemSegmentType, NumericInstruction, WASM_BLOCK_END};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::sections::data::data_body::types::AssignType;
+use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
+use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
 pub struct WasmDataSectionBodyConfig<F: Field> {
@@ -32,7 +39,12 @@ pub struct WasmDataSectionBodyConfig<F: Field> {
     pub is_mem_segment_len: Column<Fixed>,
     pub is_mem_segment_bytes: Column<Fixed>,
 
+    pub is_mem_segment_type_ctx: Column<Fixed>,
+
     pub leb128_chip: Rc<LEB128Chip<F>>,
+    pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
+    pub mem_segment_type: Column<Advice>,
+    pub mem_segment_type_chip: Rc<BinaryNumberChip<F, MemSegmentType, 8>>,
 
     _marker: PhantomData<F>,
 }
@@ -60,6 +72,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
+        dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     ) -> WasmDataSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let is_items_count = cs.fixed_column();
@@ -69,6 +82,29 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         let is_block_end = cs.fixed_column();
         let is_mem_segment_len = cs.fixed_column();
         let is_mem_segment_bytes = cs.fixed_column();
+
+        let is_mem_segment_type_ctx = cs.fixed_column();
+        let mem_segment_type = cs.advice_column();
+
+        let config = BinaryNumberChip::configure(
+            cs,
+            is_mem_segment_type_ctx,
+            Some(mem_segment_type.into()),
+        );
+        let mem_segment_type_chip = Rc::new(BinaryNumberChip::construct(config));
+
+        dynamic_indexes_chip.lookup_args(
+            "data section has valid setup for data indexes",
+            cs,
+            |vc| {
+                LookupArgsParams {
+                    cond: vc.query_fixed(is_items_count, Rotation::cur()),
+                    index: vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
+                    tag: Tag::DataSectionDataIndex.expr(),
+                    is_terminator: true.expr(),
+                }
+            }
+        );
 
         cs.create_gate("WasmDataSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -121,7 +157,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 }
             );
 
-            // is_items_count+ -> item+ (is_mem_segment_type{1} -> is_mem_segment_size_opcode{1} -> is_mem_segment_size+ -> is_block_end{1} -> is_mem_segment_len+ -> is_mem_segment_bytes+)
+            // is_items_count+ -> item+ (is_mem_segment_type{1} -> is_mem_segment_size_opcode{1} -> is_mem_segment_size+ -> is_block_end{1} -> is_mem_segment_len+ -> is_mem_segment_bytes*)
             configure_check_for_transition(
                 &mut cb,
                 vc,
@@ -202,18 +238,19 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 false,
                 &[is_block_end, is_mem_segment_len],
             );
+            // TODO
+            // configure_check_for_transition(
+            //     &mut cb,
+            //     vc,
+            //     "check next: is_mem_segment_len+ -> is_mem_segment_bytes*",
+            //     is_mem_segment_len_expr.clone(),
+            //     true,
+            //     &[is_mem_segment_len, is_mem_segment_bytes],
+            // );
             configure_check_for_transition(
                 &mut cb,
                 vc,
-                "check next: is_mem_segment_len+ -> is_mem_segment_bytes+",
-                is_mem_segment_len_expr.clone(),
-                true,
-                &[is_mem_segment_len, is_mem_segment_bytes],
-            );
-            configure_check_for_transition(
-                &mut cb,
-                vc,
-                "check prev: is_mem_segment_len+ -> is_mem_segment_bytes+",
+                "check prev: is_mem_segment_len+ -> is_mem_segment_bytes*",
                 is_mem_segment_bytes_expr.clone(),
                 false,
                 &[is_mem_segment_len, is_mem_segment_bytes],
@@ -237,7 +274,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         "is_mem_segment_type -> byte value is correct",
                         byte_val_expr.clone(),
                         vec![
-                            MemSegmentType::ActiveZero.expr(),
+                            MemSegmentType::Active.expr(),
                             // TODO add support for other types
                             // MemSegmentType::Passive.expr(),
                             // MemSegmentType::ActiveVariadic.expr(),
@@ -272,7 +309,11 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             is_block_end,
             is_mem_segment_len,
             is_mem_segment_bytes,
+            is_mem_segment_type_ctx,
             leb128_chip,
+            dynamic_indexes_chip,
+            mem_segment_type,
+            mem_segment_type_chip,
             _marker: PhantomData,
         };
 
@@ -284,96 +325,120 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset: usize,
-        assign_type: AssignType,
+        assign_types: &[AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
     ) {
         let q_enable = true;
         debug!(
-            "data_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
+            "data_section_body: assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
-            assign_type,
+            assign_types,
             assign_value,
             wasm_bytecode.bytes[offset],
         );
-        if [
-            AssignType::IsItemsCount,
-            AssignType::IsMemSegmentSize,
-            AssignType::IsMemSegmentLen,
-        ].contains(&assign_type) {
-            let p = leb_params.unwrap();
-            self.config.leb128_chip.assign(
-                region,
-                offset,
-                q_enable,
-                p,
-            );
-        }
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        match assign_type {
-            AssignType::IsItemsCount => {
-                region.assign_fixed(
-                    || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
-                    self.config.is_items_count,
+        assign_types.iter().for_each(|assign_type| {
+            if [
+                AssignType::IsItemsCount,
+                AssignType::IsMemSegmentSize,
+                AssignType::IsMemSegmentLen,
+            ].contains(&assign_type) {
+                let p = leb_params.unwrap();
+                self.config.leb128_chip.assign(
+                    region,
                     offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
+                    q_enable,
+                    p,
+                );
             }
-            AssignType::IsMemSegmentType => {
-                region.assign_fixed(
-                    || format!("assign 'is_mem_segment_type' val {} at {}", assign_value, offset),
-                    self.config.is_mem_segment_type,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
+            match assign_type {
+                AssignType::IsItemsCount => {
+                    region.assign_fixed(
+                        || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
+                        self.config.is_items_count,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsMemSegmentType => {
+                    region.assign_fixed(
+                        || format!("assign 'is_mem_segment_type' val {} at {}", assign_value, offset),
+                        self.config.is_mem_segment_type,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsMemSegmentSizeOpcode => {
+                    region.assign_fixed(
+                        || format!("assign 'is_mem_segment_size_opcode' val {} at {}", assign_value, offset),
+                        self.config.is_mem_segment_size_opcode,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsMemSegmentSize => {
+                    region.assign_fixed(
+                        || format!("assign 'is_mem_segment_size' val {} at {}", assign_value, offset),
+                        self.config.is_mem_segment_size,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsBlockEnd => {
+                    region.assign_fixed(
+                        || format!("assign 'is_block_end' val {} at {}", assign_value, offset),
+                        self.config.is_block_end,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsMemSegmentLen => {
+                    region.assign_fixed(
+                        || format!("assign 'is_mem_segment_len' val {} at {}", assign_value, offset),
+                        self.config.is_mem_segment_len,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsMemSegmentBytes => {
+                    region.assign_fixed(
+                        || format!("assign 'is_mem_segment_bytes' val {} at {}", assign_value, offset),
+                        self.config.is_mem_segment_bytes,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsMemSegmentTypeCtx => {
+                    region.assign_fixed(
+                        || format!("assign 'is_mem_segment_type_ctx' val {} at {}", assign_value, offset),
+                        self.config.is_mem_segment_type_ctx,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::MemSegmentType => {
+                    region.assign_advice(
+                        || format!("assign 'mem_segment_type' val {} at {}", assign_value, offset),
+                        self.config.mem_segment_type,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                    let mem_segment_type: MemSegmentType = (assign_value as u8).try_into().unwrap();
+                    self.config.mem_segment_type_chip.assign(
+                        region,
+                        offset,
+                        &mem_segment_type,
+                    ).unwrap();
+                }
             }
-            AssignType::IsMemSegmentSizeOpcode => {
-                region.assign_fixed(
-                    || format!("assign 'is_mem_segment_size_opcode' val {} at {}", assign_value, offset),
-                    self.config.is_mem_segment_size_opcode,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsMemSegmentSize => {
-                region.assign_fixed(
-                    || format!("assign 'is_mem_segment_size' val {} at {}", assign_value, offset),
-                    self.config.is_mem_segment_size,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsBlockEnd => {
-                region.assign_fixed(
-                    || format!("assign 'is_block_end' val {} at {}", assign_value, offset),
-                    self.config.is_block_end,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsMemSegmentLen => {
-                region.assign_fixed(
-                    || format!("assign 'is_mem_segment_len' val {} at {}", assign_value, offset),
-                    self.config.is_mem_segment_len,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsMemSegmentBytes => {
-                region.assign_fixed(
-                    || format!("assign 'is_mem_segment_bytes' val {} at {}", assign_value, offset),
-                    self.config.is_mem_segment_bytes,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-        }
+        })
     }
 
     /// returns sn and leb len
@@ -382,7 +447,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         leb_bytes_offset: usize,
-        assign_type: AssignType,
+        assign_types: &[AssignType],
     ) -> (u64, usize) {
         let is_signed = false;
         let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
@@ -401,9 +466,9 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset,
-                assign_type,
+                assign_types,
                 1,
-                Some(LebParams{
+                Some(LebParams {
                     is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
@@ -429,7 +494,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset + rel_offset,
-                AssignType::IsMemSegmentBytes,
+                &[AssignType::IsMemSegmentBytes],
                 1,
                 None,
             );
@@ -443,6 +508,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset_start: usize,
+        shared_state: &mut SharedState,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
@@ -451,74 +517,104 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             region,
             wasm_bytecode,
             offset,
-            AssignType::IsItemsCount,
+            &[AssignType::IsItemsCount],
         );
+        shared_state.dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
+            region,
+            shared_state.dynamic_indexes_offset,
+            items_count as usize,
+            Tag::DataSectionDataIndex,
+        ).unwrap();
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
             // is_mem_segment_type{1}
+            let mem_segment_type_val = wasm_bytecode.bytes[offset];
+            let mem_segment_type: MemSegmentType = mem_segment_type_val.try_into().unwrap();
             self.assign(
                 region,
                 wasm_bytecode,
                 offset,
-                AssignType::IsMemSegmentType,
+                &[AssignType::IsMemSegmentType, AssignType::IsMemSegmentTypeCtx],
                 1,
                 None,
             );
-            offset += 1;
-
-            // is_mem_segment_size_opcode{1}
             self.assign(
                 region,
                 wasm_bytecode,
                 offset,
-                AssignType::IsMemSegmentSizeOpcode,
-                1,
+                &[AssignType::MemSegmentType],
+                mem_segment_type_val as u64,
                 None,
             );
             offset += 1;
 
-            // is_mem_segment_size+
-            let (mem_segment_size, mem_segment_size_leb_len) = self.markup_leb_section(
-                region,
-                wasm_bytecode,
-                offset,
-                AssignType::IsMemSegmentSize,
-            );
-            offset += mem_segment_size_leb_len;
+            match mem_segment_type {
+                MemSegmentType::Active => {
+                    // is_mem_segment_size_opcode{1}
+                    self.assign(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsMemSegmentSizeOpcode, AssignType::IsMemSegmentTypeCtx],
+                        1,
+                        None,
+                    );
+                    self.assign(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::MemSegmentType],
+                        mem_segment_type_val as u64,
+                        None,
+                    );
+                    offset += 1;
 
-            // is_block_end{1}
-            self.assign(
-                region,
-                wasm_bytecode,
-                offset,
-                AssignType::IsBlockEnd,
-                1,
-                None,
-            );
-            offset += 1;
+                    // is_mem_segment_size+
+                    let (mem_segment_size, mem_segment_size_leb_len) = self.markup_leb_section(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsMemSegmentSize],
+                    );
+                    offset += mem_segment_size_leb_len;
 
-            // is_mem_segment_len+
-            let (mem_segment_len, mem_segment_len_leb_len) = self.markup_leb_section(
-                region,
-                wasm_bytecode,
-                offset,
-                AssignType::IsMemSegmentLen,
-            );
-            offset += mem_segment_len_leb_len;
+                    // is_block_end{1}
+                    self.assign(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsBlockEnd],
+                        1,
+                        None,
+                    );
+                    offset += 1;
 
-            // is_mem_segment_bytes+
-            for rel_offset in 0..(mem_segment_len as usize) {
-                self.assign(
-                    region,
-                    wasm_bytecode,
-                    offset + rel_offset,
-                    AssignType::IsMemSegmentBytes,
-                    1,
-                    None,
-                );
+                    // is_mem_segment_len+
+                    let (mem_segment_len, mem_segment_len_leb_len) = self.markup_leb_section(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsMemSegmentLen],
+                    );
+                    offset += mem_segment_len_leb_len;
+
+                    // is_mem_segment_bytes*
+                    for rel_offset in 0..(mem_segment_len as usize) {
+                        self.assign(
+                            region,
+                            wasm_bytecode,
+                            offset + rel_offset,
+                            &[AssignType::IsMemSegmentBytes],
+                            1,
+                            None,
+                        );
+                    }
+                    offset += mem_segment_len as usize;
+                }
+                MemSegmentType::Passive => { panic!("unsupported mem segment type {:?}", mem_segment_type) }
+                MemSegmentType::ActiveVariadic => { panic!("unsupported mem segment type {:?}", mem_segment_type) }
             }
-            offset += mem_segment_len as usize;
         }
 
         Ok(offset)

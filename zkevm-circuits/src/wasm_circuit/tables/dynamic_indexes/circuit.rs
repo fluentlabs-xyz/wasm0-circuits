@@ -10,7 +10,7 @@ use eth_types::Field;
 use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::tables::dynamic_indexes::types::{AssignType, Tag, TAG_VALUES};
+use crate::wasm_circuit::tables::dynamic_indexes::types::{AssignType, LookupArgsParams, Tag, TAG_VALUES};
 use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
@@ -160,25 +160,29 @@ impl<F: Field> DynamicIndexesChip<F>
         });
     }
 
-    /// `params` must return exprs: [cond, index, tag, is_terminator]
     pub fn lookup_args(
         &self,
         name: &'static str,
         cs: &mut ConstraintSystem<F>,
-        params: impl FnOnce(&mut VirtualCells<'_, F>) -> [Expression<F>; 4],
+        params: impl FnOnce(&mut VirtualCells<'_, F>) -> LookupArgsParams<F>,
     ) {
         cs.lookup_any(name, |vc| {
             let params = params(vc);
 
-            params[1..4]
-                .into_iter()
-                .zip(vec![
-                    vc.query_advice(self.config.index, Rotation::cur()),
-                    vc.query_fixed(self.config.tag, Rotation::cur()),
-                    vc.query_fixed(self.config.is_terminator, Rotation::cur()),
-                ].into_iter())
-                .map(|(arg, table)| (params[0].clone() * arg.clone(), table))
-                .collect()
+            // params[1..4]
+            //     .into_iter()
+            //     .zip(vec![
+            //         vc.query_advice(self.config.index, Rotation::cur()),
+            //         vc.query_fixed(self.config.tag, Rotation::cur()),
+            //         vc.query_fixed(self.config.is_terminator, Rotation::cur()),
+            //     ].into_iter())
+            //     .map(|(arg, table)| (params.cond * arg.clone(), table))
+            //     .collect()
+            vec![
+                (params.cond.clone() * params.index, vc.query_advice(self.config.index, Rotation::cur())),
+                (params.cond.clone() * params.tag, vc.query_fixed(self.config.tag, Rotation::cur())),
+                (params.cond.clone() * params.is_terminator, vc.query_fixed(self.config.is_terminator, Rotation::cur())),
+            ]
         });
     }
 

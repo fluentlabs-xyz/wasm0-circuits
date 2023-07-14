@@ -24,4 +24,6 @@
     drop)
   (memory (;0;) 1)
   (export "main" (func 0))
-  (export "memory" (memory 0)))
+  (export "memory" (memory 0))
+  (data (i32.const 0))
+)

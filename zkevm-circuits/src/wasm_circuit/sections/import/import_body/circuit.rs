@@ -1,28 +1,31 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::{Advice, Fixed};
 use halo2_proofs::poly::Rotation;
 use itertools::Itertools;
 use log::debug;
+
 use eth_types::Field;
 use gadgets::binary_number::BinaryNumberChip;
 use gadgets::util::{and, Expr, not, or};
+
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::consts::{IMPORT_DESC_TYPE_VALUES, ImportDescType, MUTABILITY_VALUES};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
-use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::sections::import::import_body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
+use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 
 #[derive(Debug, Clone)]
 pub struct WasmImportSectionBodyConfig<F: Field> {
@@ -201,9 +204,6 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             );
 
             // is_items_count+ -> is_item+ (is_mod_name_len+ -> is_mod_name* -> is_import_name_len+ -> is_import_name* -> import_desc+)
-            let importdesc_type_is_typeidx_prev_expr = importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::prev())(vc);
-            let importdesc_type_is_mem_type_prev_expr = importdesc_type_chip.config.value_equals(ImportDescType::MemType, Rotation::prev())(vc);
-            let importdesc_type_is_table_type_prev_expr = importdesc_type_chip.config.value_equals(ImportDescType::TableType, Rotation::prev())(vc);
             let importdesc_type_is_global_type_prev_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::prev())(vc);
             let importdesc_type_is_typeidx_expr = importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::cur())(vc);
             let importdesc_type_is_mem_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::MemType, Rotation::cur())(vc);
@@ -354,7 +354,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_importdesc_type, is_importdesc_val, ],
             );
-            // TODO importdesc_type{1}=3(ImportDescType::Globaltype): import_desc+(is_importdesc_type{1} -> is_importdesc_val+ -> is_mut{1})
+            // importdesc_type{1}=3(ImportDescType::Globaltype): import_desc+(is_importdesc_type{1} -> is_importdesc_val+ -> is_mut{1})
             configure_check_for_transition(
                 &mut cb,
                 vc,
@@ -606,7 +606,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "import_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
+            "import_section_body: assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_types,

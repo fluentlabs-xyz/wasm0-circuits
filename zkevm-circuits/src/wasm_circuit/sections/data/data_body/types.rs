@@ -7,4 +7,8 @@ pub enum AssignType {
     IsBlockEnd,
     IsMemSegmentLen,
     IsMemSegmentBytes,
+
+    IsMemSegmentTypeCtx,
+
+    MemSegmentType,
 }

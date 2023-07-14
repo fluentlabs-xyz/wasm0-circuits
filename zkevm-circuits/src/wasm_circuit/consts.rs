@@ -105,11 +105,32 @@ impl<F: FieldExt> Expr<F> for LimitType {
 }
 
 /// https://webassembly.github.io/spec/core/binary/modules.html#data-section
-#[derive(Copy, Clone, Debug)]
+/// Bit 0 indicates a passive segment, bit 1 indicates the presence of an explicit memory index for an active segment.
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MemSegmentType {
-    ActiveZero = 0x0,
+    Active = 0x0,
     Passive = 0x1,
     ActiveVariadic = 0x2,
+}
+pub const MEM_SEGMENT_TYPE_VALUES: &[MemSegmentType] = &[
+    MemSegmentType::Active,
+    MemSegmentType::Passive,
+    MemSegmentType::ActiveVariadic,
+];
+impl TryFrom<u8> for MemSegmentType {
+    type Error = ();
+
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        for instr in MEM_SEGMENT_TYPE_VALUES {
+            if v == *instr as u8 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+impl From<MemSegmentType> for usize {
+    fn from(t: MemSegmentType) -> Self {
+        t as usize
+    }
 }
 impl<F: FieldExt> Expr<F> for MemSegmentType {
     #[inline]

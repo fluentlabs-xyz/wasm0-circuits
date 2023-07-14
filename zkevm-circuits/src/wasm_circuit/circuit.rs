@@ -10,37 +10,38 @@ use halo2_proofs::poly::Rotation;
 use log::debug;
 
 use eth_types::Field;
+use gadgets::binary_number::BinaryNumberChip;
 use gadgets::is_zero::{IsZeroChip, IsZeroInstruction};
 use gadgets::less_than::{LtChip, LtInstruction};
 use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::table::PoseidonTable;
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::common::wasm_compute_section_len;
 use crate::wasm_circuit::consts::{ExportDescType, ImportDescType, SECTION_ID_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
-use crate::wasm_circuit::types::{AssignType, SharedState};
-use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::sections::code::code_body::circuit::WasmCodeSectionBodyChip;
+use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::data::data_body::circuit::WasmDataSectionBodyChip;
 use crate::wasm_circuit::sections::element::element_body::circuit::WasmElementSectionBodyChip;
 use crate::wasm_circuit::sections::export::export_body::circuit::WasmExportSectionBodyChip;
 use crate::wasm_circuit::sections::function::function_body::circuit::WasmFunctionSectionBodyChip;
 use crate::wasm_circuit::sections::global::global_body::circuit::WasmGlobalSectionBodyChip;
+use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
 use crate::wasm_circuit::sections::import::import_body::circuit::WasmImportSectionBodyChip;
 use crate::wasm_circuit::sections::memory::memory_body::circuit::WasmMemorySectionBodyChip;
+use crate::wasm_circuit::sections::r#type::type_body::circuit::WasmTypeSectionBodyChip;
+use crate::wasm_circuit::sections::r#type::type_item::circuit::WasmTypeSectionItemChip;
 use crate::wasm_circuit::sections::start::start_body::circuit::WasmStartSectionBodyChip;
 use crate::wasm_circuit::sections::table::table_body::circuit::WasmTableSectionBodyChip;
-use crate::wasm_circuit::sections::r#type::type_body::circuit::WasmTypeSectionBodyChip;
-use crate::wasm_circuit::sections::r#type::type_item::circuit::{WasmTypeSectionItemChip};
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
-use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
+use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
+use crate::wasm_circuit::types::{AssignType, SharedState};
+use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 
 pub struct WasmSectionConfig<F: Field> {
     _marker: PhantomData<F>,
@@ -189,6 +190,7 @@ impl<F: Field> WasmChip<F>
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
+            dynamic_indexes_chip.clone(),
         );
         let wasm_data_section_body_chip = Rc::new(WasmDataSectionBodyChip::construct(config));
 
@@ -623,21 +625,21 @@ impl<F: Field> WasmChip<F>
         // CROSSCHECKS
         // start section checks
         dynamic_indexes_chip.lookup_args(
-            "start section crosschecks for func index refs are valid",
+            "start section: func index refs are valid",
             cs,
             |vc| {
                 let sn_expr = vc.query_advice(wasm_start_section_body_chip.config.leb128_chip.config.sn, Rotation::cur());
-                [
-                    vc.query_fixed(wasm_start_section_body_chip.config.is_func_index, Rotation::cur()),
-                    sn_expr.clone(),
-                    Tag::CodeSectionFuncIndex.expr(),
-                    false.expr(),
-                ]
+                LookupArgsParams {
+                    cond: vc.query_fixed(wasm_start_section_body_chip.config.is_func_index, Rotation::cur()),
+                    index: sn_expr.clone(),
+                    tag: Tag::CodeSectionFuncIndex.expr(),
+                    is_terminator: false.expr(),
+                }
             }
         );
         // import section checks
         dynamic_indexes_chip.lookup_args(
-            "import section crosschecks for typeidx refs are valid",
+            "import section: typeidx refs are valid",
             cs,
             |vc| {
                 let cond = and::expr([
@@ -645,17 +647,17 @@ impl<F: Field> WasmChip<F>
                     wasm_import_section_body_chip.config.importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::cur())(vc),
                 ]);
 
-                [
+                LookupArgsParams {
                     cond,
-                    vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    Tag::TypeSectionTypeIndex.expr(),
-                    false.expr(),
-                ]
+                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                    tag: Tag::TypeSectionTypeIndex.expr(),
+                    is_terminator: false.expr(),
+                }
             }
         );
         // export section checks
         dynamic_indexes_chip.lookup_args(
-            "export section crosschecks for funcidx refs are valid",
+            "export section: funcidx refs are valid",
             cs,
             |vc| {
                 let cond = and::expr([
@@ -663,16 +665,16 @@ impl<F: Field> WasmChip<F>
                     wasm_export_section_body_chip.config.exportdesc_type_chip.config.value_equals(ExportDescType::Funcidx, Rotation::cur())(vc),
                 ]);
 
-                [
+                LookupArgsParams {
                     cond,
-                    vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    Tag::TypeSectionTypeIndex.expr(),
-                    false.expr(),
-                ]
+                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                    tag: Tag::TypeSectionTypeIndex.expr(),
+                    is_terminator: false.expr(),
+                }
             }
         );
         dynamic_indexes_chip.lookup_args(
-            "export section crosschecks for tableidx refs are valid",
+            "export section: tableidx refs are valid",
             cs,
             |vc| {
                 let cond = and::expr([
@@ -680,16 +682,16 @@ impl<F: Field> WasmChip<F>
                     wasm_export_section_body_chip.config.exportdesc_type_chip.config.value_equals(ExportDescType::Tableidx, Rotation::cur())(vc),
                 ]);
 
-                [
+                LookupArgsParams {
                     cond,
-                    vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    Tag::TableSectionTableIndex.expr(),
-                    false.expr(),
-                ]
+                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                    tag: Tag::TableSectionTableIndex.expr(),
+                    is_terminator: false.expr(),
+                }
             }
         );
         dynamic_indexes_chip.lookup_args(
-            "export section crosschecks for memidx refs are valid",
+            "export section: memidx refs are valid",
             cs,
             |vc| {
                 let cond = and::expr([
@@ -697,16 +699,16 @@ impl<F: Field> WasmChip<F>
                     wasm_export_section_body_chip.config.exportdesc_type_chip.config.value_equals(ExportDescType::Memidx, Rotation::cur())(vc),
                 ]);
 
-                [
+                LookupArgsParams {
                     cond,
-                    vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    Tag::MemorySectionMemIndex.expr(),
-                    false.expr(),
-                ]
+                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                    tag: Tag::MemorySectionMemIndex.expr(),
+                    is_terminator: false.expr(),
+                }
             }
         );
         dynamic_indexes_chip.lookup_args(
-            "export section crosschecks for globalidx refs are valid",
+            "export section: globalidx refs are valid",
             cs,
             |vc| {
                 let cond = and::expr([
@@ -714,12 +716,29 @@ impl<F: Field> WasmChip<F>
                     wasm_export_section_body_chip.config.exportdesc_type_chip.config.value_equals(ExportDescType::Globalidx, Rotation::cur())(vc),
                 ]);
 
-                [
+                LookupArgsParams {
                     cond,
-                    vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    Tag::GlobalSectionGlobalIndex.expr(),
-                    false.expr(),
-                ]
+                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                    tag: Tag::GlobalSectionGlobalIndex.expr(),
+                    is_terminator: false.expr(),
+                }
+            }
+        );
+        // func section checks
+        dynamic_indexes_chip.lookup_args(
+            "function section: funcidx refs are valid",
+            cs,
+            |vc| {
+                let cond = and::expr([
+                    vc.query_fixed(wasm_function_section_body_chip.config.is_typeidx, Rotation::cur()),
+                ]);
+
+                LookupArgsParams {
+                    cond,
+                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                    tag: Tag::TypeSectionTypeIndex.expr(),
+                    is_terminator: false.expr(),
+                }
             }
         );
 
@@ -1034,6 +1053,7 @@ impl<F: Field> WasmChip<F>
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
+                                &mut shared_state,
                             ).unwrap();
                         }
                         _ => { panic!("unsupported section '{:x?}'", wasm_section) }

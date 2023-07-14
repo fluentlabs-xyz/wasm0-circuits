@@ -1,15 +1,17 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
+
 use eth_types::{Field, Hash, ToWord};
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
-use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
+
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::function::function_body::circuit::WasmFunctionSectionBodyChip;
 
 #[derive(Default)]
@@ -92,11 +94,11 @@ mod wasm_function_section_body_tests {
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use wasmbin::sections::Kind;
+
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
-    use crate::wasm_circuit::common::{wat_extract_section_body_bytecode, wat_extract_section_bytecode};
-    use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_last_byte_offset;
-    use crate::wasm_circuit::sections::function::test_helpers::{FunctionSectionBodyDescriptor, FunctionSectionBodyItemDescriptor, generate_function_section_body_bytecode};
+
+    use crate::wasm_circuit::common::wat_extract_section_body_bytecode;
     use crate::wasm_circuit::sections::function::function_body::tests::TestCircuit;
 
     fn test<'a, F: Field>(
@@ -113,13 +115,12 @@ mod wasm_function_section_body_tests {
     }
 
     #[test]
-    pub fn section_body_bytecode_is_ok() {
-        // expected (hex): [3, 0, 2, 0]
+    pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode(
             "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
             Kind::Function,
         );
-        debug!("bytecode (len {}) (hex): {:x?}", bytecode.len(), bytecode);
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
         let code_hash = CodeDB::hash(&bytecode);
         let test_circuit = TestCircuit::<Fr> {
             code_hash,

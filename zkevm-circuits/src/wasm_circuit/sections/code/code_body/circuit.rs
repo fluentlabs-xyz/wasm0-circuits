@@ -1,28 +1,31 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
 use itertools::Itertools;
 use log::debug;
+
 use eth_types::Field;
 use gadgets::binary_number::BinaryNumberChip;
 use gadgets::util::{and, Expr, not, or};
+
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::consts::{CONTROL_INSTRUCTIONS_BLOCK, CONTROL_INSTRUCTIONS_WITH_LEB_ARG, CONTROL_INSTRUCTIONS_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTIONS_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, VARIABLE_INSTRUCTIONS_WITH_LEB_ARG, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::sections::code::code_body::types::AssignType;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
-use crate::wasm_circuit::sections::code::code_body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
-use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
+use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
@@ -96,44 +99,44 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         let is_blocktype_delimiter = cs.fixed_column();
         let is_block_end = cs.fixed_column();
 
-        let binary_number_config = BinaryNumberChip::configure(
+        let config = BinaryNumberChip::configure(
             cs,
             is_numeric_instruction,
             Some(bytecode_table.value.into()),
         );
-        let numeric_instructions_chip = Rc::new(BinaryNumberChip::construct(binary_number_config));
+        let numeric_instructions_chip = Rc::new(BinaryNumberChip::construct(config));
 
-        let binary_number_config = BinaryNumberChip::configure(
+        let config = BinaryNumberChip::configure(
             cs,
             is_control_instruction,
             Some(bytecode_table.value.into()),
         );
-        let control_instruction_chip = Rc::new(BinaryNumberChip::construct(binary_number_config));
+        let control_instruction_chip = Rc::new(BinaryNumberChip::construct(config));
 
-        let binary_number_config = BinaryNumberChip::configure(
+        let config = BinaryNumberChip::configure(
             cs,
             is_parametric_instruction,
             Some(bytecode_table.value.into()),
         );
-        let parametric_instruction_chip = Rc::new(BinaryNumberChip::construct(binary_number_config));
+        let parametric_instruction_chip = Rc::new(BinaryNumberChip::construct(config));
 
-        let binary_number_config = BinaryNumberChip::configure(
+        let config = BinaryNumberChip::configure(
             cs,
             is_variable_instruction,
             Some(bytecode_table.value.into()),
         );
-        let variable_instruction_chip = Rc::new(BinaryNumberChip::construct(binary_number_config));
+        let variable_instruction_chip = Rc::new(BinaryNumberChip::construct(config));
 
         dynamic_indexes_chip.lookup_args(
             "code section has valid setup for func indexes",
             cs,
             |vc| {
-                [
-                    vc.query_fixed(is_funcs_count, Rotation::cur()),
-                    vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
-                    Tag::CodeSectionFuncIndex.expr(),
-                    true.expr(),
-                ]
+                LookupArgsParams {
+                    cond: vc.query_fixed(is_funcs_count, Rotation::cur()),
+                    index: vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
+                    tag: Tag::CodeSectionFuncIndex.expr(),
+                    is_terminator: true.expr(),
+                }
             }
         );
 
@@ -854,7 +857,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 offset,
                 assign_type,
                 1,
-                Some(LebParams{
+                Some(LebParams {
                     is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,

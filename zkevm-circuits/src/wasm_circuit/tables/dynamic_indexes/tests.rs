@@ -16,7 +16,7 @@ use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::data::data_body::circuit::WasmDataSectionBodyChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
-use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
+use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 
 #[derive(Default)]
 struct TestCircuit<F> {
@@ -51,12 +51,22 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         test_circuit_config.chip.lookup_args(
             "start section func index lookup test not_terminator",
             cs,
-            |vc| [1.expr(), 1.expr(), Tag::CodeSectionFuncIndex.expr(), false.expr(), ]
+            |vc| LookupArgsParams {
+                cond: 1.expr(),
+                index: 1.expr(),
+                tag: Tag::CodeSectionFuncIndex.expr(),
+                is_terminator: false.expr(),
+            }
         );
         test_circuit_config.chip.lookup_args(
             "start section func index lookup test not_terminator",
             cs,
-            |vc| [1.expr(), 5.expr(), Tag::CodeSectionFuncIndex.expr(), true.expr(), ]
+            |vc| LookupArgsParams {
+                cond: 1.expr(),
+                index: 5.expr(),
+                tag: Tag::CodeSectionFuncIndex.expr(),
+                is_terminator: true.expr(),
+            }
         );
 
         test_circuit_config

@@ -13,6 +13,8 @@ use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::data::data_body::circuit::WasmDataSectionBodyChip;
+use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -40,6 +42,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
 
+        let config = DynamicIndexesChip::configure(cs);
+        let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(config));
+
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
             &wasm_bytecode_table.value,
@@ -50,6 +55,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
+            dynamic_indexes_chip.clone(),
         );
         let wasm_data_section_body_chip = WasmDataSectionBodyChip::construct(wasm_data_section_body_config);
         let test_circuit_config = TestCircuitConfig {
@@ -71,12 +77,14 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         layouter.assign_region(
             || "wasm_data_section_body region",
             |mut region| {
+                let mut shared_state = SharedState::default();
                 let mut offset_start = self.offset_start;
                 while offset_start < wasm_bytecode.bytes.len() {
                     offset_start = config.body_chip.assign_auto(
                         &mut region,
                         &wasm_bytecode,
                         offset_start,
+                        &mut shared_state,
                     ).unwrap();
                 }
 
