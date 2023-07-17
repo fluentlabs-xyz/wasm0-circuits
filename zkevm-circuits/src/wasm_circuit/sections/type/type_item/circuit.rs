@@ -18,7 +18,7 @@ use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_com
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::sections::helpers::configure_transition_check;
 use crate::wasm_circuit::sections::r#type::type_item::consts::Type::FuncType;
 use crate::wasm_circuit::sections::r#type::type_item::types::AssignType;
 
@@ -134,7 +134,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             );
 
             // is_type{1} -> is_input_count+ -> is_input_type* -> is_output_count+ -> is_output_type*
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_type{1} -> is_input_count+",
@@ -142,7 +142,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 true,
                 &[is_input_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_type{1} -> is_input_count+",
@@ -150,7 +150,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 false,
                 &[is_type, is_input_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_input_count+ -> is_input_type* -> is_output_count+",
@@ -158,7 +158,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 true,
                 &[is_input_count, is_input_type, is_output_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_input_count+ -> is_input_type*",
@@ -166,7 +166,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 false,
                 &[is_input_count, is_input_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_input_type* -> is_output_count+",
@@ -174,7 +174,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 true,
                 &[is_input_type, is_output_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_input_count+ -> is_input_type* -> is_output_count+",
@@ -182,7 +182,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 false,
                 &[is_input_count, is_input_type, is_output_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_output_count+ -> is_output_type*",

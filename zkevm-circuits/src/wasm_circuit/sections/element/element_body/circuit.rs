@@ -22,7 +22,7 @@ use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_com
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::element::element_body::consts::ElementType;
 use crate::wasm_circuit::sections::element::element_body::types::AssignType;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::sections::helpers::configure_transition_check;
 
 #[derive(Debug, Clone)]
 pub struct WasmElementSectionBodyConfig<F: Field> {
@@ -212,7 +212,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             // is_items_count+ -> elem+(is_elem_type{1} -> elem_body+)
             // elem_body+(is_elem_type{1}=0 -> is_numeric_instruction{1} -> is_numeric_instruction_leb_arg+ -> is_block_end{1} -> is_funcs_idx_count+ -> is_func_idx*)
             // elem_body+(is_elem_type{1}=1 -> is_elem_kind{1} -> is_funcs_idx_count+ -> is_func_idx*)
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> elem+(is_elem_type{1} ...",
@@ -220,7 +220,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 true,
                 &[is_items_count, is_elem_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_items_count+ -> elem+(is_elem_type{1} ...",
@@ -229,7 +229,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 &[is_items_count, is_func_idx, is_funcs_idx_count, ],
             );
             // elem_body+(is_elem_type{1}=0 -> is_numeric_instruction{1} -> is_numeric_instruction_leb_arg+ -> is_block_end{1} -> is_funcs_idx_count+ -> is_func_idx*)
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_elem_type{1}=0 -> is_numeric_instruction{1}",
@@ -240,7 +240,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 true,
                 &[is_numeric_instruction, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_elem_type{1}=0 -> is_numeric_instruction{1}",
@@ -251,7 +251,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 false,
                 &[is_elem_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_numeric_instruction{1} -> is_numeric_instruction_leb_arg+",
@@ -262,7 +262,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 true,
                 &[is_numeric_instruction_leb_arg, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_numeric_instruction{1} -> is_numeric_instruction_leb_arg+",
@@ -273,7 +273,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 false,
                 &[is_numeric_instruction, is_numeric_instruction_leb_arg, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_numeric_instruction_leb_arg+ -> is_block_end{1}",
@@ -284,7 +284,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 true,
                 &[is_numeric_instruction_leb_arg, is_block_end, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_numeric_instruction_leb_arg+ -> is_block_end{1}",
@@ -295,7 +295,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 false,
                 &[is_numeric_instruction_leb_arg, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_block_end{1} -> is_funcs_idx_count+",
@@ -306,7 +306,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 true,
                 &[is_funcs_idx_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_block_end{1} -> is_funcs_idx_count+",
@@ -317,7 +317,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 false,
                 &[is_block_end, is_funcs_idx_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_funcs_idx_count+ -> is_func_idx*",
@@ -328,7 +328,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 true,
                 &[is_funcs_idx_count, is_func_idx, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_funcs_idx_count+ -> is_func_idx*",
@@ -340,7 +340,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 &[is_funcs_idx_count, is_func_idx, ],
             );
             // elem_body+(is_elem_type{1}=1 -> is_elem_kind{1} -> is_funcs_idx_count+ -> is_func_idx*)
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_elem_type{1}=1 -> is_elem_kind{1}",
@@ -351,7 +351,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 true,
                 &[is_elem_kind, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_elem_type{1}=1 -> is_elem_kind{1}",
@@ -362,7 +362,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 false,
                 &[is_elem_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_elem_kind{1} -> is_funcs_idx_count+",
@@ -373,7 +373,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 true,
                 &[is_funcs_idx_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_elem_kind{1} -> is_funcs_idx_count+",
@@ -384,7 +384,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 false,
                 &[is_elem_kind, is_funcs_idx_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_funcs_idx_count+ -> is_func_idx*",
@@ -395,7 +395,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 true,
                 &[is_funcs_idx_count, is_func_idx, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_funcs_idx_count+ -> is_func_idx*",

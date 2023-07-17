@@ -23,7 +23,7 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::code::code_body::types::AssignType;
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::sections::helpers::configure_transition_check;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::types::SharedState;
@@ -254,7 +254,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             );
 
             // is_funcs_count+ -> func+(is_func_body_len+ -> locals{1}(is_local_type_transitions_count+ -> local_var_descriptor*(is_local_repetition_count+ -> is_local_type{1})) -> is_func_body_code+)
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_funcs_count+ -> func+(is_func_body_len+ ...",
@@ -262,7 +262,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_funcs_count, is_func_body_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_funcs_count+ -> func+(is_func_body_len+ ...",
@@ -270,7 +270,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 false,
                 &[is_funcs_count, is_block_end, is_func_body_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ ...",
@@ -278,7 +278,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_func_body_len, is_local_type_transitions_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ ...",
@@ -286,7 +286,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 false,
                 &[is_func_body_len, is_local_type_transitions_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_local_type_transitions_count+ -> local_var_descriptor*(is_local_repetition_count+ ...",
@@ -297,7 +297,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     is_numeric_instruction, is_variable_instruction, is_control_instruction, is_parametric_instruction, is_block_end,
                 ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_local_type_transitions_count+ -> local_var_descriptor*(is_local_repetition_count+ ...",
@@ -305,7 +305,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 false,
                 &[is_local_type_transitions_count, is_local_type, is_local_repetition_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_local_repetition_count+ -> is_local_type(1) ...",
@@ -313,7 +313,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_local_repetition_count, is_local_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_local_repetition_count+ -> is_local_type(1) ...",
@@ -321,7 +321,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 false,
                 &[is_local_repetition_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: ... is_local_type(1))) -> is_func_body_code+",
@@ -329,7 +329,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_local_repetition_count, is_numeric_instruction, is_variable_instruction, is_control_instruction, is_parametric_instruction, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: ... is_local_type(1))) -> is_func_body_code+",
@@ -490,7 +490,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 }
             );
             // is_control_opcode_block{1} -> is_blocktype_delimiter{1}
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "is_control_opcode_block(1) -> is_blocktype_delimiter(1)",

@@ -17,7 +17,7 @@ use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_com
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::sections::helpers::configure_transition_check;
 use crate::wasm_circuit::sections::table::table_body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
@@ -141,7 +141,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
             );
 
             // reference_type_count+ -> reference_type{1} -> limit_type{1} -> limit_min+ -> limit_max*
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: reference_type_count+ -> reference_type(1)",
@@ -149,7 +149,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                 true,
                 &[is_reference_type_count, is_reference_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: reference_type_count+ -> reference_type(1)",
@@ -157,7 +157,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                 false,
                 &[is_reference_type_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: reference_type(1) -> limit_type(1)",
@@ -165,7 +165,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                 true,
                 &[is_limit_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: reference_type(1) -> limit_type(1)",
@@ -173,7 +173,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                 false,
                 &[is_reference_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: limit_type(1) -> limit_min+",
@@ -181,7 +181,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                 true,
                 &[is_limit_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: limit_type(1) -> limit_min+",
@@ -197,7 +197,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
             //     true,
             //     &[limit_type, ],
             // );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: limit_min+ -> limit_max*",

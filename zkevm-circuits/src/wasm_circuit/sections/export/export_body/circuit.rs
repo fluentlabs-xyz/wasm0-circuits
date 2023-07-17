@@ -22,7 +22,7 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::export::export_body::types::AssignType;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::sections::helpers::configure_transition_check;
 
 #[derive(Debug, Clone)]
 pub struct WasmExportSectionBodyConfig<F: Field> {
@@ -161,7 +161,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
             );
 
             // is_items_count+ -> item+(is_export_name_len+ -> is_export_name+ -> is_exportdesc_type{1} -> is_exportdesc_val+)
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> item+(is_export_name_len+ ...",
@@ -169,7 +169,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 true,
                 &[is_items_count, is_export_name_len],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_items_count+ -> item+(is_export_name_len+ ...",
@@ -177,7 +177,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 false,
                 &[is_items_count, is_exportdesc_val, is_export_name_len],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_export_name_len+ -> is_export_name+",
@@ -185,7 +185,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 true,
                 &[is_export_name_len, is_export_name],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_export_name_len+ -> is_export_name+",
@@ -193,7 +193,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 false,
                 &[is_export_name_len, is_export_name],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_export_name+ -> is_exportdesc_type{1}",
@@ -201,7 +201,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 true,
                 &[is_export_name, is_exportdesc_type],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_export_name+ -> is_exportdesc_type{1}",
@@ -209,7 +209,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 false,
                 &[is_export_name],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_exportdesc_type{1} -> is_exportdesc_val+",
@@ -217,7 +217,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 true,
                 &[is_exportdesc_val],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_exportdesc_type{1} -> is_exportdesc_val+",

@@ -18,7 +18,7 @@ use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::sections::helpers::configure_transition_check;
 use crate::wasm_circuit::sections::memory::memory_body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
@@ -129,7 +129,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             );
 
             // is_items_count+ -> is_limit_type{1} -> is_limit_type_val+
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> is_limit_type{1}",
@@ -137,7 +137,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 true,
                 &[is_items_count, is_limit_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_items_count+ -> is_limit_type{1}",
@@ -145,7 +145,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 false,
                 &[is_items_count, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_limit_type{1} -> is_limit_type_val+",
@@ -153,7 +153,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 true,
                 &[is_limit_type_val, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_limit_type{1} -> is_limit_type_val+",

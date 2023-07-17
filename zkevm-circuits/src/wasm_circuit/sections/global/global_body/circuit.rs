@@ -23,7 +23,7 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::global::global_body::types::AssignType;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::sections::helpers::configure_transition_check;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::types::SharedState;
@@ -138,7 +138,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             );
 
             // is_items_count+ -> item+(is_global_type{1} -> is_mut_prop{1} -> is_init_opcode{1} -> is_init_val+ -> is_expr_delimiter{1})
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> item+(is_global_type{1} ...",
@@ -146,7 +146,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 true,
                 &[is_items_count, is_global_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_items_count+ -> item+(is_global_type{1} ...",
@@ -154,7 +154,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 false,
                 &[is_items_count, is_expr_delimiter, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_global_type{1} -> is_mut_prop{1}",
@@ -162,7 +162,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 true,
                 &[is_mut_prop, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_global_type{1} -> is_mut_prop{1}",
@@ -170,7 +170,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 false,
                 &[is_global_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_mut_prop{1} -> is_init_opcode{1}",
@@ -178,7 +178,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 true,
                 &[is_init_opcode, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_mut_prop{1} -> is_init_opcode{1}",
@@ -186,7 +186,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 false,
                 &[is_mut_prop, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_init_opcode{1} -> is_init_val+",
@@ -194,7 +194,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 true,
                 &[is_init_val, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_init_opcode{1} -> is_init_val+",
@@ -202,7 +202,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 false,
                 &[is_init_opcode, is_init_val, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_init_val+ -> is_expr_delimiter{1}",
@@ -210,7 +210,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 true,
                 &[is_init_val, is_expr_delimiter],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_init_val+ -> is_expr_delimiter{1}",

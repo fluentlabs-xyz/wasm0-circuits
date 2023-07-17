@@ -30,7 +30,7 @@ use crate::wasm_circuit::sections::element::element_body::circuit::WasmElementSe
 use crate::wasm_circuit::sections::export::export_body::circuit::WasmExportSectionBodyChip;
 use crate::wasm_circuit::sections::function::function_body::circuit::WasmFunctionSectionBodyChip;
 use crate::wasm_circuit::sections::global::global_body::circuit::WasmGlobalSectionBodyChip;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::sections::helpers::configure_transition_check;
 use crate::wasm_circuit::sections::import::import_body::circuit::WasmImportSectionBodyChip;
 use crate::wasm_circuit::sections::memory::memory_body::circuit::WasmMemorySectionBodyChip;
 use crate::wasm_circuit::sections::r#type::type_body::circuit::WasmTypeSectionBodyChip;
@@ -446,7 +446,7 @@ impl<F: Field> WasmChip<F>
                 }
             );
             // section+(is_section_id{1} -> is_section_len+ -> is_section_body+)
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_section_id{1} -> is_section_len+",
@@ -454,7 +454,7 @@ impl<F: Field> WasmChip<F>
                 true,
                 &[is_section_len],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_section_id{1} -> is_section_len+",
@@ -462,7 +462,7 @@ impl<F: Field> WasmChip<F>
                 false,
                 &[is_section_id, is_section_len],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_section_len+ -> is_section_body+",
@@ -470,7 +470,7 @@ impl<F: Field> WasmChip<F>
                 true,
                 &[is_section_len, is_section_body],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_section_len+ -> is_section_body+",
@@ -622,8 +622,7 @@ impl<F: Field> WasmChip<F>
             vec![(section_id_expr.clone(), section_id_range_table_config.value)]
         });
 
-        // CROSSCHECKS
-        // start section checks
+        // start section crosschecks
         dynamic_indexes_chip.lookup_args(
             "start section: func index refs are valid",
             cs,
@@ -637,7 +636,7 @@ impl<F: Field> WasmChip<F>
                 }
             }
         );
-        // import section checks
+        // import section crosschecks
         dynamic_indexes_chip.lookup_args(
             "import section: typeidx refs are valid",
             cs,
@@ -655,7 +654,7 @@ impl<F: Field> WasmChip<F>
                 }
             }
         );
-        // export section checks
+        // export section crosschecks
         dynamic_indexes_chip.lookup_args(
             "export section: funcidx refs are valid",
             cs,
@@ -724,7 +723,7 @@ impl<F: Field> WasmChip<F>
                 }
             }
         );
-        // func section checks
+        // func section crosschecks
         dynamic_indexes_chip.lookup_args(
             "function section: funcidx refs are valid",
             cs,
@@ -737,6 +736,23 @@ impl<F: Field> WasmChip<F>
                     cond,
                     index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
                     tag: Tag::TypeSectionTypeIndex.expr(),
+                    is_terminator: false.expr(),
+                }
+            }
+        );
+        // data section crosschecks
+        dynamic_indexes_chip.lookup_args(
+            "data section: memidx refs are valid",
+            cs,
+            |vc| {
+                let cond = and::expr([
+                    vc.query_fixed(wasm_data_section_body_chip.config.is_memidx, Rotation::cur()),
+                ]);
+
+                LookupArgsParams {
+                    cond,
+                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                    tag: Tag::MemorySectionMemIndex.expr(),
                     is_terminator: false.expr(),
                 }
             }

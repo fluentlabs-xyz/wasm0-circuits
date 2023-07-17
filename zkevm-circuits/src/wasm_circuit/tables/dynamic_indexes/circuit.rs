@@ -1,17 +1,19 @@
+use std::marker::PhantomData;
+
 use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
-use std::{marker::PhantomData};
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::{Advice, Expression, Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
 use log::debug;
+
 use eth_types::Field;
 use gadgets::util::{and, Expr, not, or};
+
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::tables::dynamic_indexes::types::{AssignType, LookupArgsParams, Tag, TAG_VALUES};
-use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
 pub struct DynamicIndexesConfig<F> {
@@ -56,15 +58,12 @@ impl<F: Field> DynamicIndexesChip<F>
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
 
-            let is_terminator_prev_expr = vc.query_fixed(is_terminator, Rotation::prev());
             let is_terminator_expr = vc.query_fixed(is_terminator, Rotation::cur());
             let is_terminator_next_expr = vc.query_fixed(is_terminator, Rotation::next());
 
-            let tag_prev_expr = vc.query_fixed(tag, Rotation::prev());
             let tag_expr = vc.query_fixed(tag, Rotation::cur());
             let tag_next_expr = vc.query_fixed(tag, Rotation::next());
 
-            let index_prev_expr = vc.query_advice(index, Rotation::prev());
             let index_expr = vc.query_advice(index, Rotation::cur());
             let index_next_expr = vc.query_advice(index, Rotation::next());
 
@@ -164,24 +163,15 @@ impl<F: Field> DynamicIndexesChip<F>
         &self,
         name: &'static str,
         cs: &mut ConstraintSystem<F>,
-        params: impl FnOnce(&mut VirtualCells<'_, F>) -> LookupArgsParams<F>,
+        p: impl FnOnce(&mut VirtualCells<'_, F>) -> LookupArgsParams<F>,
     ) {
         cs.lookup_any(name, |vc| {
-            let params = params(vc);
+            let p = p(vc);
 
-            // params[1..4]
-            //     .into_iter()
-            //     .zip(vec![
-            //         vc.query_advice(self.config.index, Rotation::cur()),
-            //         vc.query_fixed(self.config.tag, Rotation::cur()),
-            //         vc.query_fixed(self.config.is_terminator, Rotation::cur()),
-            //     ].into_iter())
-            //     .map(|(arg, table)| (params.cond * arg.clone(), table))
-            //     .collect()
             vec![
-                (params.cond.clone() * params.index, vc.query_advice(self.config.index, Rotation::cur())),
-                (params.cond.clone() * params.tag, vc.query_fixed(self.config.tag, Rotation::cur())),
-                (params.cond.clone() * params.is_terminator, vc.query_fixed(self.config.is_terminator, Rotation::cur())),
+                (p.cond.clone() * p.index, vc.query_advice(self.config.index, Rotation::cur())),
+                (p.cond.clone() * p.tag, vc.query_fixed(self.config.tag, Rotation::cur())),
+                (p.cond.clone() * p.is_terminator, vc.query_fixed(self.config.is_terminator, Rotation::cur())),
             ]
         });
     }

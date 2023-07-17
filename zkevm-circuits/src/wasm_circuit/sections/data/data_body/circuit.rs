@@ -12,7 +12,7 @@ use log::debug;
 
 use eth_types::Field;
 use gadgets::binary_number::BinaryNumberChip;
-use gadgets::util::{Expr, or};
+use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
@@ -23,7 +23,7 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::data::data_body::types::AssignType;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::sections::helpers::{configure_transition_check, configure_constraints_for_q_first_and_q_last};
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::types::SharedState;
@@ -31,7 +31,10 @@ use crate::wasm_circuit::types::SharedState;
 #[derive(Debug, Clone)]
 pub struct WasmDataSectionBodyConfig<F: Field> {
     pub q_enable: Column<Fixed>,
+    pub q_first: Column<Fixed>,
+    pub q_last: Column<Fixed>,
     pub is_items_count: Column<Fixed>,
+    pub is_memidx: Column<Fixed>,
     pub is_mem_segment_type: Column<Fixed>,
     pub is_mem_segment_size_opcode: Column<Fixed>,
     pub is_mem_segment_size: Column<Fixed>,
@@ -75,7 +78,10 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     ) -> WasmDataSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
+        let q_first = cs.fixed_column();
+        let q_last = cs.fixed_column();
         let is_items_count = cs.fixed_column();
+        let is_memidx = cs.fixed_column();
         let is_mem_segment_type = cs.fixed_column();
         let is_mem_segment_size_opcode = cs.fixed_column();
         let is_mem_segment_size = cs.fixed_column();
@@ -110,19 +116,28 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
             let is_mem_segment_type_expr = vc.query_fixed(is_mem_segment_type, Rotation::cur());
+            let is_mem_index_expr = vc.query_fixed(is_memidx, Rotation::cur());
             let is_mem_segment_size_opcode_expr = vc.query_fixed(is_mem_segment_size_opcode, Rotation::cur());
             let is_mem_segment_size_expr = vc.query_fixed(is_mem_segment_size, Rotation::cur());
             let is_block_end_expr = vc.query_fixed(is_block_end, Rotation::cur());
             let is_mem_segment_len_expr = vc.query_fixed(is_mem_segment_len, Rotation::cur());
             let is_mem_segment_bytes_expr = vc.query_fixed(is_mem_segment_bytes, Rotation::cur());
 
+            let is_mem_segment_type_ctx_prev_expr = vc.query_fixed(is_mem_segment_type_ctx, Rotation::prev());
+            let is_mem_segment_type_ctx_expr = vc.query_fixed(is_mem_segment_type_ctx, Rotation::cur());
+
             let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let mem_segment_type_expr = vc.query_advice(mem_segment_type, Rotation::cur());
 
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
             cb.require_boolean("is_items_count is boolean", is_items_count_expr.clone());
             cb.require_boolean("is_mem_segment_type is boolean", is_mem_segment_type_expr.clone());
+            cb.require_boolean("is_mem_index is boolean", is_mem_index_expr.clone());
             cb.require_boolean("is_mem_segment_size_opcode is boolean", is_mem_segment_size_opcode_expr.clone());
             cb.require_boolean("is_mem_segment_size is boolean", is_mem_segment_size_expr.clone());
             cb.require_boolean("is_block_end is boolean", is_block_end_expr.clone());
@@ -133,6 +148,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 "exactly one mark flag active at the same time",
                 is_items_count_expr.clone()
                     + is_mem_segment_type_expr.clone()
+                    + is_mem_index_expr.clone()
                     + is_mem_segment_size_opcode_expr.clone()
                     + is_mem_segment_size_expr.clone()
                     + is_block_end_expr.clone()
@@ -145,115 +161,223 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             cb.condition(
                 or::expr([
                     is_items_count_expr.clone(),
+                    is_mem_index_expr.clone(),
                     is_mem_segment_size_expr.clone(),
                     is_mem_segment_len_expr.clone(),
                 ]),
                 |bcb| {
                     bcb.require_equal(
-                        "is_items_count || is_mem_segment_size || is_mem_segment_len -> leb128",
+                        "is_items_count || is_mem_index || is_mem_segment_size || is_mem_segment_len -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
                     )
                 }
             );
 
+            configure_constraints_for_q_first_and_q_last(
+                &mut cb,
+                vc,
+                &q_enable,
+                &q_first,
+                &q_last,
+            );
+
+            // constraints for IsMemSegmentTypeCtx
+            cb.condition(
+                is_mem_segment_type_ctx_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_mem_segment_type_ctx => specific flags are active",
+                        is_mem_segment_type_expr.clone()
+                            + is_mem_index_expr.clone()
+                            + is_mem_segment_size_opcode_expr.clone()
+                            + is_mem_segment_size_expr.clone()
+                            + is_block_end_expr.clone()
+                            + is_mem_segment_len_expr.clone()
+                            + is_mem_segment_bytes_expr.clone(),
+                        1.expr(),
+                    )
+                }
+            );
+            // constraints for AssignType::MemSegmentType
+            cb.condition(
+                is_mem_segment_type_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_mem_segment_type => mem_segment_type=byte_val",
+                        mem_segment_type_expr.clone(),
+                        byte_val_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                and::expr([
+                    is_mem_segment_type_ctx_expr.clone(),
+                    is_mem_segment_type_ctx_prev_expr.clone(),
+                ]),
+                |bcb| {
+                    let mem_segment_type_prev_expr = vc.query_advice(mem_segment_type, Rotation::prev());
+                    bcb.require_equal(
+                        "is_mem_segment_type_ctx && prev.is_mem_segment_type_ctx => mem_segment_type=prev.mem_segment_type",
+                        mem_segment_type_prev_expr.clone(),
+                        mem_segment_type_expr.clone(),
+                    );
+                }
+            );
+
             // is_items_count+ -> item+ (is_mem_segment_type{1} -> is_mem_segment_size_opcode{1} -> is_mem_segment_size+ -> is_block_end{1} -> is_mem_segment_len+ -> is_mem_segment_bytes*)
-            configure_check_for_transition(
+            let mem_segment_type_is_active_expr = mem_segment_type_chip.config.value_equals(MemSegmentType::Active, Rotation::cur())(vc);
+            let mem_segment_type_is_passive_expr = mem_segment_type_chip.config.value_equals(MemSegmentType::Passive, Rotation::cur())(vc);
+            let mem_segment_type_is_active_variadic_expr = mem_segment_type_chip.config.value_equals(MemSegmentType::ActiveVariadic, Rotation::cur())(vc);
+            cb.condition(
+                q_first_expr.clone(),
+                |bcb| {
+                    bcb.require_equal("q_first => is_items_count", is_items_count_expr.clone(), 1.expr())
+                }
+            );
+            cb.condition(
+                q_last_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "q_last => is_mem_segment_type specific flag must be active",
+                        is_mem_segment_len_expr.clone()
+                            + is_mem_segment_bytes_expr.clone(),
+                        1.expr(),
+                    )
+                }
+            );
+            // constraints for is_mem_segment_type{1}=MemSegmentType::Active
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> item+ (is_mem_segment_type{1} ...",
-                is_items_count_expr.clone(),
+                not_q_last_expr.clone() * is_items_count_expr.clone() * mem_segment_type_is_active_expr.clone(),
                 true,
                 &[is_items_count, is_mem_segment_type],
             );
-            configure_check_for_transition(
-                &mut cb,
-                vc,
-                "check prev: is_items_count+ -> item+ (is_mem_segment_type{1} ...",
-                is_mem_segment_type_expr.clone(),
-                false,
-                &[is_items_count, is_mem_segment_bytes, is_mem_segment_type],
-            );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_type{1} -> is_mem_segment_size_opcode{1}",
-                is_mem_segment_type_expr.clone(),
+                not_q_last_expr.clone() * is_mem_segment_type_expr.clone() * mem_segment_type_is_active_expr.clone(),
                 true,
                 &[is_mem_segment_size_opcode],
             );
-            configure_check_for_transition(
-                &mut cb,
-                vc,
-                "check prev: is_mem_segment_type{1} -> is_mem_segment_size_opcode{1}",
-                is_mem_segment_size_opcode_expr.clone(),
-                false,
-                &[is_mem_segment_type],
-            );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_size_opcode{1} -> is_mem_segment_size+",
-                is_mem_segment_size_opcode_expr.clone(),
+                not_q_last_expr.clone() * is_mem_segment_size_opcode_expr.clone() * mem_segment_type_is_active_expr.clone(),
                 true,
                 &[is_mem_segment_size],
             );
-            configure_check_for_transition(
-                &mut cb,
-                vc,
-                "check prev: is_mem_segment_size_opcode{1} -> is_mem_segment_size+",
-                is_mem_segment_size_expr.clone(),
-                false,
-                &[is_mem_segment_size_opcode, is_mem_segment_size],
-            );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_size+ -> is_block_end{1}",
-                is_mem_segment_size_expr.clone(),
+                not_q_last_expr.clone() * is_mem_segment_size_expr.clone() * mem_segment_type_is_active_expr.clone(),
                 true,
                 &[is_mem_segment_size, is_block_end],
             );
-            configure_check_for_transition(
-                &mut cb,
-                vc,
-                "check prev: is_mem_segment_size+ -> is_block_end{1}",
-                is_block_end_expr.clone(),
-                false,
-                &[is_mem_segment_size],
-            );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_block_end{1} -> is_mem_segment_len+",
-                is_block_end_expr.clone(),
+                not_q_last_expr.clone() * is_block_end_expr.clone() * mem_segment_type_is_active_expr.clone(),
                 true,
                 &[is_mem_segment_len],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_block_end_expr{1} -> is_mem_segment_len+",
-                is_mem_segment_len_expr.clone(),
-                false,
-                &[is_block_end, is_mem_segment_len],
+                "check next: is_mem_segment_len+ -> is_mem_segment_bytes*",
+                and::expr([
+                    is_mem_segment_len_expr.clone(),
+                    not_q_last_expr.clone()
+                ]),
+                true,
+                &[is_mem_segment_len, is_mem_segment_bytes, is_mem_segment_type],
             );
-            // TODO
-            // configure_check_for_transition(
-            //     &mut cb,
-            //     vc,
-            //     "check next: is_mem_segment_len+ -> is_mem_segment_bytes*",
-            //     is_mem_segment_len_expr.clone(),
-            //     true,
-            //     &[is_mem_segment_len, is_mem_segment_bytes],
-            // );
-            configure_check_for_transition(
+            // constraints for is_mem_segment_type{1}=MemSegmentType::Passive
+            configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_mem_segment_len+ -> is_mem_segment_bytes*",
-                is_mem_segment_bytes_expr.clone(),
-                false,
-                &[is_mem_segment_len, is_mem_segment_bytes],
+                "check next: is_items_count+ -> item+ (is_mem_segment_len{1} ...",
+                not_q_last_expr.clone() * is_items_count_expr.clone() * mem_segment_type_is_passive_expr.clone(),
+                true,
+                &[is_items_count, is_mem_segment_len],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_mem_segment_len+ -> is_mem_segment_bytes*",
+                and::expr([
+                    is_mem_segment_len_expr.clone(),
+                    not_q_last_expr.clone()
+                ]),
+                true,
+                &[is_mem_segment_len, is_mem_segment_bytes, is_mem_segment_type],
+            );
+            // constraints for is_mem_segment_type{1}=MemSegmentType::ActiveVariadic:
+            //  is_items_count+ -> item+ (is_mem_segment_type{1} -> is_mem_index+ -> is_mem_segment_size_opcode{1} -> is_mem_segment_size+ -> is_block_end{1} -> is_mem_segment_len+ -> is_mem_segment_bytes*)
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_items_count+ -> item+ (is_mem_segment_type{1} ...",
+                not_q_last_expr.clone() * is_items_count_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                true,
+                &[is_items_count, is_mem_segment_type],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_mem_segment_type{1} -> is_mem_index+",
+                not_q_last_expr.clone() * is_mem_segment_type_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                true,
+                &[is_memidx],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_mem_index+ -> is_mem_segment_size_opcode{1}",
+                not_q_last_expr.clone() * is_mem_segment_type_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                true,
+                &[is_memidx, is_mem_segment_size_opcode],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_mem_segment_size_opcode{1} -> is_mem_segment_size+",
+                not_q_last_expr.clone() * is_mem_segment_size_opcode_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                true,
+                &[is_mem_segment_size],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_mem_segment_size+ -> is_block_end{1}",
+                not_q_last_expr.clone() * is_mem_segment_size_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                true,
+                &[is_mem_segment_size, is_block_end],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_block_end{1} -> is_mem_segment_len+",
+                not_q_last_expr.clone() * is_block_end_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                true,
+                &[is_mem_segment_len],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_mem_segment_len+ -> is_mem_segment_bytes*",
+                and::expr([
+                    is_mem_segment_len_expr.clone(),
+                    not_q_last_expr.clone()
+                ]),
+                true,
+                &[is_mem_segment_len, is_mem_segment_bytes, is_mem_segment_type],
             );
 
             cb.condition(
@@ -275,9 +399,8 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         byte_val_expr.clone(),
                         vec![
                             MemSegmentType::Active.expr(),
-                            // TODO add support for other types
-                            // MemSegmentType::Passive.expr(),
-                            // MemSegmentType::ActiveVariadic.expr(),
+                            MemSegmentType::Passive.expr(),
+                            MemSegmentType::ActiveVariadic.expr(),
                         ],
                     )
                 }
@@ -291,7 +414,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         byte_val_expr.clone(),
                         vec![
                             NumericInstruction::I32Const.expr(),
-                            // TODO add support for other types?
+                            // are there any other types?
                         ],
                     )
                 }
@@ -302,7 +425,10 @@ impl<F: Field> WasmDataSectionBodyChip<F>
 
         let config = WasmDataSectionBodyConfig::<F> {
             q_enable,
+            q_first,
+            q_last,
             is_items_count,
+            is_memidx,
             is_mem_segment_type,
             is_mem_segment_size_opcode,
             is_mem_segment_size,
@@ -359,6 +485,22 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 );
             }
             match assign_type {
+                AssignType::QFirst => {
+                    region.assign_fixed(
+                        || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                        self.config.q_first,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::QLast => {
+                    region.assign_fixed(
+                        || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                        self.config.q_last,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
                 AssignType::IsItemsCount => {
                     region.assign_fixed(
                         || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
@@ -437,6 +579,14 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         &mem_segment_type,
                     ).unwrap();
                 }
+                AssignType::IsMemIndex => {
+                    region.assign_fixed(
+                        || format!("assign 'is_mem_index' val {} at {}", assign_value, offset),
+                        self.config.is_memidx,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                ).unwrap();
+                }
             }
         })
     }
@@ -513,6 +663,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         let mut offset = offset_start;
 
         // items_count+
+        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
             wasm_bytecode,
@@ -575,8 +726,18 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        &[AssignType::IsMemSegmentSize],
+                        &[AssignType::IsMemSegmentSize, AssignType::IsMemSegmentTypeCtx],
                     );
+                    for offset in offset..offset + mem_segment_size_leb_len {
+                        self.assign(
+                            region,
+                            wasm_bytecode,
+                            offset,
+                            &[AssignType::MemSegmentType],
+                            mem_segment_type_val as u64,
+                            None,
+                        );
+                    }
                     offset += mem_segment_size_leb_len;
 
                     // is_block_end{1}
@@ -584,8 +745,16 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        &[AssignType::IsBlockEnd],
+                        &[AssignType::IsBlockEnd, AssignType::IsMemSegmentTypeCtx],
                         1,
+                        None,
+                    );
+                    self.assign(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::MemSegmentType],
+                        mem_segment_type_val as u64,
                         None,
                     );
                     offset += 1;
@@ -595,8 +764,18 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        &[AssignType::IsMemSegmentLen],
+                        &[AssignType::IsMemSegmentLen, AssignType::IsMemSegmentTypeCtx],
                     );
+                    for offset in offset..offset + mem_segment_len_leb_len {
+                        self.assign(
+                            region,
+                            wasm_bytecode,
+                            offset,
+                            &[AssignType::MemSegmentType],
+                            mem_segment_type_val as u64,
+                            None,
+                        );
+                    }
                     offset += mem_segment_len_leb_len;
 
                     // is_mem_segment_bytes*
@@ -605,16 +784,188 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             wasm_bytecode,
                             offset + rel_offset,
-                            &[AssignType::IsMemSegmentBytes],
+                            &[AssignType::IsMemSegmentBytes, AssignType::IsMemSegmentTypeCtx],
                             1,
+                            None,
+                        );
+                        for offset in offset..offset + mem_segment_len_leb_len {
+                            self.assign(
+                                region,
+                                wasm_bytecode,
+                                offset,
+                                &[AssignType::MemSegmentType],
+                                mem_segment_type_val as u64,
+                                None,
+                            );
+                        }
+                    }
+                    offset += mem_segment_len as usize;
+                }
+                MemSegmentType::Passive => {
+                    // is_mem_segment_len+
+                    let (mem_segment_len, mem_segment_len_leb_len) = self.markup_leb_section(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsMemSegmentLen, AssignType::IsMemSegmentTypeCtx],
+                    );
+                    for offset in offset..offset + mem_segment_len_leb_len {
+                        self.assign(
+                            region,
+                            wasm_bytecode,
+                            offset,
+                            &[AssignType::MemSegmentType],
+                            mem_segment_type_val as u64,
+                            None,
+                        );
+                    }
+                    offset += mem_segment_len_leb_len;
+
+                    // is_mem_segment_bytes*
+                    for rel_offset in 0..(mem_segment_len as usize) {
+                        self.assign(
+                            region,
+                            wasm_bytecode,
+                            offset + rel_offset,
+                            &[AssignType::IsMemSegmentBytes, AssignType::IsMemSegmentTypeCtx],
+                            1,
+                            None,
+                        );
+                        self.assign(
+                            region,
+                            wasm_bytecode,
+                            offset,
+                            &[AssignType::MemSegmentType],
+                            mem_segment_type_val as u64,
                             None,
                         );
                     }
                     offset += mem_segment_len as usize;
                 }
-                MemSegmentType::Passive => { panic!("unsupported mem segment type {:?}", mem_segment_type) }
-                MemSegmentType::ActiveVariadic => { panic!("unsupported mem segment type {:?}", mem_segment_type) }
+                MemSegmentType::ActiveVariadic => {
+                    // is_mem_index+
+                    let (mem_index, mem_index_leb_len) = self.markup_leb_section(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsMemIndex, AssignType::IsMemSegmentTypeCtx],
+                    );
+                    for offset in offset..offset + mem_index_leb_len {
+                        self.assign(
+                            region,
+                            wasm_bytecode,
+                            offset,
+                            &[AssignType::MemSegmentType],
+                            mem_segment_type_val as u64,
+                            None,
+                        );
+                    }
+                    offset += mem_index_leb_len;
+
+                    // is_mem_segment_size_opcode{1}
+                    self.assign(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsMemSegmentSizeOpcode, AssignType::IsMemSegmentTypeCtx],
+                        1,
+                        None,
+                    );
+                    self.assign(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::MemSegmentType],
+                        mem_segment_type_val as u64,
+                        None,
+                    );
+                    offset += 1;
+
+                    // is_mem_segment_size+
+                    let (mem_segment_size, mem_segment_size_leb_len) = self.markup_leb_section(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsMemSegmentSize, AssignType::IsMemSegmentTypeCtx],
+                    );
+                    for offset in offset..offset + mem_segment_size_leb_len {
+                        self.assign(
+                            region,
+                            wasm_bytecode,
+                            offset,
+                            &[AssignType::MemSegmentType],
+                            mem_segment_type_val as u64,
+                            None,
+                        );
+                    }
+                    offset += mem_segment_size_leb_len;
+
+                    // is_block_end{1}
+                    self.assign(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsBlockEnd, AssignType::IsMemSegmentTypeCtx],
+                        1,
+                        None,
+                    );
+                    self.assign(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::MemSegmentType],
+                        mem_segment_type_val as u64,
+                        None,
+                    );
+                    offset += 1;
+
+                    // is_mem_segment_len+
+                    let (mem_segment_len, mem_segment_len_leb_len) = self.markup_leb_section(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsMemSegmentLen, AssignType::IsMemSegmentTypeCtx],
+                    );
+                    for offset in offset..offset + mem_segment_len_leb_len {
+                        self.assign(
+                            region,
+                            wasm_bytecode,
+                            offset,
+                            &[AssignType::MemSegmentType],
+                            mem_segment_type_val as u64,
+                            None,
+                        );
+                    }
+                    offset += mem_segment_len_leb_len;
+
+                    // is_mem_segment_bytes*
+                    for rel_offset in 0..(mem_segment_len as usize) {
+                        self.assign(
+                            region,
+                            wasm_bytecode,
+                            offset + rel_offset,
+                            &[AssignType::IsMemSegmentBytes, AssignType::IsMemSegmentTypeCtx],
+                            1,
+                            None,
+                        );
+                        for offset in offset..offset + mem_segment_len_leb_len {
+                            self.assign(
+                                region,
+                                wasm_bytecode,
+                                offset,
+                                &[AssignType::MemSegmentType],
+                                mem_segment_type_val as u64,
+                                None,
+                            );
+                        }
+                    }
+                    offset += mem_segment_len as usize;
+                }
             }
+        }
+
+        if offset != offset_start {
+            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
         }
 
         Ok(offset)

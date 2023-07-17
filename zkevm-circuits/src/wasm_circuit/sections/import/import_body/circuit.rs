@@ -22,7 +22,7 @@ use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_check_for_transition;
+use crate::wasm_circuit::sections::helpers::configure_transition_check;
 use crate::wasm_circuit::sections::import::import_body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
@@ -209,7 +209,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             let importdesc_type_is_mem_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::MemType, Rotation::cur())(vc);
             let importdesc_type_is_table_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::TableType, Rotation::cur())(vc);
             let importdesc_type_is_global_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::cur())(vc);
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
@@ -220,7 +220,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_items_count, is_mod_name_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
@@ -232,7 +232,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_items_count, is_mod_name_len, is_importdesc_val, is_mut, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
@@ -244,7 +244,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_items_count, is_mod_name_len, is_importdesc_val, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_mod_name_len+ -> is_mod_name* -> is_import_name_len+",
@@ -255,7 +255,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_mod_name_len, is_mod_name, is_import_name_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_mod_name_len+ -> is_mod_name*",
@@ -266,7 +266,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_mod_name, is_mod_name_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_mod_name* -> is_import_name_len+",
@@ -277,7 +277,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_mod_name, is_import_name_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_mod_name_len+ -> is_mod_name* -> is_import_name_len+",
@@ -288,7 +288,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_mod_name_len, is_mod_name, is_import_name_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_import_name_len+ -> is_import_name* -> is_importdesc_type{1}",
@@ -299,7 +299,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_import_name_len, is_import_name, is_importdesc_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_import_name_len+ -> is_import_name*",
@@ -310,7 +310,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_import_name_len, is_import_name, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_import_name* -> is_importdesc_type{1}",
@@ -321,7 +321,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_import_name, is_importdesc_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_import_name_len+ -> is_import_name* -> is_importdesc_type{1}",
@@ -332,7 +332,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_import_name_len, is_import_name, is_importdesc_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_importdesc_type{1} -> is_importdesc_val+",
@@ -343,7 +343,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_importdesc_val, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_importdesc_type{1} -> is_importdesc_val+",
@@ -355,7 +355,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 &[is_importdesc_type, is_importdesc_val, ],
             );
             // importdesc_type{1}=3(ImportDescType::Globaltype): import_desc+(is_importdesc_type{1} -> is_importdesc_val+ -> is_mut{1})
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
@@ -366,7 +366,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_items_count, is_mod_name_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
@@ -378,7 +378,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_items_count, is_mod_name_len, is_importdesc_val, is_mut, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
@@ -390,7 +390,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_items_count, is_mod_name_len, is_importdesc_val, is_mut, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_mod_name_len+ -> is_mod_name* -> is_import_name_len+",
@@ -401,7 +401,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_mod_name_len, is_mod_name, is_import_name_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_mod_name_len+ -> is_mod_name*",
@@ -412,7 +412,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_mod_name, is_mod_name_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_mod_name* -> is_import_name_len+",
@@ -423,7 +423,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_mod_name, is_import_name_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_mod_name_len+ -> is_mod_name* -> is_import_name_len+",
@@ -434,7 +434,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_mod_name_len, is_mod_name, is_import_name_len, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_import_name_len+ -> is_import_name* -> is_importdesc_type{1}",
@@ -445,7 +445,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_import_name_len, is_import_name, is_importdesc_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_import_name_len+ -> is_import_name*",
@@ -456,7 +456,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_import_name_len, is_import_name, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_import_name* -> is_importdesc_type{1}",
@@ -467,7 +467,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_import_name, is_importdesc_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_import_name_len+ -> is_import_name* -> is_importdesc_type{1}",
@@ -478,7 +478,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_import_name_len, is_import_name, is_importdesc_type, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_importdesc_type{1} -> is_importdesc_val+",
@@ -489,7 +489,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_importdesc_val, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_importdesc_type{1} -> is_importdesc_val+",
@@ -500,7 +500,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 false,
                 &[is_importdesc_type, is_importdesc_val, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_importdesc_val+ -> is_mut{1}",
@@ -511,7 +511,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_importdesc_val, is_mut, ],
             );
-            configure_check_for_transition(
+            configure_transition_check(
                 &mut cb,
                 vc,
                 "check prev: is_importdesc_val+ -> is_mut{1}",
