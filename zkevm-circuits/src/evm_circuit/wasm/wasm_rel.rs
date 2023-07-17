@@ -324,8 +324,12 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
           // This is additive inversion to make comparsion correct for case if all args on negative side.
           let lhs_limb = (abs_lhs >> (8 * idx)) & 0xff;
           let rhs_limb = (abs_rhs >> (8 * idx)) & 0xff;
-          let mi_lhs_limb = if is_neg_lhs > 0 { 255_u64 - lhs_limb } else { lhs_limb };
-          let mi_rhs_limb = if is_neg_rhs > 0 { 255_u64 - rhs_limb } else { rhs_limb };
+          let mut mi_lhs_limb = if is_neg_lhs > 0 { 255_u64 - lhs_limb } else { lhs_limb };
+          let mut mi_rhs_limb = if is_neg_rhs > 0 { 255_u64 - rhs_limb } else { rhs_limb };
+          if !enable {
+              mi_lhs_limb = 1_u64 - is_neg_lhs;
+              mi_rhs_limb = 1_u64 - is_neg_rhs;
+          }
           let neq_out = mi_lhs_limb != mi_rhs_limb;
           let out = match opcode {
             OpcodeId::I32Ne | OpcodeId::I64Ne => neq_out,
@@ -336,19 +340,16 @@ impl<F: Field> ExecutionGadget<F> for WasmRelGadget<F> {
             OpcodeId::I32LeU | OpcodeId::I64LeU | OpcodeId::I32LeS | OpcodeId::I64LeS => mi_lhs_limb <= mi_rhs_limb,
             _ => false,
           };
+          assigns! {
+              [lhs_limbs[idx], F::from(lhs_limb)]
+              [rhs_limbs[idx], F::from(rhs_limb)]
+              [out_terms[idx], F::from(out)]
+          }
           if enable {
-              assigns! {
-                  [lhs_limbs[idx], F::from(lhs_limb)]
-                  [rhs_limbs[idx], F::from(rhs_limb)]
-                  [neq_terms[idx], F::from(neq_out)]
-                  [out_terms[idx], F::from(out)]
-              }
+              assigns! { [neq_terms[idx], F::from(neq_out)] }
               println!("DEBUG {idx} {lhs_limb} {rhs_limb} {neq_out} {out}");
           } else if idx == 0 {
-              assigns! {
-                  [neq_terms[idx], F::from(0)]
-                  [out_terms[idx], F::from(out)]
-              }
+              assigns! { [neq_terms[idx], F::from(0)] }
               println!("DEBUG {idx} {out}");
           }
         }
