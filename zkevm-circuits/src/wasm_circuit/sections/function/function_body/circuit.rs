@@ -10,7 +10,7 @@ use halo2_proofs::poly::Rotation;
 use log::debug;
 
 use eth_types::Field;
-use gadgets::util::{Expr, or};
+use gadgets::util::{Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
@@ -20,11 +20,13 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::function::function_body::types::AssignType;
-use crate::wasm_circuit::sections::helpers::configure_transition_check;
+use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 
 #[derive(Debug, Clone)]
 pub struct WasmFunctionSectionBodyConfig<F: Field> {
     pub q_enable: Column<Fixed>,
+    pub q_first: Column<Fixed>,
+    pub q_last: Column<Fixed>,
     pub is_items_count: Column<Fixed>,
     pub is_typeidx: Column<Fixed>,
 
@@ -58,6 +60,8 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
     ) -> WasmFunctionSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
+        let q_first = cs.fixed_column();
+        let q_last = cs.fixed_column();
         let is_items_count = cs.fixed_column();
         let is_typeidx = cs.fixed_column();
 
@@ -65,12 +69,25 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
             let is_typeidx_expr = vc.query_fixed(is_typeidx, Rotation::cur());
 
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
             cb.require_boolean("is_items_count is boolean", is_items_count_expr.clone());
             cb.require_boolean("is_typeidx is boolean", is_typeidx_expr.clone());
+
+            configure_constraints_for_q_first_and_q_last(
+                &mut cb,
+                vc,
+                &q_enable,
+                &q_first,
+                &[is_items_count],
+                &q_last,
+                &[is_typeidx],
+            );
 
             cb.require_equal(
                 "exactly one mark flag active at the same time",
@@ -98,17 +115,17 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> is_typeidx+",
-                is_items_count_expr.clone(),
+                is_items_count_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_items_count, is_typeidx, ],
             );
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_items_count+ -> is_typeidx+",
-                is_typeidx_expr.clone(),
-                false,
-                &[is_items_count, is_typeidx, ],
+                "check next: is_typeidx+",
+                is_typeidx_expr.clone() * not_q_last_expr.clone(),
+                true,
+                &[is_typeidx, ],
             );
 
             cb.gate(q_enable_expr.clone())
@@ -116,6 +133,8 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
 
         let config = WasmFunctionSectionBodyConfig::<F> {
             q_enable,
+            q_first,
+            q_last,
             is_items_count,
             is_typeidx,
             leb128_chip,
@@ -162,6 +181,22 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
         match assign_type {
+            AssignType::QFirst => {
+                region.assign_fixed(
+                    || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                    self.config.q_first,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::QLast => {
+                region.assign_fixed(
+                    || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                    self.config.q_last,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
             AssignType::IsItemsCount => {
                 region.assign_fixed(
                     || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
@@ -208,7 +243,7 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
                 offset,
                 assign_type,
                 1,
-                Some(LebParams{
+                Some(LebParams {
                     is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
@@ -236,6 +271,7 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
             offset,
             AssignType::IsItemsCount,
         );
+        self.assign(region, &wasm_bytecode, offset, AssignType::QFirst, 1, None);
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
@@ -246,6 +282,10 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
                 AssignType::IsTypeidx,
             );
             offset += typeidx_val_leb_len;
+        }
+
+        if offset != offset_start {
+            self.assign(region, &wasm_bytecode, offset - 1, AssignType::QLast, 1, None);
         }
 
         Ok(offset)

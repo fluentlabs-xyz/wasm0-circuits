@@ -34,7 +34,9 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
     vc: &mut VirtualCells<F>,
     q_enable: &Column<Fixed>,
     q_first: &Column<Fixed>,
+    q_first_column_selectors: &[Column<Fixed>],
     q_last: &Column<Fixed>,
+    q_last_column_selectors: &[Column<Fixed>],
 ) {
     let q_enable_expr = vc.query_fixed(*q_enable, Rotation::cur());
     let q_first_expr = vc.query_fixed(*q_first, Rotation::cur());
@@ -42,6 +44,31 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
 
     cb.require_boolean("q_first is boolean", q_first_expr.clone());
     cb.require_boolean("q_last is boolean", q_last_expr.clone());
+
+    if q_first_column_selectors.len() <= 0 || q_last_column_selectors.len() <= 0 {
+        panic!("*column_selectors must contain at leas 1 element each")
+    }
+
+    cb.condition(
+        q_first_expr.clone(),
+        |bcb| {
+            bcb.require_equal(
+                "q_first => specific selectors must be active",
+                or::expr(q_first_column_selectors.iter().map(|v| vc.query_fixed(*v, Rotation::cur()))),
+                1.expr(),
+            )
+        }
+    );
+    cb.condition(
+        q_last_expr.clone(),
+        |bcb| {
+            bcb.require_equal(
+                "q_last => specific selectors must be active",
+                or::expr(q_last_column_selectors.iter().map(|v| vc.query_fixed(*v, Rotation::cur()))),
+                1.expr(),
+            )
+        }
+    );
 
     cb.condition(
         or::expr([

@@ -1,9 +1,15 @@
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AssignType {
     Unknown,
+
+    QFirst,
+    QLast,
+
+    ElemType,
+
     IsItemsCount,
-    IsElemBody,
     IsElemType,
+    IsElemTypeCtx,
     IsNumericInstruction,
     IsNumericInstructionLebArg,
     IsBlockEnd,

@@ -1,30 +1,35 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Expression, Fixed, VirtualCells};
+use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
 use itertools::Itertools;
 use log::debug;
+
 use eth_types::Field;
 use gadgets::util::{Expr, not, or};
+
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::consts::NumType;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_transition_check;
+use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::sections::r#type::type_item::consts::Type::FuncType;
 use crate::wasm_circuit::sections::r#type::type_item::types::AssignType;
 
 #[derive(Debug, Clone)]
 pub struct WasmTypeSectionItemConfig<F> {
     pub q_enable: Column<Fixed>,
+    pub q_first: Column<Fixed>,
+    pub q_last: Column<Fixed>,
     pub is_type: Column<Fixed>,
     pub is_input_count: Column<Fixed>,
     pub is_input_type: Column<Fixed>,
@@ -61,6 +66,8 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
     ) -> WasmTypeSectionItemConfig<F> {
         let q_enable = cs.fixed_column();
+        let q_first = cs.fixed_column();
+        let q_last = cs.fixed_column();
         let is_type = cs.fixed_column();
         let is_input_count = cs.fixed_column();
         let is_input_type = cs.fixed_column();
@@ -71,6 +78,9 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_type_expr = vc.query_fixed(is_type, Rotation::cur());
             let is_input_count_expr = vc.query_fixed(is_input_count, Rotation::cur());
             let is_input_type_expr = vc.query_fixed(is_input_type, Rotation::cur());
@@ -85,6 +95,16 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             cb.require_boolean("is_input_type is boolean", is_input_type_expr.clone());
             cb.require_boolean("is_output_count is boolean", is_output_count_expr.clone());
             cb.require_boolean("is_output_type is boolean", is_output_type_expr.clone());
+
+            configure_constraints_for_q_first_and_q_last(
+                &mut cb,
+                vc,
+                &q_enable,
+                &q_first,
+                &[is_type],
+                &q_last,
+                &[is_output_type, is_output_count],
+            );
 
             cb.condition(
                 is_type_expr.clone(),
@@ -138,66 +158,82 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 &mut cb,
                 vc,
                 "check next: is_type{1} -> is_input_count+",
-                is_type_expr.clone(),
+                is_type_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_input_count, ],
             );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_type{1} -> is_input_count+",
-                is_input_count_expr.clone(),
-                false,
-                &[is_type, is_input_count, ],
-            );
+            // configure_transition_check(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_type{1} -> is_input_count+",
+            //     is_input_count_expr.clone(),
+            //     false,
+            //     &[is_type, is_input_count, ],
+            // );
             configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_input_count+ -> is_input_type* -> is_output_count+",
-                is_input_count_expr.clone(),
+                is_input_count_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_input_count, is_input_type, is_output_count, ],
             );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_input_count+ -> is_input_type*",
-                is_input_type_expr.clone(),
-                false,
-                &[is_input_count, is_input_type, ],
-            );
+            // configure_transition_check(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_input_count+ -> is_input_type*",
+            //     is_input_type_expr.clone(),
+            //     false,
+            //     &[is_input_count, is_input_type, ],
+            // );
             configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_input_type* -> is_output_count+",
-                is_input_type_expr.clone(),
+                is_input_type_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_input_type, is_output_count, ],
             );
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_input_count+ -> is_input_type* -> is_output_count+",
-                is_output_count_expr.clone(),
-                false,
-                &[is_input_count, is_input_type, is_output_count, ],
+                "check next: is_output_count+ -> is_output_type*",
+                is_output_count_expr.clone() * not_q_last_expr.clone(),
+                true,
+                &[is_output_count, is_output_type, ],
             );
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_output_count+ -> is_output_type*",
-                is_output_type_expr.clone(),
-                false,
-                &[is_output_count, is_output_type, ],
+                "check next: is_output_type*",
+                is_output_count_expr.clone() * not_q_last_expr.clone(),
+                true,
+                &[is_output_type, ],
             );
-
-            // TODO add constraints
+            // configure_transition_check(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_input_count+ -> is_input_type* -> is_output_count+",
+            //     is_output_count_expr.clone(),
+            //     false,
+            //     &[is_input_count, is_input_type, is_output_count, ],
+            // );
+            // configure_transition_check(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_output_count+ -> is_output_type*",
+            //     is_output_type_expr.clone(),
+            //     false,
+            //     &[is_output_count, is_output_type, ],
+            // );
 
             cb.gate(q_enable_expr.clone())
         });
 
         let config = WasmTypeSectionItemConfig::<F> {
             q_enable,
+            q_first,
+            q_last,
             is_type,
             is_input_count,
             is_input_type,
@@ -287,6 +323,22 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                     || Value::known(F::from(assign_value)),
                 ).unwrap();
             }
+            AssignType::QFirst => {
+                region.assign_fixed(
+                    || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                    self.config.q_first,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::QLast => {
+                region.assign_fixed(
+                    || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                    self.config.q_last,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
         }
     }
 
@@ -317,7 +369,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                 offset,
                 assign_type,
                 1,
-                Some(LebParams{
+                Some(LebParams {
                     is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
@@ -347,6 +399,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             1,
             None,
         );
+        self.assign(region, &wasm_bytecode, offset, AssignType::QFirst, 1, None);
         offset += 1;
 
         // is_input_count+
@@ -392,6 +445,10 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             );
         }
         offset += output_count as usize;
+
+        if offset != offset_start {
+            self.assign(region, &wasm_bytecode, offset - 1, AssignType::QLast, 1, None);
+        }
 
         Ok(offset)
     }

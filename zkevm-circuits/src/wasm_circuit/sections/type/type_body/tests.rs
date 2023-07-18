@@ -1,14 +1,17 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
+
 use eth_types::{Field, Hash, ToWord};
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::r#type::type_body::circuit::WasmTypeSectionBodyChip;
 use crate::wasm_circuit::sections::r#type::type_item::circuit::WasmTypeSectionItemChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
@@ -107,16 +110,19 @@ mod wasm_type_section_body_tests {
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
+    use wasmbin::sections::Kind;
     use bus_mapping::state_db::CodeDB;
+
     use eth_types::Field;
-    use crate::wasm_circuit::sections::r#type::test_helpers::generate_type_section_body_bytecode;
+
+    use crate::wasm_circuit::common::wat_extract_section_body_bytecode;
     use crate::wasm_circuit::sections::r#type::type_body::tests::TestCircuit;
 
     fn test<'a, F: Field>(
         test_circuit: TestCircuit<'_, F>,
         is_ok: bool,
     ) {
-        let k = 5;
+        let k = 6;
         let prover = MockProver::run(k, &test_circuit, vec![]).unwrap();
         if is_ok {
             prover.assert_satisfied();
@@ -126,26 +132,36 @@ mod wasm_type_section_body_tests {
     }
 
     #[test]
-    pub fn section_body_bytecode_is_ok() {
-        for _ in 0..10 {
-            let bytecodes = [
-                generate_type_section_body_bytecode(0, 2, 2),
-                generate_type_section_body_bytecode(1, 2, 2),
-                generate_type_section_body_bytecode(2, 2, 2),
-                generate_type_section_body_bytecode(3, 2, 2),
-                generate_type_section_body_bytecode(4, 2, 2),
-            ];
-            for bytecode in bytecodes {
-                debug!("type_section_body_bytecode (hex) {:x?}", bytecode);
-                let code_hash = CodeDB::hash(&bytecode);
-                let test_circuit = TestCircuit::<Fr> {
-                    code_hash,
-                    bytecode_bytes: &bytecode,
-                    offset_start: 0,
-                    _marker: Default::default(),
-                };
-                test(test_circuit, true);
-            }
-        }
+    pub fn file1_ok() {
+        let bytecode = wat_extract_section_body_bytecode(
+            "./src/wasm_circuit/test_data/files/br_breaks_1.wat",
+            Kind::Type,
+        );
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode_bytes: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
+    }
+
+    #[test]
+    pub fn file2_ok() {
+        let bytecode = wat_extract_section_body_bytecode(
+            "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
+            Kind::Type,
+        );
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode_bytes: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
     }
 }

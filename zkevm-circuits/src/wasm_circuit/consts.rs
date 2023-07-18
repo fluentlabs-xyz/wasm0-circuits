@@ -92,10 +92,29 @@ impl<F: FieldExt> Expr<F> for ReferenceType {
 pub const SECTION_ID_DEFAULT: i32 = 0;
 
 /// https://webassembly.github.io/spec/core/binary/types.html#limits
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LimitType {
     MinOnly = 0x0,
     MinMax = 0x1,
+}
+pub const LIMIT_TYPE_VALUES: &[LimitType] = &[
+    LimitType::MinOnly,
+    LimitType::MinMax,
+];
+impl TryFrom<u8> for LimitType {
+    type Error = ();
+
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        for instr in LIMIT_TYPE_VALUES {
+            if v == *instr as u8 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+impl From<LimitType> for usize {
+    fn from(t: LimitType) -> Self {
+        t as usize
+    }
 }
 impl<F: FieldExt> Expr<F> for LimitType {
     #[inline]

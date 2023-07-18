@@ -11,7 +11,7 @@ use itertools::Itertools;
 use log::debug;
 
 use eth_types::Field;
-use gadgets::util::{Expr, or};
+use gadgets::util::{Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
@@ -23,7 +23,7 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::global::global_body::types::AssignType;
-use crate::wasm_circuit::sections::helpers::configure_transition_check;
+use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::types::SharedState;
@@ -31,6 +31,8 @@ use crate::wasm_circuit::types::SharedState;
 #[derive(Debug, Clone)]
 pub struct WasmGlobalSectionBodyConfig<F: Field> {
     pub q_enable: Column<Fixed>,
+    pub q_first: Column<Fixed>,
+    pub q_last: Column<Fixed>,
     pub is_items_count: Column<Fixed>,
     pub is_global_type: Column<Fixed>,
     pub is_mut_prop: Column<Fixed>,
@@ -70,6 +72,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     ) -> WasmGlobalSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
+        let q_first = cs.fixed_column();
+        let q_last = cs.fixed_column();
         let is_items_count = cs.fixed_column();
         let is_global_type = cs.fixed_column();
         let is_mut_prop = cs.fixed_column();
@@ -94,6 +98,9 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
             let is_global_type_expr = vc.query_fixed(is_global_type, Rotation::cur());
             let is_mut_prop_expr = vc.query_fixed(is_mut_prop, Rotation::cur());
@@ -110,6 +117,16 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             cb.require_boolean("is_init_opcode is boolean", is_init_opcode_expr.clone());
             cb.require_boolean("is_init_val is boolean", is_init_val_expr.clone());
             cb.require_boolean("is_expr_delimiter is boolean", is_expr_delimiter_expr.clone());
+
+            configure_constraints_for_q_first_and_q_last(
+                &mut cb,
+                vc,
+                &q_enable,
+                &q_first,
+                &[is_items_count],
+                &q_last,
+                &[is_expr_delimiter],
+            );
 
             cb.require_equal(
                 "exactly one mark flag active at the same time",
@@ -142,81 +159,49 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> item+(is_global_type{1} ...",
-                is_items_count_expr.clone(),
+                is_items_count_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_items_count, is_global_type, ],
             );
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_items_count+ -> item+(is_global_type{1} ...",
-                is_global_type_expr.clone(),
-                false,
-                &[is_items_count, is_expr_delimiter, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
                 "check next: is_global_type{1} -> is_mut_prop{1}",
-                is_global_type_expr.clone(),
+                is_global_type_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_mut_prop, ],
             );
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_global_type{1} -> is_mut_prop{1}",
-                is_mut_prop_expr.clone(),
-                false,
-                &[is_global_type, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
                 "check next: is_mut_prop{1} -> is_init_opcode{1}",
-                is_mut_prop_expr.clone(),
+                is_mut_prop_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_init_opcode, ],
             );
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_mut_prop{1} -> is_init_opcode{1}",
-                is_init_opcode_expr.clone(),
-                false,
-                &[is_mut_prop, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
                 "check next: is_init_opcode{1} -> is_init_val+",
-                is_init_opcode_expr.clone(),
+                is_init_opcode_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_init_val, ],
             );
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_init_opcode{1} -> is_init_val+",
-                is_init_val_expr.clone(),
-                false,
-                &[is_init_opcode, is_init_val, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
                 "check next: is_init_val+ -> is_expr_delimiter{1}",
-                is_init_val_expr.clone(),
+                is_init_val_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_init_val, is_expr_delimiter],
             );
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_init_val+ -> is_expr_delimiter{1}",
-                is_expr_delimiter_expr.clone(),
-                false,
-                &[is_init_val, ],
+                "check next: is_expr_delimiter{1}",
+                is_expr_delimiter_expr.clone() * not_q_last_expr.clone(),
+                true,
+                &[is_global_type],
             );
 
             cb.condition(
@@ -228,7 +213,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                         vec![
                             NumType::I32.expr(),
                             NumType::I64.expr(),
-                            // TODO add support for float types
+                            // add support for float types?
                             // NumType::F32.expr(),
                             // NumType::F64.expr(),
                         ],
@@ -281,6 +266,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
 
         let config = WasmGlobalSectionBodyConfig::<F> {
             q_enable,
+            q_first,
+            q_last,
             is_items_count,
             is_global_type,
             is_mut_prop,
@@ -332,6 +319,22 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
         match assign_type {
+            AssignType::QFirst => {
+                region.assign_fixed(
+                    || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                    self.config.q_first,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::QLast => {
+                region.assign_fixed(
+                    || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                    self.config.q_last,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
             AssignType::IsItemsCount => {
                 region.assign_fixed(
                     || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
@@ -410,7 +413,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 offset,
                 assign_type,
                 1,
-                Some(LebParams{
+                Some(LebParams {
                     is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
@@ -445,6 +448,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             items_count as usize,
             Tag::GlobalSectionGlobalIndex,
         ).unwrap();
+        self.assign(region, &wasm_bytecode, offset, AssignType::QFirst, 1, None);
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
@@ -500,6 +504,10 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 None,
             );
             offset += 1;
+        }
+
+        if offset != offset_start {
+            self.assign(region, &wasm_bytecode, offset - 1, AssignType::QLast, 1, None);
         }
 
         Ok(offset)

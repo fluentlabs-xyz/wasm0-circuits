@@ -1,22 +1,26 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
 use itertools::Itertools;
 use log::debug;
+
 use eth_types::Field;
 use gadgets::util::not;
+
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::sections::consts::LebParams;
+use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::sections::r#type::type_body::types::AssignType;
 use crate::wasm_circuit::sections::r#type::type_item::circuit::WasmTypeSectionItemChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
@@ -26,7 +30,9 @@ use crate::wasm_circuit::types::SharedState;
 #[derive(Debug, Clone)]
 pub struct WasmTypeSectionBodyConfig<F> {
     pub q_enable: Column<Fixed>,
-    pub is_body_items_count: Column<Fixed>,
+    pub q_first: Column<Fixed>,
+    pub q_last: Column<Fixed>,
+    pub is_items_count: Column<Fixed>,
     pub is_body: Column<Fixed>,
 
     pub wasm_type_section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
@@ -63,46 +69,77 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     ) -> WasmTypeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
-        let is_body_items_count= cs.fixed_column();
-        let is_body= cs.fixed_column();
+        let q_first = cs.fixed_column();
+        let q_last = cs.fixed_column();
+        let is_items_count = cs.fixed_column();
+        let is_body = cs.fixed_column();
 
         cs.create_gate("WasmTypeSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let is_body_items_count_expr = vc.query_fixed(is_body_items_count, Rotation::cur());
+            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let not_q_last_expr = not::expr(q_last_expr.clone());
+            let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
             let is_body_expr = vc.query_fixed(is_body, Rotation::cur());
 
             let byte_value_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
 
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
-            cb.require_boolean("is_body_items_count is boolean", is_body_items_count_expr.clone());
+            cb.require_boolean("is_items_count is boolean", is_items_count_expr.clone());
             cb.require_boolean("is_body is boolean", is_body_expr.clone());
 
+            configure_constraints_for_q_first_and_q_last(
+                &mut cb,
+                vc,
+                &q_enable,
+                &q_first,
+                &[is_items_count],
+                &q_last,
+                &[is_body],
+            );
+
             cb.condition(
-                is_body_items_count_expr.clone(),
+                is_items_count_expr.clone(),
                 |bcb| {
                     bcb.require_zero(
-                        "if is_body_items_count -> leb128",
+                        "is_items_count -> leb128",
                         not::expr(vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()))
                     );
                 }
             );
-
             cb.require_equal(
-                "if is_body_expr <-> wasm_type_section_item",
+                "is_body_expr <-> wasm_type_section_item",
                 is_body_expr.clone(),
                 vc.query_fixed(wasm_type_section_item_chip.config.q_enable, Rotation::cur()),
             );
 
-            // TODO add constraints
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_items_count+ -> is_body+",
+                is_items_count_expr.clone() * not_q_last_expr.clone(),
+                true,
+                &[is_items_count, is_body],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_body+",
+                is_body_expr.clone() * not_q_last_expr.clone(),
+                true,
+                &[is_body, ],
+            );
 
             cb.gate(q_enable_expr.clone())
         });
 
         let config = WasmTypeSectionBodyConfig::<F> {
             q_enable,
-            is_body_items_count,
+            q_first,
+            q_last,
+            is_items_count,
             is_body,
             leb128_chip,
             wasm_type_section_item_chip,
@@ -149,10 +186,26 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
         match assign_type {
+            AssignType::QFirst => {
+                region.assign_fixed(
+                    || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                    self.config.q_first,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::QLast => {
+                region.assign_fixed(
+                    || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                    self.config.q_last,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
             AssignType::IsBodyItemsCount => {
                 region.assign_fixed(
-                    || format!("assign 'is_body_items_count' val {} at {}", assign_value, offset),
-                    self.config.is_body_items_count,
+                    || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
+                    self.config.is_items_count,
                     offset,
                     || Value::known(F::from(assign_value)),
                 ).unwrap();
@@ -195,7 +248,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
                 offset,
                 assign_type,
                 1,
-                Some(LebParams{
+                Some(LebParams {
                     is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,
@@ -225,6 +278,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
             offset,
             AssignType::IsBodyItemsCount,
         );
+        self.assign(region, &wasm_bytecode, offset, AssignType::QFirst, 1, None);
         offset += body_items_count_leb_len;
 
         shared_state.dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
@@ -251,6 +305,10 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
                 );
             }
             offset = next_body_item_offset;
+        }
+
+        if offset != offset_start {
+            self.assign(region, &wasm_bytecode, offset - 1, AssignType::QLast, 1, None);
         }
 
         Ok(offset)

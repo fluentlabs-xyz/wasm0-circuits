@@ -22,14 +22,16 @@ use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_com
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::element::element_body::consts::ElementType;
 use crate::wasm_circuit::sections::element::element_body::types::AssignType;
-use crate::wasm_circuit::sections::helpers::configure_transition_check;
+use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 
 #[derive(Debug, Clone)]
 pub struct WasmElementSectionBodyConfig<F: Field> {
     pub q_enable: Column<Fixed>,
+    pub q_first: Column<Fixed>,
+    pub q_last: Column<Fixed>,
     pub is_items_count: Column<Fixed>,
     pub is_elem_type: Column<Fixed>,
-    pub is_elem_body: Column<Fixed>,
+    pub is_elem_type_ctx: Column<Fixed>,
     pub is_numeric_instruction: Column<Fixed>,
     pub is_numeric_instruction_leb_arg: Column<Fixed>,
     pub is_block_end: Column<Fixed>,
@@ -37,7 +39,7 @@ pub struct WasmElementSectionBodyConfig<F: Field> {
     pub is_func_idx: Column<Fixed>,
     pub is_elem_kind: Column<Fixed>,
 
-    pub elem_body_type: Column<Advice>,
+    pub elem_type: Column<Advice>,
 
     pub elem_type_chip: Rc<BinaryNumberChip<F, ElementType, 8>>,
 
@@ -71,9 +73,11 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
     ) -> WasmElementSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
+        let q_first = cs.fixed_column();
+        let q_last = cs.fixed_column();
         let is_items_count = cs.fixed_column();
         let is_elem_type = cs.fixed_column();
-        let is_elem_body = cs.fixed_column();
+        let is_elem_type_ctx = cs.fixed_column();
         let is_numeric_instruction = cs.fixed_column();
         let is_numeric_instruction_leb_arg = cs.fixed_column();
         let is_block_end = cs.fixed_column();
@@ -81,11 +85,11 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         let is_func_idx = cs.fixed_column();
         let is_elem_kind = cs.fixed_column();
 
-        let elem_body_type = cs.advice_column();
+        let elem_type = cs.advice_column();
         let config = BinaryNumberChip::configure(
             cs,
-            is_elem_body,
-            Some(elem_body_type.into()),
+            is_elem_type_ctx,
+            Some(elem_type.into()),
         );
         let elem_type_chip = Rc::new(BinaryNumberChip::construct(config));
 
@@ -93,9 +97,13 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let not_q_first_expr = not::expr(q_first_expr.clone());
+            let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
             let is_elem_type_expr = vc.query_fixed(is_elem_type, Rotation::cur());
-            let is_elem_body_expr = vc.query_fixed(is_elem_body, Rotation::cur());
+            let is_elem_type_ctx_expr = vc.query_fixed(is_elem_type_ctx, Rotation::cur());
             let is_numeric_instruction_expr = vc.query_fixed(is_numeric_instruction, Rotation::cur());
             let is_numeric_instruction_leb_arg_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::cur());
             let is_block_end_expr = vc.query_fixed(is_block_end, Rotation::cur());
@@ -104,6 +112,8 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             let is_elem_kind_expr = vc.query_fixed(is_elem_kind, Rotation::cur());
 
             let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+
+            let elem_type_expr = vc.query_advice(elem_type, Rotation::cur());
 
             let elem_type_is_0_expr = elem_type_chip.config.value_equals(ElementType::_0, Rotation::cur())(vc);
             let elem_type_is_1_expr = elem_type_chip.config.value_equals(ElementType::_1, Rotation::cur())(vc);
@@ -115,13 +125,23 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
             cb.require_boolean("is_items_count is boolean", is_items_count_expr.clone());
             cb.require_boolean("is_elem_type is boolean", is_elem_type_expr.clone());
-            cb.require_boolean("is_elem_body is boolean", is_elem_body_expr.clone());
+            cb.require_boolean("is_elem_type_ctx is boolean", is_elem_type_ctx_expr.clone());
             cb.require_boolean("is_numeric_instruction is boolean", is_numeric_instruction_expr.clone());
             cb.require_boolean("is_numeric_instruction_leb_arg is boolean", is_numeric_instruction_leb_arg_expr.clone());
             cb.require_boolean("is_block_end is boolean", is_block_end_expr.clone());
             cb.require_boolean("is_funcs_idx_count is boolean", is_funcs_idx_count_expr.clone());
             cb.require_boolean("is_func_idx is boolean", is_func_idx_expr.clone());
             cb.require_boolean("is_elem_kind is boolean", is_elem_kind_expr.clone());
+
+            configure_constraints_for_q_first_and_q_last(
+                &mut cb,
+                vc,
+                &q_enable,
+                &q_first,
+                &[is_items_count],
+                &q_last,
+                &[is_funcs_idx_count, is_func_idx],
+            );
 
             cb.require_equal(
                 "exactly one mark flag active at the same time",
@@ -134,17 +154,6 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                     is_func_idx_expr.clone() +
                     is_elem_kind_expr.clone(),
                 1.expr(),
-            );
-
-            cb.require_equal(
-                "is_elem_body check relation with other flags",
-                is_numeric_instruction_expr.clone() +
-                    is_numeric_instruction_leb_arg_expr.clone() +
-                    is_block_end_expr.clone() +
-                    is_funcs_idx_count_expr.clone() +
-                    is_func_idx_expr.clone() +
-                    is_elem_kind_expr.clone(),
-                is_elem_body_expr.clone()
             );
 
             cb.condition(
@@ -184,27 +193,36 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 }
             );
 
+            cb.require_equal(
+                "check relation of is_elem_type_ctx with other flags",
+                is_elem_type_expr.clone()
+                    + is_numeric_instruction_expr.clone()
+                    + is_numeric_instruction_leb_arg_expr.clone()
+                    + is_block_end_expr.clone()
+                    + is_funcs_idx_count_expr.clone()
+                    + is_func_idx_expr.clone()
+                    + is_elem_kind_expr.clone(),
+                is_elem_type_ctx_expr.clone()
+            );
             cb.condition(
                 is_elem_type_expr.clone(),
                 |bcb| {
-                    let elem_type_next_expr = elem_type_chip.config.value(Rotation::next())(vc);
                     bcb.require_equal(
-                        "is_elem_type -> byte_val=elem_type_next",
+                        "is_elem_type -> elem_type=byte_val",
+                        elem_type_expr.clone(),
                         byte_val_expr.clone(),
-                        elem_type_next_expr.clone(),
                     );
                 }
             );
             cb.condition(
-                is_elem_body_expr.clone(),
+                is_elem_type_ctx_expr.clone(),
                 |bcb| {
-                    let elem_type_expr = elem_type_chip.config.value(Rotation::cur())(vc);
-                    let elem_type_prev_expr = elem_type_chip.config.value(Rotation::prev())(vc);
-                    let is_not_elem_type_prev_expr = not::expr(vc.query_fixed(is_elem_type, Rotation::prev()));
-                    bcb.require_equal(
-                        "is_elem_body && is_not_elem_type_prev -> elem_type=elem_type_prev",
-                        is_not_elem_type_prev_expr.clone() * elem_type_expr.clone(),
-                        is_not_elem_type_prev_expr.clone() * elem_type_prev_expr.clone(),
+                    let is_elem_type_ctx_prev_expr = vc.query_fixed(is_elem_type_ctx, Rotation::prev());
+                    let elem_type_prev_expr = vc.query_advice(elem_type, Rotation::prev());
+                    let not_is_elem_type_prev_expr = vc.query_fixed(is_elem_type, Rotation::prev());
+                    bcb.require_zero(
+                        "is_elem_type_ctx && prev.is_elem_type_ctx -> elem_type=prev.elem_type",
+                        not_is_elem_type_prev_expr.clone() * is_elem_type_ctx_prev_expr.clone() * (elem_type_expr.clone() - elem_type_prev_expr.clone()),
                     );
                 }
             );
@@ -216,17 +234,9 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> elem+(is_elem_type{1} ...",
-                is_items_count_expr.clone(),
+                is_items_count_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_items_count, is_elem_type, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_items_count+ -> elem+(is_elem_type{1} ...",
-                is_elem_type_expr.clone(),
-                false,
-                &[is_items_count, is_func_idx, is_funcs_idx_count, ],
             );
             // elem_body+(is_elem_type{1}=0 -> is_numeric_instruction{1} -> is_numeric_instruction_leb_arg+ -> is_block_end{1} -> is_funcs_idx_count+ -> is_func_idx*)
             configure_transition_check(
@@ -235,21 +245,11 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 "check next: is_elem_type{1}=0 -> is_numeric_instruction{1}",
                 and::expr([
                     is_elem_type_expr.clone(),
-                    elem_type_is_0_next_expr.clone(),
+                    elem_type_is_0_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_numeric_instruction, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_elem_type{1}=0 -> is_numeric_instruction{1}",
-                and::expr([
-                    is_numeric_instruction_expr.clone(),
-                    elem_type_is_0_expr.clone(),
-                ]),
-                false,
-                &[is_elem_type, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -258,20 +258,10 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 and::expr([
                     is_numeric_instruction_expr.clone(),
                     elem_type_is_0_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_numeric_instruction_leb_arg, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_numeric_instruction{1} -> is_numeric_instruction_leb_arg+",
-                and::expr([
-                    is_numeric_instruction_leb_arg_expr.clone(),
-                    elem_type_is_0_expr.clone(),
-                ]),
-                false,
-                &[is_numeric_instruction, is_numeric_instruction_leb_arg, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -280,20 +270,10 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 and::expr([
                     is_numeric_instruction_leb_arg_expr.clone(),
                     elem_type_is_0_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_numeric_instruction_leb_arg, is_block_end, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_numeric_instruction_leb_arg+ -> is_block_end{1}",
-                and::expr([
-                    is_block_end_expr.clone(),
-                    elem_type_is_0_expr.clone(),
-                ]),
-                false,
-                &[is_numeric_instruction_leb_arg, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -302,20 +282,10 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 and::expr([
                     is_block_end_expr.clone(),
                     elem_type_is_0_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_funcs_idx_count, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_block_end{1} -> is_funcs_idx_count+",
-                and::expr([
-                    is_funcs_idx_count_expr.clone(),
-                    elem_type_is_0_expr.clone(),
-                ]),
-                false,
-                &[is_block_end, is_funcs_idx_count, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -324,19 +294,9 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 and::expr([
                     is_funcs_idx_count_expr.clone(),
                     elem_type_is_0_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]) * leb128_sn_expr.clone(),
                 true,
-                &[is_funcs_idx_count, is_func_idx, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_funcs_idx_count+ -> is_func_idx*",
-                and::expr([
-                    is_func_idx_expr.clone(),
-                    elem_type_is_0_expr.clone(),
-                ]),
-                false,
                 &[is_funcs_idx_count, is_func_idx, ],
             );
             // elem_body+(is_elem_type{1}=1 -> is_elem_kind{1} -> is_funcs_idx_count+ -> is_func_idx*)
@@ -347,20 +307,10 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 and::expr([
                     is_elem_type_expr.clone(),
                     elem_type_is_1_next_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_elem_kind, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_elem_type{1}=1 -> is_elem_kind{1}",
-                and::expr([
-                    is_elem_kind_expr.clone(),
-                    elem_type_is_1_expr.clone(),
-                ]),
-                false,
-                &[is_elem_type, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -369,20 +319,10 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 and::expr([
                     is_elem_kind_expr.clone(),
                     elem_type_is_1_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_funcs_idx_count, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_elem_kind{1} -> is_funcs_idx_count+",
-                and::expr([
-                    is_funcs_idx_count_expr.clone(),
-                    elem_type_is_1_expr.clone(),
-                ]),
-                false,
-                &[is_elem_kind, is_funcs_idx_count, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -391,6 +331,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 and::expr([
                     is_funcs_idx_count_expr.clone(),
                     elem_type_is_1_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]) * leb128_sn_expr.clone(),
                 true,
                 &[is_funcs_idx_count, is_func_idx, ],
@@ -398,13 +339,14 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_funcs_idx_count+ -> is_func_idx*",
+                "check next: is_func_idx*",
                 and::expr([
-                    is_func_idx_expr.clone(),
+                    is_funcs_idx_count_expr.clone(),
                     elem_type_is_1_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
-                false,
-                &[is_funcs_idx_count, is_func_idx, ],
+                true,
+                &[is_func_idx, is_elem_type],
             );
 
             cb.gate(q_enable_expr.clone())
@@ -412,16 +354,18 @@ impl<F: Field> WasmElementSectionBodyChip<F>
 
         let config = WasmElementSectionBodyConfig::<F> {
             q_enable,
+            q_first,
+            q_last,
             is_items_count,
             is_elem_type,
-            is_elem_body,
+            is_elem_type_ctx,
             is_numeric_instruction,
             is_numeric_instruction_leb_arg,
             is_block_end,
             is_funcs_idx_count,
             is_func_idx,
             is_elem_kind,
-            elem_body_type,
+            elem_type,
             elem_type_chip,
             leb128_chip,
             _marker: PhantomData,
@@ -435,18 +379,19 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset: usize,
-        assign_type: AssignType,
+        assign_types: &[AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
     ) {
         let q_enable = true;
+        let byte_val = wasm_bytecode.bytes[offset];
         debug!(
-            "element_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
+            "element_section_body: assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
-            assign_type,
+            assign_types,
             assign_value,
-            wasm_bytecode.bytes[offset],
+            byte_val,
         );
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
@@ -454,109 +399,129 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        if [
-            AssignType::IsItemsCount,
-            AssignType::IsNumericInstructionLebArg,
-            AssignType::IsFuncsIdxCount,
-            AssignType::IsFuncIdx,
-        ].contains(&assign_type) {
-            let p = leb_params.unwrap();
-            self.config.leb128_chip.assign(
-                region,
-                offset,
-                q_enable,
-                p,
-            );
-        }
-        match assign_type {
-            AssignType::Unknown => {
-                panic!("unknown assign type")
-            }
-            AssignType::IsItemsCount => {
-                region.assign_fixed(
-                    || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
-                    self.config.is_items_count,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsElemBody => {
-                region.assign_fixed(
-                    || format!("assign 'is_elem_body' val {} at {}", 1, offset),
-                    self.config.is_elem_body,
-                    offset,
-                    || Value::known(F::from(1)),
-                ).unwrap();
-                region.assign_advice(
-                    || format!("assign 'elem_body_type' val {} at {}", assign_value, offset),
-                    self.config.elem_body_type,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-                let opcode: ElementType = (assign_value as u8).try_into().unwrap();
-                self.config.elem_type_chip.assign(
+        assign_types.iter().for_each(|&assign_type| {
+            if [
+                AssignType::IsItemsCount,
+                AssignType::IsNumericInstructionLebArg,
+                AssignType::IsFuncsIdxCount,
+                AssignType::IsFuncIdx,
+            ].contains(&assign_type) {
+                let p = leb_params.unwrap();
+                self.config.leb128_chip.assign(
                     region,
                     offset,
-                    &opcode,
-                ).unwrap();
+                    q_enable,
+                    p,
+                );
             }
-            AssignType::IsElemType => {
-                region.assign_fixed(
-                    || format!("assign 'is_elem_type' val {} at {}", assign_value, offset),
-                    self.config.is_elem_type,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
+            match assign_type {
+                AssignType::Unknown => {
+                    panic!("assign type is unknown")
+                }
+                AssignType::QFirst => {
+                    region.assign_fixed(
+                        || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                        self.config.q_first,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::QLast => {
+                    region.assign_fixed(
+                        || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                        self.config.q_last,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsItemsCount => {
+                    region.assign_fixed(
+                        || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
+                        self.config.is_items_count,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsElemTypeCtx => {
+                    region.assign_fixed(
+                        || format!("assign 'is_elem_type_ctx' val {} at {}", 1, offset),
+                        self.config.is_elem_type_ctx,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsElemType => {
+                    region.assign_fixed(
+                        || format!("assign 'is_elem_type' val {} at {}", assign_value, offset),
+                        self.config.is_elem_type,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsNumericInstruction => {
+                    region.assign_fixed(
+                        || format!("assign 'is_numeric_instruction' val {} at {}", assign_value, offset),
+                        self.config.is_numeric_instruction,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsNumericInstructionLebArg => {
+                    region.assign_fixed(
+                        || format!("assign 'is_numeric_instruction_leb_arg' val {} at {}", assign_value, offset),
+                        self.config.is_numeric_instruction_leb_arg,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsBlockEnd => {
+                    region.assign_fixed(
+                        || format!("assign 'is_block_end' val {} at {}", assign_value, offset),
+                        self.config.is_block_end,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsFuncsIdxCount => {
+                    region.assign_fixed(
+                        || format!("assign 'is_funcs_idx_count' val {} at {}", assign_value, offset),
+                        self.config.is_funcs_idx_count,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsFuncIdx => {
+                    region.assign_fixed(
+                        || format!("assign 'is_func_idx' val {} at {}", assign_value, offset),
+                        self.config.is_func_idx,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsElemKind => {
+                    region.assign_fixed(
+                        || format!("assign 'is_elem_kind' val {} at {}", assign_value, offset),
+                        self.config.is_elem_kind,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::ElemType => {
+                    region.assign_advice(
+                        || format!("assign 'elem_type' val {} at {}", assign_value, offset),
+                        self.config.elem_type,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                    let opcode: ElementType = (assign_value as u8).try_into().unwrap();
+                    self.config.elem_type_chip.assign(
+                        region,
+                        offset,
+                        &opcode,
+                    ).unwrap();
+                }
             }
-            AssignType::IsNumericInstruction => {
-                region.assign_fixed(
-                    || format!("assign 'is_numeric_instruction' val {} at {}", assign_value, offset),
-                    self.config.is_numeric_instruction,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsNumericInstructionLebArg => {
-                region.assign_fixed(
-                    || format!("assign 'is_numeric_instruction_leb_arg' val {} at {}", assign_value, offset),
-                    self.config.is_numeric_instruction_leb_arg,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsBlockEnd => {
-                region.assign_fixed(
-                    || format!("assign 'is_block_end' val {} at {}", assign_value, offset),
-                    self.config.is_block_end,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsFuncsIdxCount => {
-                region.assign_fixed(
-                    || format!("assign 'is_funcs_idx_count' val {} at {}", assign_value, offset),
-                    self.config.is_funcs_idx_count,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsFuncIdx => {
-                region.assign_fixed(
-                    || format!("assign 'is_func_idx' val {} at {}", assign_value, offset),
-                    self.config.is_func_idx,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsElemKind => {
-                region.assign_fixed(
-                    || format!("assign 'is_elem_kind' val {} at {}", assign_value, offset),
-                    self.config.is_elem_kind,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-        }
+        })
     }
 
     /// returns sn and leb len
@@ -565,7 +530,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         leb_bytes_offset: usize,
-        assign_type: AssignType,
+        assign_type: &[AssignType],
     ) -> (u64, usize) {
         let is_signed = false;
         let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
@@ -613,35 +578,39 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             region,
             wasm_bytecode,
             offset,
-            AssignType::IsItemsCount,
+            &[AssignType::IsItemsCount],
         );
+        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
             // elem_type{1}
-            let elem_type = wasm_bytecode.bytes[offset];
+            let elem_type_val = wasm_bytecode.bytes[offset];
+            let elem_type: ElementType = elem_type_val.try_into().unwrap();
+            let elem_type_val = elem_type_val as u64;
             self.assign(
                 region,
                 wasm_bytecode,
                 offset,
-                AssignType::IsElemType,
+                &[AssignType::IsElemType, AssignType::IsElemTypeCtx],
                 1,
                 None,
             );
+            self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
             offset += 1;
 
-            match elem_type {
+            match elem_type_val {
                 0 => {
                     // numeric_instruction{1}
                     self.assign(
                         region,
                         wasm_bytecode,
                         offset,
-                        AssignType::IsNumericInstruction,
+                        &[AssignType::IsNumericInstruction, AssignType::IsElemTypeCtx],
                         1,
                         None,
                     );
-                    self.assign(region, wasm_bytecode, offset, AssignType::IsElemBody, elem_type as u64, None);
+                    self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
                     offset += 1;
 
                     // numeric_instruction_leb_arg+
@@ -649,10 +618,10 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        AssignType::IsNumericInstructionLebArg,
+                        &[AssignType::IsNumericInstructionLebArg, AssignType::IsElemTypeCtx],
                     );
                     for offset in offset..offset + numeric_instruction_leb_arg_leb_len {
-                        self.assign(region, wasm_bytecode, offset, AssignType::IsElemBody, elem_type as u64, None);
+                        self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
                     }
                     offset += numeric_instruction_leb_arg_leb_len;
 
@@ -661,11 +630,11 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        AssignType::IsBlockEnd,
+                        &[AssignType::IsBlockEnd, AssignType::IsElemTypeCtx],
                         1,
                         None,
                     );
-                    self.assign(region, wasm_bytecode, offset, AssignType::IsElemBody, elem_type as u64, None);
+                    self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
                     offset += 1;
 
                     // funcs_idx_count+
@@ -673,10 +642,10 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        AssignType::IsFuncsIdxCount,
+                        &[AssignType::IsFuncsIdxCount, AssignType::IsElemTypeCtx],
                     );
                     for offset in offset..offset + funcs_idx_count_leb_len {
-                        self.assign(region, wasm_bytecode, offset, AssignType::IsElemBody, elem_type as u64, None);
+                        self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
                     }
                     offset += funcs_idx_count_leb_len;
 
@@ -686,10 +655,10 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                             region,
                             wasm_bytecode,
                             offset,
-                            AssignType::IsFuncIdx,
+                            &[AssignType::IsFuncIdx, AssignType::IsElemTypeCtx],
                         );
                         for offset in offset..offset + func_idx_leb_len {
-                            self.assign(region, wasm_bytecode, offset, AssignType::IsElemBody, elem_type as u64, None);
+                            self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
                         }
                         offset += func_idx_leb_len;
                     }
@@ -700,11 +669,11 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        AssignType::IsElemKind,
+                        &[AssignType::IsElemKind, AssignType::IsElemTypeCtx],
                         1,
                         None,
                     );
-                    self.assign(region, wasm_bytecode, offset, AssignType::IsElemBody, elem_type as u64, None);
+                    self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
                     offset += 1;
 
                     // funcs_idx_count+
@@ -712,10 +681,10 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        AssignType::IsFuncsIdxCount,
+                        &[AssignType::IsFuncsIdxCount, AssignType::IsElemTypeCtx],
                     );
                     for offset in offset..offset + funcs_idx_count_leb_len {
-                        self.assign(region, wasm_bytecode, offset, AssignType::IsElemBody, elem_type as u64, None);
+                        self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
                     }
                     offset += funcs_idx_count_leb_len;
 
@@ -725,16 +694,20 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                             region,
                             wasm_bytecode,
                             offset,
-                            AssignType::IsFuncIdx,
+                            &[AssignType::IsFuncIdx, AssignType::IsElemTypeCtx],
                         );
                         for offset in offset..offset + func_idxs_leb_len {
-                            self.assign(region, wasm_bytecode, offset, AssignType::IsElemBody, elem_type as u64, None);
+                            self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
                         }
                         offset += func_idxs_leb_len;
                     }
                 }
-                _ => { panic!("unsupported element type {}", elem_type) }
+                _ => { panic!("unsupported element type {}", elem_type_val) }
             }
+        }
+
+        if offset != offset_start {
+            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
         }
 
         Ok(offset)

@@ -23,7 +23,7 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::code::code_body::types::AssignType;
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_transition_check;
+use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::types::SharedState;
@@ -31,6 +31,8 @@ use crate::wasm_circuit::types::SharedState;
 #[derive(Debug, Clone)]
 pub struct WasmCodeSectionBodyConfig<F: Field> {
     pub q_enable: Column<Fixed>,
+    pub q_first: Column<Fixed>,
+    pub q_last: Column<Fixed>,
     pub is_funcs_count: Column<Fixed>,
     pub is_func_body_len: Column<Fixed>,
     pub is_local_type_transitions_count: Column<Fixed>,
@@ -83,6 +85,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     ) -> WasmCodeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
+        let q_first = cs.fixed_column();
+        let q_last = cs.fixed_column();
         let is_funcs_count = cs.fixed_column();
         let is_func_body_len = cs.fixed_column();
         let is_local_type_transitions_count = cs.fixed_column();
@@ -144,6 +148,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_funcs_count_expr = vc.query_fixed(is_funcs_count, Rotation::cur());
             let is_func_body_len_expr = vc.query_fixed(is_func_body_len, Rotation::cur());
             let is_local_type_transitions_count_expr = vc.query_fixed(is_local_type_transitions_count, Rotation::cur());
@@ -161,7 +168,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
             let leb128_chip_q_enable_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur());
             let leb128_chip_q_enable_next_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::next());
-            let leb128_chip_sn_expr = vc.query_advice(leb128_chip.config.sn, Rotation::cur());
 
             let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
 
@@ -178,6 +184,24 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             cb.require_boolean("is_control_instruction is boolean", is_control_instruction_expr.clone());
             cb.require_boolean("is_control_instruction_leb_arg is boolean", is_control_instruction_leb_arg_expr.clone());
             cb.require_boolean("is_parametric_instruction is boolean", is_parametric_instruction_expr.clone());
+
+            configure_constraints_for_q_first_and_q_last(
+                &mut cb,
+                vc,
+                &q_enable,
+                &q_first,
+                &[is_funcs_count],
+                &q_last,
+                &[
+                    // is_numeric_instruction,
+                    // is_control_instruction,
+                    // is_variable_instruction,
+                    // is_numeric_instruction_leb_arg,
+                    // is_control_instruction_leb_arg,
+                    // is_variable_instruction_leb_arg,
+                    is_block_end,
+                ],
+            );
 
             let is_numeric_opcode_without_params_expr = or::expr(
                 NUMERIC_INSTRUCTIONS_WITHOUT_ARGS.iter()
@@ -262,14 +286,14 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_funcs_count, is_func_body_len, ],
             );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_funcs_count+ -> func+(is_func_body_len+ ...",
-                is_func_body_len_expr.clone(),
-                false,
-                &[is_funcs_count, is_block_end, is_func_body_len, ],
-            );
+            // configure_transition_check(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_funcs_count+ -> func+(is_func_body_len+ ...",
+            //     is_func_body_len_expr.clone(),
+            //     false,
+            //     &[is_funcs_count, is_block_end, is_func_body_len, ],
+            // );
             configure_transition_check(
                 &mut cb,
                 vc,
@@ -278,14 +302,14 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_func_body_len, is_local_type_transitions_count, ],
             );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ ...",
-                is_local_type_transitions_count_expr.clone(),
-                false,
-                &[is_func_body_len, is_local_type_transitions_count, ],
-            );
+            // configure_transition_check(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ ...",
+            //     is_local_type_transitions_count_expr.clone(),
+            //     false,
+            //     &[is_func_body_len, is_local_type_transitions_count, ],
+            // );
             configure_transition_check(
                 &mut cb,
                 vc,
@@ -297,14 +321,14 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     is_numeric_instruction, is_variable_instruction, is_control_instruction, is_parametric_instruction, is_block_end,
                 ],
             );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_local_type_transitions_count+ -> local_var_descriptor*(is_local_repetition_count+ ...",
-                is_local_repetition_count_expr.clone(),
-                false,
-                &[is_local_type_transitions_count, is_local_type, is_local_repetition_count, ],
-            );
+            // configure_transition_check(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_local_type_transitions_count+ -> local_var_descriptor*(is_local_repetition_count+ ...",
+            //     is_local_repetition_count_expr.clone(),
+            //     false,
+            //     &[is_local_type_transitions_count, is_local_type, is_local_repetition_count, ],
+            // );
             configure_transition_check(
                 &mut cb,
                 vc,
@@ -313,14 +337,14 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_local_repetition_count, is_local_type, ],
             );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_local_repetition_count+ -> is_local_type(1) ...",
-                is_local_type_expr.clone(),
-                false,
-                &[is_local_repetition_count, ],
-            );
+            // configure_transition_check(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: is_local_repetition_count+ -> is_local_type(1) ...",
+            //     is_local_type_expr.clone(),
+            //     false,
+            //     &[is_local_repetition_count, ],
+            // );
             configure_transition_check(
                 &mut cb,
                 vc,
@@ -329,26 +353,26 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_local_repetition_count, is_numeric_instruction, is_variable_instruction, is_control_instruction, is_parametric_instruction, ],
             );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: ... is_local_type(1))) -> is_func_body_code+",
-                is_instruction_expr.clone(),
-                false,
-                &[
-                    is_local_type_transitions_count,
-                    is_local_type,
-                    is_numeric_instruction,
-                    is_variable_instruction,
-                    is_control_instruction,
-                    is_numeric_instruction_leb_arg,
-                    is_variable_instruction_leb_arg,
-                    is_control_instruction_leb_arg,
-                    is_parametric_instruction,
-                    is_blocktype_delimiter,
-                    is_block_end,
-                ],
-            );
+            // configure_transition_check(
+            //     &mut cb,
+            //     vc,
+            //     "check prev: ... is_local_type(1))) -> is_func_body_code+",
+            //     is_instruction_expr.clone(),
+            //     false,
+            //     &[
+            //         is_local_type_transitions_count,
+            //         is_local_type,
+            //         is_numeric_instruction,
+            //         is_variable_instruction,
+            //         is_control_instruction,
+            //         is_numeric_instruction_leb_arg,
+            //         is_variable_instruction_leb_arg,
+            //         is_control_instruction_leb_arg,
+            //         is_parametric_instruction,
+            //         is_blocktype_delimiter,
+            //         is_block_end,
+            //     ],
+            // );
 
             // BASIC CONSTRAINTS:
 
@@ -410,7 +434,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 }
             );
 
-            // leb128 flag is active => leb128_chip enabled
             cb.condition(
                 or::expr([
                     is_funcs_count_expr.clone(),
@@ -503,8 +526,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
             // COMPLEX RELATIONS CONSTRAINTS:
 
-            // TODO backward-check constraints
-
             // is_numeric_instruction{1} -> is_instruction_leb_arg || is_instruction || is_block_end
             cb.condition(
                 is_numeric_instruction_expr.clone(),
@@ -523,8 +544,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     bcb.require_equal(
                         "check next: is_numeric_instruction(1) -> is_instruction_leb_arg || is_instruction || is_block_end",
                         is_numeric_instruction_leb_arg_next_expr
-                            + is_variable_instruction_leb_arg_next_expr
-                            + is_control_instruction_leb_arg_next_expr
 
                             + is_numeric_instruction_next_expr
                             + is_variable_instruction_next_expr
@@ -555,9 +574,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
                     bcb.require_equal(
                         "check next: is_variable_instruction(1) -> is_instruction_leb_arg || is_instruction || is_block_end",
-                        is_numeric_instruction_leb_arg_next_expr
-                            + is_variable_instruction_leb_arg_next_expr
-                            + is_control_instruction_leb_arg_next_expr
+                        is_variable_instruction_leb_arg_next_expr
 
                             + is_numeric_instruction_next_expr
                             + is_variable_instruction_next_expr
@@ -578,8 +595,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     not::expr(is_control_opcode_block_expr.clone()),
                 ]),
                 |bcb| {
-                    let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
-                    let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
+                    // let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
+                    // let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
                     let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
@@ -591,9 +608,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
                     bcb.require_equal(
                         "check next: is_control_instruction(1) && not(is_control_opcode_block) -> is_instruction_leb_arg || is_instruction || is_block_end",
-                        is_numeric_instruction_leb_arg_next_expr
-                            + is_variable_instruction_leb_arg_next_expr
-                            + is_control_instruction_leb_arg_next_expr
+                        is_control_instruction_leb_arg_next_expr
 
                             + is_numeric_instruction_next_expr
                             + is_variable_instruction_next_expr
@@ -607,11 +622,156 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 }
             );
 
+            // is_numeric_instruction_leb_arg -> is_instruction || is_block_end
+            cb.condition(
+                and::expr([
+                    is_numeric_instruction_leb_arg_expr.clone(),
+                ]),
+                |bcb| {
+                    let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
+                    let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
+                    let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
+
+                    let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
+                    let is_variable_instruction_next_expr = vc.query_fixed(is_variable_instruction, Rotation::next());
+                    let is_control_instruction_next_expr = vc.query_fixed(is_control_instruction, Rotation::next());
+                    let is_parametric_instruction_next_expr = vc.query_fixed(is_parametric_instruction, Rotation::next());
+
+                    let is_instruction_next_expr = is_numeric_instruction_next_expr
+                        + is_variable_instruction_next_expr
+                        + is_control_instruction_next_expr
+                        + is_parametric_instruction_next_expr;
+
+                    let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
+
+                    bcb.require_equal(
+                        "check next: is_numeric_instruction_leb_arg -> is_instruction || is_block_end",
+                        is_numeric_instruction_leb_arg_next_expr
+
+                            + is_instruction_next_expr
+
+                            + is_block_end_next_expr
+                        ,
+                        1.expr(),
+                    );
+                }
+            );
+
+            // is_variable_instruction_leb_arg -> is_instruction || is_block_end
+            cb.condition(
+                and::expr([
+                    is_variable_instruction_leb_arg_expr.clone(),
+                ]),
+                |bcb| {
+                    let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
+                    let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
+                    let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
+
+                    let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
+                    let is_variable_instruction_next_expr = vc.query_fixed(is_variable_instruction, Rotation::next());
+                    let is_control_instruction_next_expr = vc.query_fixed(is_control_instruction, Rotation::next());
+                    let is_parametric_instruction_next_expr = vc.query_fixed(is_parametric_instruction, Rotation::next());
+
+                    let is_instruction_next_expr = is_numeric_instruction_next_expr
+                        + is_variable_instruction_next_expr
+                        + is_control_instruction_next_expr
+                        + is_parametric_instruction_next_expr;
+
+                    let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
+
+                    bcb.require_equal(
+                        "check next: is_variable_instruction_leb_arg -> is_instruction || is_block_end",
+                        is_variable_instruction_leb_arg_next_expr
+
+                            + is_instruction_next_expr
+
+                            + is_block_end_next_expr
+                        ,
+                        1.expr(),
+                    );
+                }
+            );
+
+            // is_control_instruction_leb_arg -> is_instruction || is_block_end
+            cb.condition(
+                and::expr([
+                    is_control_instruction_leb_arg_expr.clone(),
+                ]),
+                |bcb| {
+                    let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
+                    let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
+                    let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
+
+                    let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
+                    let is_variable_instruction_next_expr = vc.query_fixed(is_variable_instruction, Rotation::next());
+                    let is_control_instruction_next_expr = vc.query_fixed(is_control_instruction, Rotation::next());
+                    let is_parametric_instruction_next_expr = vc.query_fixed(is_parametric_instruction, Rotation::next());
+
+                    let is_instruction_next_expr = is_numeric_instruction_next_expr
+                        + is_variable_instruction_next_expr
+                        + is_control_instruction_next_expr
+                        + is_parametric_instruction_next_expr;
+
+                    let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
+
+                    bcb.require_equal(
+                        "check next: is_control_instruction_leb_arg -> is_instruction || is_block_end",
+                        is_control_instruction_leb_arg_next_expr
+
+                            + is_instruction_next_expr
+
+                            + is_block_end_next_expr
+                        ,
+                        1.expr(),
+                    );
+                }
+            );
+
+            // is_block_end && !not_q_last -> is_instruction || is_block_end
+            cb.condition(
+                and::expr([
+                    is_block_end_expr.clone(),
+                    not_q_last_expr.clone(),
+                ]),
+                |bcb| {
+                    let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
+                    let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
+                    let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
+
+                    let is_func_body_len_next_expr = vc.query_fixed(is_func_body_len, Rotation::next());
+
+                    let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
+                    let is_variable_instruction_next_expr = vc.query_fixed(is_variable_instruction, Rotation::next());
+                    let is_control_instruction_next_expr = vc.query_fixed(is_control_instruction, Rotation::next());
+                    let is_parametric_instruction_next_expr = vc.query_fixed(is_parametric_instruction, Rotation::next());
+
+                    let is_instruction_next_expr = is_numeric_instruction_next_expr
+                        + is_variable_instruction_next_expr
+                        + is_control_instruction_next_expr
+                        + is_parametric_instruction_next_expr;
+
+                    let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
+
+                    bcb.require_equal(
+                        "check next: is_block_end && !not_q_last -> is_instruction || is_block_end",
+                        is_func_body_len_next_expr
+
+                            + is_instruction_next_expr
+
+                            + is_block_end_next_expr
+                        ,
+                        1.expr(),
+                    );
+                }
+            );
+
             cb.gate(q_enable_expr.clone())
         });
 
         let config = WasmCodeSectionBodyConfig::<F> {
             q_enable,
+            q_first,
+            q_last,
             is_funcs_count,
             is_func_body_len,
             is_local_type_transitions_count,
@@ -680,8 +840,24 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
         match assign_type {
+            AssignType::QFirst => {
+                region.assign_fixed(
+                    || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                    self.config.q_first,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
+            AssignType::QLast => {
+                region.assign_fixed(
+                    || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                    self.config.q_last,
+                    offset,
+                    || Value::known(F::from(assign_value)),
+                ).unwrap();
+            }
             AssignType::Unknown => {
-                panic!("unknown assign type")
+                panic!("assign type is unknown")
             }
             AssignType::IsFuncsCount => {
                 region.assign_fixed(
@@ -986,6 +1162,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             offset,
             AssignType::IsFuncsCount,
         );
+        self.assign(region, &wasm_bytecode, offset, AssignType::QFirst, 1, None);
         offset += funcs_count_leb_len;
 
         shared_state.dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
@@ -1047,6 +1224,10 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
                 offset = new_offset;
             }
+        }
+
+        if offset != offset_start {
+            self.assign(region, &wasm_bytecode, offset - 1, AssignType::QLast, 1, None);
         }
 
         Ok(offset)

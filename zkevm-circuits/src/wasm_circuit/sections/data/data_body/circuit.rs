@@ -179,7 +179,9 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 vc,
                 &q_enable,
                 &q_first,
+                &[is_items_count],
                 &q_last,
+                &[is_mem_segment_len, is_mem_segment_bytes],
             );
 
             // constraints for IsMemSegmentTypeCtx
@@ -225,33 +227,16 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 }
             );
 
-            // is_items_count+ -> item+ (is_mem_segment_type{1} -> is_mem_segment_size_opcode{1} -> is_mem_segment_size+ -> is_block_end{1} -> is_mem_segment_len+ -> is_mem_segment_bytes*)
             let mem_segment_type_is_active_expr = mem_segment_type_chip.config.value_equals(MemSegmentType::Active, Rotation::cur())(vc);
             let mem_segment_type_is_passive_expr = mem_segment_type_chip.config.value_equals(MemSegmentType::Passive, Rotation::cur())(vc);
             let mem_segment_type_is_active_variadic_expr = mem_segment_type_chip.config.value_equals(MemSegmentType::ActiveVariadic, Rotation::cur())(vc);
-            cb.condition(
-                q_first_expr.clone(),
-                |bcb| {
-                    bcb.require_equal("q_first => is_items_count", is_items_count_expr.clone(), 1.expr())
-                }
-            );
-            cb.condition(
-                q_last_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
-                        "q_last => is_mem_segment_type specific flag must be active",
-                        is_mem_segment_len_expr.clone()
-                            + is_mem_segment_bytes_expr.clone(),
-                        1.expr(),
-                    )
-                }
-            );
-            // constraints for is_mem_segment_type{1}=MemSegmentType::Active
+            // constraints for is_mem_segment_type{1}=MemSegmentType::Active:
+            // is_items_count+ -> item+ (is_mem_segment_type{1} -> is_mem_segment_size_opcode{1} -> is_mem_segment_size+ -> is_block_end{1} -> is_mem_segment_len+ -> is_mem_segment_bytes*)
             configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> item+ (is_mem_segment_type{1} ...",
-                not_q_last_expr.clone() * is_items_count_expr.clone() * mem_segment_type_is_active_expr.clone(),
+                is_items_count_expr.clone() * mem_segment_type_is_active_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_items_count, is_mem_segment_type],
             );
@@ -259,7 +244,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_type{1} -> is_mem_segment_size_opcode{1}",
-                not_q_last_expr.clone() * is_mem_segment_type_expr.clone() * mem_segment_type_is_active_expr.clone(),
+                is_mem_segment_type_expr.clone() * mem_segment_type_is_active_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_mem_segment_size_opcode],
             );
@@ -267,7 +252,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_size_opcode{1} -> is_mem_segment_size+",
-                not_q_last_expr.clone() * is_mem_segment_size_opcode_expr.clone() * mem_segment_type_is_active_expr.clone(),
+                is_mem_segment_size_opcode_expr.clone() * mem_segment_type_is_active_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_mem_segment_size],
             );
@@ -275,7 +260,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_size+ -> is_block_end{1}",
-                not_q_last_expr.clone() * is_mem_segment_size_expr.clone() * mem_segment_type_is_active_expr.clone(),
+                is_mem_segment_size_expr.clone() * mem_segment_type_is_active_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_mem_segment_size, is_block_end],
             );
@@ -283,7 +268,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_block_end{1} -> is_mem_segment_len+",
-                not_q_last_expr.clone() * is_block_end_expr.clone() * mem_segment_type_is_active_expr.clone(),
+                is_block_end_expr.clone() * mem_segment_type_is_active_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_mem_segment_len],
             );
@@ -291,19 +276,25 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_len+ -> is_mem_segment_bytes*",
-                and::expr([
-                    is_mem_segment_len_expr.clone(),
-                    not_q_last_expr.clone()
-                ]),
+                is_mem_segment_len_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_mem_segment_len, is_mem_segment_bytes, is_mem_segment_type],
             );
-            // constraints for is_mem_segment_type{1}=MemSegmentType::Passive
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_mem_segment_len+ -> is_mem_segment_bytes*",
+                is_mem_segment_bytes_expr.clone() * not_q_last_expr.clone(),
+                true,
+                &[is_mem_segment_bytes, is_mem_segment_type],
+            );
+            // constraints for is_mem_segment_type{1}=MemSegmentType::Passive:
+            // is_items_count+ -> item+ (is_mem_segment_len{1} -> is_mem_segment_bytes*
             configure_transition_check(
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> item+ (is_mem_segment_len{1} ...",
-                not_q_last_expr.clone() * is_items_count_expr.clone() * mem_segment_type_is_passive_expr.clone(),
+                is_items_count_expr.clone() * mem_segment_type_is_passive_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_items_count, is_mem_segment_len],
             );
@@ -311,12 +302,17 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_len+ -> is_mem_segment_bytes*",
-                and::expr([
-                    is_mem_segment_len_expr.clone(),
-                    not_q_last_expr.clone()
-                ]),
+                is_mem_segment_len_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_mem_segment_len, is_mem_segment_bytes, is_mem_segment_type],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_mem_segment_len+ -> is_mem_segment_bytes*",
+                is_mem_segment_bytes_expr.clone() * not_q_last_expr.clone(),
+                true,
+                &[is_mem_segment_bytes, is_mem_segment_type],
             );
             // constraints for is_mem_segment_type{1}=MemSegmentType::ActiveVariadic:
             //  is_items_count+ -> item+ (is_mem_segment_type{1} -> is_mem_index+ -> is_mem_segment_size_opcode{1} -> is_mem_segment_size+ -> is_block_end{1} -> is_mem_segment_len+ -> is_mem_segment_bytes*)
@@ -324,7 +320,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_items_count+ -> item+ (is_mem_segment_type{1} ...",
-                not_q_last_expr.clone() * is_items_count_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                is_items_count_expr.clone() * mem_segment_type_is_active_variadic_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_items_count, is_mem_segment_type],
             );
@@ -332,7 +328,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_type{1} -> is_mem_index+",
-                not_q_last_expr.clone() * is_mem_segment_type_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                is_mem_segment_type_expr.clone() * mem_segment_type_is_active_variadic_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_memidx],
             );
@@ -340,7 +336,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_mem_index+ -> is_mem_segment_size_opcode{1}",
-                not_q_last_expr.clone() * is_mem_segment_type_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                is_mem_segment_type_expr.clone() * mem_segment_type_is_active_variadic_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_memidx, is_mem_segment_size_opcode],
             );
@@ -348,7 +344,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_size_opcode{1} -> is_mem_segment_size+",
-                not_q_last_expr.clone() * is_mem_segment_size_opcode_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                is_mem_segment_size_opcode_expr.clone() * mem_segment_type_is_active_variadic_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_mem_segment_size],
             );
@@ -356,7 +352,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_size+ -> is_block_end{1}",
-                not_q_last_expr.clone() * is_mem_segment_size_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                is_mem_segment_size_expr.clone() * mem_segment_type_is_active_variadic_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_mem_segment_size, is_block_end],
             );
@@ -364,7 +360,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_block_end{1} -> is_mem_segment_len+",
-                not_q_last_expr.clone() * is_block_end_expr.clone() * mem_segment_type_is_active_variadic_expr.clone(),
+                is_block_end_expr.clone() * mem_segment_type_is_active_variadic_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_mem_segment_len],
             );
@@ -372,12 +368,17 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 &mut cb,
                 vc,
                 "check next: is_mem_segment_len+ -> is_mem_segment_bytes*",
-                and::expr([
-                    is_mem_segment_len_expr.clone(),
-                    not_q_last_expr.clone()
-                ]),
+                is_mem_segment_len_expr.clone() * not_q_last_expr.clone(),
                 true,
                 &[is_mem_segment_len, is_mem_segment_bytes, is_mem_segment_type],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_mem_segment_bytes*",
+                is_mem_segment_bytes_expr.clone() * not_q_last_expr.clone(),
+                true,
+                &[is_mem_segment_bytes, is_mem_segment_type],
             );
 
             cb.condition(
@@ -414,7 +415,6 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         byte_val_expr.clone(),
                         vec![
                             NumericInstruction::I32Const.expr(),
-                            // are there any other types?
                         ],
                     )
                 }
@@ -585,7 +585,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         self.config.is_memidx,
                         offset,
                         || Value::known(F::from(assign_value)),
-                ).unwrap();
+                    ).unwrap();
                 }
             }
         })

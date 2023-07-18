@@ -22,7 +22,7 @@ use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::configure_transition_check;
+use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::sections::import::import_body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
@@ -30,6 +30,8 @@ use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 #[derive(Debug, Clone)]
 pub struct WasmImportSectionBodyConfig<F: Field> {
     pub q_enable: Column<Fixed>,
+    pub q_first: Column<Fixed>,
+    pub q_last: Column<Fixed>,
     pub is_items_count: Column<Fixed>,
     pub is_mod_name_len: Column<Fixed>,
     pub is_mod_name: Column<Fixed>,
@@ -38,7 +40,7 @@ pub struct WasmImportSectionBodyConfig<F: Field> {
     pub is_importdesc_type: Column<Fixed>,
     pub is_importdesc_type_ctx: Column<Fixed>,
     pub is_importdesc_val: Column<Fixed>,
-    pub is_mut: Column<Fixed>,
+    pub is_mut_prop: Column<Fixed>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
     pub utf8_chip: Rc<UTF8Chip<F>>,
@@ -76,6 +78,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     ) -> WasmImportSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
+        let q_first = cs.fixed_column();
+        let q_last = cs.fixed_column();
         let is_items_count = cs.fixed_column();
         let is_mod_name_len = cs.fixed_column();
         let is_mod_name = cs.fixed_column();
@@ -83,7 +87,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         let is_import_name = cs.fixed_column();
         let is_importdesc_type = cs.fixed_column();
         let is_importdesc_val = cs.fixed_column();
-        let is_mut = cs.fixed_column();
+        let is_mut_prop = cs.fixed_column();
 
         let is_importdesc_type_ctx = cs.fixed_column();
 
@@ -100,6 +104,9 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
             let is_mod_name_len_expr = vc.query_fixed(is_mod_name_len, Rotation::cur());
             let is_mod_name_expr = vc.query_fixed(is_mod_name, Rotation::cur());
@@ -109,7 +116,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             let is_importdesc_type_ctx_prev_expr = vc.query_fixed(is_importdesc_type_ctx, Rotation::prev());
             let is_importdesc_type_ctx_expr = vc.query_fixed(is_importdesc_type_ctx, Rotation::cur());
             let is_importdesc_val_expr = vc.query_fixed(is_importdesc_val, Rotation::cur());
-            let is_mut_expr = vc.query_fixed(is_mut, Rotation::cur());
+            let is_mut_prop_expr = vc.query_fixed(is_mut_prop, Rotation::cur());
 
             let byte_value_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
             let importdesc_type_prev_expr = vc.query_advice(importdesc_type, Rotation::prev());
@@ -125,17 +132,27 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             cb.require_boolean("is_import_name is boolean", is_import_name_expr.clone());
             cb.require_boolean("is_importdesc_type is boolean", is_importdesc_type_expr.clone());
             cb.require_boolean("is_importdesc_val is boolean", is_importdesc_val_expr.clone());
-            cb.require_boolean("is_mut is boolean", is_mut_expr.clone());
+            cb.require_boolean("is_mut_prop is boolean", is_mut_prop_expr.clone());
+
+            configure_constraints_for_q_first_and_q_last(
+                &mut cb,
+                vc,
+                &q_enable,
+                &q_first,
+                &[is_items_count],
+                &q_last,
+                &[is_importdesc_val, is_mut_prop],
+            );
 
             cb.condition(
                 or::expr([
                     is_importdesc_type_expr.clone(),
                     is_importdesc_val_expr.clone(),
-                    is_mut_expr.clone(),
+                    is_mut_prop_expr.clone(),
                 ]),
                 |bcb| {
                     bcb.require_equal(
-                        "is_importdesc_type || is_importdesc_val || is_mut => is_importdesc_type_ctx",
+                        "is_importdesc_type || is_importdesc_val || is_mut_prop => is_importdesc_type_ctx",
                         is_importdesc_type_ctx_expr.clone(),
                         1.expr(),
                     )
@@ -164,7 +181,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     + is_import_name_expr.clone()
                     + is_importdesc_type_expr.clone()
                     + is_importdesc_val_expr.clone()
-                    + is_mut_expr.clone()
+                    + is_mut_prop_expr.clone()
                 ,
                 1.expr(),
             );
@@ -193,10 +210,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             );
 
             cb.condition(
-                is_mut_expr.clone(),
+                is_mut_prop_expr.clone(),
                 |bcb| {
                     bcb.require_in_set(
-                        "is_mut => byte_val is valid",
+                        "is_mut_prop => byte_val is valid",
                         byte_value_expr.clone(),
                         MUTABILITY_VALUES.iter().map(|&v| v.expr()).collect_vec(),
                     )
@@ -206,9 +223,13 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             // is_items_count+ -> is_item+ (is_mod_name_len+ -> is_mod_name* -> is_import_name_len+ -> is_import_name* -> import_desc+)
             let importdesc_type_is_global_type_prev_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::prev())(vc);
             let importdesc_type_is_typeidx_expr = importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::cur())(vc);
+            let importdesc_type_is_typeidx_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::next())(vc);
             let importdesc_type_is_mem_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::MemType, Rotation::cur())(vc);
+            let importdesc_type_is_mem_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::MemType, Rotation::next())(vc);
             let importdesc_type_is_table_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::TableType, Rotation::cur())(vc);
+            let importdesc_type_is_table_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::TableType, Rotation::next())(vc);
             let importdesc_type_is_global_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::cur())(vc);
+            let importdesc_type_is_global_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::next())(vc);
             configure_transition_check(
                 &mut cb,
                 vc,
@@ -216,33 +237,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_items_count_expr.clone(),
                     importdesc_type_is_typeidx_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_items_count, is_mod_name_len, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
-                and::expr([
-                    is_mod_name_len_expr.clone(),
-                    importdesc_type_is_typeidx_expr.clone(),
-                    importdesc_type_is_global_type_prev_expr.clone(),
-                ]),
-                false,
-                &[is_items_count, is_mod_name_len, is_importdesc_val, is_mut, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
-                and::expr([
-                    is_mod_name_len_expr.clone(),
-                    importdesc_type_is_typeidx_expr.clone(),
-                    not::expr(importdesc_type_is_global_type_prev_expr.clone()),
-                ]),
-                false,
-                &[is_items_count, is_mod_name_len, is_importdesc_val, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -251,20 +249,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_mod_name_len_expr.clone(),
                     importdesc_type_is_typeidx_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_mod_name_len, is_mod_name, is_import_name_len, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_mod_name_len+ -> is_mod_name*",
-                and::expr([
-                    is_mod_name_expr.clone(),
-                    importdesc_type_is_typeidx_expr.clone(),
-                ]),
-                false,
-                &[is_mod_name, is_mod_name_len, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -273,20 +261,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_mod_name_expr.clone(),
                     importdesc_type_is_typeidx_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_mod_name, is_import_name_len, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_mod_name_len+ -> is_mod_name* -> is_import_name_len+",
-                and::expr([
-                    is_import_name_len_expr.clone(),
-                    importdesc_type_is_typeidx_expr.clone(),
-                ]),
-                false,
-                &[is_mod_name_len, is_mod_name, is_import_name_len, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -295,20 +273,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_import_name_len_expr.clone(),
                     importdesc_type_is_typeidx_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_import_name_len, is_import_name, is_importdesc_type, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_import_name_len+ -> is_import_name*",
-                and::expr([
-                    is_import_name_expr.clone(),
-                    importdesc_type_is_typeidx_expr.clone(),
-                ]),
-                false,
-                &[is_import_name_len, is_import_name, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -317,20 +285,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_import_name_expr.clone(),
                     importdesc_type_is_typeidx_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_import_name, is_importdesc_type, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_import_name_len+ -> is_import_name* -> is_importdesc_type{1}",
-                and::expr([
-                    is_importdesc_type_expr.clone(),
-                    importdesc_type_is_typeidx_expr.clone(),
-                ]),
-                false,
-                &[is_import_name_len, is_import_name, is_importdesc_type, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -339,6 +297,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_importdesc_type_expr.clone(),
                     importdesc_type_is_typeidx_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_importdesc_val, ],
@@ -346,15 +305,16 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_importdesc_type{1} -> is_importdesc_val+",
+                "check next: is_importdesc_val+",
                 and::expr([
                     is_importdesc_val_expr.clone(),
                     importdesc_type_is_typeidx_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
-                false,
-                &[is_importdesc_type, is_importdesc_val, ],
+                true,
+                &[is_importdesc_val, is_mod_name_len ],
             );
-            // importdesc_type{1}=3(ImportDescType::Globaltype): import_desc+(is_importdesc_type{1} -> is_importdesc_val+ -> is_mut{1})
+            // importdesc_type{1}=3(ImportDescType::Globaltype): import_desc+(is_importdesc_type{1} -> is_importdesc_val+ -> is_mut_prop{1})
             configure_transition_check(
                 &mut cb,
                 vc,
@@ -362,33 +322,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_items_count_expr.clone(),
                     importdesc_type_is_global_type_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_items_count, is_mod_name_len, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
-                and::expr([
-                    is_mod_name_len_expr.clone(),
-                    importdesc_type_is_global_type_expr.clone(),
-                    importdesc_type_is_global_type_prev_expr.clone(),
-                ]),
-                false,
-                &[is_items_count, is_mod_name_len, is_importdesc_val, is_mut, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
-                and::expr([
-                    is_mod_name_len_expr.clone(),
-                    importdesc_type_is_global_type_expr.clone(),
-                    not::expr(importdesc_type_is_global_type_prev_expr.clone()),
-                ]),
-                false,
-                &[is_items_count, is_mod_name_len, is_importdesc_val, is_mut, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -397,20 +334,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_mod_name_len_expr.clone(),
                     importdesc_type_is_global_type_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_mod_name_len, is_mod_name, is_import_name_len, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_mod_name_len+ -> is_mod_name*",
-                and::expr([
-                    is_mod_name_expr.clone(),
-                    importdesc_type_is_global_type_expr.clone(),
-                ]),
-                false,
-                &[is_mod_name, is_mod_name_len, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -419,20 +346,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_mod_name_expr.clone(),
                     importdesc_type_is_global_type_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_mod_name, is_import_name_len, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_mod_name_len+ -> is_mod_name* -> is_import_name_len+",
-                and::expr([
-                    is_import_name_len_expr.clone(),
-                    importdesc_type_is_global_type_expr.clone(),
-                ]),
-                false,
-                &[is_mod_name_len, is_mod_name, is_import_name_len, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -441,20 +358,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_import_name_len_expr.clone(),
                     importdesc_type_is_global_type_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_import_name_len, is_import_name, is_importdesc_type, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_import_name_len+ -> is_import_name*",
-                and::expr([
-                    is_import_name_expr.clone(),
-                    importdesc_type_is_global_type_expr.clone(),
-                ]),
-                false,
-                &[is_import_name_len, is_import_name, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -463,20 +370,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_import_name_expr.clone(),
                     importdesc_type_is_global_type_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_import_name, is_importdesc_type, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check prev: is_import_name_len+ -> is_import_name* -> is_importdesc_type{1}",
-                and::expr([
-                    is_importdesc_type_expr.clone(),
-                    importdesc_type_is_global_type_expr.clone(),
-                ]),
-                false,
-                &[is_import_name_len, is_import_name, is_importdesc_type, ],
             );
             configure_transition_check(
                 &mut cb,
@@ -485,6 +382,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 and::expr([
                     is_importdesc_type_expr.clone(),
                     importdesc_type_is_global_type_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
                 &[is_importdesc_val, ],
@@ -492,35 +390,26 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_importdesc_type{1} -> is_importdesc_val+",
+                "check next: is_importdesc_val+ -> is_mut_prop{1}",
                 and::expr([
                     is_importdesc_val_expr.clone(),
                     importdesc_type_is_global_type_expr.clone(),
-                ]),
-                false,
-                &[is_importdesc_type, is_importdesc_val, ],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
-                "check next: is_importdesc_val+ -> is_mut{1}",
-                and::expr([
-                    is_importdesc_val_expr.clone(),
-                    importdesc_type_is_global_type_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
                 true,
-                &[is_importdesc_val, is_mut, ],
+                &[is_importdesc_val, is_mut_prop, ],
             );
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_importdesc_val+ -> is_mut{1}",
+                "check next: is_mut_prop{1}",
                 and::expr([
-                    is_mut_expr.clone(),
+                    is_mut_prop_expr.clone(),
                     importdesc_type_is_global_type_expr.clone(),
+                    not_q_last_expr.clone(),
                 ]),
-                false,
-                &[is_importdesc_val, ],
+                true,
+                &[is_mod_name_len, ],
             );
             // TODO importdesc_type{1}=ImportDescType::Memtype: TODO
             cb.condition(
@@ -575,6 +464,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
 
         let config = WasmImportSectionBodyConfig::<F> {
             q_enable,
+            q_first,
+            q_last,
             is_items_count,
             is_mod_name_len,
             is_mod_name,
@@ -583,7 +474,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             is_importdesc_type,
             is_importdesc_type_ctx,
             is_importdesc_val,
-            is_mut,
+            is_mut_prop,
             leb128_chip,
             utf8_chip,
             dynamic_indexes_chip,
@@ -647,6 +538,22 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 );
             }
             match assign_type {
+                AssignType::QFirst => {
+                    region.assign_fixed(
+                        || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                        self.config.q_first,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::QLast => {
+                    region.assign_fixed(
+                        || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                        self.config.q_last,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
                 AssignType::IsItemsCount => {
                     region.assign_fixed(
                         || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
@@ -705,8 +612,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 }
                 AssignType::IsMut => {
                     region.assign_fixed(
-                        || format!("assign 'is_mut' val {} at {}", assign_value, offset),
-                        self.config.is_mut,
+                        || format!("assign 'is_mut_prop' val {} at {}", assign_value, offset),
+                        self.config.is_mut_prop,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
@@ -813,6 +720,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             offset,
             &[AssignType::IsItemsCount],
         );
+        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
@@ -941,6 +849,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 }
                 _ => { panic!("unsupported import_desc_type {:?}", import_desc_type) }
             }
+        }
+
+        if offset != offset_start {
+            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
         }
 
         Ok(offset)
