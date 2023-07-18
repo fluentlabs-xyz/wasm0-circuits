@@ -3,8 +3,11 @@ pub enum AssignType {
     QFirst,
     QLast,
 
+    GlobalType,
+
     IsItemsCount,
     IsGlobalType,
+    IsGlobalTypeCtx,
     IsMutProp,
     IsInitOpcode,
     IsInitVal,

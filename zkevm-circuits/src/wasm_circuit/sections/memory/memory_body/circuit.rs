@@ -180,7 +180,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                     bcb.require_in_set(
                         "is_limit_type -> byte_val is valid",
                         byte_val_expr.clone(),
-                        LIMIT_TYPE_VALUES.iter().map(|v| (*v).expr()).collect_vec(),
+                        LIMIT_TYPE_VALUES.iter().map(|&v| v.expr()).collect_vec(),
                     );
                 }
             );

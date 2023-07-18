@@ -193,12 +193,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 &[is_funcs_count],
                 &q_last,
                 &[
-                    // is_numeric_instruction,
-                    // is_control_instruction,
-                    // is_variable_instruction,
-                    // is_numeric_instruction_leb_arg,
-                    // is_control_instruction_leb_arg,
-                    // is_variable_instruction_leb_arg,
                     is_block_end,
                 ],
             );
@@ -286,14 +280,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_funcs_count, is_func_body_len, ],
             );
-            // configure_transition_check(
-            //     &mut cb,
-            //     vc,
-            //     "check prev: is_funcs_count+ -> func+(is_func_body_len+ ...",
-            //     is_func_body_len_expr.clone(),
-            //     false,
-            //     &[is_funcs_count, is_block_end, is_func_body_len, ],
-            // );
             configure_transition_check(
                 &mut cb,
                 vc,
@@ -302,14 +288,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_func_body_len, is_local_type_transitions_count, ],
             );
-            // configure_transition_check(
-            //     &mut cb,
-            //     vc,
-            //     "check prev: is_func_body_len+ -> locals(1)(is_local_type_transitions_count+ ...",
-            //     is_local_type_transitions_count_expr.clone(),
-            //     false,
-            //     &[is_func_body_len, is_local_type_transitions_count, ],
-            // );
             configure_transition_check(
                 &mut cb,
                 vc,
@@ -321,14 +299,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     is_numeric_instruction, is_variable_instruction, is_control_instruction, is_parametric_instruction, is_block_end,
                 ],
             );
-            // configure_transition_check(
-            //     &mut cb,
-            //     vc,
-            //     "check prev: is_local_type_transitions_count+ -> local_var_descriptor*(is_local_repetition_count+ ...",
-            //     is_local_repetition_count_expr.clone(),
-            //     false,
-            //     &[is_local_type_transitions_count, is_local_type, is_local_repetition_count, ],
-            // );
             configure_transition_check(
                 &mut cb,
                 vc,
@@ -337,14 +307,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_local_repetition_count, is_local_type, ],
             );
-            // configure_transition_check(
-            //     &mut cb,
-            //     vc,
-            //     "check prev: is_local_repetition_count+ -> is_local_type(1) ...",
-            //     is_local_type_expr.clone(),
-            //     false,
-            //     &[is_local_repetition_count, ],
-            // );
             configure_transition_check(
                 &mut cb,
                 vc,
@@ -353,26 +315,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 true,
                 &[is_local_repetition_count, is_numeric_instruction, is_variable_instruction, is_control_instruction, is_parametric_instruction, ],
             );
-            // configure_transition_check(
-            //     &mut cb,
-            //     vc,
-            //     "check prev: ... is_local_type(1))) -> is_func_body_code+",
-            //     is_instruction_expr.clone(),
-            //     false,
-            //     &[
-            //         is_local_type_transitions_count,
-            //         is_local_type,
-            //         is_numeric_instruction,
-            //         is_variable_instruction,
-            //         is_control_instruction,
-            //         is_numeric_instruction_leb_arg,
-            //         is_variable_instruction_leb_arg,
-            //         is_control_instruction_leb_arg,
-            //         is_parametric_instruction,
-            //         is_blocktype_delimiter,
-            //         is_block_end,
-            //     ],
-            // );
 
             // BASIC CONSTRAINTS:
 

@@ -61,12 +61,34 @@ impl<F: FieldExt> Expr<F> for WasmSection {
 }
 
 /// https://webassembly.github.io/spec/core/binary/types.html#number-types
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NumType {
     I32 = 0x7F,
     I64 = 0x7E,
-    F32 = 0x7D,
-    F64 = 0x7C,
+    // not supported yet
+    // F32 = 0x7D,
+    // F64 = 0x7C,
+}
+pub const NUM_TYPE_VALUES: &[NumType] = &[
+    NumType::I32,
+    NumType::I64,
+    // NumType::F32,
+    // NumType::F64,
+];
+impl TryFrom<u8> for NumType {
+    type Error = ();
+
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        for instr in NUM_TYPE_VALUES {
+            if v == *instr as u8 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+impl From<NumType> for usize {
+    fn from(t: NumType) -> Self {
+        t as usize
+    }
 }
 impl<F: FieldExt> Expr<F> for NumType {
     #[inline]

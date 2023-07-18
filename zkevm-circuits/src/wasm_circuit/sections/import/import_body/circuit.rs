@@ -440,7 +440,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     bcb.require_in_set(
                         "is_importdesc_type => value is valid",
                         byte_value_expr.clone(),
-                        IMPORT_DESC_TYPE_VALUES.iter().map(|v| (*v).expr()).collect_vec()
+                        IMPORT_DESC_TYPE_VALUES.iter().map(|&v| v.expr()).collect_vec()
                     );
                     bcb.require_equal(
                         "is_importdesc_type => importdesc_type has valid value",

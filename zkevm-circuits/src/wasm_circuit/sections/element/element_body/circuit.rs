@@ -415,9 +415,6 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 );
             }
             match assign_type {
-                AssignType::Unknown => {
-                    panic!("assign type is unknown")
-                }
                 AssignType::QFirst => {
                     region.assign_fixed(
                         || format!("assign 'q_first' val {} at {}", assign_value, offset),
