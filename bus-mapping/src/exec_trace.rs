@@ -15,6 +15,7 @@ impl fmt::Debug for OperationRef {
             match self.0 {
                 Target::Start => "Start",
                 Target::Memory => "Memory",
+                Target::Table => "Table",
                 Target::Stack => "Stack",
                 Target::Global=> "Global",
                 Target::Storage => "Storage",

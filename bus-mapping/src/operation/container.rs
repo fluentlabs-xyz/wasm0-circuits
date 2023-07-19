@@ -1,5 +1,5 @@
 use super::{
-    AccountOp, CallContextOp, MemoryOp, Op, OpEnum, Operation, RWCounter, StackOp, StartOp,
+    AccountOp, CallContextOp, MemoryOp, TableOp, Op, OpEnum, Operation, RWCounter, StackOp, StartOp,
     StorageOp, Target, TxAccessListAccountOp, TxAccessListAccountStorageOp, TxLogOp, TxReceiptOp,
     TxRefundOp, RW,
 };
@@ -25,6 +25,8 @@ use crate::operation::GlobalOp;
 pub struct OperationContainer {
     /// Operations of MemoryOp
     pub memory: Vec<Operation<MemoryOp>>,
+    /// Operations of TableOp
+    pub table: Vec<Operation<TableOp>>,
     /// Operations of StackOp
     pub stack: Vec<Operation<StackOp>>,
     /// Operations of GlobalOp
@@ -61,6 +63,7 @@ impl OperationContainer {
     pub fn new() -> Self {
         Self {
             memory: Vec::new(),
+            table: Vec::new(),
             stack: Vec::new(),
             globals: Vec::new(),
             storage: Vec::new(),
@@ -101,6 +104,10 @@ impl OperationContainer {
             OpEnum::Memory(op) => {
                 self.memory.push(Operation::new(rwc, rw, op));
                 OperationRef::from((Target::Memory, self.memory.len() - 1))
+            }
+            OpEnum::Table(op) => {
+                self.table.push(Operation::new(rwc, rw, op));
+                OperationRef::from((Target::Table, self.memory.len() - 1))
             }
             OpEnum::Stack(op) => {
                 self.stack.push(Operation::new(rwc, rw, op));
