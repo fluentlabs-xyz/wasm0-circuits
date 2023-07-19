@@ -3,7 +3,12 @@ pub enum AssignType {
     QFirst,
     QLast,
 
+    LimitType,
+
     IsItemsCount,
     IsLimitType,
-    IsLimitTypeVal,
+    IsLimitMin,
+    IsLimitMax,
+
+    IsLimitTypeCtx,
 }

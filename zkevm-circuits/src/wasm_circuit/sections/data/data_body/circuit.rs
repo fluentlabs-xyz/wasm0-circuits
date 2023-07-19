@@ -396,7 +396,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 is_mem_segment_type_expr.clone(),
                 |bcb| {
                     bcb.require_in_set(
-                        "is_mem_segment_type -> byte value is correct",
+                        "is_mem_segment_type -> byte value is valid",
                         byte_val_expr.clone(),
                         vec![
                             MemSegmentType::Active.expr(),
@@ -411,7 +411,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 is_mem_segment_size_opcode_expr.clone(),
                 |bcb| {
                     bcb.require_in_set(
-                        "is_mem_segment_size_opcode -> byte value is correct",
+                        "is_mem_segment_size_opcode -> byte value is valid",
                         byte_val_expr.clone(),
                         vec![
                             NumericInstruction::I32Const.expr(),

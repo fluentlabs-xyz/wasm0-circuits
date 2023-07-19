@@ -1,18 +1,21 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
+
 use eth_types::{Field, Hash, ToWord};
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
-use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
+
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::import::import_body::circuit::WasmImportSectionBodyChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
+use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -111,8 +114,10 @@ mod wasm_import_section_body_tests {
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use wasmbin::sections::Kind;
+
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
+
     use crate::wasm_circuit::common::wat_extract_section_body_bytecode;
     use crate::wasm_circuit::sections::import::import_body::tests::TestCircuit;
 
@@ -132,7 +137,7 @@ mod wasm_import_section_body_tests {
     #[test]
     pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
+            "./src/wasm_circuit/test_data/files/br_breaks_1.wat",
             Kind::Import,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
@@ -149,7 +154,7 @@ mod wasm_import_section_body_tests {
     #[test]
     pub fn file2_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/br_breaks_1.wat",
+            "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
             Kind::Import,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);

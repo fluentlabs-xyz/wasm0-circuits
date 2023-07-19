@@ -17,7 +17,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::consts::{IMPORT_DESC_TYPE_VALUES, ImportDescType, MUTABILITY_VALUES};
+use crate::wasm_circuit::consts::{IMPORT_DESC_TYPE_VALUES, ImportDescType, LimitType, MUTABILITY_VALUES};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -41,12 +41,18 @@ pub struct WasmImportSectionBodyConfig<F: Field> {
     pub is_importdesc_type_ctx: Column<Fixed>,
     pub is_importdesc_val: Column<Fixed>,
     pub is_mut_prop: Column<Fixed>,
+    pub is_limit_type: Column<Fixed>,
+    pub is_limit_type_ctx: Column<Fixed>,
+    pub is_limit_min: Column<Fixed>,
+    pub is_limit_max: Column<Fixed>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
     pub utf8_chip: Rc<UTF8Chip<F>>,
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     pub importdesc_type: Column<Advice>,
     pub importdesc_type_chip: Rc<BinaryNumberChip<F, ImportDescType, 8>>,
+    pub limit_type: Column<Advice>,
+    pub limit_type_chip: Rc<BinaryNumberChip<F, LimitType, 8>>,
 
     _marker: PhantomData<F>,
 }
@@ -88,10 +94,16 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         let is_importdesc_type = cs.fixed_column();
         let is_importdesc_val = cs.fixed_column();
         let is_mut_prop = cs.fixed_column();
+        let is_limit_type = cs.fixed_column();
+        let is_limit_min = cs.fixed_column();
+        let is_limit_max = cs.fixed_column();
 
+        let is_limit_type_ctx = cs.fixed_column();
         let is_importdesc_type_ctx = cs.fixed_column();
 
         let importdesc_type = cs.advice_column();
+
+        let limit_type = cs.advice_column();
 
         let config = BinaryNumberChip::configure(
             cs,
@@ -99,6 +111,13 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             Some(importdesc_type.into()),
         );
         let importdesc_type_chip = Rc::new(BinaryNumberChip::construct(config));
+
+        let config = BinaryNumberChip::configure(
+            cs,
+            is_limit_type_ctx,
+            Some(limit_type.into()),
+        );
+        let limit_type_chip = Rc::new(BinaryNumberChip::construct(config));
 
         cs.create_gate("WasmImportSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -113,12 +132,19 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             let is_import_name_len_expr = vc.query_fixed(is_import_name_len, Rotation::cur());
             let is_import_name_expr = vc.query_fixed(is_import_name, Rotation::cur());
             let is_importdesc_type_expr = vc.query_fixed(is_importdesc_type, Rotation::cur());
-            let is_importdesc_type_ctx_prev_expr = vc.query_fixed(is_importdesc_type_ctx, Rotation::prev());
-            let is_importdesc_type_ctx_expr = vc.query_fixed(is_importdesc_type_ctx, Rotation::cur());
             let is_importdesc_val_expr = vc.query_fixed(is_importdesc_val, Rotation::cur());
             let is_mut_prop_expr = vc.query_fixed(is_mut_prop, Rotation::cur());
+            let is_limit_type_expr = vc.query_fixed(is_limit_type, Rotation::cur());
+            let is_limit_min_expr = vc.query_fixed(is_limit_min, Rotation::cur());
+            let is_limit_max_expr = vc.query_fixed(is_limit_max, Rotation::cur());
 
-            let byte_value_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let is_importdesc_type_ctx_prev_expr = vc.query_fixed(is_importdesc_type_ctx, Rotation::prev());
+            let is_importdesc_type_ctx_expr = vc.query_fixed(is_importdesc_type_ctx, Rotation::cur());
+            let is_limit_type_ctx_expr = vc.query_fixed(is_limit_type_ctx, Rotation::cur());
+
+            let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let limit_type_prev_expr = vc.query_advice(limit_type, Rotation::prev());
+            let limit_type_expr = vc.query_advice(limit_type, Rotation::cur());
             let importdesc_type_prev_expr = vc.query_advice(importdesc_type, Rotation::prev());
             let importdesc_type_expr = vc.query_advice(importdesc_type, Rotation::cur());
 
@@ -133,6 +159,9 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             cb.require_boolean("is_importdesc_type is boolean", is_importdesc_type_expr.clone());
             cb.require_boolean("is_importdesc_val is boolean", is_importdesc_val_expr.clone());
             cb.require_boolean("is_mut_prop is boolean", is_mut_prop_expr.clone());
+            cb.require_boolean("is_limit_type is boolean", is_limit_type_expr.clone());
+            cb.require_boolean("is_limit_min is boolean", is_limit_min_expr.clone());
+            cb.require_boolean("is_limit_max is boolean", is_limit_max_expr.clone());
 
             configure_constraints_for_q_first_and_q_last(
                 &mut cb,
@@ -141,7 +170,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 &q_first,
                 &[is_items_count],
                 &q_last,
-                &[is_importdesc_val, is_mut_prop],
+                &[is_importdesc_val, is_mut_prop, is_limit_min, is_limit_max],
             );
 
             cb.condition(
@@ -182,8 +211,53 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     + is_importdesc_type_expr.clone()
                     + is_importdesc_val_expr.clone()
                     + is_mut_prop_expr.clone()
+                    + is_limit_type_expr.clone()
+                    + is_limit_min_expr.clone()
+                    + is_limit_max_expr.clone()
                 ,
                 1.expr(),
+            );
+
+            cb.condition(
+                is_limit_type_expr.clone(),
+                |bcb| {
+                    bcb.require_in_set(
+                        "limit_type => byte value is valid",
+                        byte_val_expr.clone(),
+                        vec![
+                            LimitType::MinOnly.expr(),
+                            LimitType::MinMax.expr(),
+                        ],
+                    )
+                }
+            );
+            cb.require_equal(
+                "is_limit_type_ctx active on a specific flags only",
+                is_limit_type_expr.clone()
+                    + is_limit_min_expr.clone()
+                    + is_limit_max_expr.clone()
+                ,
+                is_limit_type_ctx_expr.clone(),
+            );
+            cb.condition(
+                is_limit_type_expr.clone(),
+                |bcb| {
+                    bcb.require_equal(
+                        "is_limit_type => limit_type=byte_val",
+                        limit_type_expr.clone(),
+                        byte_val_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                is_limit_type_ctx_expr.clone(),
+                |bcb| {
+                    let is_limit_type_ctx_prev_expr = vc.query_fixed(is_limit_type_ctx, Rotation::prev());
+                    bcb.require_zero(
+                        "is_limit_type_ctx && prev.is_limit_type_ctx => limit_type=prev.limit_type",
+                        is_limit_type_ctx_prev_expr * (limit_type_expr.clone() - limit_type_prev_expr.clone()),
+                    );
+                }
             );
 
             // TODO
@@ -198,11 +272,13 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     is_items_count_expr.clone(),
                     is_mod_name_len_expr.clone(),
                     is_import_name_len_expr.clone(),
-                    is_importdesc_val_expr.clone()
+                    is_importdesc_val_expr.clone(),
+                    is_limit_min_expr.clone(),
+                    is_limit_max_expr.clone(),
                 ]),
                 |bcb| {
                     bcb.require_equal(
-                        "is_items_count || is_mod_name_len || is_import_name_len || is_importdesc_val => leb128",
+                        "is_items_count || is_mod_name_len || is_import_name_len || is_importdesc_val || is_limit_min || is_limit_max => leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
                     )
@@ -214,7 +290,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 |bcb| {
                     bcb.require_in_set(
                         "is_mut_prop => byte_val is valid",
-                        byte_value_expr.clone(),
+                        byte_val_expr.clone(),
                         MUTABILITY_VALUES.iter().map(|&v| v.expr()).collect_vec(),
                     )
                 }
@@ -230,6 +306,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             let importdesc_type_is_table_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::TableType, Rotation::next())(vc);
             let importdesc_type_is_global_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::cur())(vc);
             let importdesc_type_is_global_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::next())(vc);
+
+            let limit_type_is_min_only_expr = limit_type_chip.config.value_equals(LimitType::MinOnly, Rotation::cur())(vc);
+            let limit_type_is_min_max_expr = limit_type_chip.config.value_equals(LimitType::MinMax, Rotation::cur())(vc);
+
             configure_transition_check(
                 &mut cb,
                 vc,
@@ -411,16 +491,125 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 true,
                 &[is_mod_name_len, ],
             );
-            // TODO importdesc_type{1}=ImportDescType::Memtype: TODO
-            cb.condition(
-                importdesc_type_is_mem_type_expr.expr(),
-                |bcb| {
-                    bcb.require_equal(
-                        "unsupported ImportDescType::Memtype",
-                        0.expr(),
-                        1.expr(),
-                    )
-                }
+            // importdesc_type{1}=ImportDescType::Memtype: import_desc+(is_importdesc_type{1} -> limit_type{1} -> limit_min+ -> limit_max*)
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_items_count+ -> is_item+ (is_mod_name_len+ ...",
+                and::expr([
+                    is_items_count_expr.clone(),
+                    importdesc_type_is_mem_type_expr.clone(),
+                    not_q_last_expr.clone(),
+                ]),
+                true,
+                &[is_items_count, is_mod_name_len, ],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_mod_name_len+ -> is_mod_name* -> is_import_name_len+",
+                and::expr([
+                    is_mod_name_len_expr.clone(),
+                    importdesc_type_is_mem_type_expr.clone(),
+                    not_q_last_expr.clone(),
+                ]),
+                true,
+                &[is_mod_name_len, is_mod_name, is_import_name_len, ],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_mod_name* -> is_import_name_len+",
+                and::expr([
+                    is_mod_name_expr.clone(),
+                    importdesc_type_is_mem_type_expr.clone(),
+                    not_q_last_expr.clone(),
+                ]),
+                true,
+                &[is_mod_name, is_import_name_len, ],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_import_name_len+ -> is_import_name* -> is_importdesc_type{1}",
+                and::expr([
+                    is_import_name_len_expr.clone(),
+                    importdesc_type_is_mem_type_expr.clone(),
+                    not_q_last_expr.clone(),
+                ]),
+                true,
+                &[is_import_name_len, is_import_name, is_importdesc_type, ],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_import_name* -> is_importdesc_type{1}",
+                and::expr([
+                    is_import_name_expr.clone(),
+                    importdesc_type_is_mem_type_expr.clone(),
+                    not_q_last_expr.clone(),
+                ]),
+                true,
+                &[is_import_name, is_importdesc_type, ],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_importdesc_type{1} -> limit_type{1}",
+                and::expr([
+                    is_importdesc_type_expr.clone(),
+                    importdesc_type_is_mem_type_expr.clone(),
+                    not_q_last_expr.clone(),
+                ]),
+                true,
+                &[is_limit_type, ],
+            );
+
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: limit_type{1} -> limit_min+",
+                and::expr([
+                    is_limit_type_expr.clone(),
+                    importdesc_type_is_mem_type_expr.clone(),
+                    not_q_last_expr.clone(),
+                ]),
+                true,
+                &[is_limit_min, ],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: limit_min+",
+                and::expr([
+                    is_limit_min_expr.clone(),
+                    limit_type_is_min_only_expr.clone(),
+                    importdesc_type_is_mem_type_expr.clone(),
+                    not_q_last_expr.clone(),
+                ]),
+                true,
+                &[is_limit_min, ],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: limit_min+ -> limit_max*",
+                and::expr([
+                    is_limit_min_expr.clone(),
+                    limit_type_is_min_max_expr.clone(),
+                    importdesc_type_is_mem_type_expr.clone(),
+                    not_q_last_expr.clone(),
+                ]),
+                true,
+                &[is_limit_min, is_limit_max, /*is_mod_name_len,*/ ],
+            );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: limit_max*",
+                is_limit_max_expr.clone() * not_q_last_expr.clone(),
+                true,
+                &[is_limit_max, is_mod_name_len, ],
             );
             // TODO importdesc_type{1}=ImportDescType::Tabletype: TODO
             cb.condition(
@@ -439,13 +628,13 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 |bcb| {
                     bcb.require_in_set(
                         "is_importdesc_type => value is valid",
-                        byte_value_expr.clone(),
+                        byte_val_expr.clone(),
                         IMPORT_DESC_TYPE_VALUES.iter().map(|&v| v.expr()).collect_vec()
                     );
                     bcb.require_equal(
                         "is_importdesc_type => importdesc_type has valid value",
                         importdesc_type_expr.clone(),
-                        byte_value_expr.clone(),
+                        byte_val_expr.clone(),
                     );
                 }
             );
@@ -475,11 +664,17 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             is_importdesc_type_ctx,
             is_importdesc_val,
             is_mut_prop,
+            is_limit_type,
+            is_limit_type_ctx,
+            is_limit_min,
+            is_limit_max,
             leb128_chip,
             utf8_chip,
             dynamic_indexes_chip,
             importdesc_type,
             importdesc_type_chip,
+            limit_type,
+            limit_type_chip,
             _marker: PhantomData,
         };
 
@@ -516,6 +711,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 AssignType::IsModNameLen,
                 AssignType::IsImportNameLen,
                 AssignType::IsImportdescVal,
+                AssignType::IsLimitMin,
+                AssignType::IsLimitMax,
             ].contains(assign_type) {
                 let p = leb_params.unwrap();
                 self.config.leb128_chip.assign(
@@ -632,6 +829,52 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         self.config.importdesc_type,
                         offset,
                         || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsLimitType => {
+                    region.assign_fixed(
+                        || format!("assign 'is_limit_type' val {} at {}", assign_value, offset),
+                        self.config.is_limit_type,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsLimitMin => {
+                    region.assign_fixed(
+                        || format!("assign 'is_limit_min' val {} at {}", assign_value, offset),
+                        self.config.is_limit_min,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsLimitMax => {
+                    region.assign_fixed(
+                        || format!("assign 'is_limit_max' val {} at {}", assign_value, offset),
+                        self.config.is_limit_max,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsLimitTypeCtx => {
+                    region.assign_fixed(
+                        || format!("assign 'is_limit_type_ctx' val {} at {}", assign_value, offset),
+                        self.config.is_limit_type_ctx,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::LimitType => {
+                    region.assign_advice(
+                        || format!("assign 'limit_type' val {} at {}", assign_value, offset),
+                        self.config.limit_type,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                    let limit_type: LimitType = (assign_value as u8).try_into().unwrap();
+                    self.config.limit_type_chip.assign(
+                        region,
+                        offset,
+                        &limit_type,
                     ).unwrap();
                 }
             }
@@ -847,7 +1090,49 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     }
                     offset += 1;
                 }
-                _ => { panic!("unsupported import_desc_type {:?}", import_desc_type) }
+                ImportDescType::TableType => { panic!("unsupported import_desc_type {:?}", import_desc_type) }
+                ImportDescType::MemType => {
+                    // limit_type{1}
+                    let limit_type_val = wasm_bytecode.bytes[offset];
+                    let limit_type: LimitType = limit_type_val.try_into().unwrap();
+                    let limit_type_val = limit_type_val as u64;
+                    self.assign(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsLimitType, AssignType::IsLimitTypeCtx],
+                        1,
+                        None,
+                    );
+                    self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                    offset += 1;
+
+                    // limit_min+
+                    let (_limit_min, limit_min_leb_len) = self.markup_leb_section(
+                        region,
+                        wasm_bytecode,
+                        offset,
+                        &[AssignType::IsLimitMin, AssignType::IsLimitTypeCtx],
+                    );
+                    for offset in offset..offset + limit_min_leb_len {
+                        self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                    }
+                    offset += limit_min_leb_len;
+
+                    // limit_max*
+                    if limit_type == LimitType::MinMax {
+                        let (_limit_max, limit_max_leb_len) = self.markup_leb_section(
+                            region,
+                            wasm_bytecode,
+                            offset,
+                            &[AssignType::IsLimitMax, AssignType::IsLimitTypeCtx],
+                        );
+                        for offset in offset..offset + limit_max_leb_len {
+                            self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                        }
+                        offset += limit_max_leb_len;
+                    }
+                }
             }
         }
 

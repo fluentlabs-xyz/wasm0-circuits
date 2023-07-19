@@ -3,6 +3,11 @@ pub enum AssignType {
     QFirst,
     QLast,
 
+    LimitType,
+
+    IsLimitType,
+    IsLimitMin,
+    IsLimitMax,
     IsItemsCount,
     IsModNameLen,
     IsModName,
@@ -11,6 +16,8 @@ pub enum AssignType {
     IsImportdescType,
     IsImportdescVal,
     IsMut,
+
+    IsLimitTypeCtx,
 
     IsImportdescTypeCtx,
     ImportdescType,

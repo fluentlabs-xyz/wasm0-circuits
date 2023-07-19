@@ -1,7 +1,6 @@
 (module
   (global $g1 (import "js" "global") (mut i32))
   (import "test" "global-i32" (global i32))
-;;  (import "spectest" "memory" (memory 1 2))
   (global $g2 (mut i32) (i32.const 0))
   (global $g3 (mut i64) (i64.const 0))
   (global $g4 (mut i64) (i64.const 77777))
