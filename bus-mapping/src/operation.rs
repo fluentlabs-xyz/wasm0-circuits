@@ -11,6 +11,9 @@ use core::{cmp::Ordering, fmt, fmt::Debug};
 use eth_types::{Address, StackWord, Word};
 use std::mem::swap;
 
+// FIXME
+use MemoryAddress as TableAddress;
+
 /// Marker that defines whether an Operation performs a `READ` or a `WRITE`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RW {
@@ -88,6 +91,8 @@ pub enum Target {
     Start,
     /// Means the target of the operation is the Memory.
     Memory,
+    /// Means the target of the operation is the Table.
+    Table,
     /// Means the target of the operation is the Stack.
     Stack,
     /// Means that target of the operation is the Global.
@@ -196,6 +201,85 @@ impl Ord for MemoryOp {
         (&self.call_id, &self.address).cmp(&(&other.call_id, &other.address))
     }
 }
+
+
+/// Represents a [`READ`](RW::READ)/[`WRITE`](RW::WRITE) into the memory implied
+/// by an specific [`OpcodeId`](eth_types::evm_types::opcode_ids::OpcodeId) of
+/// the [`ExecStep`](crate::circuit_input_builder::ExecStep).
+#[derive(Clone, PartialEq, Eq)]
+pub struct TableOp {
+    /// Call ID
+    pub call_id: usize,
+    /// Table Address
+    pub address: TableAddress,
+    /// Value
+    pub value: u8,
+}
+
+impl fmt::Debug for TableOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("TableOp { ")?;
+        f.write_fmt(format_args!(
+            "call_id: {:?}, addr: {:?}, value: 0x{:02x}",
+            self.call_id, self.address, self.value
+        ))?;
+        f.write_str(" }")
+    }
+}
+
+impl TableOp {
+    /// Create a new instance of a `TableOp` from it's components.
+    pub fn new(call_id: usize, address: TableAddress, value: u8) -> TableOp {
+        TableOp {
+            call_id,
+            address,
+            value,
+        }
+    }
+
+    /// Returns the [`Target`] (operation type) of this operation.
+    pub const fn target(&self) -> Target {
+        Target::Table
+    }
+
+    /// Returns the call id associated to this Operation.
+    pub const fn call_id(&self) -> usize {
+        self.call_id
+    }
+
+    /// Returns the [`TableAddress`] associated to this Operation.
+    pub const fn address(&self) -> &TableAddress {
+        &self.address
+    }
+
+    /// Returns the bytes read or written by this operation.
+    pub fn value(&self) -> u8 {
+        self.value
+    }
+}
+
+impl Op for TableOp {
+    fn into_enum(self) -> OpEnum {
+        OpEnum::Table(self)
+    }
+
+    fn reverse(&self) -> Self {
+        unreachable!("TableOp can't be reverted")
+    }
+}
+
+impl PartialOrd for TableOp {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TableOp {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (&self.call_id, &self.address).cmp(&(&other.call_id, &other.address))
+    }
+}
+
 
 /// Represents a [`READ`](RW::READ)/[`WRITE`](RW::WRITE) into the stack implied
 /// by an specific [`OpcodeId`](eth_types::evm_types::opcode_ids::OpcodeId) of
@@ -757,6 +841,8 @@ pub enum CallContextField {
     GasLeft,
     /// MemorySize
     MemorySize,
+    /// TableSize
+    TableSize,
     /// ReversibleWriteCounter
     ReversibleWriteCounter,
 }
@@ -1011,6 +1097,8 @@ pub enum OpEnum {
     Global(GlobalOp),
     /// Memory
     Memory(MemoryOp),
+    /// Table
+    Table(TableOp),
     /// Storage
     Storage(StorageOp),
     /// TxAccessListAccount

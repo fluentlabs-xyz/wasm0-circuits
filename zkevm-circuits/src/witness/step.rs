@@ -317,6 +317,7 @@ pub(super) fn step_convert(step: &circuit_input_builder::ExecStep, block_num: u6
             .map(|x| {
                 let tag = match x.target() {
                     operation::Target::Memory => RwTableTag::Memory,
+                    operation::Target::Table => RwTableTag::Table,
                     operation::Target::Stack => RwTableTag::Stack,
                     operation::Target::Global => RwTableTag::Global,
                     operation::Target::Storage => RwTableTag::AccountStorage,

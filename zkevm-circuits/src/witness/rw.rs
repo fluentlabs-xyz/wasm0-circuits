@@ -225,6 +225,14 @@ pub enum Rw {
         memory_address: u64,
         byte: u8,
     },
+    /// Table
+    Table {
+        rw_counter: usize,
+        is_write: bool,
+        call_id: usize,
+        memory_address: u64,
+        byte: u8,
+    },
     /// TxLog
     TxLog {
         rw_counter: usize,
@@ -441,6 +449,13 @@ impl Rw {
         }
     }
 
+    pub fn table_value(&self) -> u8 {
+        match self {
+            Self::Table { byte, .. } => *byte,
+            _ => unreachable!("{:?}", self),
+        }
+    }
+
     // At this moment is a helper for the EVM circuit until EVM challange API is
     // applied
     pub(crate) fn table_assignment_aux<F: Field>(&self, randomness: F) -> RwRow<F> {
@@ -494,6 +509,7 @@ impl Rw {
         match self {
             Self::Start { rw_counter }
             | Self::Memory { rw_counter, .. }
+            | Self::Table { rw_counter, .. }
             | Self::Stack { rw_counter, .. }
             | Self::Global { rw_counter, .. }
             | Self::AccountStorage { rw_counter, .. }
@@ -511,6 +527,7 @@ impl Rw {
         match self {
             Self::Start { .. } => false,
             Self::Memory { is_write, .. }
+            | Self::Table { is_write, .. }
             | Self::Stack { is_write, .. }
             | Self::Global { is_write, .. }
             | Self::AccountStorage { is_write, .. }
@@ -528,6 +545,7 @@ impl Rw {
         match self {
             Self::Start { .. } => RwTableTag::Start,
             Self::Memory { .. } => RwTableTag::Memory,
+            Self::Table { .. } => RwTableTag::Table,
             Self::Stack { .. } => RwTableTag::Stack,
             Self::Global { .. } => RwTableTag::Global,
             Self::AccountStorage { .. } => RwTableTag::AccountStorage,
@@ -553,6 +571,7 @@ impl Rw {
             | Self::Stack { call_id, .. }
             | Self::Global { call_id, .. }
             | Self::Memory { call_id, .. } => Some(*call_id),
+            | Self::Table { call_id, .. } => Some(*call_id),
             Self::Start { .. } | Self::Account { .. } => None,
         }
     }
@@ -572,6 +591,7 @@ impl Rw {
                 account_address, ..
             } => Some(*account_address),
             Self::Memory { memory_address, .. } => Some(U256::from(*memory_address).to_address()),
+            Self::Table { memory_address, .. } => Some(U256::from(*memory_address).to_address()),
             Self::Stack { stack_pointer, .. } => {
                 Some(U256::from(*stack_pointer as u64).to_address())
             }
@@ -601,6 +621,7 @@ impl Rw {
             Self::TxReceipt { field_tag, .. } => Some(*field_tag as u64),
             Self::Start { .. }
             | Self::Memory { .. }
+            | Self::Table { .. }
             | Self::Stack { .. }
             | Self::Global { .. }
             | Self::AccountStorage { .. }
@@ -620,6 +641,7 @@ impl Rw {
             | Self::Stack { .. }
             | Self::Global { .. }
             | Self::Memory { .. }
+            | Self::Table { .. }
             | Self::TxRefund { .. }
             | Self::Account { .. }
             | Self::TxAccessListAccount { .. }
@@ -685,6 +707,7 @@ impl Rw {
             Self::TxAccessListAccount { is_warm, .. }
             | Self::TxAccessListAccountStorage { is_warm, .. } => F::from(*is_warm as u64),
             Self::Memory { byte, .. } => F::from(u64::from(*byte)),
+            Self::Table { byte, .. } => F::from(u64::from(*byte)),
             Self::TxRefund { value, .. } | Self::TxReceipt { value, .. } => F::from(*value),
         }
     }
@@ -722,6 +745,7 @@ impl Rw {
             | Self::Stack { .. }
             | Self::Global { .. }
             | Self::Memory { .. }
+            | Self::Table { .. }
             | Self::CallContext { .. }
             | Self::TxLog { .. }
             | Self::TxReceipt { .. } => None,
@@ -875,6 +899,7 @@ impl From<&operation::OperationContainer> for RwMap {
                         CallContextField::StackPointer => CallContextFieldTag::StackPointer,
                         CallContextField::GasLeft => CallContextFieldTag::GasLeft,
                         CallContextField::MemorySize => CallContextFieldTag::MemorySize,
+                        CallContextField::TableSize => CallContextFieldTag::TableSize,
                         CallContextField::ReversibleWriteCounter => CallContextFieldTag::ReversibleWriteCounter,
                         CallContextField::InternalFunctionId => CallContextFieldTag::InternalFunctionId,
                     },
@@ -917,6 +942,22 @@ impl From<&operation::OperationContainer> for RwMap {
                 .memory
                 .iter()
                 .map(|op| Rw::Memory {
+                    rw_counter: op.rwc().into(),
+                    is_write: op.rw().is_write(),
+                    call_id: op.op().call_id(),
+                    memory_address: u64::from_le_bytes(
+                        op.op().address().to_le_bytes()[..8].try_into().unwrap(),
+                    ),
+                    byte: op.op().value(),
+                })
+                .collect(),
+        );
+        rws.insert(
+            RwTableTag::Table,
+            container
+                .memory
+                .iter()
+                .map(|op| Rw::Table {
                     rw_counter: op.rwc().into(),
                     is_write: op.rw().is_write(),
                     call_id: op.op().call_id(),

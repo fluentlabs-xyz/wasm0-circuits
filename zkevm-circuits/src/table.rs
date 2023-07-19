@@ -372,6 +372,8 @@ pub enum RwTableTag {
     Global,
     /// Memory operation
     Memory,
+    /// Table operation
+    Table,
     /// Account Storage operation
     AccountStorage,
     /// Tx Access List Account operation
@@ -509,6 +511,8 @@ pub enum CallContextFieldTag {
     GasLeft,
     /// MemorySize
     MemorySize,
+    /// TableSize
+    TableSize,
     /// ReversibleWriteCounter
     ReversibleWriteCounter,
 }
