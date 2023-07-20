@@ -142,6 +142,7 @@ mod wasm_circuit_tests {
             "\0asm",
             "main",
             "memory",
+            "table",
             "spectest",
             "env",
             "_evm_address",

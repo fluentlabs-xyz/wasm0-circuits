@@ -11,6 +11,9 @@ pub static WASM_PREAMBLE_MAGIC_PREFIX: &'static str = "\0asm";
 pub static WASM_BLOCK_END: u8 = 0xB;
 pub static WASM_BLOCKTYPE_DELIMITER: i32 = 0x40;
 
+// TODO make it differ from custom section id (which is 0 too)
+pub const SECTION_ID_DEFAULT: i32 = 0;
+
 #[derive(Copy, Clone, Debug)]
 pub enum WasmSection {
     Custom = 0,
@@ -99,19 +102,35 @@ impl<F: FieldExt> Expr<F> for NumType {
 
 /// https://webassembly.github.io/spec/core/binary/types.html#reference-types
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum ReferenceType {
+pub enum RefType {
     FuncRef = 0x70,
     ExternRef = 0x71,
 }
-impl<F: FieldExt> Expr<F> for ReferenceType {
+pub const REF_TYPE_VALUES: &[RefType] = &[
+    RefType::FuncRef,
+    RefType::ExternRef,
+];
+impl TryFrom<u8> for RefType {
+    type Error = ();
+
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        for instr in REF_TYPE_VALUES {
+            if v == *instr as u8 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+impl From<RefType> for usize {
+    fn from(t: RefType) -> Self {
+        t as usize
+    }
+}
+impl<F: FieldExt> Expr<F> for RefType {
     #[inline]
     fn expr(&self) -> Expression<F> {
         Expression::Constant(F::from(*self as u64))
     }
 }
-
-// TODO make it differ from custom section id (which is 0 too)
-pub const SECTION_ID_DEFAULT: i32 = 0;
 
 /// https://webassembly.github.io/spec/core/binary/types.html#limits
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]

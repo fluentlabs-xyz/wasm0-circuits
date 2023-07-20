@@ -7,6 +7,7 @@ use halo2_proofs::{
 use halo2_proofs::circuit::{Region, Value};
 use halo2_proofs::plonk::{Advice, Fixed};
 use halo2_proofs::poly::Rotation;
+use itertools::Itertools;
 use log::debug;
 
 use eth_types::Field;
@@ -16,7 +17,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::consts::{LimitType, ReferenceType};
+use crate::wasm_circuit::consts::{LimitType, REF_TYPE_VALUES, RefType};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -163,10 +164,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                     bcb.require_in_set(
                         "reference_type => byte value is valid",
                         byte_val_expr.clone(),
-                        vec![
-                            ReferenceType::FuncRef.expr(),
-                            ReferenceType::ExternRef.expr(),
-                        ],
+                        REF_TYPE_VALUES.iter().map(|&v| v.expr()).collect_vec(),
                     )
                 }
             );
