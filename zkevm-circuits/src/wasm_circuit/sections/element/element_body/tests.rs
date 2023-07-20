@@ -117,7 +117,7 @@ mod wasm_element_section_body_tests {
 
     #[test]
     pub fn section_body_bytecode_is_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
         let kind = Kind::Element;
         let expected = [
             9, 35, 7, 1, 0, 0, 1, 0, 0, 1, 0, 3, 0, 0, 1, 1, 0, 4, 0, 0, 1, 1, 1, 0, 0, 0, 65, 0, 11, 0, 0, 65, 171, 2, 11, 1, 0,

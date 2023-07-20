@@ -1,19 +1,18 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
-use std::{marker::PhantomData};
-use std::cell::RefCell;
-use std::rc::Rc;
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
+
 use eth_types::{Field, Hash, ToWord};
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
-use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
+
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::sections::code::code_body::circuit::WasmCodeSectionBodyChip;
+use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::start::start_body::circuit::WasmStartSectionBodyChip;
-use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -97,10 +96,11 @@ mod wasm_start_section_body_tests {
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use wasmbin::sections::Kind;
+
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
+
     use crate::wasm_circuit::common::{wat_extract_section_body_bytecode, wat_extract_section_bytecode};
-    use crate::wasm_circuit::consts::MemSegmentType;
     use crate::wasm_circuit::sections::start::start_body::tests::TestCircuit;
 
     fn test<'a, F: Field>(
@@ -118,7 +118,7 @@ mod wasm_start_section_body_tests {
 
     #[test]
     pub fn file2_dup_fails() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
         let kind = Kind::Start;
 
         let mut bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
@@ -135,8 +135,29 @@ mod wasm_start_section_body_tests {
     }
 
     #[test]
+    pub fn file1_ok() {
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
+        let kind = Kind::Start;
+
+        let section_bytecode = wat_extract_section_bytecode(path_to_file, kind, );
+        debug!("section_bytecode {:?}", section_bytecode);
+        debug!("section_bytecode (hex) {:x?}", section_bytecode);
+
+        let mut bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
+        debug!("bytecode len {} hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
+    }
+
+    #[test]
     pub fn file2_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
         let kind = Kind::Start;
         let expected = [
             8, 1, 2,
