@@ -26,7 +26,6 @@ use crate::wasm_circuit::sections::code::code_body::types::AssignType;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
-use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
@@ -733,6 +732,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
     pub fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
         let func_count = self.config.shared_state.borrow().func_count;
+        debug!("assign at offset {} func_count val {}", offset, func_count);
         region.assign_advice(
             || format!("assign 'func_count' val {} at {}", func_count, offset),
             self.config.func_count,
@@ -1106,10 +1106,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             offset,
             AssignType::IsFuncsCount,
         );
+        self.config.shared_state.borrow_mut().func_count += funcs_count as usize;
         self.assign(region, &wasm_bytecode, offset, AssignType::QFirst, 1, None);
         offset += funcs_count_leb_len;
-
-        self.config.shared_state.borrow_mut().func_count += funcs_count as usize;
 
         for _func_index in 0..funcs_count {
             // is_func_body_len+

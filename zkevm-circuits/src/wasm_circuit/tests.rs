@@ -49,6 +49,8 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         layouter.assign_region(
             || "wasm_chip region",
             |mut region| {
+                // TODO find a better way to fix problem with shared state
+                wasm_chip.config.shared_state.borrow_mut().reset();
                 wasm_chip.assign_auto(
                     &mut region,
                     &wasm_bytecode,

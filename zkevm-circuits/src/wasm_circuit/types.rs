@@ -13,3 +13,10 @@ pub struct SharedState {
     pub dynamic_indexes_offset: usize,
     pub func_count: usize,
 }
+
+impl SharedState {
+    pub fn reset(&mut self) {
+        self.dynamic_indexes_offset = 0;
+        self.func_count = 0;
+    }
+}

@@ -83,7 +83,9 @@ pub struct WasmConfig<F: Field> {
     pub(crate) range_table_config_0_128: Rc<RangeTableConfig<F, 0, 128>>,
     pub(crate) wasm_bytecode_table: Rc<WasmBytecodeTable>,
 
-    shared_state: Rc<RefCell<SharedState>>,
+    func_count: Column<Advice>,
+
+    pub shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
 }
@@ -451,11 +453,58 @@ impl<F: Field> WasmChip<F>
                 }
             );
 
+            // func_count constraints
             cb.condition(
                 q_first_expr.clone(),
                 |bcb| {
                     bcb.require_zero(
                         "q_first => func_count=0",
+                        func_count_expr.clone(),
+                    );
+                }
+            );
+            let importdesc_type_is_typeidx_expr = and::expr([
+                vc.query_fixed(wasm_import_section_body_chip.config.is_importdesc_type, Rotation::cur()),
+                wasm_import_section_body_chip.config.importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::cur())(vc),
+            ]);
+            let wasm_code_section_q_first_expr = vc.query_fixed(wasm_code_section_body_chip.config.q_first, Rotation::cur());
+            let not_func_count_inc_expr = and::expr([
+                not::expr(importdesc_type_is_typeidx_expr.clone()),
+                not::expr(wasm_code_section_q_first_expr.clone()),
+            ]);
+            cb.condition(
+                and::expr([
+                    not::expr(q_first_expr.clone()),
+                    not_func_count_inc_expr.clone(),
+                ]),
+                |bcb| {
+                    let func_count_prev_expr = vc.query_advice(func_count, Rotation::prev());
+                    bcb.require_equal(
+                        "not_q_first && not_func_count_inc => prev.func_count=func_count",
+                        func_count_prev_expr.clone(),
+                        func_count_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                importdesc_type_is_typeidx_expr.clone(),
+                |bcb| {
+                    let func_count_prev_expr = vc.query_advice(func_count, Rotation::prev());
+                    bcb.require_equal(
+                        "importdesc_type_is_typeidx => func_count grew by 1",
+                        func_count_prev_expr.clone() + 1.expr(),
+                        func_count_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                wasm_code_section_q_first_expr.clone(),
+                |bcb| {
+                    let func_count_prev_expr = vc.query_advice(func_count, Rotation::prev());
+                    let wasm_code_section_leb128_sn_expr = vc.query_advice(wasm_code_section_body_chip.config.leb128_chip.config.sn, Rotation::cur());
+                    bcb.require_equal(
+                        "wasm_code_section_q_first => func_count grew by specific number",
+                        func_count_prev_expr.clone() + wasm_code_section_leb128_sn_expr.clone(),
                         func_count_expr.clone(),
                     );
                 }
@@ -863,6 +912,8 @@ impl<F: Field> WasmChip<F>
             range_table_config_0_128,
             dynamic_indexes_chip,
             shared_state,
+            func_count,
+
             _marker: PhantomData,
         };
 
@@ -915,6 +966,17 @@ impl<F: Field> WasmChip<F>
         }
 
         (sn, last_byte_rel_offset + 1)
+    }
+
+    pub fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
+        let func_count = self.config.shared_state.borrow().func_count;
+        debug!("assign at offset {} func_count val {}", offset, func_count);
+        region.assign_advice(
+            || format!("assign 'func_count' val {} at {}", func_count, offset),
+            self.config.func_count,
+            offset,
+            || Value::known(F::from(func_count as u64)),
+        ).unwrap();
     }
 
     pub fn assign(
@@ -1027,7 +1089,6 @@ impl<F: Field> WasmChip<F>
             None,
         )?;
 
-        let mut shared_state = Rc::new(RefCell::new(SharedState::default()));
         let mut wasm_bytes_offset = WASM_SECTIONS_START_INDEX;
         let mut section_id_prev: i64 = SECTION_ID_DEFAULT as i64;
         loop {
@@ -1054,12 +1115,17 @@ impl<F: Field> WasmChip<F>
                         section_end_offset - section_start_offset + 1,
                         &wasm_bytecode.bytes[section_start_offset..=section_end_offset],
                     );
+                    self.assign_func_count(region, offset);
+
                     let mut next_section_offset = 0;
                     let section_body_offset = offset + 1; // skip section_id
                     let section_len_last_byte_offset = leb128_compute_last_byte_offset(
                         &wasm_bytecode.bytes[..],
                         section_body_offset,
                     ).unwrap();
+                    for offset in section_body_offset..=section_len_last_byte_offset {
+                        self.assign_func_count(region, offset);
+                    }
                     let section_body_offset = section_len_last_byte_offset + 1;
                     match wasm_section {
                         WasmSection::Type => {

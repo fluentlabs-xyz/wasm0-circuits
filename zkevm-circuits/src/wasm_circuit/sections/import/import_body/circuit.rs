@@ -831,6 +831,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
 
     pub fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
         let func_count = self.config.shared_state.borrow().func_count;
+        debug!("assign at offset {} func_count val {}", offset, func_count);
         region.assign_advice(
             || format!("assign 'func_count' val {} at {}", func_count, offset),
             self.config.func_count,
