@@ -11,4 +11,5 @@ pub enum AssignType {
 #[derive(Copy, Clone, Debug, Default)]
 pub struct SharedState {
     pub dynamic_indexes_offset: usize,
+    pub func_count: usize,
 }

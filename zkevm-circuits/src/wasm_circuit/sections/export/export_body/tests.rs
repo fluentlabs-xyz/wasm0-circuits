@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -13,6 +14,7 @@ use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::export::export_body::circuit::WasmExportSectionBodyChip;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -39,6 +41,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
+        let func_count = cs.advice_column();
+
+        let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
@@ -50,6 +55,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
+            func_count,
+            shared_state,
         );
         let wasm_export_section_body_chip = WasmExportSectionBodyChip::construct(wasm_export_section_body_config);
         let test_circuit_config = TestCircuitConfig {

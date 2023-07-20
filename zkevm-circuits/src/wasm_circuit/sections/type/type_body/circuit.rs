@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -5,7 +6,7 @@ use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::Fixed;
+use halo2_proofs::plonk::{Advice, Fixed};
 use halo2_proofs::poly::Rotation;
 use itertools::Itertools;
 use log::debug;
@@ -35,9 +36,13 @@ pub struct WasmTypeSectionBodyConfig<F> {
     pub is_items_count: Column<Fixed>,
     pub is_body: Column<Fixed>,
 
+    pub func_count: Column<Advice>,
+
     pub wasm_type_section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
     pub leb128_chip: Rc<LEB128Chip<F>>,
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
+
+    shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
 }
@@ -67,6 +72,8 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
         wasm_type_section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
+        func_count: Column<Advice>,
+        shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmTypeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -143,11 +150,24 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
             is_body,
             leb128_chip,
             wasm_type_section_item_chip,
-            _marker: PhantomData,
             dynamic_indexes_chip,
+            func_count,
+            shared_state,
+
+            _marker: PhantomData,
         };
 
         config
+    }
+
+    pub fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
+        let func_count = self.config.shared_state.borrow().func_count;
+        region.assign_advice(
+            || format!("assign 'func_count' val {} at {}", func_count, offset),
+            self.config.func_count,
+            offset,
+            || Value::known(F::from(func_count as u64)),
+        ).unwrap();
     }
 
     pub fn assign(
@@ -168,6 +188,13 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
             assign_value,
             wasm_bytecode.bytes[offset],
         );
+        region.assign_fixed(
+            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
+            self.config.q_enable,
+            offset,
+            || Value::known(F::from(q_enable as u64)),
+        ).unwrap();
+        self.assign_func_count(region, offset);
         if [
             AssignType::IsBodyItemsCount,
         ].contains(&assign_type) {
@@ -179,12 +206,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
                 p,
             );
         }
-        region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
-            self.config.q_enable,
-            offset,
-            || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
+
         match assign_type {
             AssignType::QFirst => {
                 region.assign_fixed(
@@ -269,7 +291,6 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset_start: usize,
-        shared_state: &mut SharedState,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
         let (body_items_count, body_items_count_leb_len) = self.markup_leb_section(
@@ -281,12 +302,13 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         self.assign(region, &wasm_bytecode, offset, AssignType::QFirst, 1, None);
         offset += body_items_count_leb_len;
 
-        shared_state.dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
+        let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
-            shared_state.dynamic_indexes_offset,
+            self.config.shared_state.borrow().dynamic_indexes_offset,
             body_items_count as usize,
-            Tag::TypeSectionTypeIndex,
+            Tag::TypeIndex,
         ).unwrap();
+        self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;
 
         for _body_item_index in 0..body_items_count {
             let next_body_item_offset = self.config.wasm_type_section_item_chip.assign_auto(

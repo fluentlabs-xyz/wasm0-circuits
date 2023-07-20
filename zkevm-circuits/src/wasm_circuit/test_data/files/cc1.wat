@@ -22,6 +22,12 @@
     i32.const 1
     i32.const 2
     i32.add
+    call $dummy
+    drop)
+  (func $dummy (type 1)
+    i32.const 1
+    i32.const 2
+    i32.add
     drop)
   (memory (;0;) 1)
   (export "main" (func 0))

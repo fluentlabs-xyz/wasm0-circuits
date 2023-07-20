@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -25,6 +26,7 @@ use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::sections::import::import_body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
+use crate::wasm_circuit::types::SharedState;
 use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 
 #[derive(Debug, Clone)]
@@ -55,6 +57,10 @@ pub struct WasmImportSectionBodyConfig<F: Field> {
     pub limit_type: Column<Advice>,
     pub limit_type_chip: Rc<BinaryNumberChip<F, LimitType, 8>>,
 
+    pub func_count: Column<Advice>,
+
+    shared_state: Rc<RefCell<SharedState>>,
+
     _marker: PhantomData<F>,
 }
 
@@ -83,6 +89,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
         utf8_chip: Rc<UTF8Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
+        func_count: Column<Advice>,
+        shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmImportSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -812,10 +820,23 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             importdesc_type_chip,
             limit_type,
             limit_type_chip,
+            func_count,
+            shared_state,
+
             _marker: PhantomData,
         };
 
         config
+    }
+
+    pub fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
+        let func_count = self.config.shared_state.borrow().func_count;
+        region.assign_advice(
+            || format!("assign 'func_count' val {} at {}", func_count, offset),
+            self.config.func_count,
+            offset,
+            || Value::known(F::from(func_count as u64)),
+        ).unwrap();
     }
 
     pub fn assign(
@@ -842,6 +863,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
+        self.assign_func_count(region, offset);
+
         assign_types.iter().for_each(|assign_type| {
             if [
                 AssignType::IsItemsCount,
@@ -1151,8 +1174,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             offset += import_name_len as usize;
 
             // is_importdesc_type{1}
-            let import_desc_type_val = wasm_bytecode.bytes[offset];
-            let import_desc_type: ImportDescType = import_desc_type_val.try_into().unwrap();
+            let importdesc_type_val = wasm_bytecode.bytes[offset];
+            let importdesc_type: ImportDescType = importdesc_type_val.try_into().unwrap();
+            let importdesc_type_val = importdesc_type_val as u64;
+            if importdesc_type == ImportDescType::Typeidx { self.config.shared_state.borrow_mut().func_count += 1; }
             self.assign(
                 region,
                 wasm_bytecode,
@@ -1166,14 +1191,15 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 &wasm_bytecode,
                 offset,
                 &[AssignType::ImportdescType],
-                import_desc_type_val as u64,
+                importdesc_type_val,
                 None,
             );
-            self.config.importdesc_type_chip.assign(region, offset, &import_desc_type).unwrap();
+            self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
+            // TODO
             offset += 1;
 
             // is_importdesc_val+
-            match import_desc_type {
+            match importdesc_type {
                 ImportDescType::Typeidx => {
                     let (_importdesc_val, importdesc_val_leb_len) = self.markup_leb_section(
                         region,
@@ -1187,10 +1213,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                             &wasm_bytecode,
                             offset,
                             &[AssignType::ImportdescType],
-                            import_desc_type_val as u64,
+                            importdesc_type_val,
                             None,
                         );
-                        self.config.importdesc_type_chip.assign(region, offset, &import_desc_type).unwrap();
+                        self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
                     }
                     offset += importdesc_val_leb_len;
                 }
@@ -1207,10 +1233,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                             &wasm_bytecode,
                             offset,
                             &[AssignType::ImportdescType],
-                            import_desc_type_val as u64,
+                            importdesc_type_val,
                             None,
                         );
-                        self.config.importdesc_type_chip.assign(region, offset, &import_desc_type).unwrap();
+                        self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
                     }
                     offset += importdesc_val_leb_len;
 
@@ -1228,10 +1254,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                             &wasm_bytecode,
                             offset,
                             &[AssignType::ImportdescType],
-                            import_desc_type_val as u64,
+                            importdesc_type_val,
                             None,
                         );
-                        self.config.importdesc_type_chip.assign(region, offset, &import_desc_type).unwrap();
+                        self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
                     }
                     offset += 1;
                 }

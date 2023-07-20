@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -15,6 +16,7 @@ use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::import::import_body::circuit::WasmImportSectionBodyChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
+use crate::wasm_circuit::types::SharedState;
 use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
 
 #[derive(Default)]
@@ -43,6 +45,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
+        let func_count = cs.advice_column();
+
+        let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
         let range_table_config_0_128 = Rc::new(RangeTableConfig::configure(cs));
 
@@ -68,6 +73,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             leb128_chip.clone(),
             utf8_chip.clone(),
             dynamic_indexes_chip.clone(),
+            func_count,
+            shared_state.clone(),
         );
         let wasm_import_section_body_chip = WasmImportSectionBodyChip::construct(wasm_import_section_body_config);
         let test_circuit_config = TestCircuitConfig {

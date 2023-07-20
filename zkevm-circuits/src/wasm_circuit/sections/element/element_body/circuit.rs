@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -23,6 +24,7 @@ use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::element::element_body::consts::ElementType;
 use crate::wasm_circuit::sections::element::element_body::types::AssignType;
 use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
 pub struct WasmElementSectionBodyConfig<F: Field> {
@@ -44,6 +46,10 @@ pub struct WasmElementSectionBodyConfig<F: Field> {
     pub elem_type_chip: Rc<BinaryNumberChip<F, ElementType, 8>>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
+
+    pub func_count: Column<Advice>,
+
+    shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
 }
@@ -71,6 +77,8 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
+        func_count: Column<Advice>,
+        shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmElementSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -368,10 +376,23 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             elem_type,
             elem_type_chip,
             leb128_chip,
+            func_count,
+            shared_state,
+
             _marker: PhantomData,
         };
 
         config
+    }
+
+    pub fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
+        let func_count = self.config.shared_state.borrow().func_count;
+        region.assign_advice(
+            || format!("assign 'func_count' val {} at {}", func_count, offset),
+            self.config.func_count,
+            offset,
+            || Value::known(F::from(func_count as u64)),
+        ).unwrap();
     }
 
     pub fn assign(
@@ -399,6 +420,8 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
+        self.assign_func_count(region, offset);
+
         assign_types.iter().for_each(|&assign_type| {
             if [
                 AssignType::IsItemsCount,

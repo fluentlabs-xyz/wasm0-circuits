@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -12,6 +13,7 @@ use eth_types::{Field, Hash, ToWord};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::circuit::{WasmChip, WasmConfig};
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Default)]
 struct TestCircuit<F> {
@@ -27,8 +29,9 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
     fn without_witnesses(&self) -> Self { Self::default() }
 
     fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
+        let shared_state = Rc::new(RefCell::new(SharedState::default()));
         let wasm_bytecode_table = WasmBytecodeTable::construct(cs);
-        let config = WasmChip::<F>::configure(cs, Rc::new(wasm_bytecode_table));
+        let config = WasmChip::<F>::configure(cs, Rc::new(wasm_bytecode_table), shared_state);
 
         config
     }

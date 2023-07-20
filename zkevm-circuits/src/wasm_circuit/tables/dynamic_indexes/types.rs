@@ -14,20 +14,20 @@ pub enum AssignType {
 #[derive(Default, Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tag {
     #[default]
-    CodeSectionFuncIndex,
-    TypeSectionTypeIndex,
-    TableSectionTableIndex,
-    MemorySectionMemIndex,
-    GlobalSectionGlobalIndex,
-    DataSectionDataIndex,
+    FuncIndex,
+    TypeIndex,
+    TableIndex,
+    MemIndex,
+    GlobalIndex,
+    DataIndex,
 }
 pub const TAG_VALUES: &[Tag] = &[
-    Tag::CodeSectionFuncIndex,
-    Tag::TypeSectionTypeIndex,
-    Tag::TableSectionTableIndex,
-    Tag::MemorySectionMemIndex,
-    Tag::GlobalSectionGlobalIndex,
-    Tag::DataSectionDataIndex,
+    Tag::FuncIndex,
+    Tag::TypeIndex,
+    Tag::TableIndex,
+    Tag::MemIndex,
+    Tag::GlobalIndex,
+    Tag::DataIndex,
 ];
 impl<F: FieldExt> Expr<F> for Tag {
     fn expr(&self) -> Expression<F> {
