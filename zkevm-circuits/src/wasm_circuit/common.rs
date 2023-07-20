@@ -1,10 +1,33 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+use halo2_proofs::circuit::{Region, Value};
+use halo2_proofs::plonk::{Advice, Column};
+use log::debug;
 use num_traits::checked_pow;
 use wabt::wat2wasm;
 use wasmbin::io::{DecodeError, Encode};
 use wasmbin::Module;
 use wasmbin::sections::Kind;
 use wasmbin::visit::{Visit, VisitError};
+use eth_types::Field;
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_last_byte_offset;
+use crate::wasm_circuit::types::SharedState;
+
+pub trait WasmChipTrait<F: Field> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>>;
+    fn func_count_col(&self) -> Column<Advice>;
+
+    fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
+        let func_count = self.shared_state().borrow().func_count;
+        debug!("assign at offset {} func_count val {}", offset, func_count);
+        region.assign_advice(
+            || format!("assign 'func_count' val {} at {}", func_count, offset),
+            self.func_count_col(),
+            offset,
+            || Value::known(F::from(func_count as u64)),
+        ).unwrap();
+    }
+}
 
 /// Returns section len and leb bytes count representing section len
 pub fn wasm_compute_section_len(wasm_bytes: &[u8], len_start_index: usize) -> Result<(usize, u8), ()> {

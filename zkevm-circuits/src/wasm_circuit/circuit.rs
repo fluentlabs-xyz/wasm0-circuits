@@ -19,7 +19,7 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::table::PoseidonTable;
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::wasm_compute_section_len;
+use crate::wasm_circuit::common::{wasm_compute_section_len, WasmChipTrait};
 use crate::wasm_circuit::consts::{ControlInstruction, ExportDescType, ImportDescType, SECTION_ID_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -98,6 +98,16 @@ impl<F: Field> WasmConfig<F>
 pub struct WasmChip<F: Field> {
     pub config: WasmConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmChipTrait<F> for WasmChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
+        self.config.shared_state.clone()
+    }
+
+    fn func_count_col(&self) -> Column<Advice> {
+        self.config.func_count
+    }
 }
 
 impl<F: Field> WasmChip<F>
@@ -966,17 +976,6 @@ impl<F: Field> WasmChip<F>
         }
 
         (sn, last_byte_rel_offset + 1)
-    }
-
-    pub fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
-        let func_count = self.config.shared_state.borrow().func_count;
-        debug!("assign at offset {} func_count val {}", offset, func_count);
-        region.assign_advice(
-            || format!("assign 'func_count' val {} at {}", func_count, offset),
-            self.config.func_count,
-            offset,
-            || Value::known(F::from(func_count as u64)),
-        ).unwrap();
     }
 
     pub fn assign(

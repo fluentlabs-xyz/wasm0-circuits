@@ -18,6 +18,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::common::WasmChipTrait;
 use crate::wasm_circuit::consts::{CONTROL_INSTRUCTION_BLOCK, CONTROL_INSTRUCTION_WITH_LEB_ARG, CONTROL_INSTRUCTION_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTION_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, VARIABLE_INSTRUCTION_WITH_LEB_ARG, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -70,6 +71,16 @@ impl<'a, F: Field> WasmCodeSectionBodyConfig<F>
 pub struct WasmCodeSectionBodyChip<F: Field> {
     pub config: WasmCodeSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmChipTrait<F> for WasmCodeSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
+        self.config.shared_state.clone()
+    }
+
+    fn func_count_col(&self) -> Column<Advice> {
+        self.config.func_count
+    }
 }
 
 impl<F: Field> WasmCodeSectionBodyChip<F>
@@ -728,17 +739,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         };
 
         config
-    }
-
-    pub fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
-        let func_count = self.config.shared_state.borrow().func_count;
-        debug!("assign at offset {} func_count val {}", offset, func_count);
-        region.assign_advice(
-            || format!("assign 'func_count' val {} at {}", func_count, offset),
-            self.config.func_count,
-            offset,
-            || Value::known(F::from(func_count as u64)),
-        ).unwrap();
     }
 
     pub fn assign(

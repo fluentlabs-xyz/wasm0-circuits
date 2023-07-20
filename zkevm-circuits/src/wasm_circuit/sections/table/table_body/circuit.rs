@@ -18,6 +18,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::common::WasmChipTrait;
 use crate::wasm_circuit::consts::{LimitType, REF_TYPE_VALUES, RefType};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -59,6 +60,16 @@ impl<'a, F: Field> WasmTableSectionBodyConfig<F>
 pub struct WasmTableSectionBodyChip<F: Field> {
     pub config: WasmTableSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmChipTrait<F> for WasmTableSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
+        self.config.shared_state.clone()
+    }
+
+    fn func_count_col(&self) -> Column<Advice> {
+        self.config.func_count
+    }
 }
 
 impl<F: Field> WasmTableSectionBodyChip<F>
@@ -297,17 +308,6 @@ impl<F: Field> WasmTableSectionBodyChip<F>
         };
 
         config
-    }
-
-    pub fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
-        let func_count = self.config.shared_state.borrow().func_count;
-        debug!("assign at offset {} func_count val {}", offset, func_count);
-        region.assign_advice(
-            || format!("assign 'func_count' val {} at {}", func_count, offset),
-            self.config.func_count,
-            offset,
-            || Value::known(F::from(func_count as u64)),
-        ).unwrap();
     }
 
     pub fn assign(
