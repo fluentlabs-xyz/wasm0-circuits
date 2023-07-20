@@ -1322,6 +1322,30 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         );
     }
 
+    pub(crate) fn table_lookup(
+        &mut self,
+        is_write: Expression<F>,
+        table_address: Expression<F>,
+        byte: Expression<F>,
+        call_id: Option<Expression<F>>,
+    ) {
+        self.rw_lookup(
+            "Table lookup",
+            is_write,
+            RwTableTag::Table,
+            RwValues::new(
+                call_id.unwrap_or_else(|| self.curr.state.call_id.expr()),
+                table_address,
+                0.expr(),
+                0.expr(),
+                byte,
+                0.expr(),
+                0.expr(),
+                0.expr(),
+            ),
+        );
+    }
+
     pub(crate) fn tx_log_lookup(
         &mut self,
         tx_id: Expression<F>,
