@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -43,6 +44,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
+        let func_count = cs.advice_column();
+
+        let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
         let config = DynamicIndexesChip::configure(cs);
         let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(config));
@@ -56,6 +60,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
+            func_count,
+            shared_state.clone(),
         );
         let wasm_type_section_item_chip = Rc::new(WasmTypeSectionItemChip::construct(wasm_type_section_item_config));
         let wasm_type_section_body_config = WasmTypeSectionBodyChip::configure(
@@ -64,6 +70,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             leb128_chip.clone(),
             wasm_type_section_item_chip.clone(),
             dynamic_indexes_chip.clone(),
+            func_count,
+            shared_state.clone(),
         );
         let wasm_type_section_body_chip = Rc::new(WasmTypeSectionBodyChip::construct(wasm_type_section_body_config));
         let test_circuit_config = TestCircuitConfig {
@@ -86,14 +94,12 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         layouter.assign_region(
             || "wasm_type_section_body region",
             |mut region| {
-                let mut shared_state = SharedState::default();
                 let mut offset_start = self.offset_start;
                 while offset_start < wasm_bytecode.bytes.len() {
                     offset_start = config.body_chip.assign_auto(
                         &mut region,
                         &wasm_bytecode,
                         offset_start,
-                        &mut shared_state,
                     ).unwrap();
                 }
 
@@ -111,8 +117,8 @@ mod wasm_type_section_body_tests {
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use wasmbin::sections::Kind;
-    use bus_mapping::state_db::CodeDB;
 
+    use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
 
     use crate::wasm_circuit::common::wat_extract_section_body_bytecode;
@@ -134,7 +140,7 @@ mod wasm_type_section_body_tests {
     #[test]
     pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/br_breaks_1.wat",
+            "./src/wasm_circuit/test_data/files/cc1.wat",
             Kind::Type,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
@@ -151,7 +157,7 @@ mod wasm_type_section_body_tests {
     #[test]
     pub fn file2_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
+            "./src/wasm_circuit/test_data/files/cc2.wat",
             Kind::Type,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);

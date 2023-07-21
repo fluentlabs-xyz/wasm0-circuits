@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -5,7 +6,7 @@ use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::Fixed;
+use halo2_proofs::plonk::{Advice, Fixed};
 use halo2_proofs::poly::Rotation;
 use itertools::Itertools;
 use log::debug;
@@ -17,7 +18,8 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::consts::{CONTROL_INSTRUCTIONS_BLOCK, CONTROL_INSTRUCTIONS_WITH_LEB_ARG, CONTROL_INSTRUCTIONS_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTIONS_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, VARIABLE_INSTRUCTIONS_WITH_LEB_ARG, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
+use crate::wasm_circuit::common::WasmChipTrait;
+use crate::wasm_circuit::consts::{CONTROL_INSTRUCTION_BLOCK, CONTROL_INSTRUCTION_WITH_LEB_ARG, CONTROL_INSTRUCTION_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTION_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, VARIABLE_INSTRUCTION_WITH_LEB_ARG, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -25,7 +27,6 @@ use crate::wasm_circuit::sections::code::code_body::types::AssignType;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
-use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
@@ -56,6 +57,10 @@ pub struct WasmCodeSectionBodyConfig<F: Field> {
     pub parametric_instruction_chip: Rc<BinaryNumberChip<F, ParametricInstruction, 8>>,
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
 
+    pub func_count: Column<Advice>,
+
+    shared_state: Rc<RefCell<SharedState>>,
+
     _marker: PhantomData<F>,
 }
 
@@ -66,6 +71,16 @@ impl<'a, F: Field> WasmCodeSectionBodyConfig<F>
 pub struct WasmCodeSectionBodyChip<F: Field> {
     pub config: WasmCodeSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmChipTrait<F> for WasmCodeSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
+        self.config.shared_state.clone()
+    }
+
+    fn func_count_col(&self) -> Column<Advice> {
+        self.config.func_count
+    }
 }
 
 impl<F: Field> WasmCodeSectionBodyChip<F>
@@ -83,6 +98,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
+        func_count: Column<Advice>,
+        shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmCodeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -130,19 +147,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             Some(bytecode_table.value.into()),
         );
         let variable_instruction_chip = Rc::new(BinaryNumberChip::construct(config));
-
-        dynamic_indexes_chip.lookup_args(
-            "code section has valid setup for func indexes",
-            cs,
-            |vc| {
-                LookupArgsParams {
-                    cond: vc.query_fixed(is_funcs_count, Rotation::cur()),
-                    index: vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
-                    tag: Tag::CodeSectionFuncIndex.expr(),
-                    is_terminator: true.expr(),
-                }
-            }
-        );
 
         cs.create_gate("WasmCodeSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -204,31 +208,31 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     }).collect_vec()
             );
             let is_numeric_opcode_with_leb_param_expr = or::expr(
-                NUMERIC_INSTRUCTIONS_WITH_LEB_ARG.iter()
+                NUMERIC_INSTRUCTION_WITH_LEB_ARG.iter()
                     .map(|v| {
                         numeric_instructions_chip.config.value_equals(*v, Rotation::cur())(vc)
                     }).collect_vec()
             );
             let is_variable_opcode_with_leb_param_expr = or::expr(
-                VARIABLE_INSTRUCTIONS_WITH_LEB_ARG.iter()
+                VARIABLE_INSTRUCTION_WITH_LEB_ARG.iter()
                     .map(|v| {
                         variable_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
                     }).collect_vec()
             );
             let is_control_opcode_without_params_expr = or::expr(
-                CONTROL_INSTRUCTIONS_WITHOUT_ARGS.iter()
+                CONTROL_INSTRUCTION_WITHOUT_ARGS.iter()
                     .map(|v| {
                         control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
                     }).collect_vec()
             );
             let is_control_opcode_with_leb_param_expr = or::expr(
-                CONTROL_INSTRUCTIONS_WITH_LEB_ARG.iter()
+                CONTROL_INSTRUCTION_WITH_LEB_ARG.iter()
                     .map(|v| {
                         control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
                     }).collect_vec()
             );
             let is_control_opcode_block_expr = or::expr(
-                CONTROL_INSTRUCTIONS_BLOCK.iter()
+                CONTROL_INSTRUCTION_BLOCK.iter()
                     .map(|v| {
                         control_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
                     }).collect_vec()
@@ -338,7 +342,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     bcb.require_equal(
                         "is_variable_instruction(1) => opcode is valid",
                         or::expr(
-                            VARIABLE_INSTRUCTIONS_WITH_LEB_ARG.iter()
+                            VARIABLE_INSTRUCTION_WITH_LEB_ARG.iter()
                                 .map(|v| {
                                     variable_instruction_chip.config.value_equals(*v, Rotation::cur())(vc)
                                 }).collect_vec()
@@ -473,8 +477,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 is_numeric_instruction_expr.clone(),
                 |bcb| {
                     let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
-                    let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
-                    let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
                     let is_variable_instruction_next_expr = vc.query_fixed(is_variable_instruction, Rotation::next());
@@ -503,9 +505,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             cb.condition(
                 is_variable_instruction_expr.clone(),
                 |bcb| {
-                    let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
                     let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
-                    let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
                     let is_variable_instruction_next_expr = vc.query_fixed(is_variable_instruction, Rotation::next());
@@ -537,8 +537,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     not::expr(is_control_opcode_block_expr.clone()),
                 ]),
                 |bcb| {
-                    // let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
-                    // let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
                     let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
@@ -734,6 +732,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             control_instruction_chip,
             parametric_instruction_chip,
             dynamic_indexes_chip,
+            func_count,
+            shared_state,
+
             _marker: PhantomData,
         };
 
@@ -758,6 +759,14 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             assign_value,
             wasm_bytecode.bytes[offset],
         );
+        region.assign_fixed(
+            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
+            self.config.q_enable,
+            offset,
+            || Value::known(F::from(q_enable as u64)),
+        ).unwrap();
+        self.assign_func_count(region, offset);
+
         if [
             AssignType::IsFuncsCount,
             AssignType::IsFuncBodyLen,
@@ -775,12 +784,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 p,
             );
         }
-        region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
-            self.config.q_enable,
-            offset,
-            || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
         match assign_type {
             AssignType::QFirst => {
                 region.assign_fixed(
@@ -1004,24 +1007,24 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
         if let Ok(opcode) = <u8 as TryInto<NumericInstruction>>::try_into(opcode) {
             assign_type = AssignType::IsNumericInstruction;
-            if NUMERIC_INSTRUCTIONS_WITH_LEB_ARG.contains(&opcode) {
+            if NUMERIC_INSTRUCTION_WITH_LEB_ARG.contains(&opcode) {
                 assign_type_argument = AssignType::IsNumericInstructionLebArg;
             }
         }
 
         if let Ok(opcode) = <u8 as TryInto<VariableInstruction>>::try_into(opcode) {
             assign_type = AssignType::IsVariableInstruction;
-            if VARIABLE_INSTRUCTIONS_WITH_LEB_ARG.contains(&opcode) {
+            if VARIABLE_INSTRUCTION_WITH_LEB_ARG.contains(&opcode) {
                 assign_type_argument = AssignType::IsVariableInstructionLebArg;
             }
         }
 
         if let Ok(opcode) = <u8 as TryInto<ControlInstruction>>::try_into(opcode) {
             assign_type = AssignType::IsControlInstruction;
-            if CONTROL_INSTRUCTIONS_BLOCK.contains(&opcode) {
+            if CONTROL_INSTRUCTION_BLOCK.contains(&opcode) {
                 assign_type_argument = AssignType::IsBlocktypeDelimiter
             }
-            if CONTROL_INSTRUCTIONS_WITH_LEB_ARG.contains(&opcode) {
+            if CONTROL_INSTRUCTION_WITH_LEB_ARG.contains(&opcode) {
                 assign_type_argument = AssignType::IsControlInstructionLebArg
             }
         }
@@ -1030,7 +1033,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             assign_type = AssignType::IsParametricInstruction;
         }
 
-        if opcode == WASM_BLOCK_END as u8 {
+        if opcode == WASM_BLOCK_END {
             assign_type = AssignType::IsBlockEnd;
         };
 
@@ -1093,7 +1096,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset_start: usize,
-        shared_state: &mut SharedState,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
@@ -1104,15 +1106,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             offset,
             AssignType::IsFuncsCount,
         );
+        self.config.shared_state.borrow_mut().func_count += funcs_count as usize;
         self.assign(region, &wasm_bytecode, offset, AssignType::QFirst, 1, None);
         offset += funcs_count_leb_len;
-
-        shared_state.dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
-            region,
-            shared_state.dynamic_indexes_offset,
-            funcs_count as usize,
-            Tag::CodeSectionFuncIndex,
-        ).unwrap();
 
         for _func_index in 0..funcs_count {
             // is_func_body_len+

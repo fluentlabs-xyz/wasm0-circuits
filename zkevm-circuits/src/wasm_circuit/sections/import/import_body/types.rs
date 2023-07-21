@@ -5,6 +5,7 @@ pub enum AssignType {
 
     LimitType,
 
+    IsRefType,
     IsLimitType,
     IsLimitMin,
     IsLimitMax,

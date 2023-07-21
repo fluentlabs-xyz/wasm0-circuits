@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -16,6 +17,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::common::WasmChipTrait;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -23,6 +25,7 @@ use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::element::element_body::consts::ElementType;
 use crate::wasm_circuit::sections::element::element_body::types::AssignType;
 use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
 pub struct WasmElementSectionBodyConfig<F: Field> {
@@ -45,6 +48,10 @@ pub struct WasmElementSectionBodyConfig<F: Field> {
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
 
+    pub func_count: Column<Advice>,
+
+    shared_state: Rc<RefCell<SharedState>>,
+
     _marker: PhantomData<F>,
 }
 
@@ -55,6 +62,16 @@ impl<'a, F: Field> WasmElementSectionBodyConfig<F>
 pub struct WasmElementSectionBodyChip<F: Field> {
     pub config: WasmElementSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmChipTrait<F> for WasmElementSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
+        self.config.shared_state.clone()
+    }
+
+    fn func_count_col(&self) -> Column<Advice> {
+        self.config.func_count
+    }
 }
 
 impl<F: Field> WasmElementSectionBodyChip<F>
@@ -71,6 +88,8 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
+        func_count: Column<Advice>,
+        shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmElementSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -368,6 +387,9 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             elem_type,
             elem_type_chip,
             leb128_chip,
+            func_count,
+            shared_state,
+
             _marker: PhantomData,
         };
 
@@ -399,6 +421,8 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
+        self.assign_func_count(region, offset);
+
         assign_types.iter().for_each(|&assign_type| {
             if [
                 AssignType::IsItemsCount,

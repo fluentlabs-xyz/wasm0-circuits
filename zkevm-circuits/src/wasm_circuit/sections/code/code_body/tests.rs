@@ -1,11 +1,15 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
+
 use eth_types::{Field, Hash, ToWord};
+
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -38,6 +42,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
+        let func_count = cs.advice_column();
+
+        let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
         let dynamic_indexes_config = DynamicIndexesChip::configure(cs);
         let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(dynamic_indexes_config));
@@ -53,6 +60,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
             dynamic_indexes_chip.clone(),
+            func_count,
+            shared_state.clone(),
         );
         let wasm_code_section_body_chip = WasmCodeSectionBodyChip::construct(wasm_code_section_body_config);
         let test_circuit_config = TestCircuitConfig {
@@ -74,14 +83,12 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         layouter.assign_region(
             || "wasm_code_section_body region",
             |mut region| {
-                let mut shared_state = SharedState::default();
                 let mut offset_start = self.offset_start;
                 while offset_start < wasm_bytecode.bytes.len() {
                     offset_start = config.body_chip.assign_auto(
                         &mut region,
                         &wasm_bytecode,
                         offset_start,
-                        &mut shared_state,
                     ).unwrap();
                 }
 
@@ -99,8 +106,10 @@ mod wasm_code_section_body_tests {
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use wasmbin::sections::Kind;
+
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
+
     use crate::wasm_circuit::common::wat_extract_section_body_bytecode;
     use crate::wasm_circuit::sections::code::code_body::tests::TestCircuit;
 
@@ -120,7 +129,7 @@ mod wasm_code_section_body_tests {
     #[test]
     pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/br_breaks_1.wat",
+            "./src/wasm_circuit/test_data/files/cc1.wat",
             Kind::Code,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
@@ -137,7 +146,24 @@ mod wasm_code_section_body_tests {
     #[test]
     pub fn file2_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
+            "./src/wasm_circuit/test_data/files/cc2.wat",
+            Kind::Code,
+        );
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
+    }
+
+    #[test]
+    pub fn file3_ok() {
+        let bytecode = wat_extract_section_body_bytecode(
+            "./src/wasm_circuit/test_data/files/cc3.wat",
             Kind::Code,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);

@@ -1,15 +1,20 @@
+use std::cell::RefCell;
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
+
 use eth_types::{Field, Hash, ToWord};
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::export::export_body::circuit::WasmExportSectionBodyChip;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -36,6 +41,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
+        let func_count = cs.advice_column();
+
+        let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
@@ -47,6 +55,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
+            func_count,
+            shared_state,
         );
         let wasm_export_section_body_chip = WasmExportSectionBodyChip::construct(wasm_export_section_body_config);
         let test_circuit_config = TestCircuitConfig {
@@ -91,8 +101,10 @@ mod wasm_export_section_body_tests {
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use wasmbin::sections::Kind;
+
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
+
     use crate::wasm_circuit::common::wat_extract_section_body_bytecode;
     use crate::wasm_circuit::sections::export::export_body::tests::TestCircuit;
 
@@ -112,7 +124,7 @@ mod wasm_export_section_body_tests {
     #[test]
     pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/br_breaks_1.wat",
+            "./src/wasm_circuit/test_data/files/cc1.wat",
             Kind::Export,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
@@ -129,7 +141,7 @@ mod wasm_export_section_body_tests {
     #[test]
     pub fn file2_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
+            "./src/wasm_circuit/test_data/files/cc2.wat",
             Kind::Export,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);

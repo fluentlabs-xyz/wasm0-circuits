@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -5,7 +6,7 @@ use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
 use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::Fixed;
+use halo2_proofs::plonk::{Advice, Fixed};
 use halo2_proofs::poly::Rotation;
 use log::debug;
 
@@ -15,12 +16,14 @@ use gadgets::util::{and, Expr, not};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::common::WasmChipTrait;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::sections::start::start_body::types::AssignType;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
 pub struct WasmStartSectionBodyConfig<F: Field> {
@@ -32,6 +35,10 @@ pub struct WasmStartSectionBodyConfig<F: Field> {
     pub bytecode_table: Rc<WasmBytecodeTable>,
     pub leb128_chip: Rc<LEB128Chip<F>>,
 
+    pub func_count: Column<Advice>,
+
+    shared_state: Rc<RefCell<SharedState>>,
+
     _marker: PhantomData<F>,
 }
 
@@ -42,6 +49,16 @@ impl<'a, F: Field> WasmStartSectionBodyConfig<F>
 pub struct WasmStartSectionBodyChip<F: Field> {
     pub config: WasmStartSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmChipTrait<F> for WasmStartSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
+        self.config.shared_state.clone()
+    }
+
+    fn func_count_col(&self) -> Column<Advice> {
+        self.config.func_count
+    }
 }
 
 impl<F: Field> WasmStartSectionBodyChip<F>
@@ -58,6 +75,8 @@ impl<F: Field> WasmStartSectionBodyChip<F>
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
+        func_count: Column<Advice>,
+        shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmStartSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -142,6 +161,9 @@ impl<F: Field> WasmStartSectionBodyChip<F>
             is_func_index,
             bytecode_table,
             leb128_chip,
+            func_count,
+            shared_state,
+
             _marker: PhantomData,
         };
 
@@ -166,6 +188,14 @@ impl<F: Field> WasmStartSectionBodyChip<F>
             assign_value,
             wasm_bytecode.bytes[offset],
         );
+        region.assign_fixed(
+            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
+            self.config.q_enable,
+            offset,
+            || Value::known(F::from(q_enable as u64)),
+        ).unwrap();
+        self.assign_func_count(region, offset);
+
         if assign_type == AssignType::IsFuncsIndex {
             let p = leb_params.unwrap();
             self.config.leb128_chip.assign(
@@ -175,12 +205,6 @@ impl<F: Field> WasmStartSectionBodyChip<F>
                 p,
             );
         }
-        region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
-            self.config.q_enable,
-            offset,
-            || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
         match assign_type {
             AssignType::QFirst => {
                 region.assign_fixed(

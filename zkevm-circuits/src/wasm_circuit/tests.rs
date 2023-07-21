@@ -1,14 +1,19 @@
+use std::cell::RefCell;
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
+
 use eth_types::{Field, Hash, ToWord};
-use crate::wasm_circuit::circuit::{WasmChip, WasmConfig};
+
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::circuit::{WasmChip, WasmConfig};
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Default)]
 struct TestCircuit<F> {
@@ -24,8 +29,9 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
     fn without_witnesses(&self) -> Self { Self::default() }
 
     fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
+        let shared_state = Rc::new(RefCell::new(SharedState::default()));
         let wasm_bytecode_table = WasmBytecodeTable::construct(cs);
-        let config = WasmChip::<F>::configure(cs, Rc::new(wasm_bytecode_table));
+        let config = WasmChip::<F>::configure(cs, Rc::new(wasm_bytecode_table), shared_state);
 
         config
     }
@@ -43,6 +49,8 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         layouter.assign_region(
             || "wasm_chip region",
             |mut region| {
+                // TODO find a better way to fix problem with shared state
+                wasm_chip.config.shared_state.borrow_mut().reset();
                 wasm_chip.assign_auto(
                     &mut region,
                     &wasm_bytecode,
@@ -59,14 +67,17 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
 #[cfg(test)]
 mod wasm_circuit_tests {
     use std::marker::PhantomData;
+
     use ethers_core::k256::pkcs8::der::Encode;
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use rand::Rng;
     use wabt::wat2wasm;
+
     use bus_mapping::state_db::CodeDB;
-    use eth_types::{Field};
+    use eth_types::Field;
+
     use crate::wasm_circuit::tests::TestCircuit;
 
     pub fn get_different_random_byte_val(old_byte_val: u8) -> u8 {
@@ -87,8 +98,8 @@ mod wasm_circuit_tests {
     }
 
     #[test]
-    pub fn file1_succeeds() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
+    pub fn file1_ok() {
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
         let wasm_binary = wat2wasm(data).unwrap();
         debug!("wasm_binary.len: {}", wasm_binary.len());
@@ -103,28 +114,44 @@ mod wasm_circuit_tests {
             _marker: PhantomData,
         };
         self::test(circuit, true);
-        // invalid code_hash data
-        // {
-        //     let mut code_hash = code_hash.clone();
-        //     code_hash.as_mut()[28] = 0;
-        //     let circuit = TestCircuit::<Fr> {
-        //         bytes: wasm_binary.clone(),
-        //         code_hash,
-        //         _marker: PhantomData,
-        //     };
-        //     self::test(circuit, false);
-        // }
-        // // invalid bytecode data
-        // {
-        //     let mut wasm_binary = wasm_binary.clone();
-        //     wasm_binary[12] = 12;
-        //     let circuit = TestCircuit::<Fr> {
-        //         bytes: wasm_binary.clone(),
-        //         code_hash,
-        //         _marker: PhantomData,
-        //     };
-        //     self::test(circuit, false);
-        // }
+    }
+
+    #[test]
+    pub fn file2_ok() {
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
+        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+        let wasm_binary = wat2wasm(data).unwrap();
+        debug!("wasm_binary.len: {}", wasm_binary.len());
+        debug!("wasm_binary.len hex: {:x?}", wasm_binary.len());
+        debug!("wasm_binary last_index: {}", wasm_binary.len() - 1);
+        debug!("wasm_binary last_index hex: {:x?}", wasm_binary.len() - 1);
+        debug!("wasm_binary: {:x?}", wasm_binary);
+        let mut code_hash = CodeDB::hash(&wasm_binary);
+        let circuit = TestCircuit::<Fr> {
+            bytes: wasm_binary.clone(),
+            code_hash,
+            _marker: PhantomData,
+        };
+        self::test(circuit, true);
+    }
+
+    #[test]
+    pub fn file3_ok() {
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc3.wat";
+        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+        let wasm_binary = wat2wasm(data).unwrap();
+        debug!("wasm_binary.len: {}", wasm_binary.len());
+        debug!("wasm_binary.len hex: {:x?}", wasm_binary.len());
+        debug!("wasm_binary last_index: {}", wasm_binary.len() - 1);
+        debug!("wasm_binary last_index hex: {:x?}", wasm_binary.len() - 1);
+        debug!("wasm_binary: {:x?}", wasm_binary);
+        let mut code_hash = CodeDB::hash(&wasm_binary);
+        let circuit = TestCircuit::<Fr> {
+            bytes: wasm_binary.clone(),
+            code_hash,
+            _marker: PhantomData,
+        };
+        self::test(circuit, true);
     }
 
     /// for development only
@@ -142,6 +169,7 @@ mod wasm_circuit_tests {
             "\0asm",
             "main",
             "memory",
+            "table",
             "spectest",
             "env",
             "_evm_address",
@@ -156,49 +184,8 @@ mod wasm_circuit_tests {
     }
 
     #[test]
-    pub fn file2_succeeds() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
-        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
-        let wasm_binary = wat2wasm(data).unwrap();
-        debug!("wasm_binary.len: {}", wasm_binary.len());
-        debug!("wasm_binary.len hex: {:x?}", wasm_binary.len());
-        debug!("wasm_binary last_index: {}", wasm_binary.len() - 1);
-        debug!("wasm_binary last_index hex: {:x?}", wasm_binary.len() - 1);
-        debug!("wasm_binary: {:x?}", wasm_binary);
-        let mut code_hash = CodeDB::hash(&wasm_binary);
-        let circuit = TestCircuit::<Fr> {
-            bytes: wasm_binary.clone(),
-            code_hash,
-            _marker: PhantomData,
-        };
-        self::test(circuit, true);
-        // // invalid code_hash data
-        // {
-        //     let mut code_hash = code_hash.clone();
-        //     code_hash.as_mut()[28] = 0;
-        //     let circuit = TestCircuit::<Fr> {
-        //         bytes: wasm_binary.clone(),
-        //         code_hash,
-        //         _marker: PhantomData,
-        //     };
-        //     self::test(circuit, false);
-        // }
-        // // invalid bytecode data
-        // {
-        //     let mut wasm_binary = wasm_binary.clone();
-        //     wasm_binary[12] = 12;
-        //     let circuit = TestCircuit::<Fr> {
-        //         bytes: wasm_binary.clone(),
-        //         code_hash,
-        //         _marker: PhantomData,
-        //     };
-        //     self::test(circuit, false);
-        // }
-    }
-
-    #[test]
     pub fn bad_magic_prefix_fails() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
         let mut wasm_binary = wat2wasm(data).unwrap();
         for i in 0..4 {
@@ -227,7 +214,7 @@ mod wasm_circuit_tests {
     #[ignore] // TODO some problems after new module integration
     #[test]
     pub fn test_wrong_sections_order_must_fail() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
         let wasm_binary = wat2wasm(data).unwrap();
         debug!("wasm_binary.len: {}", wasm_binary.len());

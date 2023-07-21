@@ -27,8 +27,8 @@ mod wasm_parsers_tests {
 
     #[test]
     pub fn test_print_parsed_file_contents() {
-        // let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
-        let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
+        // let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
         let wat: Vec<u8> = std::fs::read(path_to_file).unwrap();
         println!("SOURCE WAT: {}", std::str::from_utf8(wat.as_slice()).unwrap());
         let mut wasm_binary = wat2wasm(wat.clone()).unwrap();

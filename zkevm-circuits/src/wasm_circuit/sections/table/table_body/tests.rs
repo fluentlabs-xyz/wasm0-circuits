@@ -1,15 +1,18 @@
+use std::cell::RefCell;
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
+
 use eth_types::{Field, Hash, ToWord};
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
-use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
+
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::table::table_body::circuit::WasmTableSectionBodyChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::types::SharedState;
@@ -39,6 +42,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
+        let func_count = cs.advice_column();
+
+        let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
         let config = DynamicIndexesChip::configure(cs);
         let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(config));
@@ -54,6 +60,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
             dynamic_indexes_chip.clone(),
+            func_count,
+            shared_state.clone(),
         );
         let wasm_table_section_body_chip = Rc::new(WasmTableSectionBodyChip::construct(wasm_table_section_body_config));
 
@@ -76,14 +84,12 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         layouter.assign_region(
             || "wasm_table_section_body region",
             |mut region| {
-                let mut shared_state = SharedState::default();
                 let mut offset_start = self.offset_start;
                 while offset_start < wasm_bytecode.bytes.len() {
                     offset_start = config.body_chip.assign_auto(
                         &mut region,
                         &wasm_bytecode,
                         offset_start,
-                        &mut shared_state,
                     ).unwrap();
                 }
 
@@ -101,8 +107,10 @@ mod wasm_table_section_body_tests {
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use wasmbin::sections::Kind;
+
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
+
     use crate::wasm_circuit::common::wat_extract_section_body_bytecode;
     use crate::wasm_circuit::sections::table::table_body::tests::TestCircuit;
 
@@ -121,7 +129,7 @@ mod wasm_table_section_body_tests {
 
     #[test]
     pub fn file1_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/br_breaks_1.wat";
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
         let kind = Kind::Table;
         let bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
@@ -137,7 +145,7 @@ mod wasm_table_section_body_tests {
 
     #[test]
     pub fn file2_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
         let kind = Kind::Table;
         let bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);

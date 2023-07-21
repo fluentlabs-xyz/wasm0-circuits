@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -17,6 +18,7 @@ use gadgets::util::{Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::common::WasmChipTrait;
 use crate::wasm_circuit::consts::{NUM_TYPE_VALUES, NumType, WASM_BLOCK_END};
 use crate::wasm_circuit::consts::NumericInstruction::{I32Const, I64Const};
 use crate::wasm_circuit::error::Error;
@@ -48,6 +50,10 @@ pub struct WasmGlobalSectionBodyConfig<F: Field> {
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     pub global_type_chip: Rc<BinaryNumberChip<F, NumType, 8>>,
 
+    pub func_count: Column<Advice>,
+
+    shared_state: Rc<RefCell<SharedState>>,
+
     _marker: PhantomData<F>,
 }
 
@@ -58,6 +64,16 @@ impl<'a, F: Field> WasmGlobalSectionBodyConfig<F>
 pub struct WasmGlobalSectionBodyChip<F: Field> {
     pub config: WasmGlobalSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmChipTrait<F> for WasmGlobalSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
+        self.config.shared_state.clone()
+    }
+
+    fn func_count_col(&self) -> Column<Advice> {
+        self.config.func_count
+    }
 }
 
 impl<F: Field> WasmGlobalSectionBodyChip<F>
@@ -75,6 +91,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
+        func_count: Column<Advice>,
+        shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmGlobalSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -98,7 +116,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 LookupArgsParams {
                     cond: vc.query_fixed(is_items_count, Rotation::cur()),
                     index: vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
-                    tag: Tag::GlobalSectionGlobalIndex.expr(),
+                    tag: Tag::GlobalIndex.expr(),
                     is_terminator: true.expr(),
                 }
             }
@@ -326,6 +344,9 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             leb128_chip,
             dynamic_indexes_chip,
             global_type_chip,
+            func_count,
+            shared_state,
+
             _marker: PhantomData,
         };
 
@@ -356,6 +377,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
+        self.assign_func_count(region, offset);
+
         assign_types.iter().for_each(|assign_type| {
             if [
                 AssignType::IsItemsCount,
@@ -506,7 +529,6 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
         offset_start: usize,
-        shared_state: &mut SharedState,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
@@ -516,12 +538,13 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             offset,
             &[AssignType::IsItemsCount],
         );
-        shared_state.dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
+        let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
-            shared_state.dynamic_indexes_offset,
+            self.config.shared_state.borrow().dynamic_indexes_offset,
             items_count as usize,
-            Tag::GlobalSectionGlobalIndex,
+            Tag::GlobalIndex,
         ).unwrap();
+        self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;
         self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
         offset += items_count_leb_len;
 

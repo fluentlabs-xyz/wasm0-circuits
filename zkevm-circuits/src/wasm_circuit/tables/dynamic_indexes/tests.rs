@@ -54,7 +54,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
             |vc| LookupArgsParams {
                 cond: 1.expr(),
                 index: 1.expr(),
-                tag: Tag::CodeSectionFuncIndex.expr(),
+                tag: Tag::FuncIndex.expr(),
                 is_terminator: false.expr(),
             }
         );
@@ -64,7 +64,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
             |vc| LookupArgsParams {
                 cond: 1.expr(),
                 index: 5.expr(),
-                tag: Tag::CodeSectionFuncIndex.expr(),
+                tag: Tag::FuncIndex.expr(),
                 is_terminator: true.expr(),
             }
         );
@@ -123,7 +123,7 @@ mod dynamic_indexes_tests {
     pub fn ok() {
         let test_circuit = TestCircuit::<Fr> {
             len: 5,
-            tag: Tag::CodeSectionFuncIndex,
+            tag: Tag::FuncIndex,
             _marker: Default::default(),
         };
         test(test_circuit, true);

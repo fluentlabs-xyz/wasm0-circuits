@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -13,6 +14,7 @@ use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::function::function_body::circuit::WasmFunctionSectionBodyChip;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -39,6 +41,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
+        let func_count = cs.advice_column();
+
+        let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
@@ -50,6 +55,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
+            func_count,
+            shared_state.clone(),
         );
         let wasm_function_section_body_chip = WasmFunctionSectionBodyChip::construct(wasm_function_section_body_config);
         let test_circuit_config = TestCircuitConfig {
@@ -117,7 +124,24 @@ mod wasm_function_section_body_tests {
     #[test]
     pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat",
+            "./src/wasm_circuit/test_data/files/cc1.wat",
+            Kind::Function,
+        );
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
+    }
+
+    #[test]
+    pub fn file2_ok() {
+        let bytecode = wat_extract_section_body_bytecode(
+            "./src/wasm_circuit/test_data/files/cc2.wat",
             Kind::Function,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);

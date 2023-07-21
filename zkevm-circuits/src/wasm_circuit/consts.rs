@@ -11,6 +11,9 @@ pub static WASM_PREAMBLE_MAGIC_PREFIX: &'static str = "\0asm";
 pub static WASM_BLOCK_END: u8 = 0xB;
 pub static WASM_BLOCKTYPE_DELIMITER: i32 = 0x40;
 
+// TODO make it differ from custom section id (which is 0 too)
+pub const SECTION_ID_DEFAULT: i32 = 0;
+
 #[derive(Copy, Clone, Debug)]
 pub enum WasmSection {
     Custom = 0,
@@ -99,19 +102,35 @@ impl<F: FieldExt> Expr<F> for NumType {
 
 /// https://webassembly.github.io/spec/core/binary/types.html#reference-types
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum ReferenceType {
+pub enum RefType {
     FuncRef = 0x70,
     ExternRef = 0x71,
 }
-impl<F: FieldExt> Expr<F> for ReferenceType {
+pub const REF_TYPE_VALUES: &[RefType] = &[
+    RefType::FuncRef,
+    RefType::ExternRef,
+];
+impl TryFrom<u8> for RefType {
+    type Error = ();
+
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        for instr in REF_TYPE_VALUES {
+            if v == *instr as u8 { return Ok(*instr); }
+        }
+        Err(())
+    }
+}
+impl From<RefType> for usize {
+    fn from(t: RefType) -> Self {
+        t as usize
+    }
+}
+impl<F: FieldExt> Expr<F> for RefType {
     #[inline]
     fn expr(&self) -> Expression<F> {
         Expression::Constant(F::from(*self as u64))
     }
 }
-
-// TODO make it differ from custom section id (which is 0 too)
-pub const SECTION_ID_DEFAULT: i32 = 0;
 
 /// https://webassembly.github.io/spec/core/binary/types.html#limits
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
@@ -417,7 +436,7 @@ pub const NUMERIC_INSTRUCTIONS_WITHOUT_ARGS: &[NumericInstruction] = &[
     NumericInstruction::I32Add,
     NumericInstruction::I64Add,
 ];
-pub const NUMERIC_INSTRUCTIONS_WITH_LEB_ARG: &[NumericInstruction] = &[
+pub const NUMERIC_INSTRUCTION_WITH_LEB_ARG: &[NumericInstruction] = &[
     NumericInstruction::I32Const,
     NumericInstruction::I64Const,
 ];
@@ -425,7 +444,7 @@ impl TryFrom<u8> for NumericInstruction {
     type Error = ();
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
-        for instr in NUMERIC_INSTRUCTIONS_WITH_LEB_ARG {
+        for instr in NUMERIC_INSTRUCTION_WITH_LEB_ARG {
             if v == *instr as u8 { return Ok(*instr); }
         }
         for instr in NUMERIC_INSTRUCTIONS_WITHOUT_ARGS {
@@ -454,7 +473,7 @@ pub enum VariableInstruction {
     GlobalGet = 0x23,
     GlobalSet = 0x24,
 }
-pub const VARIABLE_INSTRUCTIONS_WITH_LEB_ARG: &[VariableInstruction] = &[
+pub const VARIABLE_INSTRUCTION_WITH_LEB_ARG: &[VariableInstruction] = &[
     VariableInstruction::LocalGet,
     VariableInstruction::LocalSet,
     VariableInstruction::LocalTee,
@@ -465,7 +484,7 @@ impl TryFrom<u8> for VariableInstruction {
     type Error = ();
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
-        for instr in VARIABLE_INSTRUCTIONS_WITH_LEB_ARG {
+        for instr in VARIABLE_INSTRUCTION_WITH_LEB_ARG {
             if v == *instr as u8 { return Ok(*instr); }
         }
         Err(())
@@ -498,14 +517,15 @@ pub enum ControlInstruction {
     Call = 0x10,
     CallIndirect = 0x11,
 }
-pub const CONTROL_INSTRUCTIONS_WITHOUT_ARGS: &[ControlInstruction] = &[
+pub const CONTROL_INSTRUCTION_WITHOUT_ARGS: &[ControlInstruction] = &[
     ControlInstruction::Unreachable,
 ];
-pub const CONTROL_INSTRUCTIONS_WITH_LEB_ARG: &[ControlInstruction] = &[
+pub const CONTROL_INSTRUCTION_WITH_LEB_ARG: &[ControlInstruction] = &[
     ControlInstruction::Br,
     ControlInstruction::BrIf,
+    ControlInstruction::Call,
 ];
-pub const CONTROL_INSTRUCTIONS_BLOCK: &[ControlInstruction] = &[
+pub const CONTROL_INSTRUCTION_BLOCK: &[ControlInstruction] = &[
     ControlInstruction::Block,
     ControlInstruction::Loop,
 ];
@@ -513,13 +533,13 @@ impl TryFrom<u8> for ControlInstruction {
     type Error = ();
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
-        for instr in CONTROL_INSTRUCTIONS_WITH_LEB_ARG {
+        for instr in CONTROL_INSTRUCTION_WITH_LEB_ARG {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        for instr in CONTROL_INSTRUCTIONS_WITHOUT_ARGS {
+        for instr in CONTROL_INSTRUCTION_WITHOUT_ARGS {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        for instr in CONTROL_INSTRUCTIONS_BLOCK {
+        for instr in CONTROL_INSTRUCTION_BLOCK {
             if v == *instr as u8 { return Ok(*instr); }
         }
         Err(())

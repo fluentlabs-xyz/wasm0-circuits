@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -13,6 +14,7 @@ use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::element::element_body::circuit::WasmElementSectionBodyChip;
+use crate::wasm_circuit::types::SharedState;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -39,6 +41,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
+        let func_count = cs.advice_column();
+
+        let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
@@ -50,6 +55,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             cs,
             wasm_bytecode_table.clone(),
             leb128_chip.clone(),
+            func_count,
+            shared_state.clone(),
         );
         let wasm_element_section_body_chip = WasmElementSectionBodyChip::construct(wasm_element_section_body_config);
         let test_circuit_config = TestCircuitConfig {
@@ -117,7 +124,7 @@ mod wasm_element_section_body_tests {
 
     #[test]
     pub fn section_body_bytecode_is_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/block_loop_local_vars.wat";
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
         let kind = Kind::Element;
         let expected = [
             9, 35, 7, 1, 0, 0, 1, 0, 0, 1, 0, 3, 0, 0, 1, 1, 0, 4, 0, 0, 1, 1, 1, 0, 0, 0, 65, 0, 11, 0, 0, 65, 171, 2, 11, 1, 0,
