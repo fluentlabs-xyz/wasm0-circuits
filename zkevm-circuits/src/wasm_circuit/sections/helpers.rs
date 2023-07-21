@@ -1,7 +1,9 @@
 use halo2_proofs::plonk::{Column, Expression, Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
+
 use eth_types::Field;
 use gadgets::util::{and, Expr, not, or};
+
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 
 /// `is_check_next` is check next or prev

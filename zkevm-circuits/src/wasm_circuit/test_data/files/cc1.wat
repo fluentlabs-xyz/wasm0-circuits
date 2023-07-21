@@ -16,6 +16,7 @@
       i32.add
       br 0 (;@1;)
       i32.const 100
+      call 5
       drop
     end)
   (func (;4;) (type 1)

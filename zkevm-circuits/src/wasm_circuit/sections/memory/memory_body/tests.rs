@@ -160,4 +160,22 @@ mod wasm_memory_section_body_tests {
         };
         test(test_circuit, true);
     }
+
+    #[test]
+    pub fn file3_ok() {
+        let bytecode = wat_extract_section_body_bytecode(
+            "./src/wasm_circuit/test_data/files/cc3.wat",
+            Kind::Memory,
+        );
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode: &bytecode,
+            offset_start: 0,
+            _marker: Default::default(),
+        };
+        test(test_circuit, true);
+    }
 }

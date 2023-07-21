@@ -12,14 +12,14 @@ use itertools::Itertools;
 use log::debug;
 
 use eth_types::Field;
-use gadgets::binary_number::BinaryNumberChip;
+use gadgets::less_than::LtInstruction;
 use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::WasmChipTrait;
-use crate::wasm_circuit::consts::{LimitType, REF_TYPE_VALUES, RefType};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmFuncCountAwareChip, WasmLimitTypeAwareChip};
+use crate::wasm_circuit::consts::{LimitType, REF_TYPE_VALUES};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -37,13 +37,9 @@ pub struct WasmTableSectionBodyConfig<F: Field> {
     pub q_last: Column<Fixed>,
     pub is_reference_type_count: Column<Fixed>,
     pub is_reference_type: Column<Fixed>,
-    pub is_limit_type: Column<Fixed>,
-    pub is_limit_min: Column<Fixed>,
-    pub is_limit_max: Column<Fixed>,
 
-    pub is_limit_type_ctx: Column<Fixed>,
-    pub limit_type: Column<Advice>,
-    pub limit_type_chip: Rc<BinaryNumberChip<F, LimitType, 8>>,
+    pub limit_type_fields: LimitTypeFields<F>,
+
     pub leb128_chip: Rc<LEB128Chip<F>>,
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
 
@@ -62,15 +58,16 @@ pub struct WasmTableSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmChipTrait<F> for WasmTableSectionBodyChip<F> {
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmTableSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> {
         self.config.shared_state.clone()
     }
-
     fn func_count_col(&self) -> Column<Advice> {
         self.config.func_count
     }
 }
+
+impl<F: Field> WasmLimitTypeAwareChip<F> for WasmTableSectionBodyChip<F> {}
 
 impl<F: Field> WasmTableSectionBodyChip<F>
 {
@@ -95,20 +92,29 @@ impl<F: Field> WasmTableSectionBodyChip<F>
         let q_last = cs.fixed_column();
         let is_reference_type_count = cs.fixed_column();
         let is_reference_type = cs.fixed_column();
-        let is_limit_type = cs.fixed_column();
-        let is_limit_min = cs.fixed_column();
-        let is_limit_max = cs.fixed_column();
 
-        let is_limit_type_ctx = cs.fixed_column();
-
-        let limit_type = cs.advice_column();
-
-        let config = BinaryNumberChip::configure(
+        let limit_type_fields = Self::construct_limit_type_fields(
             cs,
-            is_limit_type_ctx,
-            Some(limit_type.into()),
+            q_enable,
+            leb128_chip.as_ref(),
         );
-        let limit_type_chip = Rc::new(BinaryNumberChip::construct(config));
+        Self::configure_limit_type_constraints(
+            cs,
+            bytecode_table.as_ref(),
+            q_enable,
+            leb128_chip.as_ref(),
+            &limit_type_fields,
+        );
+
+        let LimitTypeFields {
+            is_limit_type,
+            is_limit_min,
+            is_limit_max,
+            limit_type,
+            limit_type_chip,
+            is_limit_type_ctx,
+            ..
+        } = limit_type_fields.clone();
 
         cs.create_gate("WasmTableSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -294,16 +300,12 @@ impl<F: Field> WasmTableSectionBodyChip<F>
             q_last,
             is_reference_type_count,
             is_reference_type,
-            is_limit_type,
-            is_limit_type_ctx,
-            is_limit_min,
-            is_limit_max,
+            limit_type_fields,
             leb128_chip,
-            limit_type,
-            limit_type_chip,
             dynamic_indexes_chip,
             func_count,
             shared_state,
+
             _marker: PhantomData,
         };
 
@@ -386,7 +388,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                 AssignType::IsLimitType => {
                     region.assign_fixed(
                         || format!("assign 'is_limit_type' val {} at {}", assign_value, offset),
-                        self.config.is_limit_type,
+                        self.config.limit_type_fields.is_limit_type,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
@@ -394,7 +396,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                 AssignType::IsLimitMin => {
                     region.assign_fixed(
                         || format!("assign 'is_limit_min' val {} at {}", assign_value, offset),
-                        self.config.is_limit_min,
+                        self.config.limit_type_fields.is_limit_min,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
@@ -402,7 +404,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                 AssignType::IsLimitMax => {
                     region.assign_fixed(
                         || format!("assign 'is_limit_max' val {} at {}", assign_value, offset),
-                        self.config.is_limit_max,
+                        self.config.limit_type_fields.is_limit_max,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
@@ -410,7 +412,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                 AssignType::IsLimitTypeCtx => {
                     region.assign_fixed(
                         || format!("assign 'is_limit_type_ctx' val {} at {}", assign_value, offset),
-                        self.config.is_limit_type_ctx,
+                        self.config.limit_type_fields.is_limit_type_ctx,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
@@ -418,12 +420,12 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                 AssignType::LimitType => {
                     region.assign_advice(
                         || format!("assign 'limit_type' val {} at {}", assign_value, offset),
-                        self.config.limit_type,
+                        self.config.limit_type_fields.limit_type,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                     let limit_type: LimitType = (assign_value as u8).try_into().unwrap();
-                    self.config.limit_type_chip.assign(
+                    self.config.limit_type_fields.limit_type_chip.assign(
                         region,
                         offset,
                         &limit_type,
@@ -526,7 +528,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
         offset += 1;
 
         // limit_min+
-        let (_limit_min, limit_min_leb_len) = self.markup_leb_section(
+        let (limit_min, limit_min_leb_len) = self.markup_leb_section(
             region,
             wasm_bytecode,
             offset,
@@ -539,7 +541,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
 
         // limit_max*
         if limit_type == LimitType::MinMax {
-            let (_limit_max, limit_max_leb_len) = self.markup_leb_section(
+            let (limit_max, limit_max_leb_len) = self.markup_leb_section(
                 region,
                 wasm_bytecode,
                 offset,
@@ -548,6 +550,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
             for offset in offset..offset + limit_max_leb_len {
                 self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
             }
+            self.config.limit_type_fields.limit_type_params_lt_chip.assign(region, offset, F::from(limit_min), F::from(limit_max)).unwrap();
             offset += limit_max_leb_len;
         }
 
