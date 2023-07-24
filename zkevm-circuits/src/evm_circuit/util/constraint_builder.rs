@@ -1322,6 +1322,28 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         );
     }
 
+    // Table
+
+    pub(crate) fn table_size(&mut self, index: Expression<F>) { todo!() }
+    pub(crate) fn table_grow(&mut self, index: Expression<F>, arg: Expression<F>, value: Expression<F>) { todo!() }
+    pub(crate) fn table_fill(&mut self, index: Expression<F>, elem_index: Expression<F>, length: Expression<F>) { todo!() }
+
+    pub(crate) fn table_set(&mut self, index: Expression<F>, elem_index: Expression<F>, value: Expression<F>) {
+        todo!()
+        //self.table_lookup(1.expr(), index, value, None)
+    }
+
+    pub(crate) fn table_get(&mut self, index: Expression<F>, value: Expression<F>) {
+        todo!()
+        //self.table_lookup(0.expr(), index, value, None)
+    }
+
+    pub(crate) fn table_copy(&mut self, index: Expression<F>, index2: Expression<F>, elem_index: Expression<F>,
+                             arg: Expression<F>, value: Expression<F>) { todo!() }
+
+    pub(crate) fn table_init(&mut self, index: Expression<F>, index2: Expression<F>, elem_index: Expression<F>,
+                             arg: Expression<F>, value: Expression<F>) { todo!() }
+
     pub(crate) fn table_lookup(
         &mut self,
         is_write: Expression<F>,
