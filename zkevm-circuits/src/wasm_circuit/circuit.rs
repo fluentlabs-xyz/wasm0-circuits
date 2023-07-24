@@ -19,7 +19,7 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::table::PoseidonTable;
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{wasm_compute_section_len, WasmChipTrait};
+use crate::wasm_circuit::common::{wasm_compute_section_len, WasmFuncCountAwareChip};
 use crate::wasm_circuit::consts::{ControlInstruction, ExportDescType, ImportDescType, SECTION_ID_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -100,7 +100,7 @@ pub struct WasmChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmChipTrait<F> for WasmChip<F> {
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> {
         self.config.shared_state.clone()
     }

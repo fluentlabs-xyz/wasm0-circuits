@@ -5,7 +5,7 @@
   (global $g3 (mut i64) (i64.const 0))
   (global $g4 (mut i64) (i64.const 77777))
 
-  (table $t 300 funcref)
+  (table $t 300 300 funcref)
   (func $f)
   (func $g)
 
@@ -52,7 +52,7 @@
     drop
     )
   (start 2)
-  (memory (;0;) 1 100)
+  (memory (;0;) 1 3333)
   (export "main" (func 0))
   (export "memory" (memory 0))
   (export "a" (table 0))

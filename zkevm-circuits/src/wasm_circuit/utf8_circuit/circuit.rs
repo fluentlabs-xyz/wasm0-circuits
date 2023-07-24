@@ -1,15 +1,17 @@
+use std::marker::PhantomData;
+use std::rc::Rc;
+
 use halo2_proofs::{
     plonk::{Advice, Column, ConstraintSystem},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
 use halo2_proofs::circuit::{Chip, Region, Value};
 use halo2_proofs::plonk::Fixed;
 use halo2_proofs::poly::Rotation;
-use num_traits::pow;
+
 use eth_types::Field;
 use gadgets::is_zero::{IsZeroChip, IsZeroInstruction};
-use gadgets::util::{Expr, not};
+use gadgets::util::Expr;
+
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;

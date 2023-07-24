@@ -17,7 +17,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::WasmChipTrait;
+use crate::wasm_circuit::common::WasmFuncCountAwareChip;
 use crate::wasm_circuit::consts::ExportDescType;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -59,7 +59,7 @@ pub struct WasmExportSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmChipTrait<F> for WasmExportSectionBodyChip<F> {
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmExportSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> {
         self.config.shared_state.clone()
     }

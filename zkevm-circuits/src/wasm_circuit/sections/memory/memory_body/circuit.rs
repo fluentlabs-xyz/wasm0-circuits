@@ -12,13 +12,13 @@ use itertools::Itertools;
 use log::debug;
 
 use eth_types::Field;
-use gadgets::binary_number::BinaryNumberChip;
+use gadgets::less_than::LtInstruction;
 use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::WasmChipTrait;
+use crate::wasm_circuit::common::{LimitTypeFields, WasmFuncCountAwareChip, WasmLimitTypeAwareChip};
 use crate::wasm_circuit::consts::{LIMIT_TYPE_VALUES, LimitType};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -36,13 +36,8 @@ pub struct WasmMemorySectionBodyConfig<F: Field> {
     pub q_first: Column<Fixed>,
     pub q_last: Column<Fixed>,
     pub is_items_count: Column<Fixed>,
-    pub is_limit_type: Column<Fixed>,
-    pub is_limit_min: Column<Fixed>,
-    pub is_limit_max: Column<Fixed>,
 
-    pub is_limit_type_ctx: Column<Fixed>,
-    pub limit_type: Column<Advice>,
-    pub limit_type_chip: Rc<BinaryNumberChip<F, LimitType, 8>>,
+    pub limit_type_fields: LimitTypeFields<F>,
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
@@ -63,15 +58,12 @@ pub struct WasmMemorySectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmChipTrait<F> for WasmMemorySectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
-        self.config.shared_state.clone()
-    }
-
-    fn func_count_col(&self) -> Column<Advice> {
-        self.config.func_count
-    }
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmMemorySectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
+
+impl<F: Field> WasmLimitTypeAwareChip<F> for WasmMemorySectionBodyChip<F> {}
 
 impl<F: Field> WasmMemorySectionBodyChip<F>
 {
@@ -94,21 +86,8 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
         let q_last = cs.fixed_column();
+
         let is_items_count = cs.fixed_column();
-        let is_limit_type = cs.fixed_column();
-        let is_limit_min = cs.fixed_column();
-        let is_limit_max = cs.fixed_column();
-
-        let is_limit_type_ctx = cs.fixed_column();
-
-        let limit_type = cs.advice_column();
-
-        let config = BinaryNumberChip::configure(
-            cs,
-            is_limit_type_ctx,
-            Some(limit_type.into()),
-        );
-        let limit_type_chip = Rc::new(BinaryNumberChip::construct(config));
 
         dynamic_indexes_chip.lookup_args(
             "memory section has valid setup for mem indexes",
@@ -122,6 +101,29 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 }
             }
         );
+
+        let limit_type_fields = Self::construct_limit_type_fields(
+            cs,
+            q_enable,
+            leb128_chip.as_ref(),
+        );
+        Self::configure_limit_type_constraints(
+            cs,
+            bytecode_table.as_ref(),
+            q_enable,
+            leb128_chip.as_ref(),
+            &limit_type_fields,
+        );
+
+        let LimitTypeFields{
+            is_limit_type,
+            is_limit_min,
+            is_limit_max,
+            limit_type,
+            limit_type_chip,
+            is_limit_type_ctx,
+            ..
+        } = limit_type_fields.clone();
 
         cs.create_gate("WasmMemorySectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -146,8 +148,6 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
 
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
             cb.require_boolean("is_items_count is boolean", is_items_count_expr.clone());
-            cb.require_boolean("is_limit_type is boolean", is_limit_type_expr.clone());
-            cb.require_boolean("is_limit_type_ctx is boolean", is_limit_type_ctx_expr.clone());
 
             configure_constraints_for_q_first_and_q_last(
                 &mut cb,
@@ -191,48 +191,6 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                         vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
                         1.expr(),
                     )
-                }
-            );
-
-            cb.condition(
-                is_limit_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
-                        "limit_type => byte value is valid",
-                        byte_val_expr.clone(),
-                        vec![
-                            LimitType::MinOnly.expr(),
-                            LimitType::MinMax.expr(),
-                        ],
-                    )
-                }
-            );
-            cb.require_equal(
-                "is_limit_type_ctx active on a specific flags only",
-                is_limit_type_expr.clone()
-                    + is_limit_min_expr.clone()
-                    + is_limit_max_expr.clone()
-                ,
-                is_limit_type_ctx_expr.clone(),
-            );
-            cb.condition(
-                is_limit_type_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
-                        "is_limit_type => limit_type=byte_val",
-                        limit_type_expr.clone(),
-                        byte_val_expr.clone(),
-                    );
-                }
-            );
-            cb.condition(
-                is_limit_type_ctx_expr.clone(),
-                |bcb| {
-                    let is_limit_type_ctx_prev_expr = vc.query_fixed(is_limit_type_ctx, Rotation::prev());
-                    bcb.require_zero(
-                        "is_limit_type_ctx && prev.is_limit_type_ctx => limit_type=prev.limit_type",
-                        is_limit_type_ctx_prev_expr * (limit_type_expr.clone() - limit_type_prev_expr.clone()),
-                    );
                 }
             );
 
@@ -312,16 +270,11 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             q_first,
             q_last,
             is_items_count,
-            is_limit_type,
-            is_limit_min,
-            is_limit_max,
-            is_limit_type_ctx,
-            limit_type,
+            limit_type_fields,
             leb128_chip,
             dynamic_indexes_chip,
             func_count,
             shared_state,
-            limit_type_chip,
 
             _marker: PhantomData,
         };
@@ -397,15 +350,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 AssignType::IsLimitType => {
                     region.assign_fixed(
                         || format!("assign 'is_limit_type' val {} at {}", assign_value, offset),
-                        self.config.is_limit_type,
-                        offset,
-                        || Value::known(F::from(assign_value)),
-                    ).unwrap();
-                }
-                AssignType::IsLimitType => {
-                    region.assign_fixed(
-                        || format!("assign 'is_limit_type' val {} at {}", assign_value, offset),
-                        self.config.is_limit_type,
+                        self.config.limit_type_fields.is_limit_type,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
@@ -413,7 +358,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 AssignType::IsLimitMin => {
                     region.assign_fixed(
                         || format!("assign 'is_limit_min' val {} at {}", assign_value, offset),
-                        self.config.is_limit_min,
+                        self.config.limit_type_fields.is_limit_min,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
@@ -421,7 +366,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 AssignType::IsLimitMax => {
                     region.assign_fixed(
                         || format!("assign 'is_limit_max' val {} at {}", assign_value, offset),
-                        self.config.is_limit_max,
+                        self.config.limit_type_fields.is_limit_max,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
@@ -429,7 +374,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 AssignType::IsLimitTypeCtx => {
                     region.assign_fixed(
                         || format!("assign 'is_limit_type_ctx' val {} at {}", assign_value, offset),
-                        self.config.is_limit_type_ctx,
+                        self.config.limit_type_fields.is_limit_type_ctx,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
@@ -437,12 +382,12 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 AssignType::LimitType => {
                     region.assign_advice(
                         || format!("assign 'limit_type' val {} at {}", assign_value, offset),
-                        self.config.limit_type,
+                        self.config.limit_type_fields.limit_type,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                     let limit_type: LimitType = (assign_value as u8).try_into().unwrap();
-                    self.config.limit_type_chip.assign(
+                    self.config.limit_type_fields.limit_type_chip.assign(
                         region,
                         offset,
                         &limit_type,
@@ -534,7 +479,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             offset += 1;
 
             // limit_min+
-            let (_limit_min, limit_min_leb_len) = self.markup_leb_section(
+            let (limit_min, limit_min_leb_len) = self.markup_leb_section(
                 region,
                 wasm_bytecode,
                 offset,
@@ -547,7 +492,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
 
             // limit_max*
             if limit_type == LimitType::MinMax {
-                let (_limit_max, limit_max_leb_len) = self.markup_leb_section(
+                let (limit_max, limit_max_leb_len) = self.markup_leb_section(
                     region,
                     wasm_bytecode,
                     offset,
@@ -556,6 +501,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 for offset in offset..offset + limit_max_leb_len {
                     self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
                 }
+                self.config.limit_type_fields.limit_type_params_lt_chip.assign(region, offset, F::from(limit_min), F::from(limit_max)).unwrap();
                 offset += limit_max_leb_len;
             }
         }
