@@ -237,6 +237,15 @@ pub enum OpcodeId {
     F32ReinterpretI32,
     F64ReinterpretI64,
 
+    // Table opcodes
+    TableSize,
+    TableGrow,
+    TableGet,
+    TableSet,
+    TableFill,
+    TableInit,
+
+
     // TODO: "remove these opcodes in the future they don't work"
     STOP,
     ADD,
