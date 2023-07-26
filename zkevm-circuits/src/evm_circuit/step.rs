@@ -52,6 +52,7 @@ pub enum ExecutionState {
     WASM_DROP,
     WASM_END,
     WASM_GLOBAL,
+    WASM_TABLE,
     WASM_LOAD,
     WASM_LOCAL,
     WASM_REL,
@@ -306,6 +307,15 @@ impl ExecutionState {
             Self::WASM_GLOBAL => vec![
                 OpcodeId::GetGlobal,
                 OpcodeId::SetGlobal,
+            ],
+            Self::WASM_TABLE => vec![
+                OpcodeId::TableSize,
+                OpcodeId::TableGrow,
+                OpcodeId::TableFill,
+                OpcodeId::TableGet,
+                OpcodeId::TableSet,
+                OpcodeId::TableCopy,
+                OpcodeId::TableInit,
             ],
             Self::WASM_LOCAL => vec![
                 OpcodeId::GetLocal,

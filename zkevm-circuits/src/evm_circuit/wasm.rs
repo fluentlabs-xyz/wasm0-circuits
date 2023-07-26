@@ -105,6 +105,7 @@ mod wasm_conversion;
 mod wasm_drop;
 mod wasm_end;
 mod wasm_global;
+mod wasm_table;
 // mod wasm_load;
 mod wasm_local;
 mod wasm_rel;

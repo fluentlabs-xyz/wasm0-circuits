@@ -243,6 +243,7 @@ pub enum OpcodeId {
     TableGet,
     TableSet,
     TableFill,
+    TableCopy,
     TableInit,
 
 
@@ -667,6 +668,16 @@ impl OpcodeId {
             OpcodeId::DELEGATECALL => 0xec,
             OpcodeId::STATICCALL => 0xed,
             OpcodeId::SELFDESTRUCT => 0xef,
+
+            // Extra wasm opcodes
+            OpcodeId::TableSize => 0xf0,
+            OpcodeId::TableGrow => 0xf1,
+            OpcodeId::TableFill => 0xf2,
+            OpcodeId::TableGet => 0xf3,
+            OpcodeId::TableSet => 0xf4,
+            OpcodeId::TableCopy => 0xf5,
+            OpcodeId::TableInit => 0xf6,
+
             _ => 0x00,
         }
     }
@@ -1133,6 +1144,16 @@ impl From<u8> for OpcodeId {
             0xee => OpcodeId::STATICCALL,
             #[cfg(not(feature = "scroll"))]
             0xef => OpcodeId::SELFDESTRUCT,
+
+            // Extra wasm opcodes
+            0xf0 => OpcodeId::TableSize,
+            0xf1 => OpcodeId::TableGrow,
+            0xf2 => OpcodeId::TableFill,
+            0xf3 => OpcodeId::TableGet,
+            0xf4 => OpcodeId::TableSet,
+            0xf5 => OpcodeId::TableCopy,
+            0xf6 => OpcodeId::TableInit,
+
             // invalid opcode
             _ => OpcodeId::INVALID(value)
         }
@@ -1371,6 +1392,18 @@ impl FromStr for OpcodeId {
             "evm_staticcall" => OpcodeId::STATICCALL,
             "evm_revert" => OpcodeId::REVERT,
             "evm_selfdestruct" => OpcodeId::SELFDESTRUCT,
+
+            // Extra wasm opcodes
+            "table_size" => OpcodeId::TableSize,
+            "table_grow" => OpcodeId::TableGrow,
+            "table_fill" => OpcodeId::TableFill,
+            "table_get" => OpcodeId::TableGet,
+            "table_set" => OpcodeId::TableSet,
+            "table_copy" => OpcodeId::TableCopy,
+            "table_init" => OpcodeId::TableInit,
+
+
+
             // default parse
             _ => {
                 // Parse an invalid opcode value as reported by geth

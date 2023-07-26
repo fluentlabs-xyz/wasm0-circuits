@@ -201,6 +201,14 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::GetGlobal |
                     OpcodeId::SetGlobal => ExecutionState::WASM_GLOBAL,
 
+                    OpcodeId::TableSize |
+                    OpcodeId::TableGrow |
+                    OpcodeId::TableFill |
+                    OpcodeId::TableGet |
+                    OpcodeId::TableSet |
+                    OpcodeId::TableCopy |
+                    OpcodeId::TableInit => ExecutionState::WASM_TABLE,
+
                     OpcodeId::GetLocal |
                     OpcodeId::SetLocal |
                     OpcodeId::TeeLocal => ExecutionState::WASM_LOCAL,

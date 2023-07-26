@@ -62,13 +62,13 @@ impl<F: Field> ExecutionGadget<F> for WasmTableGadget<F> {
         );
 
         let table_index = cb.query_cell();
-        let table_index_lhs = cb.query_cell();
+        let table_index_rhs = cb.query_cell();
         let elem_index = cb.query_cell();
         let arg = cb.query_cell();
         let value = cb.query_cell();
 
         cb.condition(is_size_op.expr(), |cb| {
-            cb.table_size(table_index.expr(), value.expr());
+            cb.table_size(table_index.expr());
             cb.stack_push(value.expr()); // Result of operation is size.
         });
 
@@ -86,11 +86,11 @@ impl<F: Field> ExecutionGadget<F> for WasmTableGadget<F> {
 
         cb.condition(is_set_op.expr(), |cb| {
             cb.stack_pop(value.expr());
-            cb.table_write(table_index.expr(), elem_index.expr() value.expr());
+            cb.table_get(table_index.expr(), elem_index.expr());
         });
 
         cb.condition(is_get_op.expr(), |cb| {
-            cb.table_read(table_index.expr(), elem_index.expr(), value.expr());
+            cb.table_set(table_index.expr(), elem_index.expr(), value.expr());
             cb.stack_push(value.expr());
         });
 
@@ -108,13 +108,13 @@ impl<F: Field> ExecutionGadget<F> for WasmTableGadget<F> {
             cb.table_init(table_index.expr(), table_index_rhs.expr(), elem_index.expr(), arg.expr(), value.expr());
         });
 
-        let sp = is_get_table.expr() * (-1).expr() + is_set_table.expr() * (1).expr();
+        let sp = is_get_op.expr() * (-1).expr() + is_set_op.expr() * (1).expr();
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(2.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(sp),
-            gas_left: Delta(-OpcodeId::GetTable.constant_gas_cost().expr()),
+            gas_left: Delta(-OpcodeId::TableGet.constant_gas_cost().expr()),
             ..Default::default()
         };
 

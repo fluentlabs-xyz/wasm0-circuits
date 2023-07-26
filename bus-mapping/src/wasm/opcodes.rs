@@ -297,6 +297,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::TableGet => WasmTableOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::TableSet => WasmTableOpcode::<1, 0>::gen_associated_ops,
         OpcodeId::TableFill => WasmTableOpcode::<3, 1>::gen_associated_ops,
+        OpcodeId::TableCopy => WasmTableOpcode::<3, 1>::gen_associated_ops,
         OpcodeId::TableInit => WasmTableOpcode::<3, 1>::gen_associated_ops,
 
         // WASM global opcodes

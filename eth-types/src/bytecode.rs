@@ -67,6 +67,15 @@ pub struct GlobalVariable {
 
 ///
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableVariable {
+    pub index: u32,
+    pub init_code: Vec<u8>,
+    pub is_64bit: bool,
+    pub readonly: bool,
+}
+
+///
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InternalFunction {
     pub index: u32,
     pub code: Vec<u8>,
@@ -589,6 +598,14 @@ impl Bytecode {
             OpcodeId::Call => Instruction::Call(val as u32),
             OpcodeId::Br => Instruction::Br(val as u32),
             OpcodeId::BrIf => Instruction::BrIf(val as u32),
+
+            // Wasm table instructions.
+            OpcodeId::TableSize => Instruction::TableSize(val as u32),
+            OpcodeId::TableGrow => Instruction::TableGrow(val as u32),
+            OpcodeId::TableFill => Instruction::TableFill(val as u32),
+            OpcodeId::TableGet => Instruction::TableGet(val as u32),
+            OpcodeId::TableSet => Instruction::TableSet(val as u32),
+
             _ => {
                 unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
             }
