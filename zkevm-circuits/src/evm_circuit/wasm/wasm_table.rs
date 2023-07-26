@@ -188,30 +188,15 @@ mod test {
         ).run()
     }
 
-/*
     #[test]
-    fn test_global_get() {
+    fn test_table_get() {
         let mut code = bytecode! {
-            GetGlobal[0]
+            I64Const[0]
+            TableGet[0]
             Drop
         };
-        code.with_global_variable(TableVariable::default_i32(0, 0x7f));
+        code.with_table_variable(TableVariable::default_i32(0, 0, 0x7f));
         run_test(code);
     }
 
-    #[test]
-    fn test_global_set() {
-        let t: i32 = -16383;
-        let mut code = bytecode! {
-            I32Const[t]
-            SetGlobal[0]
-            GetGlobal[0]
-            Drop
-        };
-        println!("code.wasm_binary() {:x?}", code.wasm_binary());
-
-        // code.with_global_variable(GlobalVariable::default_i32(0, 0));
-        // run_test(code);
-    }
-*/
 }

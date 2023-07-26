@@ -69,6 +69,7 @@ pub struct GlobalVariable {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableVariable {
     pub index: u32,
+    pub elem_index: u32,
     pub init_code: Vec<u8>,
     pub is_64bit: bool,
     pub readonly: bool,
@@ -110,6 +111,35 @@ impl GlobalVariable {
     }
 }
 
+impl TableVariable {
+
+    pub fn default_i32(index: u32, elem_index: u32, default_value: u32) -> Self {
+        Self::default(index, elem_index, false, default_value as u64)
+    }
+
+    pub fn default_i64(index: u32, elem_index: u32, default_value: u64) -> Self {
+        Self::default(index, elem_index, true, default_value)
+    }
+
+    pub fn default(index: u32, elem_index: u32, is_64bit: bool, default_value: u64) -> Self {
+        let mut init_code = Vec::new();
+        if is_64bit {
+            Instruction::I64Const(default_value as i64).encode(&mut init_code);
+        } else {
+            Instruction::I32Const(default_value as i32).encode(&mut init_code);
+        }
+        Self { index, elem_index, is_64bit, init_code, readonly: false }
+    }
+
+    pub fn zero_i32(index: u32, elem_index: u32) -> Self {
+        Self::default_i32(index, elem_index, 0)
+    }
+
+    pub fn zero_i64(index: u32, elem_index: u32) -> Self {
+        Self::default_i64(index, elem_index, 0)
+    }
+}
+
 /// EVM Bytecode
 #[derive(Debug, Clone)]
 pub struct Bytecode {
@@ -118,6 +148,7 @@ pub struct Bytecode {
     global_data: (u32, Vec<u8>),
     section_descriptors: Vec<SectionDescriptor>,
     variables: Vec<GlobalVariable>,
+    table_variables: Vec<TableVariable>,
     existing_types: HashMap<u64, u32>,
     types: TypeSection,
     functions: FunctionSection,
@@ -237,6 +268,7 @@ impl Default for Bytecode {
             global_data: (0, vec![]),
             section_descriptors: vec![],
             variables: vec![],
+            table_variables: vec![],
             existing_types: Default::default(),
             types: Default::default(),
             functions: Default::default(),
@@ -292,6 +324,10 @@ impl Bytecode {
 
     pub fn with_global_variable(&mut self, global_variable: GlobalVariable) {
         self.variables.push(global_variable);
+    }
+
+    pub fn with_table_variable(&mut self, table_variable: TableVariable) {
+        self.table_variables.push(table_variable);
     }
 
     fn encode_function_type(input: &Vec<ValType>, output: &Vec<ValType>) -> u64 {
