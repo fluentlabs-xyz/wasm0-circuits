@@ -176,7 +176,7 @@ impl<F: Field> ExecutionGadget<F> for WasmTableGadget<F> {
 #[cfg(test)]
 mod test {
     use eth_types::{bytecode, Bytecode};
-    use eth_types::bytecode::{TableVariable, WasmBinaryBytecode};
+    use eth_types::bytecode::{TableVariables, WasmBinaryBytecode};
     use eth_types::evm_types::OpcodeId::I32Const;
     use mock::TestContext;
 
@@ -195,7 +195,7 @@ mod test {
             TableGet[0]
             Drop
         };
-        code.with_table_variable(TableVariable::default_i32(0, 0, 0x7f));
+        code.with_table_variables(TableVariables::default_i32(0, 0x7f));
         run_test(code);
     }
 
