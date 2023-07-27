@@ -201,13 +201,13 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::GetGlobal |
                     OpcodeId::SetGlobal => ExecutionState::WASM_GLOBAL,
 
-                    OpcodeId::TableSize |
-                    OpcodeId::TableGrow |
-                    OpcodeId::TableFill |
-                    OpcodeId::TableGet |
-                    OpcodeId::TableSet |
-                    OpcodeId::TableCopy |
-                    OpcodeId::TableInit => ExecutionState::WASM_TABLE,
+                    OpcodeId::TableSize => ExecutionState::WASM_TABLE_SIZE,
+                    OpcodeId::TableGrow => ExecutionState::WASM_TABLE_GROW,
+                    OpcodeId::TableFill => ExecutionState::WASM_TABLE_FILL,
+                    OpcodeId::TableGet => ExecutionState::WASM_TABLE_GET,
+                    OpcodeId::TableSet => ExecutionState::WASM_TABLE_SET,
+                    OpcodeId::TableCopy => ExecutionState::WASM_TABLE_COPY,
+                    OpcodeId::TableInit => ExecutionState::WASM_TABLE_INIT,
 
                     OpcodeId::GetLocal |
                     OpcodeId::SetLocal |

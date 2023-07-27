@@ -65,12 +65,9 @@ pub struct GlobalVariable {
     pub readonly: bool,
 }
 
-///
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TableVariables {
-    pub table_type: TableType,
-    pub init_codes: Vec<Vec<u8>>,
-}
+#[repr(transparent)]
+pub struct TableDecl(TableType);
 
 ///
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,35 +105,16 @@ impl GlobalVariable {
     }
 }
 
-impl TableVariables {
-
-    pub fn default_i32(index: u32, default_value: u32) -> Self {
-        Self::default(index, false, default_value as u64)
+impl TableDecl {
+    pub fn default_i32() -> Self {
+        Self::default(false)
     }
-
-    pub fn default_i64(index: u32, default_value: u64) -> Self {
-        Self::default(index, true, default_value)
+    pub fn default_i64() -> Self {
+        Self::default(true)
     }
-
-    pub fn default(index: u32, is_64bit: bool, default_value: u64) -> Self {
-       let mut init_code = Vec::new();
-        let val_type = if is_64bit {
-            Instruction::I64Const(default_value as i64).encode(&mut init_code);
-            ValType::I64
-        } else {
-            Instruction::I32Const(default_value as i32).encode(&mut init_code);
-            ValType::I32
-        };
-        let table_type = TableType { element_type: val_type, minimum: 1, maximum: None };
-        Self { table_type, init_codes: vec![init_code] }
-    }
-
-    pub fn zero_i32(index: u32) -> Self {
-        Self::default_i32(index, 0)
-    }
-
-    pub fn zero_i64(index: u32) -> Self {
-        Self::default_i64(index, 0)
+    pub fn default(is_64bit: bool) -> Self {
+        let val_type = if is_64bit { ValType::I64 } else { ValType::I32 };
+        Self(TableType { element_type: val_type, minimum: 1, maximum: None })
     }
 }
 
@@ -148,7 +126,7 @@ pub struct Bytecode {
     global_data: (u32, Vec<u8>),
     section_descriptors: Vec<SectionDescriptor>,
     variables: Vec<GlobalVariable>,
-    tables: Vec<TableVariables>,
+    tables: Vec<TableDecl>,
     existing_types: HashMap<u64, u32>,
     types: TypeSection,
     functions: FunctionSection,
@@ -239,7 +217,7 @@ impl WasmBinaryBytecode for Bytecode {
         if self.tables.len() > 0 {
             let mut table_section = TableSection::new();
             for var in &self.tables {
-                table_section.table(var.table_type);
+                table_section.table(var.0);
             }
             module.section(&table_section);
         }
@@ -333,8 +311,8 @@ impl Bytecode {
         self.variables.push(global_variable);
     }
 
-    pub fn with_table_variables(&mut self, table_variables: TableVariables) {
-        self.tables.push(table_variables);
+    pub fn with_table_decl(&mut self, table_decl: TableDecl) {
+        self.tables.push(table_decl);
     }
 
     fn encode_function_type(input: &Vec<ValType>, output: &Vec<ValType>) -> u64 {
