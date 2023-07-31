@@ -17,7 +17,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::WasmFuncCountAwareChip;
+use crate::wasm_circuit::common::{WasmFuncCountAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::ExportDescType;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -59,14 +59,12 @@ pub struct WasmExportSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmExportSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
-        self.config.shared_state.clone()
-    }
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmExportSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
 
-    fn func_count_col(&self) -> Column<Advice> {
-        self.config.func_count
-    }
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmExportSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmExportSectionBodyChip<F>
@@ -83,7 +81,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
-         func_count: Column<Advice>,
+        func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmExportSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
@@ -444,7 +442,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 offset,
                 assign_types,
                 1,
-                Some(LebParams{
+                Some(LebParams {
                     is_signed,
                     byte_rel_offset,
                     last_byte_rel_offset,

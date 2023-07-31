@@ -19,7 +19,7 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::table::PoseidonTable;
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{wasm_compute_section_len, WasmFuncCountAwareChip};
+use crate::wasm_circuit::common::{wasm_compute_section_len, WasmFuncCountAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::{ControlInstruction, ExportDescType, ImportDescType, SECTION_ID_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -84,6 +84,7 @@ pub struct WasmConfig<F: Field> {
     pub(crate) wasm_bytecode_table: Rc<WasmBytecodeTable>,
 
     func_count: Column<Advice>,
+    block_level: Column<Advice>,
 
     pub shared_state: Rc<RefCell<SharedState>>,
 
@@ -100,14 +101,12 @@ pub struct WasmChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
-        self.config.shared_state.clone()
-    }
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
 
-    fn func_count_col(&self) -> Column<Advice> {
-        self.config.func_count
-    }
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmChip<F>
@@ -145,6 +144,7 @@ impl<F: Field> WasmChip<F>
 
         let section_id = cs.advice_column();
         let func_count = cs.advice_column();
+        let block_level = cs.advice_column();
 
         let range_table_config_0_256 = RangeTableConfig::configure(cs);
         let section_id_range_table_config = RangeTableConfig::configure(cs);
@@ -251,6 +251,7 @@ impl<F: Field> WasmChip<F>
             leb128_chip.clone(),
             dynamic_indexes_chip.clone(),
             func_count,
+            block_level,
             shared_state.clone(),
         );
         let wasm_code_section_body_chip = Rc::new(WasmCodeSectionBodyChip::construct(config));
@@ -923,6 +924,7 @@ impl<F: Field> WasmChip<F>
             dynamic_indexes_chip,
             shared_state,
             func_count,
+            block_level,
 
             _marker: PhantomData,
         };

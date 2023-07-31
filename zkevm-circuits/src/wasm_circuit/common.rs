@@ -187,8 +187,11 @@ pub trait WasmLimitTypeAwareChip<F: Field> {
     }
 }
 
-pub trait WasmFuncCountAwareChip<F: Field> {
+pub trait WasmSharedStateAwareChip<F: Field> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>>;
+}
+
+pub trait WasmFuncCountAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
     fn func_count_col(&self) -> Column<Advice>;
 
     fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
@@ -199,6 +202,21 @@ pub trait WasmFuncCountAwareChip<F: Field> {
             self.func_count_col(),
             offset,
             || Value::known(F::from(func_count as u64)),
+        ).unwrap();
+    }
+}
+
+pub trait WasmBlockLevelAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
+    fn block_level_col(&self) -> Column<Advice>;
+
+    fn assign_block_level(&self, region: &mut Region<F>, offset: usize) {
+        let block_level = self.shared_state().borrow().block_level;
+        debug!("assign at offset {} block_level val {}", offset, block_level);
+        region.assign_advice(
+            || format!("assign 'block_level' val {} at {}", block_level, offset),
+            self.block_level_col(),
+            offset,
+            || Value::known(F::from(block_level as u64)),
         ).unwrap();
     }
 }

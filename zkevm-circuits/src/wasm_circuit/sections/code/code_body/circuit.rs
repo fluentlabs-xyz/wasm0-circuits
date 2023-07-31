@@ -18,7 +18,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::WasmFuncCountAwareChip;
+use crate::wasm_circuit::common::{WasmBlockLevelAwareChip, WasmFuncCountAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::{CONTROL_INSTRUCTION_BLOCK, CONTROL_INSTRUCTION_WITH_LEB_ARG, CONTROL_INSTRUCTION_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTION_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, VARIABLE_INSTRUCTION_WITH_LEB_ARG, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -58,14 +58,14 @@ pub struct WasmCodeSectionBodyConfig<F: Field> {
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
 
     pub func_count: Column<Advice>,
+    pub block_level: Column<Advice>,
 
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
 }
 
-impl<'a, F: Field> WasmCodeSectionBodyConfig<F>
-{}
+impl<'a, F: Field> WasmCodeSectionBodyConfig<F> {}
 
 #[derive(Debug, Clone)]
 pub struct WasmCodeSectionBodyChip<F: Field> {
@@ -73,14 +73,18 @@ pub struct WasmCodeSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmCodeSectionBodyChip<F> {
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmCodeSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> {
         self.config.shared_state.clone()
     }
+}
 
-    fn func_count_col(&self) -> Column<Advice> {
-        self.config.func_count
-    }
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmCodeSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
+}
+
+impl<F: Field> WasmBlockLevelAwareChip<F> for WasmCodeSectionBodyChip<F> {
+    fn block_level_col(&self) -> Column<Advice> { self.config.block_level }
 }
 
 impl<F: Field> WasmCodeSectionBodyChip<F>
@@ -99,6 +103,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
+        block_level: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmCodeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
@@ -155,6 +160,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
+            let is_funcs_count_prev_expr = vc.query_fixed(is_funcs_count, Rotation::prev());
             let is_funcs_count_expr = vc.query_fixed(is_funcs_count, Rotation::cur());
             let is_func_body_len_expr = vc.query_fixed(is_func_body_len, Rotation::cur());
             let is_local_type_transitions_count_expr = vc.query_fixed(is_local_type_transitions_count, Rotation::cur());
@@ -168,12 +174,14 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             let is_control_instruction_leb_arg_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::cur());
             let is_parametric_instruction_expr = vc.query_fixed(is_parametric_instruction, Rotation::cur());
             let is_blocktype_delimiter_expr = vc.query_fixed(is_blocktype_delimiter, Rotation::cur());
+            let is_block_end_prev_expr = vc.query_fixed(is_block_end, Rotation::prev());
             let is_block_end_expr = vc.query_fixed(is_block_end, Rotation::cur());
 
             let leb128_chip_q_enable_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur());
             let leb128_chip_q_enable_next_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::next());
 
             let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let block_level_expr = vc.query_advice(block_level, Rotation::cur());
 
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
             cb.require_boolean("is_funcs_count is boolean", is_funcs_count_expr.clone());
@@ -255,6 +263,89 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 is_variable_instruction_leb_arg_expr.clone(),
                 is_control_instruction_leb_arg_expr.clone(),
             ]);
+
+            // block_level constraints
+            cb.condition(
+                q_first_expr.clone(),
+                |bcb| {
+                    bcb.require_zero(
+                        "q_first => block_level=0",
+                        block_level_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                q_last_expr.clone(),
+                |bcb| {
+                    bcb.require_zero(
+                        "q_last => block_level=0",
+                        block_level_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                and::expr([
+                    is_func_body_len_expr.clone(),
+                    or::expr([
+                        is_funcs_count_prev_expr.clone(),
+                        is_block_end_prev_expr.clone(),
+                    ]),
+                ]),
+                |bcb| {
+                    bcb.require_zero(
+                        "block_level=1 on is_func_body_len transition",
+                        block_level_expr.clone() - 1.expr(),
+                    );
+                }
+            );
+            cb.condition(
+                is_control_opcode_block_expr.clone(),
+                |bcb| {
+                    let block_level_prev_expr = vc.query_advice(block_level, Rotation::prev());
+                    bcb.require_equal(
+                        "is_control_opcode_block => prev.block_level+1=block_level",
+                        block_level_prev_expr + 1.expr(),
+                        block_level_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                is_block_end_expr.clone(),
+                |bcb| {
+                    let block_level_prev_expr = vc.query_advice(block_level, Rotation::prev());
+                    bcb.require_equal(
+                        "is_block_end => prev.block_level-1=block_level",
+                        block_level_prev_expr - 1.expr(),
+                        block_level_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                and::expr([
+                    not::expr(q_first_expr.clone()),
+
+                    not::expr(q_last_expr.clone()),
+
+                    not::expr(and::expr([
+                        is_func_body_len_expr.clone(),
+                        or::expr([
+                            is_funcs_count_prev_expr.clone(),
+                            is_block_end_prev_expr.clone(),
+                        ]),
+                    ])),
+
+                    not::expr(is_control_opcode_block_expr.clone()),
+
+                    not::expr(is_block_end_expr.clone()),
+                ]),
+                |bcb| {
+                    let block_level_prev_expr = vc.query_advice(block_level, Rotation::prev());
+                    bcb.require_zero(
+                        "prev.block_level_expr=block_level",
+                        block_level_expr.clone() - block_level_prev_expr,
+                    );
+                }
+            );
 
             cb.require_equal(
                 "exactly one mark flag active at the same time",
@@ -733,6 +824,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             parametric_instruction_chip,
             dynamic_indexes_chip,
             func_count,
+            block_level,
             shared_state,
 
             _marker: PhantomData,
@@ -766,6 +858,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
         self.assign_func_count(region, offset);
+        self.assign_block_level(region, offset);
 
         if [
             AssignType::IsFuncsCount,
@@ -1022,7 +1115,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         if let Ok(opcode) = <u8 as TryInto<ControlInstruction>>::try_into(opcode) {
             assign_type = AssignType::IsControlInstruction;
             if CONTROL_INSTRUCTION_BLOCK.contains(&opcode) {
-                assign_type_argument = AssignType::IsBlocktypeDelimiter
+                assign_type_argument = AssignType::IsBlocktypeDelimiter;
+                self.shared_state().borrow_mut().block_level += 1;
             }
             if CONTROL_INSTRUCTION_WITH_LEB_ARG.contains(&opcode) {
                 assign_type_argument = AssignType::IsControlInstructionLebArg
@@ -1035,6 +1129,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
         if opcode == WASM_BLOCK_END {
             assign_type = AssignType::IsBlockEnd;
+            self.shared_state().borrow_mut().block_level -= 1;
         };
 
         if [
@@ -1112,6 +1207,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
         for _func_index in 0..funcs_count {
             // is_func_body_len+
+            self.config.shared_state.borrow_mut().block_level += 1;
             let (func_body_len, func_body_len_leb_len) = self.markup_leb_section(
                 region,
                 wasm_bytecode,

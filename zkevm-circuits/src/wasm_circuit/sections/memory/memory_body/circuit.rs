@@ -18,7 +18,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmFuncCountAwareChip, WasmLimitTypeAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmFuncCountAwareChip, WasmLimitTypeAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::{LIMIT_TYPE_VALUES, LimitType};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -58,8 +58,11 @@ pub struct WasmMemorySectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmMemorySectionBodyChip<F> {
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmMemorySectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmMemorySectionBodyChip<F> {
     fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
