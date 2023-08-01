@@ -108,7 +108,7 @@ mod balance_tests {
         mock::BlockData,
         operation::{AccountOp, CallContextOp, StackOp, RW},
     };
-    use eth_types::{address, bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Bytecode, ToWord, Word, U256, StackWord};
+    use eth_types::{address, bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Bytecode, ToWord, Word, U256, StackWord, bytecode_internal};
     use eth_types::bytecode::WasmBinaryBytecode;
     use mock::TestContext;
     use crate::operation::MemoryOp;
@@ -136,17 +136,17 @@ mod balance_tests {
         // Pop balance first for warm account.
         let mut code = Bytecode::default();
         if is_warm {
-            code.append(&bytecode! {
+            bytecode_internal! {code,
                 I32Const[address_offset]
                 I32Const[balance_offset]
                 BALANCE
-            });
+            }
         }
-        code.append(&bytecode! {
+        bytecode_internal! {code,
             I32Const[address_offset]
             I32Const[balance_offset]
             BALANCE
-        });
+        }
 
         let balance = if exists {
             Word::from(800u64)

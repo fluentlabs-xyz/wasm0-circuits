@@ -298,17 +298,17 @@ mod test {
         let mut code_b = Bytecode::default();
         code_b.with_global_data(0, 0, address.to_fixed_bytes().to_vec());
         if is_warm {
-            code_b.append(&bytecode! {
+            bytecode_internal! {code_b,
                 PUSH20(address.to_word())
                 BALANCE
                 POP
-            });
+            }
         }
-        code_b.append(&bytecode! {
+        bytecode_internal! {code_b,
             PUSH20(address.to_word())
             BALANCE
             STOP
-        });
+        }
 
         // code A calls code B.
         let pushdata = rand_bytes(8);

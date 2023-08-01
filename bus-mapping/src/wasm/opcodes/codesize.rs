@@ -45,7 +45,7 @@ impl Opcode for Codesize {
 
 #[cfg(test)]
 mod codesize_tests {
-    use eth_types::{bytecode, Bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord};
+    use eth_types::{bytecode, Bytecode, bytecode_internal, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, StackWord};
     use eth_types::evm_types::MemoryAddress;
     use mock::{
         test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0},
@@ -60,37 +60,35 @@ mod codesize_tests {
         let res_mem_address = 0x7f;
         let mut code = bytecode! {};
         let st_addr = 1023;
-        let tail: Bytecode;
         if large {
-            code.append(&bytecode! {
+            bytecode_internal! {code,
                 I32Const[res_mem_address]
                 I32Const[res_mem_address]
                 I32Add
-            });
+            }
             for i in 1..10 {
                 if i%2 == 1 {
-                    code.append(&bytecode! {
+                    bytecode_internal! {code,
                         // I32Const[-res_mem_address]
                         // I32Add
-                    });
+                    }
                 } else {
-                    code.append(&bytecode! {
+                    bytecode_internal! {code,
                         I32Const[res_mem_address]
                         I32Add
-                    });
+                    }
                 }
                 // st_addr -= 128;
             }
-            tail = bytecode! {
+            bytecode_internal! {code,
                 CODESIZE
             };
         } else {
-            tail = bytecode! {
+            bytecode_internal! {code,
                 I32Const[res_mem_address]
                 CODESIZE
-            };
+            }
         }
-        code.append(&tail);
 
         let block: GethData = TestContext::<2, 1>::new(
             None,
