@@ -5,7 +5,7 @@ use std::rc::Rc;
 use halo2_proofs::{
     plonk::{Column, ConstraintSystem},
 };
-use halo2_proofs::circuit::{Region, Value};
+use halo2_proofs::circuit::{Chip, Region, Value};
 use halo2_proofs::plonk::{Advice, Fixed};
 use halo2_proofs::poly::Rotation;
 use itertools::Itertools;
@@ -13,6 +13,7 @@ use log::debug;
 
 use eth_types::Field;
 use gadgets::binary_number::BinaryNumberChip;
+use gadgets::less_than::{LtChip, LtInstruction};
 use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
@@ -59,6 +60,7 @@ pub struct WasmCodeSectionBodyConfig<F: Field> {
 
     pub func_count: Column<Advice>,
     pub block_level: Column<Advice>,
+    pub block_level_lt_chip: Rc<LtChip<F, 2>>,
 
     shared_state: Rc<RefCell<SharedState>>,
 
@@ -103,7 +105,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
-        block_level: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmCodeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
@@ -114,6 +115,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         let is_local_type_transitions_count = cs.fixed_column();
         let is_local_repetition_count = cs.fixed_column();
         let is_local_type = cs.fixed_column();
+
+        let block_level = cs.advice_column();
 
         let is_numeric_instruction = cs.fixed_column();
         let is_numeric_instruction_leb_arg = cs.fixed_column();
@@ -152,6 +155,33 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             Some(bytecode_table.value.into()),
         );
         let variable_instruction_chip = Rc::new(BinaryNumberChip::construct(config));
+
+        let config = LtChip::configure(
+            cs,
+            |vc| {
+                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+                let not_q_first_expr = not::expr(q_first_expr.clone());
+                let is_br_prev_expr = control_instruction_chip.config.value_equals(ControlInstruction::Br, Rotation::prev())(vc);
+                let is_br_if_prev_expr = control_instruction_chip.config.value_equals(ControlInstruction::BrIf, Rotation::prev())(vc);
+
+                and::expr([
+                    q_enable_expr.clone(),
+                    not_q_first_expr,
+                    or::expr([
+                        is_br_prev_expr,
+                        is_br_if_prev_expr,
+                    ])
+                ])
+            },
+            |vc| {
+                vc.query_advice(leb128_chip.config.sn, Rotation::cur())
+            },
+            |vc| {
+                vc.query_advice(block_level, Rotation::cur())
+            },
+        );
+        let block_level_lt_chip = Rc::new(LtChip::construct(config));
 
         cs.create_gate("WasmCodeSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -323,9 +353,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             cb.condition(
                 and::expr([
                     not::expr(q_first_expr.clone()),
-
                     not::expr(q_last_expr.clone()),
-
                     not::expr(and::expr([
                         is_func_body_len_expr.clone(),
                         or::expr([
@@ -333,9 +361,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                             is_block_end_prev_expr.clone(),
                         ]),
                     ])),
-
                     not::expr(is_control_opcode_block_expr.clone()),
-
                     not::expr(is_block_end_expr.clone()),
                 ]),
                 |bcb| {
@@ -796,6 +822,27 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 }
             );
 
+            let not_q_first_expr = not::expr(q_first_expr.clone());
+            let is_br_prev_expr = control_instruction_chip.config.value_equals(ControlInstruction::Br, Rotation::prev())(vc);
+            let is_br_if_prev_expr = control_instruction_chip.config.value_equals(ControlInstruction::BrIf, Rotation::prev())(vc);
+
+            cb.condition(
+                and::expr([
+                    q_enable_expr.clone(),
+                    not_q_first_expr,
+                    or::expr([
+                        is_br_prev_expr,
+                        is_br_if_prev_expr,
+                    ])
+                ]),
+                |bcb| {
+                    bcb.require_zero(
+                        "br/br_if arg is valid",
+                        block_level_lt_chip.config().is_lt(vc, None).expr() - 1.expr(),
+                    );
+                }
+            );
+
             cb.gate(q_enable_expr.clone())
         });
 
@@ -825,6 +872,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             dynamic_indexes_chip,
             func_count,
             block_level,
+            block_level_lt_chip,
             shared_state,
 
             _marker: PhantomData,
@@ -844,7 +892,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "code_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_type,
@@ -1167,13 +1215,26 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             AssignType::IsVariableInstructionLebArg,
             AssignType::IsControlInstructionLebArg,
         ].contains(&assign_type_argument) {
-            let (_instruction_leb_argument, instruction_leb_argument_leb_len) = self.markup_leb_section(
+            let (instr_arg_val, inst_arg_leb_len) = self.markup_leb_section(
                 region,
                 wasm_bytecode,
                 offset,
                 assign_type_argument,
             );
-            offset += instruction_leb_argument_leb_len;
+            let block_level = self.config.shared_state.borrow().block_level;
+            debug!(
+                "assign at offset {} block_level_lt_chip instr_arg_val {} block_level {}",
+                offset,
+                instr_arg_val,
+                block_level,
+            );
+            self.config.block_level_lt_chip.assign(
+                region,
+                offset,
+                F::from(instr_arg_val),
+                F::from(block_level as u64),
+            ).unwrap();
+            offset += inst_arg_leb_len;
         }
 
         if offset == offset_start {

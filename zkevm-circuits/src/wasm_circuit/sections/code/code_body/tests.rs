@@ -62,7 +62,6 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             leb128_chip.clone(),
             dynamic_indexes_chip.clone(),
             func_count,
-            block_level,
             shared_state.clone(),
         );
         let wasm_code_section_body_chip = WasmCodeSectionBodyChip::construct(wasm_code_section_body_config);

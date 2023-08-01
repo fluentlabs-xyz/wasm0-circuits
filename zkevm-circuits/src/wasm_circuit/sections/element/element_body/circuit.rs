@@ -406,7 +406,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         let q_enable = true;
         let byte_val = wasm_bytecode.bytes[offset];
         debug!(
-            "element_section_body: assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_types,

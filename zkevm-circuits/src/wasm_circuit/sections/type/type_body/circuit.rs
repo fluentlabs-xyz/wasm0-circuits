@@ -180,7 +180,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "type_section_body: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
+            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_type,

@@ -322,7 +322,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "table_section_body: assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_types,

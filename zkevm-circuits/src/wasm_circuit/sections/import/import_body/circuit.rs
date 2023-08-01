@@ -13,7 +13,7 @@ use log::debug;
 
 use eth_types::Field;
 use gadgets::binary_number::BinaryNumberChip;
-use gadgets::less_than::{LtChip, LtInstruction};
+use gadgets::less_than::LtInstruction;
 use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
@@ -805,7 +805,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "import_section_body: assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_types,
