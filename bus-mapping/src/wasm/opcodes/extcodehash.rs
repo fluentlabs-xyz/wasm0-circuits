@@ -106,12 +106,7 @@ mod extcodehash_tests {
         mock::BlockData,
         operation::{AccountOp, CallContextOp, StackOp, RW},
     };
-    use eth_types::{
-        address, bytecode,
-        evm_types::{OpcodeId, StackAddress},
-        geth_types::GethData,
-        Bytecode, Bytes, Word, U256,
-    };
+    use eth_types::{address, bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::GethData, Bytecode, Bytes, Word, U256, bytecode_internal};
     use ethers_core::utils::keccak256;
     use mock::TestContext;
     use pretty_assertions::assert_eq;
@@ -145,23 +140,23 @@ mod extcodehash_tests {
         // Make the external account warm, if needed, by first getting its balance.
         let mut code = Bytecode::default();
         if is_warm {
-            code.append(&bytecode! {
+            bytecode_internal! {code,
                 // PUSH20(external_address.to_word())
                 // EXTCODEHASH
                 // POP
                 I32Const[external_address_mem_address]
                 I32Const[res_mem_address]
                 EXTCODEHASH
-            });
+            }
         }
-        code.append(&bytecode! {
+        bytecode_internal! {code,
             // PUSH20(external_address.to_word())
             // EXTCODEHASH
             // STOP
             I32Const[external_address_mem_address]
             I32Const[res_mem_address]
             EXTCODEHASH
-        });
+        }
         let mut nonce = Word::from(300u64);
         let mut balance = Word::from(800u64);
         let mut code_ext = Bytes::from([34, 54, 56]);
