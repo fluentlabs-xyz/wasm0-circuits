@@ -17,7 +17,7 @@ use gadgets::util::{Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::WasmFuncCountAwareChip;
+use crate::wasm_circuit::common::{WasmFuncCountAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::NumType;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -57,11 +57,11 @@ pub struct WasmTypeSectionItemChip<F> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmTypeSectionItemChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
-        self.config.shared_state.clone()
-    }
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmTypeSectionItemChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
 
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmTypeSectionItemChip<F> {
     fn func_count_col(&self) -> Column<Advice> {
         self.config.func_count
     }

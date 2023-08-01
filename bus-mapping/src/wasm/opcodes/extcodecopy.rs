@@ -177,12 +177,7 @@ mod extcodecopy_tests {
         },
         state_db::CodeDB,
     };
-    use eth_types::{
-        address, bytecode,
-        evm_types::{MemoryAddress, OpcodeId, StackAddress},
-        geth_types::GethData,
-        Bytecode, Bytes, ToWord, Word, U256,
-    };
+    use eth_types::{address, bytecode, evm_types::{MemoryAddress, OpcodeId, StackAddress}, geth_types::GethData, Bytecode, Bytes, ToWord, Word, U256, bytecode_internal};
     use mock::TestContext;
 
     fn test_ok(
@@ -195,20 +190,20 @@ mod extcodecopy_tests {
         let external_address = address!("0xaabbccddee000000000000000000000000000000");
         let mut code = Bytecode::default();
         if is_warm {
-            code.append(&bytecode! {
+            bytecode_internal! {code,
                 PUSH20(external_address.to_word())
                 EXTCODEHASH
                 POP
-            })
+            }
         }
-        code.append(&bytecode! {
+        bytecode_internal! {code,
             PUSH32 (copy_size)
             PUSH32 (data_offset)
             PUSH32 (memory_offset)
             PUSH20 (external_address.to_word())
             EXTCODECOPY
             STOP
-        });
+        }
 
         let bytecode_ext = Bytecode::from(code_ext.to_vec());
         // TODO: bytecode_ext = vec![] is being used to indicate an empty account.

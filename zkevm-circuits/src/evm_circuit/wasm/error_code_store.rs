@@ -126,16 +126,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorCodeStoreGadget<F> {
 #[cfg(test)]
 mod test {
     use bus_mapping::circuit_input_builder::CircuitsParams;
-    use eth_types::{
-        address,
-        bytecode,
-        evm_types::OpcodeId,
-        geth_types::Account,
-        Address,
-        Bytecode,
-        Word,
-        // word,
-    };
+    use eth_types::{address, bytecode, evm_types::OpcodeId, geth_types::Account, Address, Bytecode, Word, bytecode_internal};
 
     use lazy_static::lazy_static;
     use mock::{eth, TestContext, MOCK_ACCOUNTS};
@@ -195,23 +186,25 @@ mod test {
         }
 
         if is_create2 {
-            code.append(&bytecode! {PUSH1(45)}); // salt;
+            bytecode_internal! {code,
+                PUSH1(45)
+            } // salt;
         }
-        code.append(&bytecode! {
+        bytecode_internal! {code,
             PUSH32(initialization_bytes.len()) // size
             PUSH2(0x00) // offset
             PUSH2(23414) // value
-        });
+        }
         code.write_op(if is_create2 {
             OpcodeId::CREATE2
         } else {
             OpcodeId::CREATE
         });
-        code.append(&bytecode! {
+        bytecode_internal! {code,
             PUSH1(0)
             PUSH1(0)
             RETURN
-        });
+        }
 
         code
     }

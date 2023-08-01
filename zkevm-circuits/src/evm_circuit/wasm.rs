@@ -269,7 +269,7 @@ pub(crate) struct ExecutionConfig<F> {
     evm_calldataload: Box<EvmCallDataLoadGadget<F>>,
     evm_calldatasize: Box<EvmCallDataSizeGadget<F>>,
     evm_caller: Box<EvmCallerGadget<F>>,
-    evm_callop: Box<EvmCallOpGadget<F>>,
+    evm_callop: Box<CommonDummyGadget<F, 0, 0, { ExecutionState::CALL_OP }>>,
     evm_callvalue: Box<EvmCallValueGadget<F>>,
     evm_chainid: Box<EvmChainIdGadget<F>>,
     evm_codecopy: Box<EvmCodeCopyGadget<F>>,

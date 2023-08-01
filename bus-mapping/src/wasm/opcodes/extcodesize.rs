@@ -102,7 +102,7 @@ mod extcodesize_tests {
         circuit_input_builder::ExecState,
         operation::{AccountOp, CallContextOp, StackOp, RW},
     };
-    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::{Account, GethData}, Bytecode, Word, U256, StackWord};
+    use eth_types::{bytecode, evm_types::{OpcodeId, StackAddress}, geth_types::{Account, GethData}, Bytecode, Word, U256, StackWord, bytecode_internal};
     use mock::{TestContext, MOCK_1_ETH, MOCK_ACCOUNTS, MOCK_CODES};
     use pretty_assertions::assert_eq;
     use eth_types::bytecode::WasmBinaryBytecode;
@@ -155,14 +155,14 @@ mod extcodesize_tests {
         //         EXTCODESIZE
         //     });
         // }
-        code.append(&bytecode! {
+        bytecode_internal! {code,
             // PUSH20(account.address.to_word())
             // EXTCODESIZE
             // STOP
             I32Const[account_mem_address]
             I32Const[res_mem_address]
             EXTCODESIZE
-        });
+        }
 
         // Get the execution steps from the external tracer.
         code.with_global_data(0, account_mem_address, account.address.0.to_vec());

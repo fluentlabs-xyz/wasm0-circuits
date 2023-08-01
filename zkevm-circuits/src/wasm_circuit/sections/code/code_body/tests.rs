@@ -43,6 +43,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let func_count = cs.advice_column();
+        let block_level = cs.advice_column();
 
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
 

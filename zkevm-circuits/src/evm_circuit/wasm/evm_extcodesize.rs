@@ -223,23 +223,23 @@ mod test {
         // code B gets called by code A, so the call is an internal call.
         let mut bytecode_b = Bytecode::default();
         if is_warm {
-            bytecode_b.append(&bytecode! {
+            bytecode_internal! {bytecode_b,
                 // PUSH20(account.address.to_word())
                 // EXTCODESIZE
                 // POP
                 I32Const[account_mem_address]
                 I32Const[res_mem_address1]
                 EXTCODESIZE
-            });
+            }
         }
-        bytecode_b.append(&bytecode! {
+        bytecode_internal! {bytecode_b,
             // PUSH20(account.address.to_word())
             // EXTCODESIZE
             // POP
             I32Const[account_mem_address]
             I32Const[res_mem_address1]
             EXTCODESIZE
-        });
+        }
         bytecode_b.with_global_data(0, account_mem_address, account.address.0.to_vec());
 
         let mut bytecode_a = bytecode! {

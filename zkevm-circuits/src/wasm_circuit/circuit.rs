@@ -19,7 +19,7 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::table::PoseidonTable;
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{wasm_compute_section_len, WasmFuncCountAwareChip};
+use crate::wasm_circuit::common::{wasm_compute_section_len, WasmFuncCountAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::{ControlInstruction, ExportDescType, ImportDescType, SECTION_ID_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -72,7 +72,7 @@ pub struct WasmConfig<F: Field> {
     wasm_start_section_body_chip: Rc<WasmStartSectionBodyChip<F>>,
     wasm_table_section_body_chip: Rc<WasmTableSectionBodyChip<F>>,
     wasm_element_section_body_chip: Rc<WasmElementSectionBodyChip<F>>,
-    is_section_id_grows_lt_chip: LtChip<F, 1>,
+    section_id_lt_chip: LtChip<F, 1>,
     dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     index_at_magic_prefix_count: usize,
     index_at_magic_prefix: Vec<IsZeroChip<F>>,
@@ -84,6 +84,7 @@ pub struct WasmConfig<F: Field> {
     pub(crate) wasm_bytecode_table: Rc<WasmBytecodeTable>,
 
     func_count: Column<Advice>,
+    block_level: Column<Advice>,
 
     pub shared_state: Rc<RefCell<SharedState>>,
 
@@ -100,14 +101,12 @@ pub struct WasmChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
-        self.config.shared_state.clone()
-    }
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
 
-    fn func_count_col(&self) -> Column<Advice> {
-        self.config.func_count
-    }
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmChip<F>
@@ -145,6 +144,7 @@ impl<F: Field> WasmChip<F>
 
         let section_id = cs.advice_column();
         let func_count = cs.advice_column();
+        let block_level = cs.advice_column();
 
         let range_table_config_0_256 = RangeTableConfig::configure(cs);
         let section_id_range_table_config = RangeTableConfig::configure(cs);
@@ -655,7 +655,7 @@ impl<F: Field> WasmChip<F>
             )
         });
 
-        let is_section_id_grows_lt_chip_config = LtChip::configure(
+        let section_id_lt_chip_config = LtChip::configure(
             cs,
             |vc| {
                 let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
@@ -674,7 +674,7 @@ impl<F: Field> WasmChip<F>
                 vc.query_advice(section_id, Rotation::cur())
             },
         );
-        let is_section_id_grows_lt_chip = LtChip::construct(is_section_id_grows_lt_chip_config);
+        let section_id_lt_chip = LtChip::construct(section_id_lt_chip_config);
         cs.create_gate("prev.section_id <= cur.section_id", |vc| {
             let section_id_prev_expr = vc.query_advice(section_id, Rotation::prev());
             let section_id_expr = vc.query_advice(section_id, Rotation::cur());
@@ -683,7 +683,7 @@ impl<F: Field> WasmChip<F>
 
             constraints.push(
                 ("prev.section_id <= cur.section_id",
-                 (is_section_id_grows_lt_chip.config().is_lt(vc, None) - 1.expr())
+                 (section_id_lt_chip.config().is_lt(vc, None) - 1.expr())
                      * (section_id_expr.clone() - section_id_prev_expr.clone())
                 )
             );
@@ -918,11 +918,12 @@ impl<F: Field> WasmChip<F>
             wasm_start_section_body_chip,
             wasm_table_section_body_chip,
             wasm_element_section_body_chip,
-            is_section_id_grows_lt_chip,
+            section_id_lt_chip,
             range_table_config_0_128,
             dynamic_indexes_chip,
             shared_state,
             func_count,
+            block_level,
 
             _marker: PhantomData,
         };
@@ -1093,7 +1094,7 @@ impl<F: Field> WasmChip<F>
         loop {
             let section_start_offset = wasm_bytes_offset;
             let section_len_start_offset = section_start_offset + 1;
-            let wasm_section_id = wasm_bytecode.bytes[wasm_bytes_offset];
+            let section_id = wasm_bytecode.bytes[wasm_bytes_offset];
             wasm_bytes_offset += 1;
             let (section_len, section_len_leb_bytes_count) = wasm_compute_section_len(&wasm_bytecode.bytes, wasm_bytes_offset).unwrap();
             wasm_bytes_offset += section_len_leb_bytes_count as usize;
@@ -1105,11 +1106,11 @@ impl<F: Field> WasmChip<F>
 
             for offset in section_start_offset..=section_end_offset {
                 if offset == section_start_offset {
-                    let wasm_section: WasmSection = (wasm_section_id as i32).try_into().unwrap();
+                    let wasm_section: WasmSection = (section_id as i32).try_into().unwrap();
                     debug!(
                         "wasm_section {:?}(id={}) at offset {} len {} bytecode(hex) {:x?}",
                         wasm_section,
-                        wasm_section_id,
+                        section_id,
                         offset,
                         section_end_offset - section_start_offset + 1,
                         &wasm_bytecode.bytes[section_start_offset..=section_end_offset],
@@ -1209,18 +1210,18 @@ impl<F: Field> WasmChip<F>
                     debug!("wasm_section {:?} section_body_offset {} after assign_auto next_section_offset {}", wasm_section, section_body_offset, next_section_offset);
                 }
                 region.assign_advice(
-                    || format!("assign 'section_id' to {} at {}", wasm_section_id, offset),
+                    || format!("assign 'section_id' to {} at {}", section_id, offset),
                     self.config.section_id,
                     offset,
-                    || Value::known(F::from(wasm_section_id as u64))
+                    || Value::known(F::from(section_id as u64))
                 )?;
-                self.config.is_section_id_grows_lt_chip.assign(
+                self.config.section_id_lt_chip.assign(
                     region,
                     offset,
                     F::from(section_id_prev as u64),
-                    F::from(wasm_section_id as u64),
+                    F::from(section_id as u64),
                 )?;
-                section_id_prev = wasm_section_id as i64;
+                section_id_prev = section_id as i64;
             }
 
             self.assign(

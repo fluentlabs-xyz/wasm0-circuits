@@ -13,13 +13,13 @@ use log::debug;
 
 use eth_types::Field;
 use gadgets::binary_number::BinaryNumberChip;
-use gadgets::less_than::{LtChip, LtInstruction};
+use gadgets::less_than::LtInstruction;
 use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmFuncCountAwareChip, WasmLimitTypeAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmFuncCountAwareChip, WasmLimitTypeAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::{IMPORT_DESC_TYPE_VALUES, ImportDescType, LimitType, MUTABILITY_VALUES, REF_TYPE_VALUES, RefType};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -72,13 +72,12 @@ pub struct WasmImportSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmImportSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
 impl<F: Field> WasmFuncCountAwareChip<F> for WasmImportSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
-        self.config.shared_state.clone()
-    }
-    fn func_count_col(&self) -> Column<Advice> {
-        self.config.func_count
-    }
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmLimitTypeAwareChip<F> for WasmImportSectionBodyChip<F> {}
@@ -806,7 +805,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "import_section_body: assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
             offset,
             q_enable,
             assign_types,

@@ -18,7 +18,7 @@ use gadgets::util::{Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::WasmFuncCountAwareChip;
+use crate::wasm_circuit::common::{WasmFuncCountAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::{NUM_TYPE_VALUES, NumType, WASM_BLOCK_END};
 use crate::wasm_circuit::consts::NumericInstruction::{I32Const, I64Const};
 use crate::wasm_circuit::error::Error;
@@ -66,14 +66,12 @@ pub struct WasmGlobalSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmGlobalSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
-        self.config.shared_state.clone()
-    }
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmGlobalSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
 
-    fn func_count_col(&self) -> Column<Advice> {
-        self.config.func_count
-    }
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmGlobalSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmGlobalSectionBodyChip<F>
@@ -364,7 +362,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
     ) {
         let q_enable = true;
         debug!(
-            "global_section_body: assign at offset {} q_enable {} assign_types {:?} assign_values {} byte_val {:x?}",
+            "assign at offset {} q_enable {} assign_types {:?} assign_values {} byte_val {:x?}",
             offset,
             q_enable,
             assign_types,
