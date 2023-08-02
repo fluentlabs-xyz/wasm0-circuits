@@ -291,6 +291,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I32Popcnt |
         OpcodeId::I64Popcnt => StackOnlyOpcode::<1, 1>::gen_associated_ops,
 
+/*
         // WASM table opcodes
         OpcodeId::TableSize => WasmTableOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::TableGrow => WasmTableOpcode::<1, 1>::gen_associated_ops,
@@ -299,6 +300,16 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::TableFill => WasmTableOpcode::<3, 1>::gen_associated_ops,
         OpcodeId::TableCopy => WasmTableOpcode::<3, 1>::gen_associated_ops,
         OpcodeId::TableInit => WasmTableOpcode::<3, 1>::gen_associated_ops,
+*/
+
+        // WASM table opcodes
+        OpcodeId::TableSize => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::TableGrow => StackOnlyOpcode::<1, 1>::gen_associated_ops,
+        OpcodeId::TableGet => StackOnlyOpcode::<0, 1>::gen_associated_ops,
+        OpcodeId::TableSet => StackOnlyOpcode::<1, 0>::gen_associated_ops,
+        OpcodeId::TableFill => StackOnlyOpcode::<3, 1>::gen_associated_ops,
+        OpcodeId::TableCopy => StackOnlyOpcode::<3, 1>::gen_associated_ops,
+        OpcodeId::TableInit => StackOnlyOpcode::<3, 1>::gen_associated_ops,
 
         // WASM global opcodes
         OpcodeId::SetGlobal |

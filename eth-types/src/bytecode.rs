@@ -214,6 +214,9 @@ impl WasmBinaryBytecode for Bytecode {
             }
             module.section(&global_section);
         }
+        module.section(&exports);
+        module.section(&codes);
+        // Order of sections is important.
         if self.tables.len() > 0 {
             let mut table_section = TableSection::new();
             for var in &self.tables {
@@ -221,8 +224,6 @@ impl WasmBinaryBytecode for Bytecode {
             }
             module.section(&table_section);
         }
-        module.section(&exports);
-        module.section(&codes);
         // if we have global data section then put it into final binary
         let mut sections = self.section_descriptors.clone();
         sections.sort();
