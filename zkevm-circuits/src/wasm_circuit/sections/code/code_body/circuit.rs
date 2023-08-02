@@ -19,11 +19,10 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmBlockLevelAwareChip, WasmFuncCountAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChipV1, WasmBlockLevelAwareChip, WasmFuncCountAwareChip, WasmLeb128AwareChipV1, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::{CONTROL_INSTRUCTION_BLOCK, CONTROL_INSTRUCTION_WITH_LEB_ARG, CONTROL_INSTRUCTION_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTION_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, VARIABLE_INSTRUCTION_WITH_LEB_ARG, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
-use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::code::code_body::types::AssignType;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
@@ -74,6 +73,225 @@ pub struct WasmCodeSectionBodyChip<F: Field> {
     pub config: WasmCodeSectionBodyConfig<F>,
     _marker: PhantomData<F>,
 }
+
+impl<F: Field> WasmAssignAwareChipV1<F> for WasmCodeSectionBodyChip<F> {
+    type AssignType = AssignType;
+
+    fn assign(
+        &self,
+        region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
+        offset: usize,
+        assign_types: &[Self::AssignType],
+        assign_value: u64,
+        leb_params: Option<LebParams>,
+    ) {
+        let q_enable = true;
+        debug!(
+            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            offset,
+            q_enable,
+            assign_types,
+            assign_value,
+            wasm_bytecode.bytes[offset],
+        );
+        region.assign_fixed(
+            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
+            self.config.q_enable,
+            offset,
+            || Value::known(F::from(q_enable as u64)),
+        ).unwrap();
+        self.assign_func_count(region, offset);
+        self.assign_block_level(region, offset);
+
+        assign_types.iter().for_each(|&assign_type| {
+            if [
+                AssignType::IsFuncsCount,
+                AssignType::IsFuncBodyLen,
+                AssignType::IsLocalTypeTransitionsCount,
+                AssignType::IsLocalRepetitionCount,
+                AssignType::IsNumericInstructionLebArg,
+                AssignType::IsVariableInstructionLebArg,
+                AssignType::IsControlInstructionLebArg
+            ].contains(&assign_type) {
+                let p = leb_params.unwrap();
+                self.config.leb128_chip.assign(
+                    region,
+                    offset,
+                    q_enable,
+                    p,
+                );
+            }
+            match assign_type {
+                AssignType::QFirst => {
+                    region.assign_fixed(
+                        || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                        self.config.q_first,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::QLast => {
+                    region.assign_fixed(
+                        || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                        self.config.q_last,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::Unknown => {
+                    panic!("assign type is unknown")
+                }
+                AssignType::IsFuncsCount => {
+                    region.assign_fixed(
+                        || format!("assign 'is_funcs_count' val {} at {}", assign_value, offset),
+                        self.config.is_funcs_count,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsFuncBodyLen => {
+                    region.assign_fixed(
+                        || format!("assign 'is_func_body_len' val {} at {}", assign_value, offset),
+                        self.config.is_func_body_len,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsLocalTypeTransitionsCount => {
+                    region.assign_fixed(
+                        || format!("assign 'is_local_type_transitions_count' val {} at {}", assign_value, offset),
+                        self.config.is_local_type_transitions_count,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsLocalRepetitionCount => {
+                    region.assign_fixed(
+                        || format!("assign 'is_local_repetition_count' val {} at {}", assign_value, offset),
+                        self.config.is_local_repetition_count,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsLocalType => {
+                    region.assign_fixed(
+                        || format!("assign 'is_local_type' val {} at {}", assign_value, offset),
+                        self.config.is_local_type,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsNumericInstruction => {
+                    region.assign_fixed(
+                        || format!("assign 'is_numeric_instruction' val {} at {}", assign_value, offset),
+                        self.config.is_numeric_instruction,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                    if assign_value == 1 {
+                        let opcode: NumericInstruction = wasm_bytecode.bytes[offset].try_into().unwrap();
+                        self.config.numeric_instructions_chip.assign(
+                            region,
+                            offset,
+                            &opcode,
+                        ).unwrap();
+                    }
+                }
+                AssignType::IsNumericInstructionLebArg => {
+                    region.assign_fixed(
+                        || format!("assign 'is_numeric_instruction_leb_arg' val {} at {}", assign_value, offset),
+                        self.config.is_numeric_instruction_leb_arg,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsVariableInstruction => {
+                    region.assign_fixed(
+                        || format!("assign 'is_variable_instruction' val {} at {}", assign_value, offset),
+                        self.config.is_variable_instruction,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                    if assign_value == 1 {
+                        let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
+                        self.config.variable_instruction_chip.assign(
+                            region,
+                            offset,
+                            &opcode,
+                        ).unwrap();
+                    }
+                }
+                AssignType::IsVariableInstructionLebArg => {
+                    region.assign_fixed(
+                        || format!("assign 'is_variable_instruction_leb_arg' val {} at {}", assign_value, offset),
+                        self.config.is_variable_instruction_leb_arg,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsControlInstruction => {
+                    region.assign_fixed(
+                        || format!("assign 'is_control_instruction' val {} at {}", assign_value, offset),
+                        self.config.is_control_instruction,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                    if assign_value == 1 {
+                        let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
+                        self.config.control_instruction_chip.assign(
+                            region,
+                            offset,
+                            &opcode,
+                        ).unwrap();
+                    }
+                }
+                AssignType::IsControlInstructionLebArg => {
+                    region.assign_fixed(
+                        || format!("assign 'is_control_instruction_leb_arg' val {} at {}", assign_value, offset),
+                        self.config.is_control_instruction_leb_arg,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsParametricInstruction => {
+                    region.assign_fixed(
+                        || format!("assign 'is_parametric_instruction' val {} at {}", assign_value, offset),
+                        self.config.is_parametric_instruction,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                    if assign_value == 1 {
+                        let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
+                        self.config.parametric_instruction_chip.assign(
+                            region,
+                            offset,
+                            &opcode,
+                        ).unwrap();
+                    }
+                }
+                AssignType::IsBlocktypeDelimiter => {
+                    region.assign_fixed(
+                        || format!("assign 'is_blocktype_delimiter' val {} at {}", assign_value, offset),
+                        self.config.is_blocktype_delimiter,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+                AssignType::IsBlockEnd => {
+                    region.assign_fixed(
+                        || format!("assign 'is_block_end' val {} at {}", assign_value, offset),
+                        self.config.is_block_end,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
+            }
+        })
+    }
+}
+
+impl<F: Field> WasmLeb128AwareChipV1<F> for WasmCodeSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmCodeSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> {
@@ -881,257 +1099,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         config
     }
 
-    pub fn assign(
-        &self,
-        region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        offset: usize,
-        assign_type: AssignType,
-        assign_value: u64,
-        leb_params: Option<LebParams>,
-    ) {
-        let q_enable = true;
-        debug!(
-            "assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
-            offset,
-            q_enable,
-            assign_type,
-            assign_value,
-            wasm_bytecode.bytes[offset],
-        );
-        region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
-            self.config.q_enable,
-            offset,
-            || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
-        self.assign_func_count(region, offset);
-        self.assign_block_level(region, offset);
-
-        if [
-            AssignType::IsFuncsCount,
-            AssignType::IsFuncBodyLen,
-            AssignType::IsLocalTypeTransitionsCount,
-            AssignType::IsLocalRepetitionCount,
-            AssignType::IsNumericInstructionLebArg,
-            AssignType::IsVariableInstructionLebArg,
-            AssignType::IsControlInstructionLebArg
-        ].contains(&assign_type) {
-            let p = leb_params.unwrap();
-            self.config.leb128_chip.assign(
-                region,
-                offset,
-                q_enable,
-                p,
-            );
-        }
-        match assign_type {
-            AssignType::QFirst => {
-                region.assign_fixed(
-                    || format!("assign 'q_first' val {} at {}", assign_value, offset),
-                    self.config.q_first,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::QLast => {
-                region.assign_fixed(
-                    || format!("assign 'q_last' val {} at {}", assign_value, offset),
-                    self.config.q_last,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::Unknown => {
-                panic!("assign type is unknown")
-            }
-            AssignType::IsFuncsCount => {
-                region.assign_fixed(
-                    || format!("assign 'is_funcs_count' val {} at {}", assign_value, offset),
-                    self.config.is_funcs_count,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsFuncBodyLen => {
-                region.assign_fixed(
-                    || format!("assign 'is_func_body_len' val {} at {}", assign_value, offset),
-                    self.config.is_func_body_len,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsLocalTypeTransitionsCount => {
-                region.assign_fixed(
-                    || format!("assign 'is_local_type_transitions_count' val {} at {}", assign_value, offset),
-                    self.config.is_local_type_transitions_count,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsLocalRepetitionCount => {
-                region.assign_fixed(
-                    || format!("assign 'is_local_repetition_count' val {} at {}", assign_value, offset),
-                    self.config.is_local_repetition_count,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsLocalType => {
-                region.assign_fixed(
-                    || format!("assign 'is_local_type' val {} at {}", assign_value, offset),
-                    self.config.is_local_type,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsNumericInstruction => {
-                region.assign_fixed(
-                    || format!("assign 'is_numeric_instruction' val {} at {}", assign_value, offset),
-                    self.config.is_numeric_instruction,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-                if assign_value == 1 {
-                    let opcode: NumericInstruction = wasm_bytecode.bytes[offset].try_into().unwrap();
-                    self.config.numeric_instructions_chip.assign(
-                        region,
-                        offset,
-                        &opcode,
-                    ).unwrap();
-                }
-            }
-            AssignType::IsNumericInstructionLebArg => {
-                region.assign_fixed(
-                    || format!("assign 'is_numeric_instruction_leb_arg' val {} at {}", assign_value, offset),
-                    self.config.is_numeric_instruction_leb_arg,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsVariableInstruction => {
-                region.assign_fixed(
-                    || format!("assign 'is_variable_instruction' val {} at {}", assign_value, offset),
-                    self.config.is_variable_instruction,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-                if assign_value == 1 {
-                    let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
-                    self.config.variable_instruction_chip.assign(
-                        region,
-                        offset,
-                        &opcode,
-                    ).unwrap();
-                }
-            }
-            AssignType::IsVariableInstructionLebArg => {
-                region.assign_fixed(
-                    || format!("assign 'is_variable_instruction_leb_arg' val {} at {}", assign_value, offset),
-                    self.config.is_variable_instruction_leb_arg,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsControlInstruction => {
-                region.assign_fixed(
-                    || format!("assign 'is_control_instruction' val {} at {}", assign_value, offset),
-                    self.config.is_control_instruction,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-                if assign_value == 1 {
-                    let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
-                    self.config.control_instruction_chip.assign(
-                        region,
-                        offset,
-                        &opcode,
-                    ).unwrap();
-                }
-            }
-            AssignType::IsControlInstructionLebArg => {
-                region.assign_fixed(
-                    || format!("assign 'is_control_instruction_leb_arg' val {} at {}", assign_value, offset),
-                    self.config.is_control_instruction_leb_arg,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsParametricInstruction => {
-                region.assign_fixed(
-                    || format!("assign 'is_parametric_instruction' val {} at {}", assign_value, offset),
-                    self.config.is_parametric_instruction,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-                if assign_value == 1 {
-                    let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
-                    self.config.parametric_instruction_chip.assign(
-                        region,
-                        offset,
-                        &opcode,
-                    ).unwrap();
-                }
-            }
-            AssignType::IsBlocktypeDelimiter => {
-                region.assign_fixed(
-                    || format!("assign 'is_blocktype_delimiter' val {} at {}", assign_value, offset),
-                    self.config.is_blocktype_delimiter,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-            AssignType::IsBlockEnd => {
-                region.assign_fixed(
-                    || format!("assign 'is_block_end' val {} at {}", assign_value, offset),
-                    self.config.is_block_end,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).unwrap();
-            }
-        }
-    }
-
-    /// returns sn and leb len
-    fn markup_leb_section(
-        &self,
-        region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        leb_bytes_offset: usize,
-        assign_type: AssignType,
-    ) -> (u64, usize) {
-        let is_signed = false;
-        let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
-        let mut sn_recovered_at_pos = 0;
-        let last_byte_rel_offset = last_byte_offset - leb_bytes_offset;
-        for byte_rel_offset in 0..=last_byte_rel_offset {
-            let offset = leb_bytes_offset + byte_rel_offset;
-            sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
-                sn_recovered_at_pos,
-                is_signed,
-                byte_rel_offset,
-                last_byte_rel_offset,
-                wasm_bytecode.bytes[offset],
-            );
-            self.assign(
-                region,
-                wasm_bytecode,
-                offset,
-                assign_type,
-                1,
-                Some(LebParams {
-                    is_signed,
-                    byte_rel_offset,
-                    last_byte_rel_offset,
-                    sn,
-                    sn_recovered_at_pos,
-                }),
-            );
-        }
-
-        (sn, last_byte_rel_offset + 1)
-    }
-
     /// returns new offset
     fn markup_instruction_section(
         &self,
@@ -1191,7 +1158,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset,
-                assign_type,
+                &[assign_type],
                 1,
                 None,
             );
@@ -1203,7 +1170,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset,
-                assign_type_argument,
+                &[assign_type_argument],
                 1,
                 None,
             );
@@ -1219,7 +1186,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset,
-                assign_type_argument,
+                &[assign_type_argument],
             );
             let block_level = self.config.shared_state.borrow().block_level;
             debug!(
@@ -1260,10 +1227,10 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             region,
             wasm_bytecode,
             offset,
-            AssignType::IsFuncsCount,
+            &[AssignType::IsFuncsCount],
         );
         self.config.shared_state.borrow_mut().func_count += funcs_count as usize;
-        self.assign(region, &wasm_bytecode, offset, AssignType::QFirst, 1, None);
+        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
         offset += funcs_count_leb_len;
 
         for _func_index in 0..funcs_count {
@@ -1273,7 +1240,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset,
-                AssignType::IsFuncBodyLen,
+                &[AssignType::IsFuncBodyLen],
             );
             offset += func_body_len_leb_len;
 
@@ -1284,7 +1251,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset,
-                AssignType::IsLocalTypeTransitionsCount,
+                &[AssignType::IsLocalTypeTransitionsCount],
             );
             offset += is_local_type_transitions_count_leb_len;
 
@@ -1294,7 +1261,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     region,
                     wasm_bytecode,
                     offset,
-                    AssignType::IsLocalRepetitionCount,
+                    &[AssignType::IsLocalRepetitionCount],
                 );
                 offset += is_local_repetition_count_leb_len;
 
@@ -1303,7 +1270,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     region,
                     wasm_bytecode,
                     offset,
-                    AssignType::IsLocalType,
+                    &[AssignType::IsLocalType],
                     1,
                     None,
                 );
@@ -1322,7 +1289,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         }
 
         if offset != offset_start {
-            self.assign(region, &wasm_bytecode, offset - 1, AssignType::QLast, 1, None);
+            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
         }
 
         Ok(offset)

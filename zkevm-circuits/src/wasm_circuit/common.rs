@@ -18,10 +18,12 @@ use gadgets::less_than::LtChip;
 use gadgets::util::{and, Expr};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::consts::LimitType;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
-use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_last_byte_offset;
+use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
+use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
@@ -218,6 +220,62 @@ pub trait WasmBlockLevelAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
             offset,
             || Value::known(F::from(block_level as u64)),
         ).unwrap();
+    }
+}
+
+pub trait WasmAssignAwareChipV1<F: Field> {
+    type AssignType;
+
+    fn assign(
+        &self,
+        region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
+        offset: usize,
+        assign_types: &[Self::AssignType],
+        assign_value: u64,
+        leb_params: Option<LebParams>,
+    );
+}
+
+pub trait WasmLeb128AwareChipV1<F: Field>: WasmAssignAwareChipV1<F>  {
+    /// returns sn and leb len
+    fn markup_leb_section(
+        &self,
+        region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
+        leb_bytes_offset: usize,
+        assign_types: &[Self::AssignType],
+    ) -> (u64, usize) {
+        let is_signed = false;
+        let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
+        let mut sn_recovered_at_pos = 0;
+        let last_byte_rel_offset = last_byte_offset - leb_bytes_offset;
+        for byte_rel_offset in 0..=last_byte_rel_offset {
+            let offset = leb_bytes_offset + byte_rel_offset;
+            sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
+                sn_recovered_at_pos,
+                is_signed,
+                byte_rel_offset,
+                last_byte_rel_offset,
+                wasm_bytecode.bytes[offset],
+            );
+            self.assign(
+                region,
+                wasm_bytecode,
+                offset,
+                assign_types,
+                1,
+                Some(LebParams {
+                    is_signed,
+                    byte_rel_offset,
+                    last_byte_rel_offset,
+                    sn,
+                    sn_recovered_at_pos,
+                }),
+            );
+        }
+
+        (sn, last_byte_rel_offset + 1)
     }
 }
 

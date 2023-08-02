@@ -19,10 +19,10 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::table::PoseidonTable;
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{wasm_compute_section_len, WasmFuncCountAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{wasm_compute_section_len, WasmAssignAwareChipV1, WasmFuncCountAwareChip, WasmLeb128AwareChipV1, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::{ControlInstruction, ExportDescType, ImportDescType, SECTION_ID_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
-use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
+use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_last_byte_offset;
 use crate::wasm_circuit::sections::code::code_body::circuit::WasmCodeSectionBodyChip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::data::data_body::circuit::WasmDataSectionBodyChip;
@@ -100,6 +100,100 @@ pub struct WasmChip<F: Field> {
     pub config: WasmConfig<F>,
     _marker: PhantomData<F>,
 }
+
+impl<F: Field> WasmAssignAwareChipV1<F> for WasmChip<F> {
+    type AssignType = AssignType;
+
+    fn assign(
+        &self,
+        region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
+        offset: usize,
+        assign_types: &[AssignType],
+        assign_value: u64,
+        leb_params: Option<LebParams>,
+    ) {
+        let q_enable = true;
+        debug!(
+            "wasm_circuit: assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            offset,
+            q_enable,
+            assign_types,
+            assign_value,
+            wasm_bytecode.bytes[offset],
+        );
+        region.assign_fixed(
+            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
+            self.config.q_enable,
+            offset,
+            || Value::known(F::from(q_enable as u64)),
+        ).unwrap();
+
+        assign_types.iter().for_each(|assign_type| {
+            match assign_type {
+                AssignType::Unknown => {
+                    panic!("unknown assign type")
+                }
+                AssignType::QFirst => {
+                    region.assign_fixed(
+                        || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                        self.config.q_first,
+                        offset,
+                        || Value::known(F::from(assign_value as u64)),
+                    ).unwrap();
+                }
+                AssignType::QLast => {
+                    region.assign_fixed(
+                        || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                        self.config.q_last,
+                        offset,
+                        || Value::known(F::from(assign_value as u64)),
+                    ).unwrap();
+                }
+                AssignType::IsSectionId => {
+                    region.assign_fixed(
+                        || format!("assign 'is_section_id' val {} at {}", assign_value, offset),
+                        self.config.is_section_id,
+                        offset,
+                        || Value::known(F::from(assign_value as u64)),
+                    ).unwrap();
+                }
+                AssignType::IsSectionLen => {
+                    region.assign_fixed(
+                        || format!("assign 'is_section_len' val {} at {}", assign_value, offset),
+                        self.config.is_section_len,
+                        offset,
+                        || Value::known(F::from(assign_value as u64)),
+                    ).unwrap();
+                    let p = leb_params.unwrap();
+                    self.config.leb128_chip.assign(
+                        region,
+                        offset,
+                        q_enable,
+                        p,
+                    );
+                }
+                AssignType::IsSectionBody => {
+                    region.assign_fixed(
+                        || format!("assign 'is_section_body' val {} at {}", assign_value, offset),
+                        self.config.is_section_body,
+                        offset,
+                        || Value::known(F::from(assign_value as u64)),
+                    ).unwrap();
+                }
+            }
+
+            for (index, index_at_magic_prefix) in self.config.index_at_magic_prefix.iter().enumerate() {
+                index_at_magic_prefix.assign(region, offset, Value::known(F::from(offset as u64) - F::from(index as u64))).unwrap();
+            }
+            for (index, index_at_magic_prefix_prev) in self.config.index_at_magic_prefix_prev.iter().enumerate() {
+                index_at_magic_prefix_prev.assign(region, offset, Value::known(F::from(offset as u64) - F::from(index as u64) - F::from(1))).unwrap();
+            }
+        });
+    }
+}
+
+impl<F: Field> WasmLeb128AwareChipV1<F> for WasmChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -939,133 +1033,6 @@ impl<F: Field> WasmChip<F>
         instance
     }
 
-    /// returns sn and leb len
-    fn markup_leb_section(
-        &self,
-        region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        leb_bytes_offset: usize,
-        assign_type: AssignType,
-    ) -> (u64, usize) {
-        let is_signed = false;
-        let (sn, last_byte_offset) = leb128_compute_sn(wasm_bytecode.bytes.as_slice(), is_signed, leb_bytes_offset).unwrap();
-        let mut sn_recovered_at_pos = 0;
-        let last_byte_rel_offset = last_byte_offset - leb_bytes_offset;
-        for byte_rel_offset in 0..=last_byte_rel_offset {
-            let offset = leb_bytes_offset + byte_rel_offset;
-            sn_recovered_at_pos = leb128_compute_sn_recovered_at_position(
-                sn_recovered_at_pos,
-                is_signed,
-                byte_rel_offset,
-                last_byte_rel_offset,
-                wasm_bytecode.bytes[offset],
-            );
-            self.assign(
-                region,
-                wasm_bytecode,
-                offset,
-                assign_type,
-                1,
-                Some(LebParams {
-                    is_signed,
-                    byte_rel_offset,
-                    last_byte_rel_offset,
-                    sn,
-                    sn_recovered_at_pos,
-                }),
-            ).unwrap();
-        }
-
-        (sn, last_byte_rel_offset + 1)
-    }
-
-    pub fn assign(
-        &self,
-        region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        offset: usize,
-        assign_type: AssignType,
-        assign_value: i64,
-        leb_params: Option<LebParams>,
-    ) -> Result<(), Error> {
-        let q_enable = true;
-        debug!(
-            "wasm_circuit: assign at offset {} q_enable {} assign_type {:?} assign_value {} byte_val {:x?}",
-            offset,
-            q_enable,
-            assign_type,
-            assign_value,
-            wasm_bytecode.bytes[offset],
-        );
-        region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
-            self.config.q_enable,
-            offset,
-            || Value::known(F::from(q_enable as u64)),
-        )?;
-        match assign_type {
-            AssignType::Unknown => {
-                panic!("unknown assign type")
-            }
-            AssignType::QFirst => {
-                region.assign_fixed(
-                    || format!("assign 'q_first' val {} at {}", assign_value, offset),
-                    self.config.q_first,
-                    offset,
-                    || Value::known(F::from(assign_value as u64)),
-                )?;
-            }
-            AssignType::QLast => {
-                region.assign_fixed(
-                    || format!("assign 'q_last' val {} at {}", assign_value, offset),
-                    self.config.q_last,
-                    offset,
-                    || Value::known(F::from(assign_value as u64)),
-                )?;
-            }
-            AssignType::IsSectionId => {
-                region.assign_fixed(
-                    || format!("assign 'is_section_id' val {} at {}", assign_value, offset),
-                    self.config.is_section_id,
-                    offset,
-                    || Value::known(F::from(assign_value as u64)),
-                )?;
-            }
-            AssignType::IsSectionLen => {
-                region.assign_fixed(
-                    || format!("assign 'is_section_len' val {} at {}", assign_value, offset),
-                    self.config.is_section_len,
-                    offset,
-                    || Value::known(F::from(assign_value as u64)),
-                )?;
-                let p = leb_params.unwrap();
-                self.config.leb128_chip.assign(
-                    region,
-                    offset,
-                    q_enable,
-                    p,
-                );
-            }
-            AssignType::IsSectionBody => {
-                region.assign_fixed(
-                    || format!("assign 'is_section_body' val {} at {}", assign_value, offset),
-                    self.config.is_section_body,
-                    offset,
-                    || Value::known(F::from(assign_value as u64)),
-                )?;
-            }
-        }
-
-        for (index, index_at_magic_prefix) in self.config.index_at_magic_prefix.iter().enumerate() {
-            index_at_magic_prefix.assign(region, offset, Value::known(F::from(offset as u64) - F::from(index as u64)))?;
-        }
-        for (index, index_at_magic_prefix_prev) in self.config.index_at_magic_prefix_prev.iter().enumerate() {
-            index_at_magic_prefix_prev.assign(region, offset, Value::known(F::from(offset as u64) - F::from(index as u64) - F::from(1)))?;
-        }
-
-        Ok(())
-    }
-
     pub fn assign_auto(
         &mut self,
         region: &mut Region<F>,
@@ -1076,18 +1043,18 @@ impl<F: Field> WasmChip<F>
             region,
             wasm_bytecode,
             0,
-            AssignType::QFirst,
+            &[AssignType::QFirst],
             1,
             None,
-        )?;
+        );
         self.assign(
             region,
             wasm_bytecode,
             wasm_bytecode.bytes.len() - 1,
-            AssignType::QLast,
+            &[AssignType::QLast],
             1,
             None,
-        )?;
+        );
 
         let mut wasm_bytes_offset = WASM_SECTIONS_START_INDEX;
         let mut section_id_prev: i64 = SECTION_ID_DEFAULT as i64;
@@ -1228,16 +1195,16 @@ impl<F: Field> WasmChip<F>
                 region,
                 wasm_bytecode,
                 section_start_offset,
-                AssignType::IsSectionId,
+                &[AssignType::IsSectionId],
                 1,
                 None,
-            )?;
+            );
 
             let (_section_len, _section_len_leb_len) = self.markup_leb_section(
                 region,
                 &wasm_bytecode,
                 section_len_start_offset,
-                AssignType::IsSectionLen,
+                &[AssignType::IsSectionLen],
             );
 
             for i in 0..section_len {
@@ -1247,10 +1214,10 @@ impl<F: Field> WasmChip<F>
                     region,
                     wasm_bytecode,
                     offset,
-                    AssignType::IsSectionBody,
+                    &[AssignType::IsSectionBody],
                     1,
                     None,
-                )?;
+                );
             }
 
             if wasm_bytes_offset >= wasm_bytecode.bytes.len() { break }

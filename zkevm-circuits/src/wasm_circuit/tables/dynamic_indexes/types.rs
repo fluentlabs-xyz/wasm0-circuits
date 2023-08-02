@@ -20,6 +20,9 @@ pub enum Tag {
     MemIndex,
     GlobalIndex,
     DataIndex,
+    // TODO
+    // ElemIndex,
+    // LocalIndex,
 }
 pub const TAG_VALUES: &[Tag] = &[
     Tag::FuncIndex,
