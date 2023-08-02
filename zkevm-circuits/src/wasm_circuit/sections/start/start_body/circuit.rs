@@ -16,11 +16,11 @@ use gadgets::util::{and, Expr, not};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChipV1, WasmFuncCountAwareChip, WasmLeb128AwareChipV1, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::sections::start::start_body::types::AssignType;
 use crate::wasm_circuit::types::SharedState;
 
@@ -49,7 +49,7 @@ pub struct WasmStartSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmAssignAwareChipV1<F> for WasmStartSectionBodyChip<F> {
+impl<F: Field> WasmAssignAwareChip<F> for WasmStartSectionBodyChip<F> {
     type AssignType = AssignType;
 
     fn assign(
@@ -118,7 +118,7 @@ impl<F: Field> WasmAssignAwareChipV1<F> for WasmStartSectionBodyChip<F> {
     }
 }
 
-impl<F: Field> WasmLeb128AwareChipV1<F> for WasmStartSectionBodyChip<F> {}
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmStartSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmStartSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }

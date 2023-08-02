@@ -2,8 +2,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use halo2_proofs::circuit::{Chip, Region, Value};
-use halo2_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed};
+use halo2_proofs::plonk::{Advice, Column, ConstraintSystem, Expression, Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
+use itertools::Itertools;
 use log::debug;
 use num_traits::checked_pow;
 use wabt::wat2wasm;
@@ -15,7 +16,7 @@ use wasmbin::visit::{Visit, VisitError};
 use eth_types::Field;
 use gadgets::binary_number::BinaryNumberChip;
 use gadgets::less_than::LtChip;
-use gadgets::util::{and, Expr};
+use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
@@ -35,6 +36,199 @@ pub struct LimitTypeFields<F> {
     pub limit_type: Column<Advice>,
     pub limit_type_chip: Rc<BinaryNumberChip<F, LimitType, 8>>,
     pub is_limit_type_ctx: Column<Fixed>,
+}
+
+pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
+    cb: &mut BaseConstraintBuilder<F>,
+    vc: &mut VirtualCells<F>,
+    q_enable: &Column<Fixed>,
+    q_first: &Column<Fixed>,
+    q_first_column_selectors: &[Column<Fixed>],
+    q_last: &Column<Fixed>,
+    q_last_column_selectors: &[Column<Fixed>],
+) {
+    let q_enable_expr = vc.query_fixed(*q_enable, Rotation::cur());
+    let q_first_expr = vc.query_fixed(*q_first, Rotation::cur());
+    let q_last_expr = vc.query_fixed(*q_last, Rotation::cur());
+
+    cb.require_boolean("q_first is boolean", q_first_expr.clone());
+    cb.require_boolean("q_last is boolean", q_last_expr.clone());
+
+    if q_first_column_selectors.len() <= 0 || q_last_column_selectors.len() <= 0 {
+        panic!("*column_selectors must contain at leas 1 element each")
+    }
+
+    cb.condition(
+        q_first_expr.clone(),
+        |bcb| {
+            bcb.require_equal(
+                "q_first => specific selectors must be active",
+                or::expr(q_first_column_selectors.iter().map(|v| vc.query_fixed(*v, Rotation::cur()))),
+                1.expr(),
+            )
+        }
+    );
+    cb.condition(
+        q_last_expr.clone(),
+        |bcb| {
+            bcb.require_equal(
+                "q_last => specific selectors must be active",
+                or::expr(q_last_column_selectors.iter().map(|v| vc.query_fixed(*v, Rotation::cur()))),
+                1.expr(),
+            )
+        }
+    );
+
+    cb.condition(
+        or::expr([
+            q_first_expr.clone(),
+            q_last_expr.clone(),
+        ]),
+        |bcb| {
+            bcb.require_equal(
+                "q_first || q_last => q_enable=1",
+                q_enable_expr.clone(),
+                1.expr(),
+            );
+        }
+    );
+    cb.condition(
+        and::expr([
+            q_first_expr.clone(),
+            not::expr(q_last_expr.clone()),
+        ]),
+        |bcb| {
+            let q_first_next_expr = vc.query_fixed(*q_first, Rotation::next());
+            bcb.require_zero(
+                "q_first && !q_last -> !next.q_first",
+                q_first_next_expr.clone(),
+            );
+        }
+    );
+    cb.condition(
+        and::expr([
+            q_last_expr.clone(),
+            not::expr(q_first_expr.clone()),
+        ]),
+        |bcb| {
+            let q_last_prev_expr = vc.query_fixed(*q_last, Rotation::prev());
+            bcb.require_zero(
+                "q_last && !q_first -> !prev.q_last",
+                q_last_prev_expr.clone(),
+            );
+        }
+    );
+    cb.condition(
+        and::expr([
+            not::expr(q_first_expr.clone()),
+            not::expr(q_last_expr.clone()),
+        ]),
+        |bcb| {
+            let q_first_next_expr = vc.query_fixed(*q_first, Rotation::next());
+            let q_last_prev_expr = vc.query_fixed(*q_last, Rotation::prev());
+            bcb.require_zero(
+                "!q_first && !q_last -> !next.q_first",
+                q_first_next_expr.clone(),
+            );
+            bcb.require_zero(
+                "!q_first && !q_last -> !prev.q_last",
+                q_last_prev_expr.clone(),
+            );
+        }
+    );
+}
+
+/// `is_check_next` is check next or prev
+pub fn configure_transition_check<F: Field>(
+    bcb: &mut BaseConstraintBuilder<F>,
+    vc: &mut VirtualCells<F>,
+    name: &'static str,
+    condition: Expression<F>,
+    is_check_next: bool,
+    columns_to_check: &[Column<Fixed>],
+) {
+    bcb.condition(
+        condition,
+        |bcb| {
+            let mut lhs = 0.expr();
+            for column_to_check in columns_to_check {
+                lhs = lhs + vc.query_fixed(*column_to_check, Rotation(if is_check_next { 1 } else { -1 }));
+            }
+            bcb.require_equal(
+                name,
+                lhs,
+                1.expr(),
+            )
+        }
+    );
+}
+
+pub trait WasmLenPrefixedBodyAwareChip<F: Field> {
+    fn configure_len_prefixed_body_checks(
+        cs: &mut ConstraintSystem<F>,
+        leb128_chip: &LEB128Chip<F>,
+        body_selectors: &[Column<Fixed>],
+        body_item_rev_index: &Column<Advice>,
+        is_len_prefix: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
+        is_last_item: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
+    ) {
+        cs.create_gate(
+            "len prefixed body gate",
+            |vc| {
+                let mut cb = BaseConstraintBuilder::default();
+
+                let body_item_rev_index_expr = vc.query_advice(*body_item_rev_index, Rotation::cur());
+                let sn_expr = vc.query_advice(leb128_chip.config.sn, Rotation::cur());
+
+                let is_len_prefix_expr = is_len_prefix(vc);
+                let is_last_item_expr = is_last_item(vc);
+                let body_selectors_exprs = body_selectors.iter().map(|&v| vc.query_fixed(v, Rotation::cur())).collect_vec();
+                let is_body_expr = or::expr(body_selectors_exprs.clone());
+
+                cb.require_boolean("len_prefix_sel is bool", is_len_prefix_expr.clone());
+                cb.require_boolean("last_byte_sel is bool", is_last_item_expr.clone());
+                body_selectors_exprs.iter().for_each(|s| {
+                    cb.require_boolean("body selector is bool", s.clone());
+                });
+
+                cb.condition(
+                    is_len_prefix_expr.clone(),
+                    |bcb| {
+                        bcb.require_equal(
+                            "len prefixed body starts from proper rev index",
+                            body_item_rev_index_expr.clone(),
+                            sn_expr.clone(),
+                        );
+                    }
+                );
+                cb.condition(
+                    is_body_expr.clone(),
+                    |bcb| {
+                        let body_item_rev_index_prev_expr = vc.query_advice(*body_item_rev_index, Rotation::prev());
+                        bcb.require_equal(
+                            "is_body => body_item_rev_index decreases by 1",
+                            body_item_rev_index_prev_expr.clone() - 1.expr(),
+                            body_item_rev_index_expr.clone(),
+                        );
+                    }
+                );
+                cb.condition(
+                    is_last_item_expr.clone(),
+                    |bcb| {
+                        bcb.require_zero(
+                            "is_last_item => body_item_rev_index=0",
+                            body_item_rev_index_expr.clone(),
+                        );
+                    }
+                );
+
+                cb.gate(or::expr([
+                    is_len_prefix_expr.clone(),
+                    or::expr(body_selectors.iter().map(|&e| vc.query_fixed(e, Rotation::cur())).collect_vec()),
+                ]))
+            }
+        );
+    }
 }
 
 pub trait WasmLimitTypeAwareChip<F: Field> {
@@ -160,7 +354,8 @@ pub trait WasmLimitTypeAwareChip<F: Field> {
                 );
 
                 cb.gate(q_enable_expr.clone())
-            });
+            }
+        );
 
         cs.create_gate("limit_type params are valid", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -223,7 +418,7 @@ pub trait WasmBlockLevelAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
     }
 }
 
-pub trait WasmAssignAwareChipV1<F: Field> {
+pub trait WasmAssignAwareChip<F: Field> {
     type AssignType;
 
     fn assign(
@@ -237,7 +432,7 @@ pub trait WasmAssignAwareChipV1<F: Field> {
     );
 }
 
-pub trait WasmLeb128AwareChipV1<F: Field>: WasmAssignAwareChipV1<F>  {
+pub trait WasmMarkupLeb128SectionAwareChip<F: Field>: WasmAssignAwareChip<F> {
     /// returns sn and leb len
     fn markup_leb_section(
         &self,

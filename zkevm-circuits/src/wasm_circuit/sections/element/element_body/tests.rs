@@ -123,7 +123,7 @@ mod wasm_element_section_body_tests {
 
 
     #[test]
-    pub fn section_body_bytecode_is_ok() {
+    pub fn file2_ok() {
         let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
         let kind = Kind::Element;
         let expected = [

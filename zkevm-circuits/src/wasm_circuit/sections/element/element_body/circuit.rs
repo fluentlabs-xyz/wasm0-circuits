@@ -17,13 +17,13 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChipV1, WasmFuncCountAwareChip, WasmLeb128AwareChipV1, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::element::element_body::consts::ElementType;
 use crate::wasm_circuit::sections::element::element_body::types::AssignType;
-use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
+use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::types::SharedState;
 
 #[derive(Debug, Clone)]
@@ -62,7 +62,7 @@ pub struct WasmElementSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmAssignAwareChipV1<F> for WasmElementSectionBodyChip<F> {
+impl<F: Field> WasmAssignAwareChip<F> for WasmElementSectionBodyChip<F> {
     type AssignType = AssignType;
 
     fn assign(
@@ -215,7 +215,7 @@ impl<F: Field> WasmAssignAwareChipV1<F> for WasmElementSectionBodyChip<F> {
     }
 }
 
-impl<F: Field> WasmLeb128AwareChipV1<F> for WasmElementSectionBodyChip<F> {}
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmElementSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmElementSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -346,7 +346,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 is_elem_type_expr.clone(),
                 |bcb| {
                     bcb.require_in_set(
-                        "is_elem_type -> byte_val has valid value",
+                        "is_elem_type -> byte_val is valid",
                         byte_val_expr.clone(),
                         vec![
                             ElementType::_0.expr(),
@@ -378,7 +378,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 is_elem_type_expr.clone(),
                 |bcb| {
                     bcb.require_equal(
-                        "is_elem_type -> elem_type=byte_val",
+                        "is_elem_type => elem_type=byte_val",
                         elem_type_expr.clone(),
                         byte_val_expr.clone(),
                     );
@@ -391,7 +391,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                     let elem_type_prev_expr = vc.query_advice(elem_type, Rotation::prev());
                     let not_is_elem_type_prev_expr = vc.query_fixed(is_elem_type, Rotation::prev());
                     bcb.require_zero(
-                        "is_elem_type_ctx && prev.is_elem_type_ctx -> elem_type=prev.elem_type",
+                        "is_elem_type_ctx && prev.is_elem_type_ctx => elem_type=prev.elem_type",
                         not_is_elem_type_prev_expr.clone() * is_elem_type_ctx_prev_expr.clone() * (elem_type_expr.clone() - elem_type_prev_expr.clone()),
                     );
                 }

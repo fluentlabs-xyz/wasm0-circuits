@@ -19,13 +19,13 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChipV1, WasmBlockLevelAwareChip, WasmFuncCountAwareChip, WasmLeb128AwareChipV1, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBlockLevelAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{CONTROL_INSTRUCTION_BLOCK, CONTROL_INSTRUCTION_WITH_LEB_ARG, CONTROL_INSTRUCTION_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTION_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, VARIABLE_INSTRUCTION_WITH_LEB_ARG, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::code::code_body::types::AssignType;
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::helpers::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::types::SharedState;
 
@@ -74,7 +74,7 @@ pub struct WasmCodeSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmAssignAwareChipV1<F> for WasmCodeSectionBodyChip<F> {
+impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
     type AssignType = AssignType;
 
     fn assign(
@@ -291,7 +291,7 @@ impl<F: Field> WasmAssignAwareChipV1<F> for WasmCodeSectionBodyChip<F> {
     }
 }
 
-impl<F: Field> WasmLeb128AwareChipV1<F> for WasmCodeSectionBodyChip<F> {}
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmCodeSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmCodeSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> {

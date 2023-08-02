@@ -1,6 +1,5 @@
 pub mod r#type;
 pub mod import;
-pub mod helpers;
 pub mod function;
 pub mod memory;
 pub mod export;
