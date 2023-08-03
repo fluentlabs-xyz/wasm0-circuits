@@ -17,7 +17,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check, WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check, WasmAssignAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::ExportDescType;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -42,6 +42,7 @@ pub struct WasmExportSectionBodyConfig<F: Field> {
     pub exportdesc_type_chip: Rc<BinaryNumberChip<F, ExportDescType, 8>>,
 
     pub func_count: Column<Advice>,
+    body_byte_rev_index: Column<Advice>,
 
     shared_state: Rc<RefCell<SharedState>>,
 
@@ -172,12 +173,22 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmExportSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::BodyByteRevIndex => {
+                    region.assign_advice(
+                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, offset),
+                        self.config.body_byte_rev_index,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
             }
         }
     }
 }
 
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmExportSectionBodyChip<F> {}
+
+impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmExportSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmExportSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -203,6 +214,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
+        body_byte_rev_index: Column<Advice>,
     ) -> WasmExportSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -223,6 +235,29 @@ impl<F: Field> WasmExportSectionBodyChip<F>
             Some(exportdesc_type.into()),
         );
         let exportdesc_type_chip = Rc::new(BinaryNumberChip::construct(config));
+
+        Self::configure_len_prefixed_bytes_span_checks(
+            cs,
+            leb128_chip.as_ref(),
+            &[is_export_name],
+            &body_byte_rev_index,
+            |vc| {
+                let not_q_last_expr = not::expr(vc.query_fixed(q_last, Rotation::cur()));
+                let is_export_name_len_expr = vc.query_fixed(is_export_name_len, Rotation::cur());
+                let is_export_name_next_expr = vc.query_fixed(is_export_name, Rotation::next());
+
+                and::expr([not_q_last_expr, is_export_name_len_expr, is_export_name_next_expr])
+            },
+            |vc| {
+                let is_export_name_expr = vc.query_fixed(is_export_name, Rotation::cur());
+                let is_exportdesc_type_next_expr = vc.query_fixed(is_exportdesc_type, Rotation::next());
+
+                and::expr([
+                    is_export_name_expr,
+                    is_exportdesc_type_next_expr,
+                ])
+            },
+        );
 
         cs.create_gate("WasmExportSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -376,6 +411,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         });
 
         let config = WasmExportSectionBodyConfig::<F> {
+            _marker: PhantomData,
+
             q_enable,
             q_first,
             q_last,
@@ -389,8 +426,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
             exportdesc_type,
             exportdesc_type_chip,
             func_count,
+            body_byte_rev_index,
             shared_state,
-            _marker: PhantomData,
         };
 
         config
@@ -443,6 +480,18 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 offset,
                 &[AssignType::IsExportNameLen],
             );
+            let export_name_len_last_byte_offset = offset + export_name_len_leb_len - 1;
+            let export_name_last_byte_offset = export_name_len_last_byte_offset + export_name_len as usize;
+            for offset in export_name_len_last_byte_offset..=export_name_last_byte_offset {
+                self.assign(
+                    region,
+                    &wasm_bytecode,
+                    offset,
+                    &[AssignType::BodyByteRevIndex],
+                    (export_name_last_byte_offset - offset) as u64,
+                    None,
+                );
+            }
             offset += export_name_len_leb_len;
 
             let export_name_new_offset = self.markup_name_section(

@@ -19,7 +19,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBlockLevelAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBlockLevelAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{CONTROL_INSTRUCTION_BLOCK, CONTROL_INSTRUCTION_WITH_LEB_ARG, CONTROL_INSTRUCTION_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTION_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, VARIABLE_INSTRUCTION_WITH_LEB_ARG, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
@@ -60,8 +60,9 @@ pub struct WasmCodeSectionBodyConfig<F: Field> {
     pub func_count: Column<Advice>,
     pub block_level: Column<Advice>,
     pub block_level_lt_chip: Rc<LtChip<F, 2>>,
+    body_byte_rev_index: Column<Advice>,
 
-    shared_state: Rc<RefCell<SharedState>>,
+    pub shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
 }
@@ -286,12 +287,22 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::BodyByteRevIndex => {
+                    region.assign_advice(
+                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, offset),
+                        self.config.body_byte_rev_index,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
             }
         })
     }
 }
 
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmCodeSectionBodyChip<F> {}
+
+impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmCodeSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmCodeSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> {
@@ -324,6 +335,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
+        body_byte_rev_index: Column<Advice>,
     ) -> WasmCodeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -400,6 +412,46 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             },
         );
         let block_level_lt_chip = Rc::new(LtChip::construct(config));
+
+        Self::configure_len_prefixed_bytes_span_checks(
+            cs,
+            leb128_chip.as_ref(),
+            &[
+                is_local_type_transitions_count,
+                is_local_repetition_count,
+                is_local_type,
+                is_numeric_instruction,
+                is_numeric_instruction_leb_arg,
+                is_variable_instruction,
+                is_variable_instruction_leb_arg,
+                is_control_instruction,
+                is_control_instruction_leb_arg,
+                is_parametric_instruction,
+                is_blocktype_delimiter,
+                is_block_end,
+            ],
+            &body_byte_rev_index,
+            |vc| {
+                let not_q_last_expr = not::expr(vc.query_fixed(q_last, Rotation::cur()));
+                let is_func_body_len_expr = vc.query_fixed(is_func_body_len, Rotation::cur());
+                let is_local_type_transitions_count_next_expr = vc.query_fixed(is_local_type_transitions_count, Rotation::next());
+
+                and::expr([not_q_last_expr, is_func_body_len_expr, is_local_type_transitions_count_next_expr])
+            },
+            |vc| {
+                let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+                let is_block_end_expr = vc.query_fixed(is_block_end, Rotation::cur());
+                let is_func_body_len_next_expr = vc.query_fixed(is_func_body_len, Rotation::next());
+
+                or::expr([
+                    q_last_expr,
+                    and::expr([
+                        is_block_end_expr,
+                        is_func_body_len_next_expr,
+                    ])
+                ])
+            },
+        );
 
         cs.create_gate("WasmCodeSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -1091,6 +1143,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             func_count,
             block_level,
             block_level_lt_chip,
+            body_byte_rev_index,
             shared_state,
 
             _marker: PhantomData,
@@ -1242,9 +1295,19 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 offset,
                 &[AssignType::IsFuncBodyLen],
             );
+            let func_body_end_offset = offset + func_body_len_leb_len + (func_body_len as usize) - 1;
+            let func_body_len_last_byte_offset = offset + func_body_len_leb_len - 1;
+            for offset in func_body_len_last_byte_offset..=func_body_end_offset {
+                self.assign(
+                    region,
+                    &wasm_bytecode,
+                    offset,
+                    &[AssignType::BodyByteRevIndex],
+                    (func_body_end_offset - offset) as u64,
+                    None,
+                );
+            }
             offset += func_body_len_leb_len;
-
-            let func_body_end_offset = offset + (func_body_len as usize) - 1;
 
             //  locals{1}(is_local_type_transitions_count+ ...
             let (is_local_type_transitions_count, is_local_type_transitions_count_leb_len) = self.markup_leb_section(

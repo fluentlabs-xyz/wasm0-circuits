@@ -163,8 +163,8 @@ pub fn configure_transition_check<F: Field>(
     );
 }
 
-pub trait WasmLenPrefixedBodyAwareChip<F: Field> {
-    fn configure_len_prefixed_body_checks(
+pub trait WasmLenPrefixedBytesSpanAwareChip<F: Field> {
+    fn configure_len_prefixed_bytes_span_checks(
         cs: &mut ConstraintSystem<F>,
         leb128_chip: &LEB128Chip<F>,
         body_selectors: &[Column<Fixed>],

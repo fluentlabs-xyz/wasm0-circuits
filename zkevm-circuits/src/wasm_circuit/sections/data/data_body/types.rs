@@ -15,4 +15,6 @@ pub enum AssignType {
     IsMemSegmentTypeCtx,
 
     MemSegmentType,
+
+    BodyByteRevIndex,
 }

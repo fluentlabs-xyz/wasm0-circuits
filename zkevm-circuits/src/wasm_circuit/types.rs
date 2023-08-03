@@ -1,7 +1,7 @@
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AssignType {
     Unknown,
-    BodyByteRevIndex,
+    BodyByteRevIndexL1,
     QFirst,
     QLast,
     IsSectionId,

@@ -19,7 +19,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmLimitTypeAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmLimitTypeAwareChip, WasmSharedStateAwareChip, WasmLenPrefixedBytesSpanAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{IMPORT_DESC_TYPE_VALUES, ImportDescType, LimitType, MUTABILITY_VALUES, REF_TYPE_VALUES, RefType};
 use crate::wasm_circuit::error::Error;
@@ -56,6 +56,7 @@ pub struct WasmImportSectionBodyConfig<F: Field> {
     pub importdesc_type_chip: Rc<BinaryNumberChip<F, ImportDescType, 8>>,
 
     pub func_count: Column<Advice>,
+    body_byte_rev_index: Column<Advice>,
 
     shared_state: Rc<RefCell<SharedState>>,
 
@@ -280,12 +281,22 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::BodyByteRevIndex => {
+                    region.assign_advice(
+                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, offset),
+                        self.config.body_byte_rev_index,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
             }
         });
     }
 }
 
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmImportSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmImportSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -315,6 +326,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
+        body_byte_rev_index: Column<Advice>,
     ) -> WasmImportSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -360,6 +372,55 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             limit_type_chip,
             ..
         } = limit_type_fields.clone();
+
+        Self::configure_len_prefixed_bytes_span_checks(
+            cs,
+            leb128_chip.as_ref(),
+            &[is_import_name, is_mod_name],
+            &body_byte_rev_index,
+            |vc| {
+                let is_mod_name_len_expr = vc.query_fixed(is_mod_name_len, Rotation::cur());
+                let is_mod_name_next_expr = vc.query_fixed(is_mod_name, Rotation::next());
+                let is_import_name_next_expr = vc.query_fixed(is_import_name, Rotation::next());
+                let is_import_name_len_expr = vc.query_fixed(is_import_name_len, Rotation::cur());
+                let is_import_name_len_next_expr = vc.query_fixed(is_import_name_len, Rotation::next());
+                let is_importdesc_type_next_expr = vc.query_fixed(is_importdesc_type, Rotation::next());
+
+                or::expr([
+                    and::expr([
+                        is_mod_name_len_expr,
+                        or::expr([
+                            is_mod_name_next_expr,
+                            is_import_name_len_next_expr,
+                        ])
+                    ]),
+                    and::expr([
+                        is_import_name_len_expr,
+                        or::expr([
+                            is_import_name_next_expr,
+                            is_importdesc_type_next_expr,
+                        ])
+                    ]),
+                ])
+            },
+            |vc| {
+                let is_mod_name_expr = vc.query_fixed(is_mod_name, Rotation::cur());
+                let is_import_name_len_next_expr = vc.query_fixed(is_import_name_len, Rotation::next());
+                let is_import_name_expr = vc.query_fixed(is_import_name, Rotation::cur());
+                let is_importdesc_type_next_expr = vc.query_fixed(is_importdesc_type, Rotation::next());
+
+                or::expr([
+                    and::expr([
+                        is_mod_name_expr,
+                        is_import_name_len_next_expr,
+                    ]),
+                    and::expr([
+                        is_import_name_expr,
+                        is_importdesc_type_next_expr,
+                    ]),
+                ])
+            },
+        );
 
         cs.create_gate("WasmImportSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -981,6 +1042,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         });
 
         let config = WasmImportSectionBodyConfig::<F> {
+            _marker: PhantomData,
+
             q_enable,
             q_first,
             q_last,
@@ -1001,9 +1064,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             importdesc_type,
             importdesc_type_chip,
             func_count,
+            body_byte_rev_index,
             shared_state,
-
-            _marker: PhantomData,
         };
 
         config
@@ -1062,6 +1124,18 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 offset,
                 &[AssignType::IsModNameLen],
             );
+            let mod_name_len_last_byte_offset = offset + mod_name_leb_len - 1;
+            let mod_name_last_byte_offset = mod_name_len_last_byte_offset + mod_name_len as usize;
+            for offset in mod_name_len_last_byte_offset..=mod_name_last_byte_offset {
+                self.assign(
+                    region,
+                    &wasm_bytecode,
+                    offset,
+                    &[AssignType::BodyByteRevIndex],
+                    (mod_name_last_byte_offset - offset) as u64,
+                    None,
+                );
+            }
             offset += mod_name_leb_len;
 
             // is_mod_name*
@@ -1081,6 +1155,18 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 offset,
                 &[AssignType::IsImportNameLen],
             );
+            let import_name_len_last_byte_offset = offset + import_name_leb_len - 1;
+            let import_name_last_byte_offset = import_name_len_last_byte_offset + import_name_len as usize;
+            for offset in import_name_len_last_byte_offset..=import_name_last_byte_offset {
+                self.assign(
+                    region,
+                    &wasm_bytecode,
+                    offset,
+                    &[AssignType::BodyByteRevIndex],
+                    (import_name_last_byte_offset - offset) as u64,
+                    None,
+                );
+            }
             offset += import_name_leb_len;
 
             // is_import_name*
