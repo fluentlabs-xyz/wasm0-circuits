@@ -14,9 +14,20 @@
       i32.const 1
       i32.const 2
       i32.add
-      br 0 (;@1;)
+      br 1
       i32.const 100
       call 5
+      (if
+        (then
+          i32.const 1
+          drop
+          br 2
+        )
+;;        (else
+;;          i32.const 2
+;;          drop
+;;        )
+      )
       drop
     end)
   (func (;4;) (type 1)

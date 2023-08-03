@@ -519,6 +519,7 @@ pub enum ControlInstruction {
 }
 pub const CONTROL_INSTRUCTION_WITHOUT_ARGS: &[ControlInstruction] = &[
     ControlInstruction::Unreachable,
+    ControlInstruction::Else,
 ];
 pub const CONTROL_INSTRUCTION_WITH_LEB_ARG: &[ControlInstruction] = &[
     ControlInstruction::Br,
@@ -528,6 +529,7 @@ pub const CONTROL_INSTRUCTION_WITH_LEB_ARG: &[ControlInstruction] = &[
 pub const CONTROL_INSTRUCTION_BLOCK: &[ControlInstruction] = &[
     ControlInstruction::Block,
     ControlInstruction::Loop,
+    ControlInstruction::If,
 ];
 impl TryFrom<u8> for ControlInstruction {
     type Error = ();
