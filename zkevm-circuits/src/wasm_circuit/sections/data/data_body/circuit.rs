@@ -296,7 +296,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             cs,
             leb128_chip.as_ref(),
             &[is_mem_segment_bytes],
-            &body_byte_rev_index,
+            body_byte_rev_index,
             |vc| {
                 let not_q_last_expr = not::expr(vc.query_fixed(q_last, Rotation::cur()));
                 let is_mem_segment_len_expr = vc.query_fixed(is_mem_segment_len, Rotation::cur());

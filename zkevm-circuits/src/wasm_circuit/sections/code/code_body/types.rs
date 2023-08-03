@@ -20,4 +20,5 @@ pub enum AssignType {
     IsBlockEnd,
 
     BodyByteRevIndex,
+    BodyItemRevCount,
 }

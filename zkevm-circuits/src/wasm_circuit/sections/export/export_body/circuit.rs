@@ -240,7 +240,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
             cs,
             leb128_chip.as_ref(),
             &[is_export_name],
-            &body_byte_rev_index,
+            body_byte_rev_index,
             |vc| {
                 let not_q_last_expr = not::expr(vc.query_fixed(q_last, Rotation::cur()));
                 let is_export_name_len_expr = vc.query_fixed(is_export_name_len, Rotation::cur());

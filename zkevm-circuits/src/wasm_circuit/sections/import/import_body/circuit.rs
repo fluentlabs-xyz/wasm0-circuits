@@ -377,7 +377,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             cs,
             leb128_chip.as_ref(),
             &[is_import_name, is_mod_name],
-            &body_byte_rev_index,
+            body_byte_rev_index,
             |vc| {
                 let is_mod_name_len_expr = vc.query_fixed(is_mod_name_len, Rotation::cur());
                 let is_mod_name_next_expr = vc.query_fixed(is_mod_name, Rotation::next());
