@@ -11,4 +11,5 @@ pub enum AssignType {
     IsLimitMax,
 
     IsLimitTypeCtx,
+    BodyItemRevCount,
 }

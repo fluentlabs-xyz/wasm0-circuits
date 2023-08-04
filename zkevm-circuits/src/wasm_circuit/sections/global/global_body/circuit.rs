@@ -13,12 +13,12 @@ use log::debug;
 
 use eth_types::Field;
 use gadgets::binary_number::BinaryNumberChip;
-use gadgets::util::{Expr, not, or};
+use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{NUM_TYPE_VALUES, NumType, WASM_BLOCK_END};
 use crate::wasm_circuit::consts::NumericInstruction::{I32Const, I64Const};
@@ -49,15 +49,15 @@ pub struct WasmGlobalSectionBodyConfig<F: Field> {
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
     pub global_type_chip: Rc<BinaryNumberChip<F, NumType, 8>>,
 
-    pub func_count: Column<Advice>,
+    func_count: Column<Advice>,
+    body_item_rev_count: Column<Advice>,
 
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
 }
 
-impl<'a, F: Field> WasmGlobalSectionBodyConfig<F>
-{}
+impl<'a, F: Field> WasmGlobalSectionBodyConfig<F> {}
 
 #[derive(Debug, Clone)]
 pub struct WasmGlobalSectionBodyChip<F: Field> {
@@ -194,12 +194,22 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::BodyItemRevCount => {
+                    region.assign_advice(
+                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, offset),
+                        self.config.body_item_rev_count,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
             }
         })
     }
 }
 
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmGlobalSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmGlobalSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmGlobalSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -226,6 +236,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
+        body_item_rev_count: Column<Advice>,
     ) -> WasmGlobalSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -253,6 +264,24 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                     is_terminator: true.expr(),
                 }
             }
+        );
+
+        Self::configure_count_prefixed_items_checks(
+            cs,
+            leb128_chip.as_ref(),
+            body_item_rev_count,
+            |vc| vc.query_fixed(is_items_count, Rotation::cur()),
+            |vc| {
+                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
+
+                and::expr([
+                    q_enable_expr,
+                    not::expr(is_items_count_expr),
+                ])
+            },
+            |vc| vc.query_fixed(is_global_type, Rotation::cur()),
+            |vc| vc.query_fixed(q_last, Rotation::cur()),
         );
 
         cs.create_gate("WasmGlobalSectionBody gate", |vc| {
@@ -317,7 +346,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             );
             cb.require_equal(
                 "is_global_type_ctx active on a specific flags only",
-                    is_global_type_expr.clone()
+                is_global_type_expr.clone()
                     + is_mut_prop_expr.clone()
                     + is_init_opcode_expr.clone()
                     + is_init_val_expr.clone()
@@ -463,6 +492,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         });
 
         let config = WasmGlobalSectionBodyConfig::<F> {
+            _marker: PhantomData,
+
             q_enable,
             q_first,
             q_last,
@@ -478,9 +509,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             dynamic_indexes_chip,
             global_type_chip,
             func_count,
+            body_item_rev_count,
             shared_state,
-
-            _marker: PhantomData,
         };
 
         config
@@ -501,6 +531,17 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             offset,
             &[AssignType::IsItemsCount],
         );
+        let mut body_item_rev_count = items_count;
+        for offset in offset..offset + items_count_leb_len {
+            self.assign(
+                region,
+                &wasm_bytecode,
+                offset,
+                &[AssignType::BodyItemRevCount],
+                body_item_rev_count,
+                None,
+            );
+        }
         let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
             self.config.shared_state.borrow().dynamic_indexes_offset,
@@ -512,6 +553,9 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
+            body_item_rev_count -= 1;
+            let item_start_offset = offset;
+
             // is_global_type{1}
             let global_type_val = wasm_bytecode.bytes[offset];
             let global_type: NumType = global_type_val.try_into().unwrap();
@@ -558,7 +602,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 offset,
                 &[AssignType::IsInitVal, AssignType::IsGlobalTypeCtx],
             );
-            for offset in offset..offset+init_val_leb_len {
+            for offset in offset..offset + init_val_leb_len {
                 self.assign(region, wasm_bytecode, offset, &[AssignType::GlobalType], global_type_val, None);
             }
             offset += init_val_leb_len;
@@ -573,6 +617,17 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                 None,
             );
             offset += 1;
+
+            for offset in item_start_offset..offset {
+                self.assign(
+                    region,
+                    &wasm_bytecode,
+                    offset,
+                    &[AssignType::BodyItemRevCount],
+                    body_item_rev_count,
+                    None,
+                );
+            }
         }
 
         if offset != offset_start {

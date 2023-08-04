@@ -12,12 +12,12 @@ use itertools::Itertools;
 use log::debug;
 
 use eth_types::Field;
-use gadgets::util::{Expr, not, or};
+use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::NumType;
 use crate::wasm_circuit::error::Error;
@@ -40,7 +40,8 @@ pub struct WasmTypeSectionItemConfig<F> {
 
     pub leb128_chip: Rc<LEB128Chip<F>>,
 
-    pub func_count: Column<Advice>,
+    func_count: Column<Advice>,
+    body_item_rev_count: Column<Advice>,
 
     shared_state: Rc<RefCell<SharedState>>,
 
@@ -155,12 +156,22 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::BodyItemRevCount => {
+                    region.assign_advice(
+                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, offset),
+                        self.config.body_item_rev_count,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
             }
         })
     }
 }
 
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmTypeSectionItemChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmTypeSectionItemChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmTypeSectionItemChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -188,6 +199,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
+        body_item_rev_count: Column<Advice>,
     ) -> WasmTypeSectionItemConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -197,6 +209,49 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         let is_input_type = cs.fixed_column();
         let is_output_count = cs.fixed_column();
         let is_output_type = cs.fixed_column();
+
+        Self::configure_count_prefixed_items_checks(
+            cs,
+            leb128_chip.as_ref(),
+            body_item_rev_count,
+            |vc| vc.query_fixed(is_input_count, Rotation::cur()),
+            |vc| {
+                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let is_type_expr = vc.query_fixed(is_type, Rotation::cur());
+                let is_input_count_expr = vc.query_fixed(is_input_count, Rotation::cur());
+                let is_output_count_expr = vc.query_fixed(is_output_count, Rotation::cur());
+
+                and::expr([
+                    q_enable_expr,
+                    not::expr(is_type_expr),
+                    not::expr(is_input_count_expr),
+                    not::expr(is_output_count_expr),
+                ])
+            },
+            |vc| {
+                let is_input_type_expr = vc.query_fixed(is_input_type, Rotation::cur());
+                let is_output_type_expr = vc.query_fixed(is_output_type, Rotation::cur());
+
+                or::expr([
+                    is_input_type_expr,
+                    is_output_type_expr,
+                ])
+            },
+            |vc| {
+                let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+                let is_input_type_expr = vc.query_fixed(is_input_type, Rotation::cur());
+                let is_output_count_next_expr = vc.query_fixed(is_output_count, Rotation::next());
+
+                or::expr([
+                    q_last_expr.clone(),
+                    and::expr([
+                        not::expr(q_last_expr),
+                        is_input_type_expr,
+                        is_output_count_next_expr,
+                    ])
+                ])
+            },
+        );
 
         cs.create_gate("WasmTypeSectionItem gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -273,7 +328,11 @@ impl<F: Field> WasmTypeSectionItemChip<F>
 
             cb.require_equal(
                 "exactly one mark flag active at the same time",
-                is_type_expr.clone() + is_input_count_expr.clone() + is_input_type_expr.clone() + is_output_count_expr.clone() + is_output_type_expr.clone(),
+                is_type_expr.clone()
+                    + is_input_count_expr.clone()
+                    + is_input_type_expr.clone()
+                    + is_output_count_expr.clone()
+                    + is_output_type_expr.clone(),
                 1.expr(),
             );
 
@@ -355,6 +414,8 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         });
 
         let config = WasmTypeSectionItemConfig::<F> {
+            _marker: PhantomData,
+
             q_enable,
             q_first,
             q_last,
@@ -365,8 +426,8 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             is_output_type,
             leb128_chip,
             func_count,
+            body_item_rev_count,
             shared_state,
-            _marker: PhantomData,
         };
 
         config
@@ -399,16 +460,35 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             offset,
             &[AssignType::IsInputCount],
         );
+        let mut body_item_rev_count = input_count;
+        for offset in offset..offset + input_count_leb_len {
+            self.assign(
+                region,
+                &wasm_bytecode,
+                offset,
+                &[AssignType::BodyItemRevCount],
+                body_item_rev_count,
+                None,
+            );
+        }
         offset += input_count_leb_len;
-
         // is_input_type*
-        for byte_offset in offset..(offset + input_count as usize) {
+        for offset in offset..(offset + input_count as usize) {
             self.assign(
                 region,
                 wasm_bytecode,
-                byte_offset,
+                offset,
                 &[AssignType::IsInputType],
                 1,
+                None,
+            );
+            body_item_rev_count -= 1;
+            self.assign(
+                region,
+                &wasm_bytecode,
+                offset,
+                &[AssignType::BodyItemRevCount],
+                body_item_rev_count,
                 None,
             );
         }
@@ -421,16 +501,35 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             offset,
             &[AssignType::IsOutputCount],
         );
+        let mut body_item_rev_count = output_count;
+        for offset in offset..offset + output_count_leb_len {
+            self.assign(
+                region,
+                &wasm_bytecode,
+                offset,
+                &[AssignType::BodyItemRevCount],
+                body_item_rev_count,
+                None,
+            );
+        }
         offset += output_count_leb_len;
-
         // is_output_type*
-        for byte_offset in offset..(offset + output_count as usize) {
+        for offset in offset..(offset + output_count as usize) {
             self.assign(
                 region,
                 wasm_bytecode,
-                byte_offset,
+                offset,
                 &[AssignType::IsOutputType],
                 1,
+                None,
+            );
+            body_item_rev_count -= 1;
+            self.assign(
+                region,
+                &wasm_bytecode,
+                offset,
+                &[AssignType::BodyItemRevCount],
+                body_item_rev_count,
                 None,
             );
         }

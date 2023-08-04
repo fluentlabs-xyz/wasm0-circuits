@@ -18,7 +18,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmLimitTypeAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{LIMIT_TYPE_VALUES, LimitType};
 use crate::wasm_circuit::error::Error;
@@ -41,7 +41,8 @@ pub struct WasmMemorySectionBodyConfig<F: Field> {
     pub leb128_chip: Rc<LEB128Chip<F>>,
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
 
-    pub func_count: Column<Advice>,
+    func_count: Column<Advice>,
+    body_item_rev_count: Column<Advice>,
 
     shared_state: Rc<RefCell<SharedState>>,
 
@@ -170,12 +171,22 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmMemorySectionBodyChip<F> {
                         &limit_type,
                     ).unwrap();
                 }
+                AssignType::BodyItemRevCount => {
+                    region.assign_advice(
+                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, offset),
+                        self.config.body_item_rev_count,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
             }
         })
     }
 }
 
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmMemorySectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmMemorySectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmMemorySectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -204,6 +215,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
+        body_item_rev_count: Column<Advice>,
     ) -> WasmMemorySectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -237,7 +249,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             &limit_type_fields,
         );
 
-        let LimitTypeFields{
+        let LimitTypeFields {
             is_limit_type,
             is_limit_min,
             is_limit_max,
@@ -246,6 +258,24 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             is_limit_type_ctx,
             ..
         } = limit_type_fields.clone();
+
+        Self::configure_count_prefixed_items_checks(
+            cs,
+            leb128_chip.as_ref(),
+            body_item_rev_count,
+            |vc| vc.query_fixed(is_items_count, Rotation::cur()),
+            |vc| {
+                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
+
+                and::expr([
+                    q_enable_expr,
+                    not::expr(is_items_count_expr),
+                ])
+            },
+            |vc| vc.query_fixed(is_limit_type, Rotation::cur()),
+            |vc| vc.query_fixed(q_last, Rotation::cur()),
+        );
 
         cs.create_gate("WasmMemorySectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -388,6 +418,8 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
         });
 
         let config = WasmMemorySectionBodyConfig::<F> {
+            _marker: PhantomData,
+
             q_enable,
             q_first,
             q_last,
@@ -396,9 +428,8 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             leb128_chip,
             dynamic_indexes_chip,
             func_count,
+            body_item_rev_count,
             shared_state,
-
-            _marker: PhantomData,
         };
 
         config
@@ -419,6 +450,17 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             offset,
             &[AssignType::IsItemsCount],
         );
+        let mut body_item_rev_count = items_count;
+        for offset in offset..offset + items_count_leb_len {
+            self.assign(
+                region,
+                &wasm_bytecode,
+                offset,
+                &[AssignType::BodyItemRevCount],
+                body_item_rev_count,
+                None,
+            );
+        }
         let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
             self.config.shared_state.borrow().dynamic_indexes_offset,
@@ -430,6 +472,9 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
+            body_item_rev_count -= 1;
+            let item_start_offset = offset;
+
             // limit_type{1}
             let limit_type_val = wasm_bytecode.bytes[offset];
             let limit_type: LimitType = limit_type_val.try_into().unwrap();
@@ -470,6 +515,17 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                 }
                 self.config.limit_type_fields.limit_type_params_lt_chip.assign(region, offset, F::from(limit_min), F::from(limit_max)).unwrap();
                 offset += limit_max_leb_len;
+            }
+
+            for offset in item_start_offset..offset {
+                self.assign(
+                    region,
+                    &wasm_bytecode,
+                    offset,
+                    &[AssignType::BodyItemRevCount],
+                    body_item_rev_count,
+                    None,
+                );
             }
         }
 

@@ -24,4 +24,5 @@ pub enum AssignType {
     ImportdescType,
 
     BodyByteRevIndex,
+    BodyItemRevCount,
 }

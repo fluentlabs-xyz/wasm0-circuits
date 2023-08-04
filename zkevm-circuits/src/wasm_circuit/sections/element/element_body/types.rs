@@ -14,4 +14,6 @@ pub enum AssignType {
     IsFuncsIdxCount,
     IsFuncIdx,
     IsElemKind,
+
+    BodyItemRevCount,
 }

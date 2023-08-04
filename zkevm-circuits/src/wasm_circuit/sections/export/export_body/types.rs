@@ -13,4 +13,6 @@ pub enum AssignType {
     ExportdescType,
 
     BodyByteRevIndex,
+
+    BodyItemRevCount,
 }

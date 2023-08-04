@@ -5,4 +5,6 @@ pub enum AssignType {
 
     IsBodyItemsCount,
     IsBody,
+
+    BodyItemRevCount,
 }
