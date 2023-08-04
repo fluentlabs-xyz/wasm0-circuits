@@ -18,4 +18,7 @@ pub enum AssignType {
     IsParametricInstruction,
     IsBlocktypeDelimiter,
     IsBlockEnd,
+
+    BodyByteRevIndex,
+    BodyItemRevCount,
 }

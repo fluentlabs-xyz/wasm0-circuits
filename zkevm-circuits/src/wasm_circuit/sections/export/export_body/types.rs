@@ -11,4 +11,6 @@ pub enum AssignType {
 
     IsExportdescTypeCtx,
     ExportdescType,
+
+    BodyByteRevIndex,
 }

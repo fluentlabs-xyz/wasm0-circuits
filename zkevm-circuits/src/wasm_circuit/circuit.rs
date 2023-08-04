@@ -19,7 +19,7 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::table::PoseidonTable;
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{wasm_compute_section_len, WasmAssignAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBodyAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{wasm_compute_section_len, WasmAssignAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::configure_transition_check;
 use crate::wasm_circuit::consts::{ControlInstruction, ExportDescType, ImportDescType, SECTION_ID_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -84,16 +84,17 @@ pub struct WasmConfig<F: Field> {
     wasm_bytecode_table: Rc<WasmBytecodeTable>,
 
     func_count: Column<Advice>,
-    block_level: Column<Advice>,
-    body_byte_rev_index: Column<Advice>,
+    block_depth_level: Column<Advice>,
+    body_byte_rev_index_l1: Column<Advice>,
+    body_byte_rev_index_l2: Column<Advice>,
+    body_item_rev_count: Column<Advice>,
 
     pub shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmConfig<F>
-{}
+impl<F: Field> WasmConfig<F> {}
 
 
 #[derive(Debug, Clone)]
@@ -182,10 +183,10 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
-                AssignType::BodyByteRevIndex => {
+                AssignType::BodyByteRevIndexL1 => {
                     region.assign_advice(
-                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, offset),
-                        self.config.body_byte_rev_index,
+                        || format!("assign 'body_byte_rev_index_l1' val {} at {}", assign_value, offset),
+                        self.config.body_byte_rev_index_l1,
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
@@ -202,7 +203,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
     }
 }
 
-impl<F: Field> WasmLenPrefixedBodyAwareChip<F> for WasmChip<F> {}
+impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmChip<F> {}
 
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmChip<F> {}
 
@@ -249,8 +250,10 @@ impl<F: Field> WasmChip<F>
 
         let section_id = cs.advice_column();
         let func_count = cs.advice_column();
-        let block_level = cs.advice_column();
-        let body_byte_rev_index = cs.advice_column();
+        let block_depth_level = cs.advice_column();
+        let body_byte_rev_index_l1 = cs.advice_column();
+        let body_byte_rev_index_l2 = cs.advice_column();
+        let body_item_rev_count = cs.advice_column();
 
         let range_table_config_0_256 = RangeTableConfig::configure(cs);
         let section_id_range_table_config = RangeTableConfig::configure(cs);
@@ -300,6 +303,7 @@ impl<F: Field> WasmChip<F>
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_byte_rev_index_l2,
         );
         let wasm_import_section_body_chip = Rc::new(WasmImportSectionBodyChip::construct(config));
 
@@ -328,6 +332,7 @@ impl<F: Field> WasmChip<F>
             leb128_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_byte_rev_index_l2,
         );
         let wasm_export_section_body_chip = Rc::new(WasmExportSectionBodyChip::construct(config));
 
@@ -338,6 +343,7 @@ impl<F: Field> WasmChip<F>
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_byte_rev_index_l2,
         );
         let wasm_data_section_body_chip = Rc::new(WasmDataSectionBodyChip::construct(config));
 
@@ -358,6 +364,8 @@ impl<F: Field> WasmChip<F>
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_byte_rev_index_l2,
+            body_item_rev_count,
         );
         let wasm_code_section_body_chip = Rc::new(WasmCodeSectionBodyChip::construct(config));
 
@@ -414,11 +422,11 @@ impl<F: Field> WasmChip<F>
             index_at_magic_prefix_prev.push(chip);
         }
 
-        Self::configure_len_prefixed_body_checks(
+        Self::configure_len_prefixed_bytes_span_checks(
             cs,
             leb128_chip.as_ref(),
             &[is_section_body],
-            &body_byte_rev_index,
+            body_byte_rev_index_l1,
             |vc| {
                 let not_q_last_expr = not::expr(vc.query_fixed(q_last, Rotation::cur()));
                 let is_section_len_expr = vc.query_fixed(is_section_len, Rotation::cur());
@@ -1058,8 +1066,10 @@ impl<F: Field> WasmChip<F>
             dynamic_indexes_chip,
             shared_state,
             func_count,
-            block_level,
-            body_byte_rev_index,
+            block_depth_level,
+            body_byte_rev_index_l1,
+            body_byte_rev_index_l2,
+            body_item_rev_count,
         };
 
         config
@@ -1135,7 +1145,7 @@ impl<F: Field> WasmChip<F>
                             region,
                             &wasm_bytecode,
                             offset,
-                            &[AssignType::BodyByteRevIndex],
+                            &[AssignType::BodyByteRevIndexL1],
                             (section_body_end_offset - offset) as u64,
                             None,
                         );

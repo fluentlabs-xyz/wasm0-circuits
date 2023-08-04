@@ -43,7 +43,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let func_count = cs.advice_column();
-        let block_level = cs.advice_column();
+        let body_byte_rev_index = cs.advice_column();
+        let body_item_rev_count = cs.advice_column();
 
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
@@ -63,6 +64,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_byte_rev_index,
+            body_item_rev_count,
         );
         let wasm_code_section_body_chip = WasmCodeSectionBodyChip::construct(wasm_code_section_body_config);
         let test_circuit_config = TestCircuitConfig {

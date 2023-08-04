@@ -163,12 +163,12 @@ pub fn configure_transition_check<F: Field>(
     );
 }
 
-pub trait WasmLenPrefixedBodyAwareChip<F: Field> {
-    fn configure_len_prefixed_body_checks(
+pub trait WasmLenPrefixedBytesSpanAwareChip<F: Field> {
+    fn configure_len_prefixed_bytes_span_checks(
         cs: &mut ConstraintSystem<F>,
         leb128_chip: &LEB128Chip<F>,
         body_selectors: &[Column<Fixed>],
-        body_item_rev_index: &Column<Advice>,
+        body_item_rev_index: Column<Advice>,
         is_len_prefix: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
         is_last_item: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
     ) {
@@ -177,16 +177,17 @@ pub trait WasmLenPrefixedBodyAwareChip<F: Field> {
             |vc| {
                 let mut cb = BaseConstraintBuilder::default();
 
-                let body_item_rev_index_expr = vc.query_advice(*body_item_rev_index, Rotation::cur());
+                let body_item_rev_index_expr = vc.query_advice(body_item_rev_index, Rotation::cur());
                 let sn_expr = vc.query_advice(leb128_chip.config.sn, Rotation::cur());
 
+                // TODO add constraints for simple selectors
                 let is_len_prefix_expr = is_len_prefix(vc);
                 let is_last_item_expr = is_last_item(vc);
                 let body_selectors_exprs = body_selectors.iter().map(|&v| vc.query_fixed(v, Rotation::cur())).collect_vec();
                 let is_body_expr = or::expr(body_selectors_exprs.clone());
 
-                cb.require_boolean("len_prefix_sel is bool", is_len_prefix_expr.clone());
-                cb.require_boolean("last_byte_sel is bool", is_last_item_expr.clone());
+                cb.require_boolean("is_len_prefix is bool", is_len_prefix_expr.clone());
+                cb.require_boolean("is_last_item is bool", is_last_item_expr.clone());
                 body_selectors_exprs.iter().for_each(|s| {
                     cb.require_boolean("body selector is bool", s.clone());
                 });
@@ -204,9 +205,9 @@ pub trait WasmLenPrefixedBodyAwareChip<F: Field> {
                 cb.condition(
                     is_body_expr.clone(),
                     |bcb| {
-                        let body_item_rev_index_prev_expr = vc.query_advice(*body_item_rev_index, Rotation::prev());
+                        let body_item_rev_index_prev_expr = vc.query_advice(body_item_rev_index, Rotation::prev());
                         bcb.require_equal(
-                            "is_body => body_item_rev_index decreases by 1",
+                            "is_body => body_item_rev_index decreased by 1",
                             body_item_rev_index_prev_expr.clone() - 1.expr(),
                             body_item_rev_index_expr.clone(),
                         );
@@ -223,8 +224,91 @@ pub trait WasmLenPrefixedBodyAwareChip<F: Field> {
                 );
 
                 cb.gate(or::expr([
-                    is_len_prefix_expr.clone(),
+                    is_len_prefix_expr,
                     or::expr(body_selectors.iter().map(|&e| vc.query_fixed(e, Rotation::cur())).collect_vec()),
+                ]))
+            }
+        );
+    }
+}
+
+pub trait WasmCountPrefixedItemsAwareChip<F: Field> {
+    fn configure_count_prefixed_items_checks(
+        cs: &mut ConstraintSystem<F>,
+        leb128_chip: &LEB128Chip<F>,
+        body_item_rev_count: Column<Advice>,
+        is_count_prefix: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
+        is_body: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
+        is_next_body_item: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
+        is_last_item: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
+    ) {
+        cs.create_gate(
+            "count prefixed items gate",
+            |vc| {
+                let mut cb = BaseConstraintBuilder::default();
+
+                let body_item_rev_count_expr = vc.query_advice(body_item_rev_count, Rotation::cur());
+                let sn_expr = vc.query_advice(leb128_chip.config.sn, Rotation::cur());
+
+                // TODO add constraints for simple selectors
+                let is_next_body_item_expr = is_next_body_item(vc);
+                let is_count_prefix_expr = is_count_prefix(vc);
+                let is_last_item_expr = is_last_item(vc);
+                let is_body_expr = is_body(vc);
+
+                cb.require_boolean("is_next_body_item is bool", is_next_body_item_expr.clone());
+                cb.require_boolean("is_count_prefix is bool", is_count_prefix_expr.clone());
+                cb.require_boolean("is_last_item is bool", is_last_item_expr.clone());
+                cb.require_boolean("is_body is bool", is_body_expr.clone());
+
+                cb.condition(
+                    is_count_prefix_expr.clone(),
+                    |bcb| {
+                        bcb.require_equal(
+                            "count prefixed items starts from proper rev count",
+                            body_item_rev_count_expr.clone(),
+                            sn_expr.clone(),
+                        );
+                    }
+                );
+                cb.condition(
+                    is_next_body_item_expr.clone(),
+                    |bcb| {
+                        let body_item_rev_count_prev_expr = vc.query_advice(body_item_rev_count, Rotation::prev());
+                        bcb.require_equal(
+                            "is_next_body_item => prev.body_item_rev_count-1=body_item_rev_count",
+                            body_item_rev_count_prev_expr.clone() - 1.expr(),
+                            body_item_rev_count_expr.clone(),
+                        );
+                    }
+                );
+                cb.condition(
+                    and::expr([
+                        is_body_expr.clone(),
+                        not::expr(is_next_body_item_expr.clone()),
+                    ]),
+                    |bcb| {
+                        let body_item_rev_count_prev_expr = vc.query_advice(body_item_rev_count, Rotation::prev());
+                        bcb.require_equal(
+                            "is_body && !is_next_body_item => prev.body_item_rev_count=body_item_rev_count",
+                            body_item_rev_count_prev_expr.clone(),
+                            body_item_rev_count_expr.clone(),
+                        );
+                    }
+                );
+                cb.condition(
+                    is_last_item_expr.clone(),
+                    |bcb| {
+                        bcb.require_zero(
+                            "is_last_item => body_item_rev_count=0",
+                            body_item_rev_count_expr.clone(),
+                        );
+                    }
+                );
+
+                cb.gate(or::expr([
+                    is_count_prefix_expr,
+                    is_body_expr,
                 ]))
             }
         );

@@ -18,7 +18,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{MemSegmentType, NumericInstruction, WASM_BLOCK_END};
 use crate::wasm_circuit::error::Error;
@@ -51,6 +51,7 @@ pub struct WasmDataSectionBodyConfig<F: Field> {
     pub mem_segment_type_chip: Rc<BinaryNumberChip<F, MemSegmentType, 8>>,
 
     pub func_count: Column<Advice>,
+    body_byte_rev_index: Column<Advice>,
 
     shared_state: Rc<RefCell<SharedState>>,
 
@@ -212,12 +213,22 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::BodyByteRevIndex => {
+                    region.assign_advice(
+                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, offset),
+                        self.config.body_byte_rev_index,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
             }
         })
     }
 }
 
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmDataSectionBodyChip<F> {}
+
+impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmDataSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmDataSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -242,8 +253,9 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
-         func_count: Column<Advice>,
+        func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
+        body_byte_rev_index: Column<Advice>,
     ) -> WasmDataSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -278,6 +290,33 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     is_terminator: true.expr(),
                 }
             }
+        );
+
+        Self::configure_len_prefixed_bytes_span_checks(
+            cs,
+            leb128_chip.as_ref(),
+            &[is_mem_segment_bytes],
+            body_byte_rev_index,
+            |vc| {
+                let not_q_last_expr = not::expr(vc.query_fixed(q_last, Rotation::cur()));
+                let is_mem_segment_len_expr = vc.query_fixed(is_mem_segment_len, Rotation::cur());
+                let is_mem_segment_type_next_expr = vc.query_fixed(is_mem_segment_type, Rotation::next());
+
+                and::expr([not_q_last_expr, is_mem_segment_len_expr, is_mem_segment_type_next_expr])
+            },
+            |vc| {
+                let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+                let is_block_end_expr = vc.query_fixed(is_mem_segment_bytes, Rotation::cur());
+                let is_mem_segment_type_next_expr = vc.query_fixed(is_mem_segment_type, Rotation::next());
+
+                or::expr([
+                    q_last_expr,
+                    and::expr([
+                        is_block_end_expr,
+                        is_mem_segment_type_next_expr,
+                    ])
+                ])
+            },
         );
 
         cs.create_gate("WasmDataSectionBody gate", |vc| {
@@ -592,6 +631,8 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         });
 
         let config = WasmDataSectionBodyConfig::<F> {
+            _marker: PhantomData,
+
             q_enable,
             q_first,
             q_last,
@@ -609,8 +650,8 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             mem_segment_type,
             mem_segment_type_chip,
             func_count,
+            body_byte_rev_index,
             shared_state,
-            _marker: PhantomData,
         };
 
         config
@@ -751,6 +792,18 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         offset,
                         &[AssignType::IsMemSegmentLen, AssignType::IsMemSegmentTypeCtx],
                     );
+                    let mem_segment_len_last_byte_offset = offset + mem_segment_len_leb_len - 1;
+                    let mem_segment_last_byte_offset = mem_segment_len_last_byte_offset + mem_segment_len as usize;
+                    for offset in mem_segment_len_last_byte_offset..=mem_segment_last_byte_offset {
+                        self.assign(
+                            region,
+                            &wasm_bytecode,
+                            offset,
+                            &[AssignType::BodyByteRevIndex],
+                            (mem_segment_last_byte_offset - offset) as u64,
+                            None,
+                        );
+                    }
                     for offset in offset..offset + mem_segment_len_leb_len {
                         self.assign(
                             region,
@@ -794,6 +847,18 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         offset,
                         &[AssignType::IsMemSegmentLen, AssignType::IsMemSegmentTypeCtx],
                     );
+                    let mem_segment_len_last_byte_offset = offset + mem_segment_len_leb_len - 1;
+                    let mem_segment_last_byte_offset = mem_segment_len_last_byte_offset + mem_segment_len as usize;
+                    for offset in mem_segment_len_last_byte_offset..=mem_segment_last_byte_offset {
+                        self.assign(
+                            region,
+                            &wasm_bytecode,
+                            offset,
+                            &[AssignType::BodyByteRevIndex],
+                            (mem_segment_last_byte_offset - offset) as u64,
+                            None,
+                        );
+                    }
                     for offset in offset..offset + mem_segment_len_leb_len {
                         self.assign(
                             region,
