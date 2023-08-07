@@ -23,7 +23,7 @@ func CreateTrace(configStr *C.char) *C.char {
 		return C.CString(fmt.Sprintf("Failed to unmarshal config, err: %v", err))
 	}
 
-	executionResults, err := gethutil.Trace(config, false)
+	executionResults, err := gethutil.Trace(config, true)
 	if err != nil {
 		return C.CString(fmt.Sprintf("Failed to run Trace, err: %v", err))
 	}

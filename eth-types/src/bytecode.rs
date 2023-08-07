@@ -107,13 +107,10 @@ impl GlobalVariable {
 
 impl TableDecl {
     pub fn default_i32() -> Self {
-        Self::default(false)
+        Self::default()
     }
-    pub fn default_i64() -> Self {
-        Self::default(true)
-    }
-    pub fn default(is_64bit: bool) -> Self {
-        let val_type = if is_64bit { ValType::I64 } else { ValType::I32 };
+    pub fn default() -> Self {
+        let val_type = ValType::FuncRef;
         Self(TableType { element_type: val_type, minimum: 1, maximum: None })
     }
 }
@@ -201,6 +198,16 @@ impl WasmBinaryBytecode for Bytecode {
         module.section(&self.types);
         module.section(&imports);
         module.section(&functions);
+
+        // Order of sections is important.
+        if self.tables.len() > 0 {
+            let mut table_section = TableSection::new();
+            for var in &self.tables {
+                table_section.table(var.0);
+            }
+            module.section(&table_section);
+        }
+
         module.section(&memories);
         if self.variables.len() > 0 {
             let mut global_section = GlobalSection::new();
@@ -216,14 +223,7 @@ impl WasmBinaryBytecode for Bytecode {
         }
         module.section(&exports);
         module.section(&codes);
-        // Order of sections is important.
-        if self.tables.len() > 0 {
-            let mut table_section = TableSection::new();
-            for var in &self.tables {
-                table_section.table(var.0);
-            }
-            module.section(&table_section);
-        }
+
         // if we have global data section then put it into final binary
         let mut sections = self.section_descriptors.clone();
         sections.sort();

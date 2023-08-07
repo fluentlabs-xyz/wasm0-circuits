@@ -108,7 +108,7 @@ mod test {
             TableSize[0]
             Drop
         };
-        code.with_table_decl(TableDecl::default_i32());
+        code.with_table_decl(TableDecl::default());
         run_test(code);
     }
 
