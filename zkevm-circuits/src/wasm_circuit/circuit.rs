@@ -253,7 +253,8 @@ impl<F: Field> WasmChip<F>
         let block_depth_level = cs.advice_column();
         let body_byte_rev_index_l1 = cs.advice_column();
         let body_byte_rev_index_l2 = cs.advice_column();
-        let body_item_rev_count = cs.advice_column();
+        let body_item_rev_count_lv1 = cs.advice_column();
+        let body_item_rev_count_lv2 = cs.advice_column();
 
         let range_table_config_0_256 = RangeTableConfig::configure(cs);
         let section_id_range_table_config = RangeTableConfig::configure(cs);
@@ -282,6 +283,7 @@ impl<F: Field> WasmChip<F>
             leb128_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_item_rev_count_lv2,
         );
         let wasm_type_section_item_chip = Rc::new(WasmTypeSectionItemChip::construct(config));
         let config = WasmTypeSectionBodyChip::configure(
@@ -292,6 +294,7 @@ impl<F: Field> WasmChip<F>
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_item_rev_count_lv1,
         );
         let wasm_type_section_body_chip = Rc::new(WasmTypeSectionBodyChip::construct(config));
 
@@ -304,6 +307,7 @@ impl<F: Field> WasmChip<F>
             func_count,
             shared_state.clone(),
             body_byte_rev_index_l2,
+            body_item_rev_count_lv1,
         );
         let wasm_import_section_body_chip = Rc::new(WasmImportSectionBodyChip::construct(config));
 
@@ -313,6 +317,7 @@ impl<F: Field> WasmChip<F>
             leb128_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_item_rev_count_lv1,
         );
         let wasm_function_section_body_chip = Rc::new(WasmFunctionSectionBodyChip::construct(config));
 
@@ -323,6 +328,7 @@ impl<F: Field> WasmChip<F>
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_item_rev_count_lv1,
         );
         let wasm_memory_section_body_chip = Rc::new(WasmMemorySectionBodyChip::construct(config));
 
@@ -333,6 +339,7 @@ impl<F: Field> WasmChip<F>
             func_count,
             shared_state.clone(),
             body_byte_rev_index_l2,
+            body_item_rev_count_lv1,
         );
         let wasm_export_section_body_chip = Rc::new(WasmExportSectionBodyChip::construct(config));
 
@@ -344,6 +351,7 @@ impl<F: Field> WasmChip<F>
             func_count,
             shared_state.clone(),
             body_byte_rev_index_l2,
+            body_item_rev_count_lv1,
         );
         let wasm_data_section_body_chip = Rc::new(WasmDataSectionBodyChip::construct(config));
 
@@ -354,6 +362,7 @@ impl<F: Field> WasmChip<F>
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_item_rev_count_lv1,
         );
         let wasm_global_section_body_chip = Rc::new(WasmGlobalSectionBodyChip::construct(config));
 
@@ -365,7 +374,7 @@ impl<F: Field> WasmChip<F>
             func_count,
             shared_state.clone(),
             body_byte_rev_index_l2,
-            body_item_rev_count,
+            body_item_rev_count_lv1,
         );
         let wasm_code_section_body_chip = Rc::new(WasmCodeSectionBodyChip::construct(config));
 
@@ -384,6 +393,7 @@ impl<F: Field> WasmChip<F>
             leb128_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_item_rev_count_lv1,
         );
         let wasm_element_section_body_chip = Rc::new(WasmElementSectionBodyChip::construct(config));
 
@@ -425,7 +435,7 @@ impl<F: Field> WasmChip<F>
         Self::configure_len_prefixed_bytes_span_checks(
             cs,
             leb128_chip.as_ref(),
-            &[is_section_body],
+            |vc| { vc.query_fixed(is_section_body, Rotation::cur()) },
             body_byte_rev_index_l1,
             |vc| {
                 let not_q_last_expr = not::expr(vc.query_fixed(q_last, Rotation::cur()));
@@ -1069,7 +1079,7 @@ impl<F: Field> WasmChip<F>
             block_depth_level,
             body_byte_rev_index_l1,
             body_byte_rev_index_l2,
-            body_item_rev_count,
+            body_item_rev_count: body_item_rev_count_lv1,
         };
 
         config

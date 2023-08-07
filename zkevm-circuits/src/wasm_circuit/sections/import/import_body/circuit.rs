@@ -19,7 +19,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmLimitTypeAwareChip, WasmSharedStateAwareChip, WasmLenPrefixedBytesSpanAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{IMPORT_DESC_TYPE_VALUES, ImportDescType, LimitType, MUTABILITY_VALUES, REF_TYPE_VALUES, RefType};
 use crate::wasm_circuit::error::Error;
@@ -55,8 +55,9 @@ pub struct WasmImportSectionBodyConfig<F: Field> {
     pub importdesc_type: Column<Advice>,
     pub importdesc_type_chip: Rc<BinaryNumberChip<F, ImportDescType, 8>>,
 
-    pub func_count: Column<Advice>,
+    func_count: Column<Advice>,
     body_byte_rev_index: Column<Advice>,
+    body_item_rev_count: Column<Advice>,
 
     shared_state: Rc<RefCell<SharedState>>,
 
@@ -289,12 +290,22 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::BodyItemRevCount => {
+                    region.assign_advice(
+                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, offset),
+                        self.config.body_item_rev_count,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
             }
         });
     }
 }
 
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmImportSectionBodyChip<F> {}
 
 impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmImportSectionBodyChip<F> {}
 
@@ -327,6 +338,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
         body_byte_rev_index: Column<Advice>,
+        body_item_rev_count: Column<Advice>,
     ) -> WasmImportSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -376,7 +388,12 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         Self::configure_len_prefixed_bytes_span_checks(
             cs,
             leb128_chip.as_ref(),
-            &[is_import_name, is_mod_name],
+            |vc| {
+                or::expr([
+                    vc.query_fixed(is_import_name, Rotation::cur()),
+                    vc.query_fixed(is_mod_name, Rotation::cur()),
+                ])
+            },
             body_byte_rev_index,
             |vc| {
                 let is_mod_name_len_expr = vc.query_fixed(is_mod_name_len, Rotation::cur());
@@ -420,6 +437,44 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     ]),
                 ])
             },
+        );
+
+        Self::configure_count_prefixed_items_checks(
+            cs,
+            leb128_chip.as_ref(),
+            body_item_rev_count,
+            |vc| vc.query_fixed(is_items_count, Rotation::cur()),
+            |vc| {
+                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
+
+                and::expr([
+                    q_enable_expr,
+                    not::expr(is_items_count_expr),
+                ])
+            },
+            |vc| {
+                let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+                let is_items_count_prev_expr = vc.query_fixed(is_items_count, Rotation::prev());
+                let is_mod_name_len_expr = vc.query_fixed(is_mod_name_len, Rotation::cur());
+                let is_mut_prop_prev_expr = vc.query_fixed(is_mut_prop, Rotation::prev());
+                let is_limit_min_prev_expr = vc.query_fixed(is_limit_min, Rotation::prev());
+                let is_limit_max_prev_expr = vc.query_fixed(is_limit_max, Rotation::prev());
+                let is_importdesc_val_prev_expr = vc.query_fixed(is_importdesc_val, Rotation::prev());
+
+                and::expr([
+                    not::expr(q_first_expr),
+                    is_mod_name_len_expr,
+                    or::expr([
+                        is_items_count_prev_expr,
+                        is_mut_prop_prev_expr,
+                        is_limit_min_prev_expr,
+                        is_limit_max_prev_expr,
+                        is_importdesc_val_prev_expr,
+                    ])
+                ])
+            },
+            |vc| vc.query_fixed(q_last, Rotation::cur()),
         );
 
         cs.create_gate("WasmImportSectionBody gate", |vc| {
@@ -663,7 +718,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     not_q_last_expr.clone(),
                 ]),
                 true,
-                &[is_importdesc_val, is_mod_name_len ],
+                &[is_importdesc_val, is_mod_name_len],
             );
             // importdesc_type{1}=3(ImportDescType::Globaltype): import_desc+(is_importdesc_type{1} -> is_importdesc_val+ -> is_mut_prop{1})
             configure_transition_check(
@@ -871,7 +926,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     not_q_last_expr.clone(),
                 ]),
                 true,
-                &[is_limit_min, is_limit_max ],
+                &[is_limit_min, is_limit_max],
             );
             configure_transition_check(
                 &mut cb,
@@ -1002,7 +1057,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     not_q_last_expr.clone(),
                 ]),
                 true,
-                &[is_limit_min, is_limit_max ],
+                &[is_limit_min, is_limit_max],
             );
             configure_transition_check(
                 &mut cb,
@@ -1065,6 +1120,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             importdesc_type_chip,
             func_count,
             body_byte_rev_index,
+            body_item_rev_count,
             shared_state,
         };
 
@@ -1113,10 +1169,24 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             offset,
             &[AssignType::IsItemsCount],
         );
+        let mut body_item_rev_count = items_count;
+        for offset in offset..offset + items_count_leb_len {
+            self.assign(
+                region,
+                &wasm_bytecode,
+                offset,
+                &[AssignType::BodyItemRevCount],
+                body_item_rev_count,
+                None,
+            );
+        }
         self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
+            body_item_rev_count -= 1;
+            let item_start_offset = offset;
+
             // is_mod_name_len+
             let (mod_name_len, mod_name_leb_len) = self.markup_leb_section(
                 region,
@@ -1365,6 +1435,17 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         offset += limit_max_leb_len;
                     }
                 }
+            }
+
+            for offset in item_start_offset..offset {
+                self.assign(
+                    region,
+                    &wasm_bytecode,
+                    offset,
+                    &[AssignType::BodyItemRevCount],
+                    body_item_rev_count,
+                    None,
+                );
             }
         }
 

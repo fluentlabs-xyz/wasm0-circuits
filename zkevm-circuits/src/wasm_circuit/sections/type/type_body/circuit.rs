@@ -12,12 +12,12 @@ use itertools::Itertools;
 use log::debug;
 
 use eth_types::Field;
-use gadgets::util::not;
+use gadgets::util::{and, not};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -36,9 +36,10 @@ pub struct WasmTypeSectionBodyConfig<F> {
     pub is_items_count: Column<Fixed>,
     pub is_body: Column<Fixed>,
 
-    pub func_count: Column<Advice>,
+    func_count: Column<Advice>,
+    body_item_rev_count: Column<Advice>,
 
-    pub wasm_type_section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
+    pub section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
     pub leb128_chip: Rc<LEB128Chip<F>>,
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
 
@@ -130,12 +131,22 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::BodyItemRevCount => {
+                    region.assign_advice(
+                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, offset),
+                        self.config.body_item_rev_count,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    ).unwrap();
+                }
             }
         })
     }
 }
 
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmTypeSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmTypeSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmTypeSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -159,16 +170,35 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         cs: &mut ConstraintSystem<F>,
         bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
-        wasm_type_section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
+        section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
+        body_item_rev_count: Column<Advice>,
     ) -> WasmTypeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
         let q_last = cs.fixed_column();
         let is_items_count = cs.fixed_column();
         let is_body = cs.fixed_column();
+
+        Self::configure_count_prefixed_items_checks(
+            cs,
+            leb128_chip.as_ref(),
+            body_item_rev_count,
+            |vc| vc.query_fixed(is_items_count, Rotation::cur()),
+            |vc| {
+                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
+
+                and::expr([
+                    q_enable_expr,
+                    not::expr(is_items_count_expr),
+                ])
+            },
+            |vc| vc.query_fixed(section_item_chip.config.q_first, Rotation::cur()),
+            |vc| vc.query_fixed(q_last, Rotation::cur()),
+        );
 
         cs.create_gate("WasmTypeSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -208,7 +238,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
             cb.require_equal(
                 "is_body_expr <-> wasm_type_section_item",
                 is_body_expr.clone(),
-                vc.query_fixed(wasm_type_section_item_chip.config.q_enable, Rotation::cur()),
+                vc.query_fixed(section_item_chip.config.q_enable, Rotation::cur()),
             );
 
             configure_transition_check(
@@ -232,18 +262,19 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         });
 
         let config = WasmTypeSectionBodyConfig::<F> {
+            _marker: PhantomData,
+
             q_enable,
             q_first,
             q_last,
             is_items_count,
             is_body,
             leb128_chip,
-            wasm_type_section_item_chip,
+            section_item_chip,
             dynamic_indexes_chip,
             func_count,
             shared_state,
-
-            _marker: PhantomData,
+            body_item_rev_count,
         };
 
         config
@@ -259,25 +290,39 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
-        let (body_items_count, body_items_count_leb_len) = self.markup_leb_section(
+        let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
             wasm_bytecode,
             offset,
             &[AssignType::IsBodyItemsCount],
         );
+        let mut body_item_rev_count = items_count;
+        for offset in offset..offset + items_count_leb_len {
+            self.assign(
+                region,
+                &wasm_bytecode,
+                offset,
+                &[AssignType::BodyItemRevCount],
+                body_item_rev_count,
+                None,
+            );
+        }
         self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
-        offset += body_items_count_leb_len;
+        offset += items_count_leb_len;
 
         let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
             self.config.shared_state.borrow().dynamic_indexes_offset,
-            body_items_count as usize,
+            items_count as usize,
             Tag::TypeIndex,
         ).unwrap();
         self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;
 
-        for _body_item_index in 0..body_items_count {
-            let next_body_item_offset = self.config.wasm_type_section_item_chip.assign_auto(
+        for _body_item_index in 0..items_count {
+            body_item_rev_count -= 1;
+            let item_start_offset = offset;
+
+            let next_body_item_offset = self.config.section_item_chip.assign_auto(
                 region,
                 wasm_bytecode,
                 offset,
@@ -293,6 +338,17 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
                 );
             }
             offset = next_body_item_offset;
+
+            for offset in item_start_offset..offset {
+                self.assign(
+                    region,
+                    &wasm_bytecode,
+                    offset,
+                    &[AssignType::BodyItemRevCount],
+                    body_item_rev_count,
+                    None,
+                );
+            }
         }
 
         if offset != offset_start {

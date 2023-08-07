@@ -167,7 +167,7 @@ pub trait WasmLenPrefixedBytesSpanAwareChip<F: Field> {
     fn configure_len_prefixed_bytes_span_checks(
         cs: &mut ConstraintSystem<F>,
         leb128_chip: &LEB128Chip<F>,
-        body_selectors: &[Column<Fixed>],
+        is_body: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
         body_item_rev_index: Column<Advice>,
         is_len_prefix: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
         is_last_item: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
@@ -180,17 +180,12 @@ pub trait WasmLenPrefixedBytesSpanAwareChip<F: Field> {
                 let body_item_rev_index_expr = vc.query_advice(body_item_rev_index, Rotation::cur());
                 let sn_expr = vc.query_advice(leb128_chip.config.sn, Rotation::cur());
 
-                // TODO add constraints for simple selectors
                 let is_len_prefix_expr = is_len_prefix(vc);
                 let is_last_item_expr = is_last_item(vc);
-                let body_selectors_exprs = body_selectors.iter().map(|&v| vc.query_fixed(v, Rotation::cur())).collect_vec();
-                let is_body_expr = or::expr(body_selectors_exprs.clone());
+                let is_body_expr = is_body(vc);
 
                 cb.require_boolean("is_len_prefix is bool", is_len_prefix_expr.clone());
                 cb.require_boolean("is_last_item is bool", is_last_item_expr.clone());
-                body_selectors_exprs.iter().for_each(|s| {
-                    cb.require_boolean("body selector is bool", s.clone());
-                });
 
                 cb.condition(
                     is_len_prefix_expr.clone(),
@@ -225,7 +220,7 @@ pub trait WasmLenPrefixedBytesSpanAwareChip<F: Field> {
 
                 cb.gate(or::expr([
                     is_len_prefix_expr,
-                    or::expr(body_selectors.iter().map(|&e| vc.query_fixed(e, Rotation::cur())).collect_vec()),
+                    is_body_expr,
                 ]))
             }
         );
@@ -239,7 +234,7 @@ pub trait WasmCountPrefixedItemsAwareChip<F: Field> {
         body_item_rev_count: Column<Advice>,
         is_count_prefix: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
         is_body: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
-        is_next_body_item: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
+        is_next_item: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
         is_last_item: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
     ) {
         cs.create_gate(
@@ -250,8 +245,7 @@ pub trait WasmCountPrefixedItemsAwareChip<F: Field> {
                 let body_item_rev_count_expr = vc.query_advice(body_item_rev_count, Rotation::cur());
                 let sn_expr = vc.query_advice(leb128_chip.config.sn, Rotation::cur());
 
-                // TODO add constraints for simple selectors
-                let is_next_body_item_expr = is_next_body_item(vc);
+                let is_next_body_item_expr = is_next_item(vc);
                 let is_count_prefix_expr = is_count_prefix(vc);
                 let is_last_item_expr = is_last_item(vc);
                 let is_body_expr = is_body(vc);

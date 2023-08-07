@@ -428,20 +428,22 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         Self::configure_len_prefixed_bytes_span_checks(
             cs,
             leb128_chip.as_ref(),
-            &[
-                is_local_type_transitions_count,
-                is_local_repetition_count,
-                is_local_type,
-                is_numeric_instruction,
-                is_numeric_instruction_leb_arg,
-                is_variable_instruction,
-                is_variable_instruction_leb_arg,
-                is_control_instruction,
-                is_control_instruction_leb_arg,
-                is_parametric_instruction,
-                is_blocktype_delimiter,
-                is_block_end,
-            ],
+            |vc| {
+                or::expr([
+                    is_local_type_transitions_count,
+                    is_local_repetition_count,
+                    is_local_type,
+                    is_numeric_instruction,
+                    is_numeric_instruction_leb_arg,
+                    is_variable_instruction,
+                    is_variable_instruction_leb_arg,
+                    is_control_instruction,
+                    is_control_instruction_leb_arg,
+                    is_parametric_instruction,
+                    is_blocktype_delimiter,
+                    is_block_end,
+                ].map(|c| vc.query_fixed(c, Rotation::cur())).iter().collect_vec())
+            },
             body_byte_rev_index,
             |vc| {
                 let not_q_last_expr = not::expr(vc.query_fixed(q_last, Rotation::cur()));
@@ -469,17 +471,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             cs,
             leb128_chip.as_ref(),
             body_item_rev_count,
-            |vc| {
-                let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
-                let is_funcs_count_expr = vc.query_fixed(is_funcs_count, Rotation::cur());
-                let is_func_body_len_next_expr = vc.query_fixed(is_func_body_len, Rotation::next());
-
-                and::expr([
-                    not::expr(q_last_expr),
-                    is_funcs_count_expr,
-                    is_func_body_len_next_expr,
-                ])
-            },
+            |vc| vc.query_fixed(is_funcs_count, Rotation::cur()),
             |vc| {
                 let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
                 let is_funcs_count_expr = vc.query_fixed(is_funcs_count, Rotation::cur());

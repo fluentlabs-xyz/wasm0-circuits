@@ -45,6 +45,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let func_count = cs.advice_column();
+        let body_item_rev_count_lv1 = cs.advice_column();
+        let body_item_rev_count_lv2 = cs.advice_column();
 
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
@@ -62,6 +64,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             leb128_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_item_rev_count_lv2,
         );
         let wasm_type_section_item_chip = Rc::new(WasmTypeSectionItemChip::construct(wasm_type_section_item_config));
         let wasm_type_section_body_config = WasmTypeSectionBodyChip::configure(
@@ -72,6 +75,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
+            body_item_rev_count_lv1,
         );
         let wasm_type_section_body_chip = Rc::new(WasmTypeSectionBodyChip::construct(wasm_type_section_body_config));
         let test_circuit_config = TestCircuitConfig {

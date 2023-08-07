@@ -8,4 +8,6 @@ pub enum AssignType {
     IsInputType,
     IsOutputCount,
     IsOutputType,
+
+    BodyItemRevCount,
 }

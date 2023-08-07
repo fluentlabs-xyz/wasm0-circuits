@@ -17,4 +17,5 @@ pub enum AssignType {
     MemSegmentType,
 
     BodyByteRevIndex,
+    BodyItemRevCount,
 }

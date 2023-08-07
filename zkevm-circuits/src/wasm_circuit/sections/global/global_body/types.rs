@@ -12,4 +12,6 @@ pub enum AssignType {
     IsInitOpcode,
     IsInitVal,
     IsExprDelimiter,
+
+    BodyItemRevCount,
 }
