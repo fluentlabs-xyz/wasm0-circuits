@@ -82,12 +82,13 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
     ) {
         let q_enable = true;
         debug!(
-            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?} leb_params {:?}",
             offset,
             q_enable,
             assign_types,
             assign_value,
             wasm_bytecode.bytes[offset],
+            leb_params,
         );
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
@@ -727,7 +728,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             &[AssignType::IsItemsCount],
         );
         let mut body_item_rev_count = items_count;
-        for offset in offset..items_count_leb_len {
+        for offset in offset..offset + items_count_leb_len {
             self.assign(
                 region,
                 &wasm_bytecode,
@@ -793,7 +794,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     offset += 1;
 
                     // is_mem_segment_size+
-                    let (mem_segment_size, mem_segment_size_leb_len) = self.markup_leb_section(
+                    let (_mem_segment_size, mem_segment_size_leb_len) = self.markup_leb_section(
                         region,
                         wasm_bytecode,
                         offset,

@@ -12,6 +12,7 @@ use eth_types::{Field, Hash, ToWord};
 
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
+use crate::wasm_circuit::common::WasmSharedStateAwareChip;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::import::import_body::circuit::WasmImportSectionBodyChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
@@ -102,6 +103,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         layouter.assign_region(
             || "wasm_import_section_body region",
             |mut region| {
+                config.body_chip.shared_state().borrow_mut().reset();
                 let mut offset_start = self.offset_start;
                 while offset_start < wasm_bytecode.bytes.len() {
                     offset_start = config.body_chip.assign_auto(

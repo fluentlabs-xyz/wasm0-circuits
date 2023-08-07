@@ -23,6 +23,8 @@ pub enum AssignType {
     IsImportdescTypeCtx,
     ImportdescType,
 
+    FuncCount,
+
     BodyByteRevIndex,
     BodyItemRevCount,
 }

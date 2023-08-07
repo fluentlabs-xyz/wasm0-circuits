@@ -532,19 +532,20 @@ pub trait WasmMarkupLeb128SectionAwareChip<F: Field>: WasmAssignAwareChip<F> {
                 last_byte_rel_offset,
                 wasm_bytecode.bytes[offset],
             );
+            let leb_params = Some(LebParams {
+                is_signed,
+                byte_rel_offset,
+                last_byte_rel_offset,
+                sn,
+                sn_recovered_at_pos,
+            });
             self.assign(
                 region,
                 wasm_bytecode,
                 offset,
                 assign_types,
                 1,
-                Some(LebParams {
-                    is_signed,
-                    byte_rel_offset,
-                    last_byte_rel_offset,
-                    sn,
-                    sn_recovered_at_pos,
-                }),
+                leb_params,
             );
         }
 

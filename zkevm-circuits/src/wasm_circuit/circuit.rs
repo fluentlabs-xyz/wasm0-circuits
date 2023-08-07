@@ -87,7 +87,8 @@ pub struct WasmConfig<F: Field> {
     block_depth_level: Column<Advice>,
     body_byte_rev_index_l1: Column<Advice>,
     body_byte_rev_index_l2: Column<Advice>,
-    body_item_rev_count: Column<Advice>,
+    body_item_rev_count_l1: Column<Advice>,
+    body_item_rev_count_l2: Column<Advice>,
 
     pub shared_state: Rc<RefCell<SharedState>>,
 
@@ -253,8 +254,8 @@ impl<F: Field> WasmChip<F>
         let block_depth_level = cs.advice_column();
         let body_byte_rev_index_l1 = cs.advice_column();
         let body_byte_rev_index_l2 = cs.advice_column();
-        let body_item_rev_count_lv1 = cs.advice_column();
-        let body_item_rev_count_lv2 = cs.advice_column();
+        let body_item_rev_count_l1 = cs.advice_column();
+        let body_item_rev_count_l2 = cs.advice_column();
 
         let range_table_config_0_256 = RangeTableConfig::configure(cs);
         let section_id_range_table_config = RangeTableConfig::configure(cs);
@@ -283,7 +284,7 @@ impl<F: Field> WasmChip<F>
             leb128_chip.clone(),
             func_count,
             shared_state.clone(),
-            body_item_rev_count_lv2,
+            body_item_rev_count_l2,
         );
         let wasm_type_section_item_chip = Rc::new(WasmTypeSectionItemChip::construct(config));
         let config = WasmTypeSectionBodyChip::configure(
@@ -294,7 +295,7 @@ impl<F: Field> WasmChip<F>
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
-            body_item_rev_count_lv1,
+            body_item_rev_count_l1,
         );
         let wasm_type_section_body_chip = Rc::new(WasmTypeSectionBodyChip::construct(config));
 
@@ -307,7 +308,7 @@ impl<F: Field> WasmChip<F>
             func_count,
             shared_state.clone(),
             body_byte_rev_index_l2,
-            body_item_rev_count_lv1,
+            body_item_rev_count_l1,
         );
         let wasm_import_section_body_chip = Rc::new(WasmImportSectionBodyChip::construct(config));
 
@@ -317,7 +318,7 @@ impl<F: Field> WasmChip<F>
             leb128_chip.clone(),
             func_count,
             shared_state.clone(),
-            body_item_rev_count_lv1,
+            body_item_rev_count_l1,
         );
         let wasm_function_section_body_chip = Rc::new(WasmFunctionSectionBodyChip::construct(config));
 
@@ -328,7 +329,7 @@ impl<F: Field> WasmChip<F>
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
-            body_item_rev_count_lv1,
+            body_item_rev_count_l1,
         );
         let wasm_memory_section_body_chip = Rc::new(WasmMemorySectionBodyChip::construct(config));
 
@@ -339,7 +340,7 @@ impl<F: Field> WasmChip<F>
             func_count,
             shared_state.clone(),
             body_byte_rev_index_l2,
-            body_item_rev_count_lv1,
+            body_item_rev_count_l1,
         );
         let wasm_export_section_body_chip = Rc::new(WasmExportSectionBodyChip::construct(config));
 
@@ -351,7 +352,7 @@ impl<F: Field> WasmChip<F>
             func_count,
             shared_state.clone(),
             body_byte_rev_index_l2,
-            body_item_rev_count_lv1,
+            body_item_rev_count_l1,
         );
         let wasm_data_section_body_chip = Rc::new(WasmDataSectionBodyChip::construct(config));
 
@@ -362,7 +363,7 @@ impl<F: Field> WasmChip<F>
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
-            body_item_rev_count_lv1,
+            body_item_rev_count_l1,
         );
         let wasm_global_section_body_chip = Rc::new(WasmGlobalSectionBodyChip::construct(config));
 
@@ -374,7 +375,7 @@ impl<F: Field> WasmChip<F>
             func_count,
             shared_state.clone(),
             body_byte_rev_index_l2,
-            body_item_rev_count_lv1,
+            body_item_rev_count_l1,
         );
         let wasm_code_section_body_chip = Rc::new(WasmCodeSectionBodyChip::construct(config));
 
@@ -393,7 +394,7 @@ impl<F: Field> WasmChip<F>
             leb128_chip.clone(),
             func_count,
             shared_state.clone(),
-            body_item_rev_count_lv1,
+            body_item_rev_count_l1,
         );
         let wasm_element_section_body_chip = Rc::new(WasmElementSectionBodyChip::construct(config));
 
@@ -652,7 +653,7 @@ impl<F: Field> WasmChip<F>
                 |bcb| {
                     let func_count_prev_expr = vc.query_advice(func_count, Rotation::prev());
                     bcb.require_equal(
-                        "importdesc_type_is_typeidx => func_count grew by 1",
+                        "importdesc_type_is_typeidx => func_count increased by 1",
                         func_count_prev_expr.clone() + 1.expr(),
                         func_count_expr.clone(),
                     );
@@ -1079,7 +1080,8 @@ impl<F: Field> WasmChip<F>
             block_depth_level,
             body_byte_rev_index_l1,
             body_byte_rev_index_l2,
-            body_item_rev_count: body_item_rev_count_lv1,
+            body_item_rev_count_l1,
+            body_item_rev_count_l2,
         };
 
         config
@@ -1135,7 +1137,7 @@ impl<F: Field> WasmChip<F>
                 if offset == section_start_offset {
                     let wasm_section: WasmSection = (section_id as i32).try_into().unwrap();
                     debug!(
-                        "wasm_section {:?}(id={}) at offset {} len {} bytecode(hex) {:x?}",
+                        "wasm_section {:?}(id={}) at offset {} section_len {} bytecode(hex) {:x?}",
                         wasm_section,
                         section_id,
                         offset,
@@ -1173,70 +1175,70 @@ impl<F: Field> WasmChip<F>
                             ).unwrap();
                         }
                         WasmSection::Import => {
-                            let new_offset = self.config.wasm_import_section_body_chip.assign_auto(
+                            next_section_offset = self.config.wasm_import_section_body_chip.assign_auto(
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
                             ).unwrap();
                         }
                         WasmSection::Function => {
-                            let new_offset = self.config.wasm_function_section_body_chip.assign_auto(
+                            next_section_offset = self.config.wasm_function_section_body_chip.assign_auto(
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
                             ).unwrap();
                         }
                         WasmSection::Table => {
-                            let new_offset = self.config.wasm_table_section_body_chip.assign_auto(
+                            next_section_offset = self.config.wasm_table_section_body_chip.assign_auto(
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
                             ).unwrap();
                         }
                         WasmSection::Memory => {
-                            let new_offset = self.config.wasm_memory_section_body_chip.assign_auto(
+                            next_section_offset = self.config.wasm_memory_section_body_chip.assign_auto(
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
                             ).unwrap();
                         }
                         WasmSection::Global => {
-                            let new_offset = self.config.wasm_global_section_body_chip.assign_auto(
+                            next_section_offset = self.config.wasm_global_section_body_chip.assign_auto(
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
                             ).unwrap();
                         }
                         WasmSection::Export => {
-                            let new_offset = self.config.wasm_export_section_body_chip.assign_auto(
+                            next_section_offset = self.config.wasm_export_section_body_chip.assign_auto(
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
                             ).unwrap();
                         }
                         WasmSection::Start => {
-                            let new_offset = self.config.wasm_start_section_body_chip.assign_auto(
+                            next_section_offset = self.config.wasm_start_section_body_chip.assign_auto(
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
                             ).unwrap();
                         }
                         WasmSection::Element => {
-                            let new_offset = self.config.wasm_element_section_body_chip.assign_auto(
+                            next_section_offset = self.config.wasm_element_section_body_chip.assign_auto(
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
                             ).unwrap();
                         }
                         WasmSection::Code => {
-                            let new_offset = self.config.wasm_code_section_body_chip.assign_auto(
+                            next_section_offset = self.config.wasm_code_section_body_chip.assign_auto(
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
                             ).unwrap();
                         }
                         WasmSection::Data => {
-                            let new_offset = self.config.wasm_data_section_body_chip.assign_auto(
+                            next_section_offset = self.config.wasm_data_section_body_chip.assign_auto(
                                 region,
                                 wasm_bytecode,
                                 section_body_offset,
@@ -1244,7 +1246,12 @@ impl<F: Field> WasmChip<F>
                         }
                         _ => { panic!("unsupported section '{:x?}'", wasm_section) }
                     }
-                    debug!("wasm_section {:?} section_body_offset {} after assign_auto next_section_offset {}", wasm_section, section_body_offset, next_section_offset);
+                    debug!(
+                        "wasm_section {:?} section_body_offset {} after assign_auto next_section_offset {}",
+                        wasm_section,
+                        section_body_offset,
+                        next_section_offset,
+                    );
                 }
                 region.assign_advice(
                     || format!("assign 'section_id' to {} at {}", section_id, offset),
@@ -1279,7 +1286,6 @@ impl<F: Field> WasmChip<F>
 
             for i in 0..section_len {
                 let offset = section_body_start_offset + i;
-                let val = true;
                 self.assign(
                     region,
                     wasm_bytecode,

@@ -100,7 +100,6 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        self.assign_func_count(region, offset);
 
         assign_types.iter().for_each(|assign_type| {
             if [
@@ -297,6 +296,9 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         offset,
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
+                }
+                AssignType::FuncCount => {
+                    self.assign_func_count(region, offset);
                 }
             }
         });
@@ -1131,26 +1133,29 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         &self,
         region: &mut Region<F>,
         wasm_bytecode: &WasmBytecode,
-        assign_type: AssignType,
+        assign_types: &[AssignType],
         offset: usize,
         name_len: usize,
     ) {
-        if ![
-            AssignType::IsModName,
-            AssignType::IsImportName,
-        ].contains(&assign_type) {
-            panic!("unsupported assign type {:?}", assign_type)
-        }
-        for byte_offset in 0..name_len {
-            self.assign(
-                region,
-                wasm_bytecode,
-                offset + byte_offset,
-                &[assign_type],
-                1,
-                None,
-            );
-        }
+        assign_types.iter().for_each(|assign_type| {
+            if ![
+                AssignType::IsModName,
+                AssignType::IsImportName,
+                AssignType::FuncCount,
+            ].contains(&assign_type) {
+                panic!("unsupported assign type {:?}", assign_type)
+            }
+            for byte_offset in 0..name_len {
+                self.assign(
+                    region,
+                    wasm_bytecode,
+                    offset + byte_offset,
+                    assign_types,
+                    1,
+                    None,
+                );
+            }
+        })
     }
 
     /// returns new offset
@@ -1167,7 +1172,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             region,
             wasm_bytecode,
             offset,
-            &[AssignType::IsItemsCount],
+            &[AssignType::IsItemsCount, AssignType::FuncCount],
         );
         let mut body_item_rev_count = items_count;
         for offset in offset..offset + items_count_leb_len {
@@ -1175,7 +1180,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 region,
                 &wasm_bytecode,
                 offset,
-                &[AssignType::BodyItemRevCount],
+                &[AssignType::BodyItemRevCount, AssignType::FuncCount],
                 body_item_rev_count,
                 None,
             );
@@ -1192,7 +1197,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset,
-                &[AssignType::IsModNameLen],
+                &[AssignType::IsModNameLen, AssignType::FuncCount],
             );
             let mod_name_len_last_byte_offset = offset + mod_name_leb_len - 1;
             let mod_name_last_byte_offset = mod_name_len_last_byte_offset + mod_name_len as usize;
@@ -1201,7 +1206,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     region,
                     &wasm_bytecode,
                     offset,
-                    &[AssignType::BodyByteRevIndex],
+                    &[AssignType::BodyByteRevIndex, AssignType::FuncCount],
                     (mod_name_last_byte_offset - offset) as u64,
                     None,
                 );
@@ -1212,7 +1217,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             self.markup_name_section(
                 region,
                 wasm_bytecode,
-                AssignType::IsModName,
+                &[AssignType::IsModName, AssignType::FuncCount],
                 offset,
                 mod_name_len as usize,
             );
@@ -1223,7 +1228,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 region,
                 wasm_bytecode,
                 offset,
-                &[AssignType::IsImportNameLen],
+                &[AssignType::IsImportNameLen, AssignType::FuncCount],
             );
             let import_name_len_last_byte_offset = offset + import_name_leb_len - 1;
             let import_name_last_byte_offset = import_name_len_last_byte_offset + import_name_len as usize;
@@ -1232,7 +1237,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     region,
                     &wasm_bytecode,
                     offset,
-                    &[AssignType::BodyByteRevIndex],
+                    &[AssignType::BodyByteRevIndex, AssignType::FuncCount],
                     (import_name_last_byte_offset - offset) as u64,
                     None,
                 );
@@ -1243,7 +1248,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             self.markup_name_section(
                 region,
                 wasm_bytecode,
-                AssignType::IsImportName,
+                &[AssignType::IsImportName, AssignType::FuncCount],
                 offset,
                 import_name_len as usize,
             );
@@ -1254,11 +1259,16 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             let importdesc_type: ImportDescType = importdesc_type_val.try_into().unwrap();
             let importdesc_type_val = importdesc_type_val as u64;
             if importdesc_type == ImportDescType::Typeidx { self.config.shared_state.borrow_mut().func_count += 1; }
+            debug!(
+                "self.config.shared_state.borrow_mut().func_count {} importdesc_type_val {}",
+                self.config.shared_state.borrow_mut().func_count,
+                importdesc_type_val,
+            );
             self.assign(
                 region,
                 wasm_bytecode,
                 offset,
-                &[AssignType::IsImportdescType, AssignType::IsImportdescTypeCtx],
+                &[AssignType::IsImportdescType, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
                 1,
                 None,
             );
@@ -1266,7 +1276,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 region,
                 &wasm_bytecode,
                 offset,
-                &[AssignType::ImportdescType],
+                &[AssignType::ImportdescType, AssignType::FuncCount],
                 importdesc_type_val,
                 None,
             );
@@ -1280,7 +1290,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        &[AssignType::IsImportdescVal, AssignType::IsImportdescTypeCtx],
+                        &[AssignType::IsImportdescVal, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
                     );
                     for offset in offset..offset + importdesc_val_leb_len {
                         self.assign(
@@ -1300,14 +1310,14 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        &[AssignType::IsImportdescVal, AssignType::IsImportdescTypeCtx],
+                        &[AssignType::IsImportdescVal, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
                     );
                     for offset in offset..offset + importdesc_val_leb_len {
                         self.assign(
                             region,
                             &wasm_bytecode,
                             offset,
-                            &[AssignType::ImportdescType],
+                            &[AssignType::ImportdescType, AssignType::FuncCount],
                             importdesc_type_val,
                             None,
                         );
@@ -1319,7 +1329,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        &[AssignType::IsMut, AssignType::IsImportdescTypeCtx],
+                        &[AssignType::IsMut, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
                         1,
                         None,
                     );
@@ -1328,7 +1338,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                             region,
                             &wasm_bytecode,
                             offset,
-                            &[AssignType::ImportdescType],
+                            &[AssignType::ImportdescType, AssignType::FuncCount],
                             importdesc_type_val,
                             None,
                         );
@@ -1345,7 +1355,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        &[AssignType::IsLimitType, AssignType::IsLimitTypeCtx],
+                        &[AssignType::IsLimitType, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
                         1,
                         None,
                     );
@@ -1357,7 +1367,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        &[AssignType::IsLimitMin, AssignType::IsLimitTypeCtx],
+                        &[AssignType::IsLimitMin, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
                     );
                     for offset in offset..offset + limit_min_leb_len {
                         self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
@@ -1370,7 +1380,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                             region,
                             wasm_bytecode,
                             offset,
-                            &[AssignType::IsLimitMax, AssignType::IsLimitTypeCtx],
+                            &[AssignType::IsLimitMax, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
                         );
                         for offset in offset..offset + limit_max_leb_len {
                             self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
@@ -1387,7 +1397,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        &[AssignType::IsRefType],
+                        &[AssignType::IsRefType, AssignType::FuncCount],
                         1,
                         None,
                     );
@@ -1401,11 +1411,11 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        &[AssignType::IsLimitType, AssignType::IsLimitTypeCtx],
+                        &[AssignType::IsLimitType, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
                         1,
                         None,
                     );
-                    self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                    self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None);
                     offset += 1;
 
                     // limit_min+
@@ -1413,10 +1423,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         region,
                         wasm_bytecode,
                         offset,
-                        &[AssignType::IsLimitMin, AssignType::IsLimitTypeCtx],
+                        &[AssignType::IsLimitMin, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
                     );
                     for offset in offset..offset + limit_min_leb_len {
-                        self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                        self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None);
                     }
                     offset += limit_min_leb_len;
 
@@ -1426,10 +1436,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                             region,
                             wasm_bytecode,
                             offset,
-                            &[AssignType::IsLimitMax, AssignType::IsLimitTypeCtx],
+                            &[AssignType::IsLimitMax, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
                         );
                         for offset in offset..offset + limit_max_leb_len {
-                            self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                            self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None);
                         }
                         self.config.limit_type_fields.limit_type_params_lt_chip.assign(region, offset, F::from(limit_min), F::from(limit_max)).unwrap();
                         offset += limit_max_leb_len;
