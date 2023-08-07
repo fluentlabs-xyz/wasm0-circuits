@@ -468,8 +468,19 @@ impl OpcodeId {
             OpcodeId::GetLocal => 0x20,
             OpcodeId::SetLocal => 0x21,
             OpcodeId::TeeLocal => 0x22,
+
             OpcodeId::GetGlobal => 0x23,
             OpcodeId::SetGlobal => 0x24,
+
+            // Extra wasm opcodes
+            OpcodeId::TableGet => 0x23,
+            OpcodeId::TableSet => 0x24,
+            OpcodeId::TableInit => 0x25,
+            OpcodeId::TableSize => 0x28,
+            OpcodeId::TableGrow => 0x29,
+            OpcodeId::TableFill => 0x3d,
+            OpcodeId::TableCopy => 0x2a,
+
             OpcodeId::I32Load => 0x28,
             OpcodeId::I64Load => 0x29,
             OpcodeId::F32Load => 0x2a,
@@ -668,15 +679,6 @@ impl OpcodeId {
             OpcodeId::DELEGATECALL => 0xec,
             OpcodeId::STATICCALL => 0xed,
             OpcodeId::SELFDESTRUCT => 0xef,
-
-            // Extra wasm opcodes
-            OpcodeId::TableSize => 0xf0,
-            OpcodeId::TableGrow => 0xf1,
-            OpcodeId::TableFill => 0xf2,
-            OpcodeId::TableGet => 0xf3,
-            OpcodeId::TableSet => 0xf4,
-            OpcodeId::TableCopy => 0xf5,
-            OpcodeId::TableInit => 0xf6,
 
             _ => 0x00,
         }
