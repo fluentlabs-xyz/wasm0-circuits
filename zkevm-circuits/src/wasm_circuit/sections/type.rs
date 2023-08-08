@@ -1,2 +1,2 @@
-pub mod type_item;
-pub mod type_body;
+pub mod item;
+pub mod body;

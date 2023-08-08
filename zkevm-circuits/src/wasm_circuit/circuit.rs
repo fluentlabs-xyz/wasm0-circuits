@@ -24,19 +24,19 @@ use crate::wasm_circuit::common::configure_transition_check;
 use crate::wasm_circuit::consts::{ControlInstruction, ExportDescType, ImportDescType, SECTION_ID_DEFAULT, WASM_PREAMBLE_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_last_byte_offset;
-use crate::wasm_circuit::sections::code::code_body::circuit::WasmCodeSectionBodyChip;
+use crate::wasm_circuit::sections::code::body::circuit::WasmCodeSectionBodyChip;
 use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::data::data_body::circuit::WasmDataSectionBodyChip;
-use crate::wasm_circuit::sections::element::element_body::circuit::WasmElementSectionBodyChip;
-use crate::wasm_circuit::sections::export::export_body::circuit::WasmExportSectionBodyChip;
-use crate::wasm_circuit::sections::function::function_body::circuit::WasmFunctionSectionBodyChip;
-use crate::wasm_circuit::sections::global::global_body::circuit::WasmGlobalSectionBodyChip;
-use crate::wasm_circuit::sections::import::import_body::circuit::WasmImportSectionBodyChip;
-use crate::wasm_circuit::sections::memory::memory_body::circuit::WasmMemorySectionBodyChip;
-use crate::wasm_circuit::sections::r#type::type_body::circuit::WasmTypeSectionBodyChip;
-use crate::wasm_circuit::sections::r#type::type_item::circuit::WasmTypeSectionItemChip;
-use crate::wasm_circuit::sections::start::start_body::circuit::WasmStartSectionBodyChip;
-use crate::wasm_circuit::sections::table::table_body::circuit::WasmTableSectionBodyChip;
+use crate::wasm_circuit::sections::data::body::circuit::WasmDataSectionBodyChip;
+use crate::wasm_circuit::sections::element::body::circuit::WasmElementSectionBodyChip;
+use crate::wasm_circuit::sections::export::body::circuit::WasmExportSectionBodyChip;
+use crate::wasm_circuit::sections::function::body::circuit::WasmFunctionSectionBodyChip;
+use crate::wasm_circuit::sections::global::body::circuit::WasmGlobalSectionBodyChip;
+use crate::wasm_circuit::sections::import::body::circuit::WasmImportSectionBodyChip;
+use crate::wasm_circuit::sections::memory::body::circuit::WasmMemorySectionBodyChip;
+use crate::wasm_circuit::sections::r#type::body::circuit::WasmTypeSectionBodyChip;
+use crate::wasm_circuit::sections::r#type::item::circuit::WasmTypeSectionItemChip;
+use crate::wasm_circuit::sections::start::body::circuit::WasmStartSectionBodyChip;
+use crate::wasm_circuit::sections::table::body::circuit::WasmTableSectionBodyChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
@@ -677,7 +677,10 @@ impl<F: Field> WasmChip<F>
         cs.create_gate("wasm section layout check", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
+            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let not_q_first_expr = not::expr(q_first_expr.clone());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let not_q_last_expr = not::expr(q_last_expr.clone());
 
             let bytecode_value = vc.query_advice(wasm_bytecode_table.value, Rotation::cur());
 
@@ -686,6 +689,8 @@ impl<F: Field> WasmChip<F>
             let is_section_id_expr = vc.query_fixed(is_section_id, Rotation::cur());
             let is_section_len_expr = vc.query_fixed(is_section_len, Rotation::cur());
             let is_section_body_expr = vc.query_fixed(is_section_body, Rotation::cur());
+
+            let leb128_is_last_byte_expr = vc.query_fixed(leb128_chip.config.is_last_byte, Rotation::cur());
 
             cb.condition(
                 index_at_magic_prefix_prev[WASM_SECTIONS_START_INDEX - 1].config().expr(),
@@ -702,46 +707,47 @@ impl<F: Field> WasmChip<F>
                 &mut cb,
                 vc,
                 "check next: is_section_id{1} -> is_section_len+",
-                is_section_id_expr.clone(),
+                and::expr([
+                    not_q_last_expr.clone(),
+                    is_section_id_expr.clone(),
+                ]),
                 true,
                 &[is_section_len],
             );
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_section_id{1} -> is_section_len+",
-                is_section_len_expr.clone(),
-                false,
-                &[is_section_id, is_section_len],
-            );
-            configure_transition_check(
-                &mut cb,
-                vc,
                 "check next: is_section_len+ -> is_section_body+",
-                is_section_len_expr.clone(),
+                and::expr([
+                    not_q_last_expr.clone(),
+                    is_section_len_expr.clone(),
+                ]),
                 true,
                 &[is_section_len, is_section_body],
             );
             configure_transition_check(
                 &mut cb,
                 vc,
-                "check prev: is_section_len+ -> is_section_body+",
-                is_section_body_expr.clone(),
-                false,
-                &[is_section_len, is_section_body],
+                "check next (last leb byte): is_section_len+ -> is_section_body+",
+                and::expr([
+                    not_q_last_expr.clone(),
+                    leb128_is_last_byte_expr.clone(),
+                    is_section_len_expr.clone(),
+                ]),
+                true,
+                &[is_section_body],
             );
-            // TODO must pass, recheck
-            // configure_check_for_transition(
-            //     &mut cb,
-            //     vc,
-            //     "check next: is_section_body+ -> is_section_id{1} || q_last",
-            //     true,
-            //     and::expr([
-            //         is_section_body_expr.clone(),
-            //         not::expr(q_last_expr.clone()),
-            //     ]),
-            //     &[is_section_body, is_section_id, q_last],
-            // );
+            configure_transition_check(
+                &mut cb,
+                vc,
+                "check next: is_section_body+ -> is_section_id{1} || q_last",
+                and::expr([
+                    not_q_last_expr.clone(),
+                    is_section_body_expr.clone(),
+                ]),
+                true,
+                &[is_section_body, is_section_id],
+            );
 
             cb.condition(
                 is_section_id_expr.clone(),
@@ -753,31 +759,6 @@ impl<F: Field> WasmChip<F>
                     )
                 }
             );
-
-            // TODO add constraints
-
-            // TODO recover (reuse or not reuse leb cols?)
-            // cb.condition(
-            //     is_section_body_expr.clone(),
-            //     |bcb| {
-            //         bcb.require_zero(
-            //             "section_len_leb_solid_number decreases by 1 for section_body",
-            //             section_len_leb_solid_number_prev_expr.clone() - section_len_leb_solid_number_expr.clone() - 1.expr(),
-            //         );
-            //     }
-            // );
-            // cb.condition(
-            //     or::expr([
-            //         is_section_id_expr.clone() * is_prev_section_body_expr.expr(),
-            //         q_last_expr.expr()
-            //     ]),
-            //     |bcb| {
-            //         bcb.require_zero(
-            //             "section_len_leb_solid_number_expr must equal 0 at the end of the body",
-            //             section_len_leb_solid_number_expr.clone(),
-            //         );
-            //     }
-            // );
 
             cb.require_equal(
                 "prev.hash = cur.hash",

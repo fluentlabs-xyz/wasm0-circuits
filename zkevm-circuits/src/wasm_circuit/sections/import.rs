@@ -1,1 +1,1 @@
-pub mod import_body;
+pub mod body;
