@@ -21,4 +21,6 @@ pub enum AssignType {
 
     BodyByteRevIndex,
     BodyItemRevCount,
+
+    BlockOpcodeIndex,
 }

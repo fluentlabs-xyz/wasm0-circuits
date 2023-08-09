@@ -73,7 +73,7 @@ impl<F: Field> DynamicIndexesChip<F>
             cb.require_in_set(
                 "tag => value is valid",
                 tag_expr.clone(),
-                TAG_VALUES.iter().map(|v| (*v).expr()).collect(),
+                TAG_VALUES.iter().map(|&v| v.expr()).collect(),
             );
 
             cb.condition(
