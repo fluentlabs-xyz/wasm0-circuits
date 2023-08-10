@@ -1,1 +1,1 @@
-pub mod memory_body;
+pub mod body;

@@ -1,1 +1,1 @@
-pub mod table_body;
+pub mod body;

@@ -2,11 +2,11 @@
 mod wasm_parsers_tests {
     use num::checked_pow;
     use wabt::wat2wasm;
-    use wasmbin::io::DecodeError;
     use wasmbin::io::Encode;
     use wasmbin::Module;
     use wasmbin::sections::Kind;
-    use wasmbin::visit::{Visit, VisitError};
+    use wasmbin::visit::Visit;
+
     use crate::wasm_circuit::common::wasmbin_unlazify_with_opt;
 
     /// returns section len and quantity of leb bytes
@@ -27,8 +27,8 @@ mod wasm_parsers_tests {
 
     #[test]
     pub fn test_print_parsed_file_contents() {
-        // let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
+        let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
+        // let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
         let wat: Vec<u8> = std::fs::read(path_to_file).unwrap();
         println!("SOURCE WAT: {}", std::str::from_utf8(wat.as_slice()).unwrap());
         let mut wasm_binary = wat2wasm(wat.clone()).unwrap();

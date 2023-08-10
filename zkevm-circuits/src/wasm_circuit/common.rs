@@ -4,7 +4,6 @@ use std::rc::Rc;
 use halo2_proofs::circuit::{Chip, Region, Value};
 use halo2_proofs::plonk::{Advice, Column, ConstraintSystem, Expression, Fixed, VirtualCells};
 use halo2_proofs::poly::Rotation;
-use itertools::Itertools;
 use log::debug;
 use num_traits::checked_pow;
 use wabt::wat2wasm;
@@ -49,35 +48,37 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
 ) {
     let q_enable_expr = vc.query_fixed(*q_enable, Rotation::cur());
     let q_first_expr = vc.query_fixed(*q_first, Rotation::cur());
+    let not_q_first_expr = not::expr(q_first_expr.clone());
     let q_last_expr = vc.query_fixed(*q_last, Rotation::cur());
+    let not_q_last_expr = not::expr(q_last_expr.clone());
 
     cb.require_boolean("q_first is boolean", q_first_expr.clone());
     cb.require_boolean("q_last is boolean", q_last_expr.clone());
 
-    if q_first_column_selectors.len() <= 0 || q_last_column_selectors.len() <= 0 {
-        panic!("*column_selectors must contain at leas 1 element each")
+    if q_first_column_selectors.len() > 0 {
+        cb.condition(
+            q_first_expr.clone(),
+            |bcb| {
+                bcb.require_equal(
+                    "q_first => specific selectors must be active",
+                    or::expr(q_first_column_selectors.iter().map(|&v| vc.query_fixed(v, Rotation::cur()))),
+                    1.expr(),
+                )
+            }
+        );
     }
-
-    cb.condition(
-        q_first_expr.clone(),
-        |bcb| {
-            bcb.require_equal(
-                "q_first => specific selectors must be active",
-                or::expr(q_first_column_selectors.iter().map(|v| vc.query_fixed(*v, Rotation::cur()))),
-                1.expr(),
-            )
-        }
-    );
-    cb.condition(
-        q_last_expr.clone(),
-        |bcb| {
-            bcb.require_equal(
-                "q_last => specific selectors must be active",
-                or::expr(q_last_column_selectors.iter().map(|v| vc.query_fixed(*v, Rotation::cur()))),
-                1.expr(),
-            )
-        }
-    );
+    if q_last_column_selectors.len() > 0 {
+        cb.condition(
+            q_last_expr.clone(),
+            |bcb| {
+                bcb.require_equal(
+                    "q_last => specific selectors must be active",
+                    or::expr(q_last_column_selectors.iter().map(|&v| vc.query_fixed(v, Rotation::cur()))),
+                    1.expr(),
+                )
+            }
+        );
+    }
 
     cb.condition(
         or::expr([
@@ -95,7 +96,7 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
     cb.condition(
         and::expr([
             q_first_expr.clone(),
-            not::expr(q_last_expr.clone()),
+            not_q_last_expr.clone(),
         ]),
         |bcb| {
             let q_first_next_expr = vc.query_fixed(*q_first, Rotation::next());
@@ -108,7 +109,7 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
     cb.condition(
         and::expr([
             q_last_expr.clone(),
-            not::expr(q_first_expr.clone()),
+            not_q_first_expr.clone(),
         ]),
         |bcb| {
             let q_last_prev_expr = vc.query_fixed(*q_last, Rotation::prev());
@@ -120,8 +121,8 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
     );
     cb.condition(
         and::expr([
-            not::expr(q_first_expr.clone()),
-            not::expr(q_last_expr.clone()),
+            not_q_first_expr.clone(),
+            not_q_last_expr.clone(),
         ]),
         |bcb| {
             let q_first_next_expr = vc.query_fixed(*q_first, Rotation::next());
@@ -532,19 +533,20 @@ pub trait WasmMarkupLeb128SectionAwareChip<F: Field>: WasmAssignAwareChip<F> {
                 last_byte_rel_offset,
                 wasm_bytecode.bytes[offset],
             );
+            let leb_params = Some(LebParams {
+                is_signed,
+                byte_rel_offset,
+                last_byte_rel_offset,
+                sn,
+                sn_recovered_at_pos,
+            });
             self.assign(
                 region,
                 wasm_bytecode,
                 offset,
                 assign_types,
                 1,
-                Some(LebParams {
-                    is_signed,
-                    byte_rel_offset,
-                    last_byte_rel_offset,
-                    sn,
-                    sn_recovered_at_pos,
-                }),
+                leb_params,
             );
         }
 

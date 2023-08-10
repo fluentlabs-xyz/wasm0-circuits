@@ -1,1 +1,1 @@
-pub mod global_body;
+pub mod body;
