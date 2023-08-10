@@ -129,6 +129,8 @@ github.com/wasm0/zkwasm-gas-injector v0.0.0-20230418040621-01902ff3a6f0 h1:rVvHq
 github.com/wasm0/zkwasm-gas-injector v0.0.0-20230418040621-01902ff3a6f0/go.mod h1:ms+SgxHswYob8xR8S0n98F9hA0/+JFj33+17rpiKW1Q=
 github.com/wasm0/zkwasm-wasmi v0.0.0-20230807132809-5df92202503e h1:ARhVv3nPR3lt1D7cybzmWDVqdWpy9E/tB7Ymyr7WVt0=
 github.com/wasm0/zkwasm-wasmi v0.0.0-20230807132809-5df92202503e/go.mod h1:KvTRmrMKpWvJzQNNL5YgsjDJVpzDkLWy6o74VdOYI/8=
+github.com/wasm0/zkwasm-wasmi v0.0.0-20230810142850-b24ef716bd6d h1:vX16r7CtcAGkQYEANWqCQv5yxA4tTt0NRH0OF+OLAj0=
+github.com/wasm0/zkwasm-wasmi v0.0.0-20230810142850-b24ef716bd6d/go.mod h1:KvTRmrMKpWvJzQNNL5YgsjDJVpzDkLWy6o74VdOYI/8=
 github.com/wasmerio/wasmer-go v1.0.4 h1:MnqHoOGfiQ8MMq2RF6wyCeebKOe84G88h5yv+vmxJgs=
 golang.org/x/crypto v0.0.0-20170930174604-9419663f5a44/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
