@@ -19,7 +19,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmNameAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{IMPORT_DESC_TYPE_VALUES, ImportDescType, LimitType, MUTABILITY_VALUES, REF_TYPE_VALUES, RefType};
 use crate::wasm_circuit::error::Error;
@@ -310,6 +310,8 @@ impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmImportSectionBodyChip
 impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmImportSectionBodyChip<F> {}
 
 impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmNameAwareChip<F> for WasmImportSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmImportSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -1398,35 +1400,6 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         config
     }
 
-    fn markup_name_section(
-        &self,
-        region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        assign_types: &[AssignType],
-        offset: usize,
-        name_len: usize,
-    ) {
-        assign_types.iter().for_each(|assign_type| {
-            if ![
-                AssignType::IsModName,
-                AssignType::IsImportName,
-                AssignType::FuncCount,
-            ].contains(&assign_type) {
-                panic!("unsupported assign type {:?}", assign_type)
-            }
-            for byte_offset in 0..name_len {
-                self.assign(
-                    region,
-                    wasm_bytecode,
-                    offset + byte_offset,
-                    assign_types,
-                    1,
-                    None,
-                );
-            }
-        })
-    }
-
     /// returns new offset
     pub fn assign_auto(
         &self,
@@ -1486,9 +1459,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             self.markup_name_section(
                 region,
                 wasm_bytecode,
-                &[AssignType::IsModName, AssignType::FuncCount],
                 offset,
+                &[AssignType::IsModName, AssignType::FuncCount],
                 mod_name_len as usize,
+                1,
             );
             offset += mod_name_len as usize;
 
@@ -1517,9 +1491,10 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             self.markup_name_section(
                 region,
                 wasm_bytecode,
-                &[AssignType::IsImportName, AssignType::FuncCount],
                 offset,
+                &[AssignType::IsImportName, AssignType::FuncCount],
                 import_name_len as usize,
+                1,
             );
             offset += import_name_len as usize;
 

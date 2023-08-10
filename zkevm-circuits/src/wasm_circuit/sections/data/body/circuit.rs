@@ -18,7 +18,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBytesAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{MemSegmentType, NumericInstruction, WASM_BLOCK_END};
 use crate::wasm_circuit::error::Error;
@@ -905,27 +905,6 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         };
 
         config
-    }
-
-    /// returns new offset
-    fn markup_bytes_section(
-        &self,
-        region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        offset: usize,
-        len: usize,
-    ) -> usize {
-        for rel_offset in 0..len {
-            self.assign(
-                region,
-                wasm_bytecode,
-                offset + rel_offset,
-                &[AssignType::IsMemSegmentBytes],
-                1,
-                None,
-            );
-        }
-        offset + len
     }
 
     /// returns new offset

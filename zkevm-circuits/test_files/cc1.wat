@@ -23,10 +23,10 @@
           drop
           br 2
         )
-;;        (else
-;;          i32.const 2
-;;          drop
-;;        )
+        (else
+          i32.const 2
+          drop
+        )
       )
       drop
     end)

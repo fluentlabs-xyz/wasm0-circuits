@@ -482,6 +482,42 @@ pub trait WasmFuncCountAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
     }
 }
 
+pub trait WasmErrorCodeAwareChip<F: Field> {
+    fn error_code_col(&self) -> Column<Advice>;
+
+    fn configure_error_code(
+        cs: &mut ConstraintSystem<F>,
+        q_enable: Column<Fixed>,
+        error_code: Column<Advice>,
+    ) {
+        cs.create_gate("ErrorCode gate", |vc| {
+            let mut cb = BaseConstraintBuilder::default();
+
+            let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let error_code_expr = vc.query_advice(error_code, Rotation::cur());
+
+            cb.require_boolean("error_code is bool", error_code_expr.clone());
+
+            cb.gate(q_enable_expr)
+        });
+    }
+
+    fn assign_error(
+        &self, region:
+        &mut Region<F>,
+        offset: usize,
+        error_code: u64,
+    ) {
+        debug!("assign at offset {} error_code val {}", offset, error_code);
+        region.assign_advice(
+            || format!("assign 'error_code' val {} at {}", error_code, offset),
+            self.error_code_col(),
+            offset,
+            || Value::known(F::from(error_code)),
+        ).unwrap();
+    }
+}
+
 pub trait WasmBlockLevelAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
     fn block_level_col(&self) -> Column<Advice>;
 
@@ -551,6 +587,55 @@ pub trait WasmMarkupLeb128SectionAwareChip<F: Field>: WasmAssignAwareChip<F> {
         }
 
         (sn, last_byte_rel_offset + 1)
+    }
+}
+
+pub trait WasmBytesAwareChip<F: Field>: WasmAssignAwareChip<F> {
+    /// returns new offset
+    fn markup_bytes_section(
+        &self,
+        region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
+        assign_types: &[Self::AssignType],
+        offset: usize,
+        len: usize,
+    ) -> usize {
+        for offset in offset..offset + len {
+            self.assign(
+                region,
+                wasm_bytecode,
+                offset,
+                assign_types,
+                1,
+                None,
+            );
+        }
+        offset + len
+    }
+}
+
+pub trait WasmNameAwareChip<F: Field>: WasmAssignAwareChip<F> {
+    /// returns new offset
+    fn markup_name_section(
+        &self,
+        region: &mut Region<F>,
+        wasm_bytecode: &WasmBytecode,
+        offset: usize,
+        assign_types: &[Self::AssignType],
+        name_len: usize,
+        assign_value: u64,
+    ) -> usize {
+        for offset in offset..offset + name_len {
+            self.assign(
+                region,
+                wasm_bytecode,
+                offset,
+                assign_types,
+                assign_value,
+                None,
+            );
+        }
+        offset + name_len
     }
 }
 

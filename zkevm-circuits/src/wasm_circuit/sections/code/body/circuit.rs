@@ -1120,8 +1120,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 ]),
                 |bcb| {
                     let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
-                    // let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
-                    // let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
                     let is_variable_instruction_next_expr = vc.query_fixed(is_variable_instruction, Rotation::next());
@@ -1155,9 +1153,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     leb128_is_last_byte_expr.clone(),
                 ]),
                 |bcb| {
-                    // let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
                     let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
-                    // let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
                     let is_variable_instruction_next_expr = vc.query_fixed(is_variable_instruction, Rotation::next());
@@ -1191,8 +1187,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     leb128_is_last_byte_expr.clone(),
                 ]),
                 |bcb| {
-                    // let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
-                    // let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
                     let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
@@ -1227,10 +1221,6 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     not_q_last_expr.clone(),
                 ]),
                 |bcb| {
-                    // let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
-                    // let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
-                    // let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
-
                     let is_func_body_len_next_expr = vc.query_fixed(is_func_body_len, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());

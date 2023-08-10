@@ -17,7 +17,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmNameAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::ExportDescType;
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
@@ -200,6 +200,8 @@ impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmExportSectionBodyChip
 impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmExportSectionBodyChip<F> {}
 
 impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmExportSectionBodyChip<F> {}
+
+impl<F: Field> WasmNameAwareChip<F> for WasmExportSectionBodyChip<F> {}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmExportSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -532,28 +534,6 @@ impl<F: Field> WasmExportSectionBodyChip<F>
     }
 
     /// returns new offset
-    fn markup_name_section(
-        &self,
-        region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        offset: usize,
-        assign_types: &[AssignType],
-        name_len: usize,
-    ) -> usize {
-        for rel_offset in 0..name_len {
-            self.assign(
-                region,
-                wasm_bytecode,
-                offset + rel_offset,
-                assign_types,
-                1,
-                None,
-            );
-        }
-        offset + name_len
-    }
-
-    /// returns new offset
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
@@ -612,6 +592,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 offset,
                 &[AssignType::IsExportName],
                 export_name_len as usize,
+                1,
             );
             offset = export_name_new_offset;
 

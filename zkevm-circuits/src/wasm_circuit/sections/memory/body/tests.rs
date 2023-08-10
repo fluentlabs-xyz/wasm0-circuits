@@ -131,7 +131,7 @@ mod wasm_memory_section_body_tests {
     #[test]
     pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/cc1.wat",
+            "./test_files/cc1.wat",
             Kind::Memory,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
@@ -148,7 +148,7 @@ mod wasm_memory_section_body_tests {
     #[test]
     pub fn file2_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/cc2.wat",
+            "./test_files/cc2.wat",
             Kind::Memory,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
@@ -166,7 +166,7 @@ mod wasm_memory_section_body_tests {
     #[test]
     pub fn file3_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/cc3.wat",
+            "./test_files/cc3.wat",
             Kind::Memory,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
