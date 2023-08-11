@@ -21,8 +21,8 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::consts::LimitType;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
-use crate::wasm_circuit::leb128_circuit::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::types::SharedState;
 
@@ -58,8 +58,8 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
     if q_first_column_selectors.len() > 0 {
         cb.condition(
             q_first_expr.clone(),
-            |bcb| {
-                bcb.require_equal(
+            |cb| {
+                cb.require_equal(
                     "q_first => specific selectors must be active",
                     or::expr(q_first_column_selectors.iter().map(|&v| vc.query_fixed(v, Rotation::cur()))),
                     1.expr(),
@@ -70,8 +70,8 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
     if q_last_column_selectors.len() > 0 {
         cb.condition(
             q_last_expr.clone(),
-            |bcb| {
-                bcb.require_equal(
+            |cb| {
+                cb.require_equal(
                     "q_last => specific selectors must be active",
                     or::expr(q_last_column_selectors.iter().map(|&v| vc.query_fixed(v, Rotation::cur()))),
                     1.expr(),
@@ -85,8 +85,8 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
             q_first_expr.clone(),
             q_last_expr.clone(),
         ]),
-        |bcb| {
-            bcb.require_equal(
+        |cb| {
+            cb.require_equal(
                 "q_first || q_last => q_enable=1",
                 q_enable_expr.clone(),
                 1.expr(),
@@ -98,9 +98,9 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
             q_first_expr.clone(),
             not_q_last_expr.clone(),
         ]),
-        |bcb| {
+        |cb| {
             let q_first_next_expr = vc.query_fixed(*q_first, Rotation::next());
-            bcb.require_zero(
+            cb.require_zero(
                 "q_first && !q_last -> !next.q_first",
                 q_first_next_expr.clone(),
             );
@@ -111,9 +111,9 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
             q_last_expr.clone(),
             not_q_first_expr.clone(),
         ]),
-        |bcb| {
+        |cb| {
             let q_last_prev_expr = vc.query_fixed(*q_last, Rotation::prev());
-            bcb.require_zero(
+            cb.require_zero(
                 "q_last && !q_first -> !prev.q_last",
                 q_last_prev_expr.clone(),
             );
@@ -124,14 +124,14 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
             not_q_first_expr.clone(),
             not_q_last_expr.clone(),
         ]),
-        |bcb| {
+        |cb| {
             let q_first_next_expr = vc.query_fixed(*q_first, Rotation::next());
             let q_last_prev_expr = vc.query_fixed(*q_last, Rotation::prev());
-            bcb.require_zero(
+            cb.require_zero(
                 "!q_first && !q_last -> !next.q_first",
                 q_first_next_expr.clone(),
             );
-            bcb.require_zero(
+            cb.require_zero(
                 "!q_first && !q_last -> !prev.q_last",
                 q_last_prev_expr.clone(),
             );
@@ -141,21 +141,21 @@ pub fn configure_constraints_for_q_first_and_q_last<F: Field>(
 
 /// `is_check_next` is check next or prev
 pub fn configure_transition_check<F: Field>(
-    bcb: &mut BaseConstraintBuilder<F>,
+    cb: &mut BaseConstraintBuilder<F>,
     vc: &mut VirtualCells<F>,
     name: &'static str,
     condition: Expression<F>,
     is_check_next: bool,
     columns_to_check: &[Column<Fixed>],
 ) {
-    bcb.condition(
+    cb.condition(
         condition,
-        |bcb| {
+        |cb| {
             let mut lhs = 0.expr();
             for column_to_check in columns_to_check {
                 lhs = lhs + vc.query_fixed(*column_to_check, Rotation(if is_check_next { 1 } else { -1 }));
             }
-            bcb.require_equal(
+            cb.require_equal(
                 name,
                 lhs,
                 1.expr(),
@@ -190,8 +190,8 @@ pub trait WasmLenPrefixedBytesSpanAwareChip<F: Field> {
 
                 cb.condition(
                     is_len_prefix_expr.clone(),
-                    |bcb| {
-                        bcb.require_equal(
+                    |cb| {
+                        cb.require_equal(
                             "len prefixed body starts from proper rev index",
                             body_item_rev_index_expr.clone(),
                             sn_expr.clone(),
@@ -200,9 +200,9 @@ pub trait WasmLenPrefixedBytesSpanAwareChip<F: Field> {
                 );
                 cb.condition(
                     is_body_expr.clone(),
-                    |bcb| {
+                    |cb| {
                         let body_item_rev_index_prev_expr = vc.query_advice(body_item_rev_index, Rotation::prev());
-                        bcb.require_equal(
+                        cb.require_equal(
                             "is_body => body_item_rev_index decreased by 1",
                             body_item_rev_index_prev_expr.clone() - 1.expr(),
                             body_item_rev_index_expr.clone(),
@@ -211,8 +211,8 @@ pub trait WasmLenPrefixedBytesSpanAwareChip<F: Field> {
                 );
                 cb.condition(
                     is_last_item_expr.clone(),
-                    |bcb| {
-                        bcb.require_zero(
+                    |cb| {
+                        cb.require_zero(
                             "is_last_item => body_item_rev_index=0",
                             body_item_rev_index_expr.clone(),
                         );
@@ -258,8 +258,8 @@ pub trait WasmCountPrefixedItemsAwareChip<F: Field> {
 
                 cb.condition(
                     is_count_prefix_expr.clone(),
-                    |bcb| {
-                        bcb.require_equal(
+                    |cb| {
+                        cb.require_equal(
                             "count prefixed items starts from proper rev count",
                             body_item_rev_count_expr.clone(),
                             sn_expr.clone(),
@@ -268,9 +268,9 @@ pub trait WasmCountPrefixedItemsAwareChip<F: Field> {
                 );
                 cb.condition(
                     is_next_body_item_expr.clone(),
-                    |bcb| {
+                    |cb| {
                         let body_item_rev_count_prev_expr = vc.query_advice(body_item_rev_count, Rotation::prev());
-                        bcb.require_equal(
+                        cb.require_equal(
                             "is_next_body_item => prev.body_item_rev_count-1=body_item_rev_count",
                             body_item_rev_count_prev_expr.clone() - 1.expr(),
                             body_item_rev_count_expr.clone(),
@@ -282,9 +282,9 @@ pub trait WasmCountPrefixedItemsAwareChip<F: Field> {
                         is_body_expr.clone(),
                         not::expr(is_next_body_item_expr.clone()),
                     ]),
-                    |bcb| {
+                    |cb| {
                         let body_item_rev_count_prev_expr = vc.query_advice(body_item_rev_count, Rotation::prev());
-                        bcb.require_equal(
+                        cb.require_equal(
                             "is_body && !is_next_body_item => prev.body_item_rev_count=body_item_rev_count",
                             body_item_rev_count_prev_expr.clone(),
                             body_item_rev_count_expr.clone(),
@@ -293,8 +293,8 @@ pub trait WasmCountPrefixedItemsAwareChip<F: Field> {
                 );
                 cb.condition(
                     is_last_item_expr.clone(),
-                    |bcb| {
-                        bcb.require_zero(
+                    |cb| {
+                        cb.require_zero(
                             "is_last_item => body_item_rev_count=0",
                             body_item_rev_count_expr.clone(),
                         );
@@ -392,8 +392,8 @@ pub trait WasmLimitTypeAwareChip<F: Field> {
 
                 cb.condition(
                     is_limit_type_expr.clone(),
-                    |bcb| {
-                        bcb.require_in_set(
+                    |cb| {
+                        cb.require_in_set(
                             "limit_type => byte value is valid",
                             byte_val_expr.clone(),
                             vec![
@@ -413,8 +413,8 @@ pub trait WasmLimitTypeAwareChip<F: Field> {
                 );
                 cb.condition(
                     is_limit_type_expr.clone(),
-                    |bcb| {
-                        bcb.require_equal(
+                    |cb| {
+                        cb.require_equal(
                             "is_limit_type => limit_type=byte_val",
                             limit_type_expr.clone(),
                             byte_val_expr.clone(),
@@ -423,9 +423,9 @@ pub trait WasmLimitTypeAwareChip<F: Field> {
                 );
                 cb.condition(
                     is_limit_type_ctx_expr.clone(),
-                    |bcb| {
+                    |cb| {
                         let is_limit_type_ctx_prev_expr = vc.query_fixed(*is_limit_type_ctx, Rotation::prev());
-                        bcb.require_zero(
+                        cb.require_zero(
                             "is_limit_type_ctx && prev.is_limit_type_ctx => limit_type=prev.limit_type",
                             is_limit_type_ctx_prev_expr * (limit_type_expr.clone() - limit_type_prev_expr.clone()),
                         );
@@ -449,8 +449,8 @@ pub trait WasmLimitTypeAwareChip<F: Field> {
                     vc.query_fixed(*is_limit_min, Rotation::prev()),
                     vc.query_fixed(*is_limit_max, Rotation::cur()),
                 ]),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "prev.limit_min <= limit_max",
                         (limit_type_params_lt_chip.config().is_lt(vc, None) - 1.expr())
                             * (limit_max_expr - limit_min_expr),
@@ -482,32 +482,67 @@ pub trait WasmFuncCountAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
     }
 }
 
-pub trait WasmErrorCodeAwareChip<F: Field> {
+pub trait WasmErrorCodeAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
     fn error_code_col(&self) -> Column<Advice>;
 
     fn configure_error_code(
         cs: &mut ConstraintSystem<F>,
         q_enable: Column<Fixed>,
+        q_first: Column<Fixed>,
+        q_last: Column<Fixed>,
         error_code: Column<Advice>,
     ) {
         cs.create_gate("ErrorCode gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let not_q_first_expr = not::expr(q_first_expr.clone());
+            let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let not_q_last_expr = not::expr(q_last_expr.clone());
             let error_code_expr = vc.query_advice(error_code, Rotation::cur());
 
             cb.require_boolean("error_code is bool", error_code_expr.clone());
+
+            cb.condition(
+                and::expr([
+                    not_q_first_expr.clone(),
+                    not::expr(error_code_expr.clone()),
+                ]),
+                |cb| {
+                    let error_code_prev_expr = vc.query_advice(error_code, Rotation::prev());
+                    cb.require_equal(
+                        "error_code=0 => prev.error_code=0",
+                        error_code_expr.clone(),
+                        error_code_prev_expr.clone(),
+                    );
+                }
+            );
+            cb.condition(
+                and::expr([
+                    not_q_last_expr.clone(),
+                    error_code_expr.clone(),
+                ]),
+                |cb| {
+                    let error_code_next_expr = vc.query_advice(error_code, Rotation::next());
+                    cb.require_equal(
+                        "error_code=1 => next.error_code=1",
+                        error_code_expr.clone(),
+                        error_code_next_expr.clone(),
+                    );
+                }
+            );
 
             cb.gate(q_enable_expr)
         });
     }
 
-    fn assign_error(
-        &self, region:
-        &mut Region<F>,
+    fn assign_error_code(
+        &self, region: &mut Region<F>,
         offset: usize,
-        error_code: u64,
+        error_code_replacer: Option<u64>,
     ) {
+        let error_code = error_code_replacer.unwrap_or(self.shared_state().borrow().error_code);
         debug!("assign at offset {} error_code val {}", offset, error_code);
         region.assign_advice(
             || format!("assign 'error_code' val {} at {}", error_code, offset),

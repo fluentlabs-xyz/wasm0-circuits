@@ -88,8 +88,8 @@ impl<F: Field> LEB128Chip<F>
 
             cb.condition(
                 is_first_byte_expr.clone(),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "leb_byte_mul=1 at first byte",
                         leb_byte_mul_expr.clone() - 1.expr(),
                     );
@@ -103,9 +103,9 @@ impl<F: Field> LEB128Chip<F>
                         is_last_byte_expr.clone(),
                     ]),
                 ]),
-                |bcb| {
+                |cb| {
                     let leb_byte_mul_prev_expr = vc.query_advice(byte_mul.clone(), Rotation::prev());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "leb_byte_mul growth",
                         leb_byte_mul_prev_expr.clone() * 0b10000000.expr(),
                         leb_byte_mul_expr.clone(),
@@ -115,9 +115,9 @@ impl<F: Field> LEB128Chip<F>
 
             cb.condition(
                 not::expr(is_first_byte_expr.clone()),
-                |bcb| {
+                |cb| {
                     let is_signed_prev_expr = vc.query_fixed(is_signed, Rotation::prev());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_signed consistent",
                         is_signed_prev_expr.clone(),
                         is_signed_expr.clone(),
@@ -127,9 +127,9 @@ impl<F: Field> LEB128Chip<F>
 
             cb.condition(
                 not::expr(is_first_byte_expr.clone()),
-                |bcb| {
+                |cb| {
                     let byte_has_cb_prev_expr = vc.query_fixed(is_byte_has_cb, Rotation::prev());
-                    bcb.require_zero(
+                    cb.require_zero(
                         "byte_has_cb eligible transitions: 1->1, 1->0, 0->0 but not 0->1",
                         not::expr(byte_has_cb_prev_expr.clone()) * is_byte_has_cb_expr.clone(),
                     );
@@ -137,8 +137,8 @@ impl<F: Field> LEB128Chip<F>
             );
             cb.condition(
                 is_last_byte_expr.clone(),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "byte_has_cb is 0 on last_byte",
                         is_byte_has_cb_expr.clone(),
                     );
@@ -150,7 +150,7 @@ impl<F: Field> LEB128Chip<F>
                     not::expr(is_last_byte_expr.clone()),
                     is_consider_byte_expr.clone(),
                 ]),
-                |bcb| {
+                |cb| {
                     let mut sn_recovered_manual_expr = (byte_val_expr.clone() - 0b10000000.expr() * is_byte_has_cb_expr.clone()) * leb_byte_mul_expr.clone();
                     let sn_recovered_prev_expr = select::expr(
                         not::expr(is_first_byte_expr.clone()),
@@ -158,7 +158,7 @@ impl<F: Field> LEB128Chip<F>
                         0.expr(),
                     );
                     sn_recovered_manual_expr = sn_recovered_manual_expr + sn_recovered_prev_expr.clone();
-                    bcb.require_equal(
+                    cb.require_equal(
                         "sn_recovered equals to sn_recovered_manual",
                         sn_recovered_manual_expr.clone(),
                         sn_recovered_expr.clone(),
@@ -167,9 +167,9 @@ impl<F: Field> LEB128Chip<F>
             );
             cb.condition(
                 not::expr(is_first_byte_expr.clone()),
-                |bcb| {
+                |cb| {
                     let sn_prev_expr = vc.query_advice(sn, Rotation::prev());
-                    bcb.require_zero(
+                    cb.require_zero(
                         "prev.sn=next.sn inside the block",
                         sn_expr.clone() - sn_prev_expr.clone(),
                     );
@@ -177,8 +177,8 @@ impl<F: Field> LEB128Chip<F>
             );
             cb.condition(
                 is_last_byte_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "sn equals to recovered at the last leb byte",
                         sn_expr.clone(),
                         sn_recovered_expr.clone(),
@@ -187,21 +187,21 @@ impl<F: Field> LEB128Chip<F>
             );
             cb.condition(
                 not::expr(is_consider_byte_expr.clone()),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "bytes after last leb byte have valid values (unsigned)",
                         not::expr(is_signed_expr.clone()) * byte_val_expr.clone(),
                     );
-                    bcb.require_zero(
+                    cb.require_zero(
                         "bytes after last leb byte have valid values (signed)",
                         is_signed_expr.clone() * (0xff.expr() - byte_val_expr.clone()),
                     );
                     // additional checks
-                    bcb.require_zero(
+                    cb.require_zero(
                         "flags are zero for unused zone",
                         is_first_byte_expr.clone() + is_last_byte_expr.clone() + is_byte_has_cb_expr.clone(),
                     );
-                    bcb.require_zero(
+                    cb.require_zero(
                         "leb_byte_mul is zero for unused zone",
                         leb_byte_mul_expr.clone(),
                     );

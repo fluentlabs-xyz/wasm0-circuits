@@ -14,4 +14,6 @@ pub enum AssignType {
     IsExprDelimiter,
 
     BodyItemRevCount,
+
+    ErrorCode,
 }

@@ -18,11 +18,11 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBytesAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBytesAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{MemSegmentType, NumericInstruction, WASM_BLOCK_END};
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::data::body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
@@ -54,18 +54,37 @@ pub struct WasmDataSectionBodyConfig<F: Field> {
     body_byte_rev_index: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
+    error_code: Column<Advice>,
+
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
 }
 
-impl<'a, F: Field> WasmDataSectionBodyConfig<F>
-{}
+impl<'a, F: Field> WasmDataSectionBodyConfig<F> {}
 
 #[derive(Debug, Clone)]
 pub struct WasmDataSectionBodyChip<F: Field> {
     pub config: WasmDataSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmDataSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmDataSectionBodyChip<F> {}
+
+impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmDataSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorCodeAwareChip<F> for WasmDataSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmDataSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmDataSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
@@ -231,23 +250,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, offset, None)
+                }
             }
         })
     }
-}
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmDataSectionBodyChip<F> {}
-
-impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmDataSectionBodyChip<F> {}
-
-impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmDataSectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmDataSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmDataSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmDataSectionBodyChip<F>
@@ -269,6 +277,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         shared_state: Rc<RefCell<SharedState>>,
         body_byte_rev_index: Column<Advice>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmDataSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -405,8 +414,8 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     is_mem_segment_size_expr.clone(),
                     is_mem_segment_len_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_items_count || is_mem_index || is_mem_segment_size || is_mem_segment_len -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -427,8 +436,8 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             // constraints for is_mem_segment_type_ctx
             cb.condition(
                 is_mem_segment_type_ctx_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_mem_segment_type_ctx => specific flags are active",
                         is_mem_segment_type_expr.clone()
                             + is_mem_index_expr.clone()
@@ -444,8 +453,8 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             // constraints for AssignType::MemSegmentType
             cb.condition(
                 is_mem_segment_type_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_mem_segment_type => mem_segment_type=byte_val",
                         mem_segment_type_expr.clone(),
                         byte_val_expr.clone(),
@@ -457,9 +466,9 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     is_mem_segment_type_ctx_expr.clone(),
                     is_mem_segment_type_ctx_prev_expr.clone(),
                 ]),
-                |bcb| {
+                |cb| {
                     let mem_segment_type_prev_expr = vc.query_advice(mem_segment_type, Rotation::prev());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_mem_segment_type_ctx && prev.is_mem_segment_type_ctx => mem_segment_type=prev.mem_segment_type",
                         mem_segment_type_prev_expr.clone(),
                         mem_segment_type_expr.clone(),
@@ -839,8 +848,8 @@ impl<F: Field> WasmDataSectionBodyChip<F>
 
             cb.condition(
                 is_block_end_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_block_end -> byte value = WASM_BLOCK_END",
                         byte_val_expr.clone(),
                         WASM_BLOCK_END.expr(),
@@ -850,8 +859,8 @@ impl<F: Field> WasmDataSectionBodyChip<F>
 
             cb.condition(
                 is_mem_segment_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_mem_segment_type -> byte value is valid",
                         byte_val_expr.clone(),
                         vec![
@@ -865,8 +874,8 @@ impl<F: Field> WasmDataSectionBodyChip<F>
 
             cb.condition(
                 is_mem_segment_size_opcode_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_mem_segment_size_opcode -> byte value is valid",
                         byte_val_expr.clone(),
                         vec![
@@ -901,6 +910,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             func_count,
             body_byte_rev_index,
             body_item_rev_count,
+            error_code,
             shared_state,
         };
 

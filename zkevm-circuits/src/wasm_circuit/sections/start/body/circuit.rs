@@ -16,10 +16,10 @@ use gadgets::util::{and, Expr, not};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::start::body::types::AssignType;
 use crate::wasm_circuit::types::SharedState;
@@ -36,6 +36,8 @@ pub struct WasmStartSectionBodyConfig<F: Field> {
 
     pub func_count: Column<Advice>,
 
+    pub error_code: Column<Advice>,
+
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
@@ -47,6 +49,20 @@ impl<'a, F: Field> WasmStartSectionBodyConfig<F> {}
 pub struct WasmStartSectionBodyChip<F: Field> {
     pub config: WasmStartSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmStartSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorCodeAwareChip<F> for WasmStartSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmStartSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmStartSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmStartSectionBodyChip<F> {
@@ -113,19 +129,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmStartSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, offset, None)
+                }
             }
         })
     }
-}
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmStartSectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmStartSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmStartSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmStartSectionBodyChip<F>
@@ -144,6 +153,7 @@ impl<F: Field> WasmStartSectionBodyChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
+        error_code: Column<Advice>,
     ) -> WasmStartSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -186,8 +196,8 @@ impl<F: Field> WasmStartSectionBodyChip<F>
 
             cb.condition(
                 is_func_index_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_func_index => leb128",
                         leb128_q_enable_expr.clone(),
                         1.expr(),
@@ -212,9 +222,9 @@ impl<F: Field> WasmStartSectionBodyChip<F>
                     leb128_is_first_byte_expr.clone(),
                     is_func_index_prev_expr.clone(),
                 ]),
-                |bcb| {
+                |cb| {
                     let leb128_q_enable_prev_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::prev());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "exactly one leb arg in a row",
                         leb128_q_enable_prev_expr,
                         0.expr(),
@@ -235,6 +245,7 @@ impl<F: Field> WasmStartSectionBodyChip<F>
             bytecode_table,
             leb128_chip,
             func_count,
+            error_code,
             shared_state,
         };
 

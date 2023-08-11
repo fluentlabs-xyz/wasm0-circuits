@@ -12,7 +12,7 @@ use eth_types::{Field, Hash, ToWord};
 
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::export::body::circuit::WasmExportSectionBodyChip;
 use crate::wasm_circuit::types::SharedState;
 
@@ -42,6 +42,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let func_count = cs.advice_column();
+        let error_code = cs.advice_column();
         let body_byte_rev_index = cs.advice_column();
         let body_item_rev_count = cs.advice_column();
 
@@ -61,6 +62,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             shared_state,
             body_byte_rev_index,
             body_item_rev_count,
+            error_code,
         );
         let wasm_export_section_body_chip = WasmExportSectionBodyChip::construct(wasm_export_section_body_config);
         let test_circuit_config = TestCircuitConfig {
@@ -128,7 +130,7 @@ mod wasm_export_section_body_tests {
     #[test]
     pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/cc1.wat",
+            "./test_files/cc1.wat",
             Kind::Export,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
@@ -145,7 +147,7 @@ mod wasm_export_section_body_tests {
     #[test]
     pub fn file2_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/cc2.wat",
+            "./test_files/cc2.wat",
             Kind::Export,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);

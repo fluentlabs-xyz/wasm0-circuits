@@ -12,4 +12,6 @@ pub enum AssignType {
 
     IsLimitTypeCtx,
     BodyItemRevCount,
+
+    ErrorCode,
 }

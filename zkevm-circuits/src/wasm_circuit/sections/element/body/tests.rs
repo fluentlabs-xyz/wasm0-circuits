@@ -12,7 +12,7 @@ use eth_types::{Field, Hash, ToWord};
 
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::element::body::circuit::WasmElementSectionBodyChip;
 use crate::wasm_circuit::types::SharedState;
 
@@ -42,6 +42,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let func_count = cs.advice_column();
+        let error_code = cs.advice_column();
         let body_item_rev_count = cs.advice_column();
 
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
@@ -59,6 +60,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             func_count,
             shared_state.clone(),
             body_item_rev_count,
+            error_code,
         );
         let wasm_element_section_body_chip = WasmElementSectionBodyChip::construct(wasm_element_section_body_config);
         let test_circuit_config = TestCircuitConfig {
@@ -126,7 +128,7 @@ mod wasm_element_section_body_tests {
 
     #[test]
     pub fn file2_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
+        let path_to_file = "./test_files/cc2.wat";
         let kind = Kind::Element;
         let expected = [
             9, 35, 7, 1, 0, 0, 1, 0, 0, 1, 0, 3, 0, 0, 1, 1, 0, 4, 0, 0, 1, 1, 1, 0, 0, 0, 65, 0, 11, 0, 0, 65, 171, 2, 11, 1, 0,

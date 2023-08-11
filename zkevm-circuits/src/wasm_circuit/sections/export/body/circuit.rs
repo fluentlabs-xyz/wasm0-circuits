@@ -17,10 +17,10 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmNameAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmNameAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::consts::ExportDescType;
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::export::body::types::AssignType;
 use crate::wasm_circuit::types::SharedState;
@@ -45,6 +45,8 @@ pub struct WasmExportSectionBodyConfig<F: Field> {
     body_byte_rev_index: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
+    error_code: Column<Advice>,
+
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
@@ -56,6 +58,26 @@ impl<'a, F: Field> WasmExportSectionBodyConfig<F> {}
 pub struct WasmExportSectionBodyChip<F: Field> {
     pub config: WasmExportSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmExportSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmExportSectionBodyChip<F> {}
+
+impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmExportSectionBodyChip<F> {}
+
+impl<F: Field> WasmNameAwareChip<F> for WasmExportSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorCodeAwareChip<F> for WasmExportSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmExportSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmExportSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmExportSectionBodyChip<F> {
@@ -190,25 +212,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmExportSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, offset, None)
+                }
             }
         }
     }
-}
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmExportSectionBodyChip<F> {}
-
-impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmExportSectionBodyChip<F> {}
-
-impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmExportSectionBodyChip<F> {}
-
-impl<F: Field> WasmNameAwareChip<F> for WasmExportSectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmExportSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmExportSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmExportSectionBodyChip<F>
@@ -229,6 +238,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         shared_state: Rc<RefCell<SharedState>>,
         body_byte_rev_index: Column<Advice>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmExportSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -361,8 +371,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                     is_export_name_len_expr.clone(),
                     is_exportdesc_val_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_items_count || is_export_name_len || is_exportdesc_val -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -375,8 +385,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                     is_exportdesc_type_expr.clone(),
                     is_exportdesc_val_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_exportdesc_type || is_exportdesc_val => is_exportdesc_type_ctx",
                         is_exportdesc_type_ctx_expr.clone(),
                         1.expr(),
@@ -388,8 +398,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                     is_exportdesc_type_ctx_prev_expr.clone(),
                     is_exportdesc_type_ctx_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_exportdesc_type_ctx && prev.is_exportdesc_type_ctx => exportdesc_type=prev.exportdesc_type",
                         exportdesc_type_expr.clone(),
                         exportdesc_type_prev_expr.clone(),
@@ -492,8 +502,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
 
             cb.condition(
                 is_exportdesc_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_exportdesc_type -> byte_val has valid value",
                         byte_val_expr.clone(),
                         vec![
@@ -527,6 +537,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
             func_count,
             body_byte_rev_index,
             body_item_rev_count,
+            error_code,
             shared_state,
         };
 

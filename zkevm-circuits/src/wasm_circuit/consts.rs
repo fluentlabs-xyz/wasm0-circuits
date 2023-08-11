@@ -7,7 +7,8 @@ use gadgets::util::Expr;
 pub static WASM_VERSION_PREFIX_BASE_INDEX: usize = 4;
 pub static WASM_VERSION_PREFIX_LENGTH: usize = 4;
 pub static WASM_SECTIONS_START_INDEX: usize = WASM_VERSION_PREFIX_BASE_INDEX + WASM_VERSION_PREFIX_LENGTH;
-pub static WASM_PREAMBLE_MAGIC_PREFIX: &'static str = "\0asm";
+pub static WASM_MAGIC_PREFIX_BASE_INDEX: usize = 0;
+pub static WASM_MAGIC_PREFIX: &'static str = "\0asm";
 pub static WASM_BLOCK_END: u8 = 0xB;
 pub static WASM_BLOCKTYPE_DELIMITER: i32 = 0x40;
 

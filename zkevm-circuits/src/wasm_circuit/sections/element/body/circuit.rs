@@ -17,10 +17,10 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::element::body::consts::ElementType;
 use crate::wasm_circuit::sections::element::body::types::AssignType;
@@ -50,6 +50,8 @@ pub struct WasmElementSectionBodyConfig<F: Field> {
     pub func_count: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
+    error_code: Column<Advice>,
+
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
@@ -61,6 +63,22 @@ impl<'a, F: Field> WasmElementSectionBodyConfig<F> {}
 pub struct WasmElementSectionBodyChip<F: Field> {
     pub config: WasmElementSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmElementSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmElementSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorCodeAwareChip<F> for WasmElementSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmElementSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmElementSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmElementSectionBodyChip<F> {
@@ -219,21 +237,10 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmElementSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::ErrorCode => {}
             }
         })
     }
-}
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmElementSectionBodyChip<F> {}
-
-impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmElementSectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmElementSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmElementSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmElementSectionBodyChip<F>
@@ -253,6 +260,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmElementSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -363,8 +371,8 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                     is_func_idx_expr.clone(),
                     is_numeric_instruction_leb_arg_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_items_count || is_funcs_idx_count || is_func_idx || is_numeric_instruction_leb_arg => leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -374,8 +382,8 @@ impl<F: Field> WasmElementSectionBodyChip<F>
 
             cb.condition(
                 is_elem_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_elem_type -> byte_val is valid",
                         byte_val_expr.clone(),
                         vec![
@@ -406,8 +414,8 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             );
             cb.condition(
                 is_elem_type_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_elem_type => elem_type=byte_val",
                         elem_type_expr.clone(),
                         byte_val_expr.clone(),
@@ -416,11 +424,11 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             );
             cb.condition(
                 is_elem_type_ctx_expr.clone(),
-                |bcb| {
+                |cb| {
                     let is_elem_type_ctx_prev_expr = vc.query_fixed(is_elem_type_ctx, Rotation::prev());
                     let elem_type_prev_expr = vc.query_advice(elem_type, Rotation::prev());
                     let not_is_elem_type_prev_expr = vc.query_fixed(is_elem_type, Rotation::prev());
-                    bcb.require_zero(
+                    cb.require_zero(
                         "is_elem_type_ctx && prev.is_elem_type_ctx => elem_type=prev.elem_type",
                         not_is_elem_type_prev_expr.clone() * is_elem_type_ctx_prev_expr.clone() * (elem_type_expr.clone() - elem_type_prev_expr.clone()),
                     );
@@ -664,6 +672,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             leb128_chip,
             func_count,
             body_item_rev_count,
+            error_code,
             shared_state,
         };
 

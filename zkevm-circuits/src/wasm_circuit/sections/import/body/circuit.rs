@@ -19,16 +19,16 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmNameAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmNameAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{IMPORT_DESC_TYPE_VALUES, ImportDescType, LimitType, MUTABILITY_VALUES, REF_TYPE_VALUES, RefType};
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::import::body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::types::SharedState;
-use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
+use crate::wasm_circuit::utf8::circuit::UTF8Chip;
 
 #[derive(Debug, Clone)]
 pub struct WasmImportSectionBodyConfig<F: Field> {
@@ -59,6 +59,8 @@ pub struct WasmImportSectionBodyConfig<F: Field> {
     body_byte_rev_index: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
+    error_code: Column<Advice>,
+
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
@@ -71,6 +73,28 @@ impl<'a, F: Field> WasmImportSectionBodyConfig<F>
 pub struct WasmImportSectionBodyChip<F: Field> {
     pub config: WasmImportSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmNameAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmLimitTypeAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorCodeAwareChip<F> for WasmImportSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmImportSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmImportSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
@@ -300,28 +324,13 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                 AssignType::FuncCount => {
                     self.assign_func_count(region, offset);
                 }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, offset, None)
+                }
             }
         });
     }
 }
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmImportSectionBodyChip<F> {}
-
-impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmImportSectionBodyChip<F> {}
-
-impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmImportSectionBodyChip<F> {}
-
-impl<F: Field> WasmNameAwareChip<F> for WasmImportSectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmImportSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmImportSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
-}
-
-impl<F: Field> WasmLimitTypeAwareChip<F> for WasmImportSectionBodyChip<F> {}
 
 impl<F: Field> WasmImportSectionBodyChip<F>
 {
@@ -343,6 +352,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         shared_state: Rc<RefCell<SharedState>>,
         body_byte_rev_index: Column<Advice>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmImportSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -540,8 +550,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     is_importdesc_val_expr.clone(),
                     is_mut_prop_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_importdesc_type || is_importdesc_val || is_mut_prop => is_importdesc_type_ctx",
                         is_importdesc_type_ctx_expr.clone(),
                         1.expr(),
@@ -553,8 +563,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     is_importdesc_type_ctx_prev_expr.clone(),
                     is_importdesc_type_ctx_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_importdesc_type_ctx && prev.is_importdesc_type_ctx => importdesc_type=prev.importdesc_type",
                         importdesc_type_expr.clone(),
                         importdesc_type_prev_expr.clone(),
@@ -582,8 +592,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
 
             cb.condition(
                 is_ref_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "reference_type => byte value is valid",
                         byte_val_expr.clone(),
                         REF_TYPE_VALUES.iter().map(|&v| v.expr()).collect_vec(),
@@ -607,8 +617,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     is_limit_min_expr.clone(),
                     is_limit_max_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_items_count || is_mod_name_len || is_import_name_len || is_importdesc_val || is_limit_min || is_limit_max => leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -627,8 +637,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
 
             cb.condition(
                 is_mut_prop_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_mut_prop => byte_val is valid",
                         byte_val_expr.clone(),
                         MUTABILITY_VALUES.iter().map(|&v| v.expr()).collect_vec(),
@@ -1352,13 +1362,13 @@ impl<F: Field> WasmImportSectionBodyChip<F>
 
             cb.condition(
                 is_importdesc_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_importdesc_type => value is valid",
                         byte_val_expr.clone(),
                         IMPORT_DESC_TYPE_VALUES.iter().map(|&v| v.expr()).collect_vec()
                     );
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_importdesc_type => importdesc_type has valid value",
                         importdesc_type_expr.clone(),
                         byte_val_expr.clone(),
@@ -1394,6 +1404,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             func_count,
             body_byte_rev_index,
             body_item_rev_count,
+            error_code,
             shared_state,
         };
 

@@ -78,15 +78,15 @@ impl<F: Field> DynamicIndexesChip<F>
 
             cb.condition(
                 is_terminator_expr.clone(),
-                |bcb| {
+                |cb| {
                     let is_terminator_prev_expr = vc.query_fixed(is_terminator, Rotation::prev());
                     let is_terminator_next_expr = vc.query_fixed(is_terminator, Rotation::next());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_terminator -> prev.is_terminator=0",
                         is_terminator_prev_expr.clone(),
                         0.expr(),
                     );
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_terminator -> next.is_terminator=0",
                         is_terminator_next_expr.clone(),
                         0.expr(),
@@ -105,12 +105,12 @@ impl<F: Field> DynamicIndexesChip<F>
                         is_terminator_next_expr.clone(),
                     ]),
                 ]),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "tags are equal inside tag-block",
                         tag_expr.clone() - tag_next_expr.clone(),
                     );
-                    bcb.require_equal(
+                    cb.require_equal(
                         "index grows 1 by 1 inside tag-block",
                         index_expr.clone() + 1.expr(),
                         index_next_expr.clone(),

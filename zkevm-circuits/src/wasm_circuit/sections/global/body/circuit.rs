@@ -18,12 +18,12 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{NUM_TYPE_VALUES, NumType, WASM_BLOCK_END};
 use crate::wasm_circuit::consts::NumericInstruction::{I32Const, I64Const};
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::global::body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
@@ -52,6 +52,8 @@ pub struct WasmGlobalSectionBodyConfig<F: Field> {
     func_count: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
+    error_code: Column<Advice>,
+
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
@@ -63,6 +65,22 @@ impl<'a, F: Field> WasmGlobalSectionBodyConfig<F> {}
 pub struct WasmGlobalSectionBodyChip<F: Field> {
     pub config: WasmGlobalSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmGlobalSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmGlobalSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorCodeAwareChip<F> for WasmGlobalSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmGlobalSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmGlobalSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
@@ -202,21 +220,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, offset, None)
+                }
             }
         })
     }
-}
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmGlobalSectionBodyChip<F> {}
-
-impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmGlobalSectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmGlobalSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmGlobalSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmGlobalSectionBodyChip<F>
@@ -237,6 +246,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmGlobalSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -337,9 +347,9 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
 
             cb.condition(
                 is_global_type_expr.clone(),
-                |bcb| {
+                |cb| {
                     let global_type_expr = vc.query_advice(global_type, Rotation::cur());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_global_type => global_type=byte_val",
                         global_type_expr,
                         byte_val_expr.clone(),
@@ -357,10 +367,10 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             );
             cb.condition(
                 is_global_type_ctx_expr.clone(),
-                |bcb| {
+                |cb| {
                     let is_global_type_ctx_prev_expr = vc.query_fixed(is_global_type_ctx, Rotation::prev());
                     let global_type_prev_expr = vc.query_advice(global_type, Rotation::prev());
-                    bcb.require_zero(
+                    cb.require_zero(
                         "is_global_type_ctx && prev.is_global_type_ctx => ",
                         is_global_type_ctx_prev_expr.clone() * (global_type_prev_expr.clone() - global_type_expr.clone()),
                     );
@@ -372,8 +382,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                     is_items_count_expr.clone(),
                     is_init_val_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_items_count || is_init_val -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -475,8 +485,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
 
             cb.condition(
                 is_global_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_global_type has eligible byte value",
                         byte_val_expr.clone(),
                         NUM_TYPE_VALUES.iter().map(|&v| v.expr()).collect_vec(),
@@ -486,8 +496,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
 
             cb.condition(
                 is_mut_prop_expr.clone(),
-                |bcb| {
-                    bcb.require_boolean(
+                |cb| {
+                    cb.require_boolean(
                         "is_mut_prop -> bool",
                         byte_val_expr.clone(),
                     )
@@ -496,8 +506,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
 
             cb.condition(
                 is_init_opcode_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_init_opcode has eligible byte value",
                         byte_val_expr.clone(),
                         vec![
@@ -509,12 +519,12 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                         ],
                     );
                     let global_type_is_i32_expr = global_type_chip.config.value_equals(NumType::I32, Rotation::cur())(vc);
-                    bcb.require_zero(
+                    cb.require_zero(
                         "is_init_opcode && global_type_is_i32 => global type corresponds to init opcode",
                         global_type_is_i32_expr * (NumType::I32.expr() - byte_val_expr.clone() - (NumType::I32 as i32 - I32Const as i32).expr()),
                     );
                     let global_type_is_i64_expr = global_type_chip.config.value_equals(NumType::I64, Rotation::cur())(vc);
-                    bcb.require_zero(
+                    cb.require_zero(
                         "is_init_opcode && global_type_is_i64 => global type corresponds to init opcode",
                         global_type_is_i64_expr * (NumType::I64.expr() - byte_val_expr.clone() - (NumType::I64 as i32 - I64Const as i32).expr()),
                     );
@@ -523,8 +533,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
 
             cb.condition(
                 is_expr_delimiter_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_expr_delimiter -> byte value = WASM_BLOCK_END",
                         byte_val_expr.clone(),
                         WASM_BLOCK_END.expr(),
@@ -554,6 +564,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             global_type_chip,
             func_count,
             body_item_rev_count,
+            error_code,
             shared_state,
         };
 

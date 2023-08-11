@@ -19,11 +19,11 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBlockLevelAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBlockLevelAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{CONTROL_INSTRUCTION_BLOCK, CONTROL_INSTRUCTION_WITH_LEB_ARG, CONTROL_INSTRUCTION_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTION_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, VARIABLE_INSTRUCTION_WITH_LEB_ARG, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::code::body::types::AssignType;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::tables::code_blocks;
@@ -68,6 +68,8 @@ pub struct WasmCodeSectionBodyConfig<F: Field> {
     body_byte_rev_index: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
+    error_code: Column<Advice>,
+
     pub shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
@@ -79,6 +81,30 @@ impl<'a, F: Field> WasmCodeSectionBodyConfig<F> {}
 pub struct WasmCodeSectionBodyChip<F: Field> {
     pub config: WasmCodeSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmCodeSectionBodyChip<F> {}
+
+impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmCodeSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmCodeSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorCodeAwareChip<F> for WasmCodeSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmCodeSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
+        self.config.shared_state.clone()
+    }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmCodeSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
+}
+
+impl<F: Field> WasmBlockLevelAwareChip<F> for WasmCodeSectionBodyChip<F> {
+    fn block_level_col(&self) -> Column<Advice> { self.config.block_level }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
@@ -317,29 +343,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, offset, None)
+                }
             }
         })
     }
-}
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmCodeSectionBodyChip<F> {}
-
-impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmCodeSectionBodyChip<F> {}
-
-impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmCodeSectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmCodeSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
-        self.config.shared_state.clone()
-    }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmCodeSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
-}
-
-impl<F: Field> WasmBlockLevelAwareChip<F> for WasmCodeSectionBodyChip<F> {
-    fn block_level_col(&self) -> Column<Advice> { self.config.block_level }
 }
 
 impl<F: Field> WasmCodeSectionBodyChip<F>
@@ -361,6 +370,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         shared_state: Rc<RefCell<SharedState>>,
         body_byte_rev_index: Column<Advice>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmCodeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -631,8 +641,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     q_first_expr.clone(),
                     block_opcode_number_increased_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "q_first && block_opcode_number_increased => block_opcode_number=1",
                         block_opcode_number_expr.clone() - 1.expr(),
                     )
@@ -643,8 +653,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     q_first_expr.clone(),
                     not::expr(block_opcode_number_increased_expr.clone()),
                 ]),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "q_first && !block_opcode_number_increased => block_opcode_number=0",
                         block_opcode_number_expr.clone()
                     )
@@ -655,8 +665,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     not_q_first_expr.clone(),
                     block_opcode_number_increased_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "block_opcode_number_increased => block_opcode_number+1=prev.block_opcode_number",
                         block_opcode_number_prev_expr.clone() + 1.expr(),
                         block_opcode_number_expr.clone(),
@@ -668,8 +678,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     not_q_first_expr.clone(),
                     not::expr(block_opcode_number_increased_expr.clone()),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "!block_opcode_number_increased => block_opcode_number=prev.block_opcode_number",
                         block_opcode_number_expr.clone(),
                         block_opcode_number_prev_expr.clone(),
@@ -729,8 +739,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             // block_level constraints
             cb.condition(
                 q_first_expr.clone(),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "q_first => block_level=0",
                         block_level_expr.clone(),
                     );
@@ -738,8 +748,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             );
             cb.condition(
                 q_last_expr.clone(),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "q_last => block_level=0",
                         block_level_expr.clone(),
                     );
@@ -753,8 +763,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                         is_block_end_prev_expr.clone(),
                     ]),
                 ]),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "block_level=1 on is_func_body_len transition",
                         block_level_expr.clone() - 1.expr(),
                     );
@@ -762,9 +772,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             );
             cb.condition(
                 is_control_opcode_block_expr.clone(),
-                |bcb| {
+                |cb| {
                     let block_level_prev_expr = vc.query_advice(block_level, Rotation::prev());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_control_opcode_block => prev.block_level+1=block_level",
                         block_level_prev_expr + 1.expr(),
                         block_level_expr.clone(),
@@ -773,9 +783,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             );
             cb.condition(
                 is_block_end_expr.clone(),
-                |bcb| {
+                |cb| {
                     let block_level_prev_expr = vc.query_advice(block_level, Rotation::prev());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_block_end => prev.block_level-1=block_level",
                         block_level_prev_expr - 1.expr(),
                         block_level_expr.clone(),
@@ -796,9 +806,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     not::expr(is_control_opcode_block_expr.clone()),
                     not::expr(is_block_end_expr.clone()),
                 ]),
-                |bcb| {
+                |cb| {
                     let block_level_prev_expr = vc.query_advice(block_level, Rotation::prev());
-                    bcb.require_zero(
+                    cb.require_zero(
                         "prev.block_level_expr=block_level",
                         block_level_expr.clone() - block_level_prev_expr,
                     );
@@ -873,8 +883,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
             cb.condition(
                 is_numeric_instruction_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_numeric_instruction(1) -> opcode is valid",
                         or::expr([
                             is_numeric_opcode_without_params_expr.clone(),
@@ -887,8 +897,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
             cb.condition(
                 is_variable_instruction_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_variable_instruction(1) => opcode is valid",
                         or::expr(
                             VARIABLE_INSTRUCTION_WITH_LEB_ARG.iter()
@@ -903,8 +913,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
             cb.condition(
                 is_control_instruction_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_control_instruction(1) -> opcode is valid",
                         or::expr([
                             is_control_opcode_without_params_expr.clone(),
@@ -918,8 +928,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
             cb.condition(
                 is_parametric_instruction_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_parametric_instruction(1) -> opcode is valid",
                         or::expr([
                             is_parametric_opcode_without_params_expr.clone(),
@@ -937,8 +947,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     is_local_repetition_count_expr.clone(),
                     is_instruction_leb_arg_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "leb128 flag is active => leb128_chip enabled",
                         leb128_q_enable_expr.clone(),
                         1.expr(),
@@ -948,8 +958,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             // is_blocktype_delimiter{1} => WASM_BLOCKTYPE_DELIMITER
             cb.condition(
                 is_blocktype_delimiter_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_blocktype_delimiter(1) => WASM_BLOCKTYPE_DELIMITER",
                         byte_val_expr.clone(),
                         WASM_BLOCKTYPE_DELIMITER.expr(),
@@ -959,8 +969,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             // is_block_end{1} => WASM_BLOCK_END
             cb.condition(
                 is_block_end_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_block_end(1) => WASM_BLOCK_END",
                         byte_val_expr.clone(),
                         WASM_BLOCK_END.expr(),
@@ -973,9 +983,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             // is_numeric_opcode_with_leb_param{1} -> is_numeric_instruction_leb_arg+
             cb.condition(
                 is_numeric_opcode_with_leb_param_expr.clone(),
-                |bcb| {
+                |cb| {
                     let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_numeric_opcode_with_leb_param(1) -> is_numeric_instruction_leb_arg_next",
                         is_numeric_instruction_leb_arg_next_expr.clone(),
                         1.expr(),
@@ -986,9 +996,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             // is_variable_opcode_with_leb_param{1} -> is_variable_instruction_leb_arg+
             cb.condition(
                 is_variable_opcode_with_leb_param_expr.clone(),
-                |bcb| {
+                |cb| {
                     let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_variable_opcode_with_leb_param(1) -> is_variable_instruction_leb_arg+",
                         is_variable_instruction_leb_arg_next_expr.clone(),
                         1.expr(),
@@ -999,9 +1009,9 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             // is_control_opcode_with_leb_param{1} -> is_control_instruction_leb_arg+
             cb.condition(
                 is_control_opcode_with_leb_param_expr.clone(),
-                |bcb| {
+                |cb| {
                     let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_control_opcode_with_leb_param(1) -> is_control_instruction_leb_arg+",
                         is_control_instruction_leb_arg_next_expr.clone(),
                         1.expr(),
@@ -1025,7 +1035,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             // is_numeric_instruction{1} -> is_instruction_leb_arg || is_instruction || is_block_end
             cb.condition(
                 is_numeric_instruction_expr.clone(),
-                |bcb| {
+                |cb| {
                     let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
@@ -1035,7 +1045,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
                     let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
 
-                    bcb.require_equal(
+                    cb.require_equal(
                         "check next: is_numeric_instruction(1) -> is_instruction_leb_arg || is_instruction || is_block_end",
                         is_numeric_instruction_leb_arg_next_expr
 
@@ -1054,7 +1064,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             // is_variable_instruction{1} -> is_instruction_leb_arg || is_instruction || is_block_end
             cb.condition(
                 is_variable_instruction_expr.clone(),
-                |bcb| {
+                |cb| {
                     let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
@@ -1064,7 +1074,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
                     let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
 
-                    bcb.require_equal(
+                    cb.require_equal(
                         "check next: is_variable_instruction(1) -> is_instruction_leb_arg || is_instruction || is_block_end",
                         is_variable_instruction_leb_arg_next_expr
 
@@ -1086,7 +1096,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     is_control_instruction_expr.clone(),
                     not::expr(is_control_opcode_block_expr.clone()),
                 ]),
-                |bcb| {
+                |cb| {
                     let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
@@ -1096,7 +1106,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
                     let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
 
-                    bcb.require_equal(
+                    cb.require_equal(
                         "check next: is_control_instruction(1) && not(is_control_opcode_block) -> is_instruction_leb_arg || is_instruction || is_block_end",
                         is_control_instruction_leb_arg_next_expr
 
@@ -1118,7 +1128,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     is_numeric_instruction_leb_arg_expr.clone(),
                     leb128_is_last_byte_expr.clone(),
                 ]),
-                |bcb| {
+                |cb| {
                     let is_numeric_instruction_leb_arg_next_expr = vc.query_fixed(is_numeric_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
@@ -1133,7 +1143,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
                     let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
 
-                    bcb.require_equal(
+                    cb.require_equal(
                         "check next: is_numeric_instruction_leb_arg -> is_instruction || is_block_end",
                         is_numeric_instruction_leb_arg_next_expr
 
@@ -1152,7 +1162,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     is_variable_instruction_leb_arg_expr.clone(),
                     leb128_is_last_byte_expr.clone(),
                 ]),
-                |bcb| {
+                |cb| {
                     let is_variable_instruction_leb_arg_next_expr = vc.query_fixed(is_variable_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
@@ -1167,7 +1177,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
                     let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
 
-                    bcb.require_equal(
+                    cb.require_equal(
                         "check next: is_variable_instruction_leb_arg -> is_instruction || is_block_end",
                         is_variable_instruction_leb_arg_next_expr
 
@@ -1186,7 +1196,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     is_control_instruction_leb_arg_expr.clone(),
                     leb128_is_last_byte_expr.clone(),
                 ]),
-                |bcb| {
+                |cb| {
                     let is_control_instruction_leb_arg_next_expr = vc.query_fixed(is_control_instruction_leb_arg, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
@@ -1201,7 +1211,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
                     let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
 
-                    bcb.require_equal(
+                    cb.require_equal(
                         "check next: is_control_instruction_leb_arg -> is_instruction || is_block_end",
                         is_control_instruction_leb_arg_next_expr
 
@@ -1220,7 +1230,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     is_block_end_expr.clone(),
                     not_q_last_expr.clone(),
                 ]),
-                |bcb| {
+                |cb| {
                     let is_func_body_len_next_expr = vc.query_fixed(is_func_body_len, Rotation::next());
 
                     let is_numeric_instruction_next_expr = vc.query_fixed(is_numeric_instruction, Rotation::next());
@@ -1235,7 +1245,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
                     let is_block_end_next_expr = vc.query_fixed(is_block_end, Rotation::next());
 
-                    bcb.require_equal(
+                    cb.require_equal(
                         "check next: is_block_end && !not_q_last -> is_instruction || is_block_end",
                         is_func_body_len_next_expr
 
@@ -1257,8 +1267,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                         is_br_if_prev_expr,
                     ])
                 ]),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "br/br_if arg is valid",
                         block_level_lt_chip.config().is_lt(vc, None).expr() - 1.expr(),
                     );
@@ -1301,6 +1311,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             block_level_lt_chip,
             body_byte_rev_index,
             body_item_rev_count,
+            error_code,
             shared_state,
         };
 

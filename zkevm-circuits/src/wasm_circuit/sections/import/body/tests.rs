@@ -13,12 +13,12 @@ use eth_types::{Field, Hash, ToWord};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::common::WasmSharedStateAwareChip;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::import::body::circuit::WasmImportSectionBodyChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
 use crate::wasm_circuit::types::SharedState;
-use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
+use crate::wasm_circuit::utf8::circuit::UTF8Chip;
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -47,6 +47,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let func_count = cs.advice_column();
+        let error_code = cs.advice_column();
         let body_byte_rev_index = cs.advice_column();
         let body_item_rev_count = cs.advice_column();
 
@@ -80,6 +81,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             shared_state.clone(),
             body_byte_rev_index,
             body_item_rev_count,
+            error_code,
         );
         let wasm_import_section_body_chip = WasmImportSectionBodyChip::construct(wasm_import_section_body_config);
         let test_circuit_config = TestCircuitConfig {
@@ -150,7 +152,7 @@ mod wasm_import_section_body_tests {
     #[test]
     pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/cc1.wat",
+            "./test_files/cc1.wat",
             Kind::Import,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
@@ -167,7 +169,7 @@ mod wasm_import_section_body_tests {
     #[test]
     pub fn file2_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/cc2.wat",
+            "./test_files/cc2.wat",
             Kind::Import,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);

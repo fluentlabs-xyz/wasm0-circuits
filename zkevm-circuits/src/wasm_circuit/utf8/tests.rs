@@ -7,7 +7,7 @@ use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::{Advice, Circuit, Column};
 use bus_mapping::state_db::CodeDB;
 use eth_types::{Field, ToWord};
-use crate::wasm_circuit::utf8_circuit::circuit::{UTF8Chip, UTF8Config};
+use crate::wasm_circuit::utf8::circuit::{UTF8Chip, UTF8Config};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
 
@@ -93,7 +93,7 @@ mod utf8_circuit_tests {
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use eth_types::Field;
-    use crate::wasm_circuit::utf8_circuit::tests::TestCircuit;
+    use crate::wasm_circuit::utf8::tests::TestCircuit;
 
     fn test<'a, F: Field>(
         test_circuit: TestCircuit<'_, F>,

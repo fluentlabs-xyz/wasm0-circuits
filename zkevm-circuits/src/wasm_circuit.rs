@@ -5,10 +5,10 @@ pub mod bytecode;
 pub mod tests;
 #[cfg(any(feature = "test", test))]
 pub mod tests_parsers;
-pub mod leb128_circuit;
+pub mod leb128;
 pub mod tables;
 pub mod common;
 pub mod sections;
 pub mod error;
-pub mod utf8_circuit;
+pub mod utf8;
 pub mod types;

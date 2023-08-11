@@ -17,10 +17,10 @@ use gadgets::util::{and, not};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::r#type::body::types::AssignType;
 use crate::wasm_circuit::sections::r#type::item::circuit::WasmTypeSectionItemChip;
@@ -37,6 +37,7 @@ pub struct WasmTypeSectionBodyConfig<F> {
     pub is_body: Column<Fixed>,
 
     func_count: Column<Advice>,
+    error_code: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
     pub section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
@@ -54,6 +55,22 @@ impl<'a, F: Field> WasmTypeSectionBodyConfig<F> {}
 pub struct WasmTypeSectionBodyChip<F> {
     pub config: WasmTypeSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmTypeSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmTypeSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorCodeAwareChip<F> for WasmTypeSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmTypeSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmTypeSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionBodyChip<F> {
@@ -139,21 +156,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, offset, None)
+                }
             }
         })
     }
-}
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmTypeSectionBodyChip<F> {}
-
-impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmTypeSectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmTypeSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmTypeSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmTypeSectionBodyChip<F>
@@ -175,6 +183,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmTypeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -230,8 +239,8 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
 
             cb.condition(
                 is_items_count_expr.clone(),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "is_items_count -> leb128",
                         not::expr(vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()))
                     );
@@ -295,6 +304,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
             func_count,
             shared_state,
             body_item_rev_count,
+            error_code,
         };
 
         config

@@ -18,11 +18,11 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmFuncCountAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{LimitType, REF_TYPE_VALUES};
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::table::body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
@@ -43,6 +43,7 @@ pub struct WasmTableSectionBodyConfig<F: Field> {
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
 
     pub func_count: Column<Advice>,
+    pub error_code: Column<Advice>,
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
@@ -55,6 +56,22 @@ impl<'a, F: Field> WasmTableSectionBodyConfig<F>
 pub struct WasmTableSectionBodyChip<F: Field> {
     pub config: WasmTableSectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmTableSectionBodyChip<F> {}
+
+impl<F: Field> WasmLimitTypeAwareChip<F> for WasmTableSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorCodeAwareChip<F> for WasmTableSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmTableSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmTableSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
@@ -179,22 +196,13 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
                         &limit_type,
                     ).unwrap();
                 }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, offset, None)
+                }
             }
         });
     }
 }
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmTableSectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmTableSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmTableSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
-}
-
-impl<F: Field> WasmLimitTypeAwareChip<F> for WasmTableSectionBodyChip<F> {}
 
 impl<F: Field> WasmTableSectionBodyChip<F>
 {
@@ -212,6 +220,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
         leb128_chip: Rc<LEB128Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
+        error_code: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmTableSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
@@ -301,8 +310,8 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                     is_limit_min_expr.clone(),
                     is_limit_max_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_reference_type_count || is_limit_min || is_limit_max => leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -312,8 +321,8 @@ impl<F: Field> WasmTableSectionBodyChip<F>
 
             cb.condition(
                 is_reference_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "reference_type => byte value is valid",
                         byte_val_expr.clone(),
                         REF_TYPE_VALUES.iter().map(|&v| v.expr()).collect_vec(),
@@ -323,8 +332,8 @@ impl<F: Field> WasmTableSectionBodyChip<F>
 
             cb.condition(
                 is_limit_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "limit_type => byte value is valid",
                         byte_val_expr.clone(),
                         vec![
@@ -344,8 +353,8 @@ impl<F: Field> WasmTableSectionBodyChip<F>
             );
             cb.condition(
                 is_limit_type_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_limit_type => limit_type=byte_val",
                         limit_type_expr.clone(),
                         byte_val_expr.clone(),
@@ -354,9 +363,9 @@ impl<F: Field> WasmTableSectionBodyChip<F>
             );
             cb.condition(
                 is_limit_type_ctx_expr.clone(),
-                |bcb| {
+                |cb| {
                     let is_limit_type_ctx_prev_expr = vc.query_fixed(is_limit_type_ctx, Rotation::prev());
-                    bcb.require_zero(
+                    cb.require_zero(
                         "is_limit_type_ctx && prev.is_limit_type_ctx => limit_type=prev.limit_type",
                         is_limit_type_ctx_prev_expr * (limit_type_expr.clone() - limit_type_prev_expr.clone()),
                     );
@@ -427,8 +436,8 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                     is_limit_min_expr.clone(),
                     leb128_is_last_byte_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "limit_type_is_min_only && is_limit_min && leb128_is_last_byte => q_last",
                         q_last_expr.clone(),
                         1.expr(),
@@ -477,8 +486,8 @@ impl<F: Field> WasmTableSectionBodyChip<F>
                     is_limit_max_expr.clone(),
                     leb128_is_last_byte_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "limit_type_is_min_max && is_limit_max && leb128_is_last_byte => q_last",
                         q_last_expr.clone(),
                         1.expr(),
@@ -490,6 +499,8 @@ impl<F: Field> WasmTableSectionBodyChip<F>
         });
 
         let config = WasmTableSectionBodyConfig::<F> {
+            _marker: PhantomData,
+
             q_enable,
             q_first,
             q_last,
@@ -499,9 +510,8 @@ impl<F: Field> WasmTableSectionBodyChip<F>
             leb128_chip,
             dynamic_indexes_chip,
             func_count,
+            error_code,
             shared_state,
-
-            _marker: PhantomData,
         };
 
         config

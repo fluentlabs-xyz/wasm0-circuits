@@ -18,11 +18,11 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{LIMIT_TYPE_VALUES, LimitType};
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::memory::body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
@@ -44,6 +44,8 @@ pub struct WasmMemorySectionBodyConfig<F: Field> {
     func_count: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
+    error_code: Column<Advice>,
+
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
@@ -55,6 +57,24 @@ impl<'a, F: Field> WasmMemorySectionBodyConfig<F> {}
 pub struct WasmMemorySectionBodyChip<F: Field> {
     pub config: WasmMemorySectionBodyConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmMemorySectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmMemorySectionBodyChip<F> {}
+
+impl<F: Field> WasmLimitTypeAwareChip<F> for WasmMemorySectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorCodeAwareChip<F> for WasmMemorySectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmMemorySectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmMemorySectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmMemorySectionBodyChip<F> {
@@ -179,24 +199,13 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmMemorySectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, offset, None)
+                }
             }
         })
     }
 }
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmMemorySectionBodyChip<F> {}
-
-impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmMemorySectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmMemorySectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmMemorySectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
-}
-
-impl<F: Field> WasmLimitTypeAwareChip<F> for WasmMemorySectionBodyChip<F> {}
 
 impl<F: Field> WasmMemorySectionBodyChip<F>
 {
@@ -216,6 +225,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmMemorySectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -328,8 +338,8 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                     is_limit_min_expr.clone(),
                     is_limit_max_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_items_count || is_limit_min || is_limit_max -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -339,8 +349,8 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
 
             cb.condition(
                 is_items_count_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "only 1 memory block is allowed",
                         vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
                         1.expr(),
@@ -401,8 +411,8 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                     is_limit_min_expr.clone(),
                     limit_type_is_min_only_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "limit_type_is_min_only && is_limit_min && leb128_is_last_byte => q_last",
                         q_last_expr.clone(),
                         1.expr(),
@@ -452,8 +462,8 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
                     is_limit_max_expr.clone(),
                     limit_type_is_min_max_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "limit_type_is_min_max && is_limit_max && leb128_is_last_byte => q_last",
                         q_last_expr.clone(),
                         1.expr(),
@@ -463,8 +473,8 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
 
             cb.condition(
                 is_limit_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_limit_type -> byte_val is valid",
                         byte_val_expr.clone(),
                         LIMIT_TYPE_VALUES.iter().map(|&v| v.expr()).collect_vec(),
@@ -487,6 +497,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             dynamic_indexes_chip,
             func_count,
             body_item_rev_count,
+            error_code,
             shared_state,
         };
 

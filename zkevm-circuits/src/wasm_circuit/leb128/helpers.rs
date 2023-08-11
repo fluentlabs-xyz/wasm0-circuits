@@ -1,6 +1,6 @@
 use num_traits::pow;
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::consts::{EIGHT_MS_BIT_MASK, LEB128_MAX_BYTES_COUNT};
+use crate::wasm_circuit::leb128::consts::{EIGHT_MS_BIT_MASK, LEB128_MAX_BYTES_COUNT};
 
 pub fn leb128_compute_sn_recovered_at_position(
     sn_recovered_at_prev_pos: u64,

@@ -72,15 +72,16 @@ mod wasm_circuit_tests {
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
-    use rand::Rng;
+    use rand::{Rng, thread_rng};
     use wabt::wat2wasm;
 
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
 
+    use crate::wasm_circuit::consts::{WASM_MAGIC_PREFIX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH};
     use crate::wasm_circuit::tests::TestCircuit;
 
-    pub fn get_different_random_byte_val(old_byte_val: u8) -> u8 {
+    pub fn change_byte_val_randomly_no_collision(old_byte_val: u8) -> u8 {
         let mut rng = rand::thread_rng();
         let mut random_byte: u8 = old_byte_val;
         while random_byte == old_byte_val { random_byte = rng.gen(); }
@@ -99,7 +100,7 @@ mod wasm_circuit_tests {
 
     #[test]
     pub fn file1_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
+        let path_to_file = "./test_files/cc1.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
         let wasm_binary = wat2wasm(data).unwrap();
         debug!("wasm_binary.len: {}", wasm_binary.len());
@@ -118,7 +119,7 @@ mod wasm_circuit_tests {
 
     #[test]
     pub fn file2_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
+        let path_to_file = "./test_files/cc2.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
         let wasm_binary = wat2wasm(data).unwrap();
         debug!("wasm_binary.len: {}", wasm_binary.len());
@@ -137,7 +138,7 @@ mod wasm_circuit_tests {
 
     #[test]
     pub fn file3_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc3.wat";
+        let path_to_file = "./test_files/cc3.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
         let wasm_binary = wat2wasm(data).unwrap();
         debug!("wasm_binary.len: {}", wasm_binary.len());
@@ -185,11 +186,37 @@ mod wasm_circuit_tests {
 
     #[test]
     pub fn bad_magic_prefix_fails() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
-        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
-        let mut wasm_binary = wat2wasm(data).unwrap();
-        for i in 0..4 {
-            wasm_binary[i] = get_different_random_byte_val(wasm_binary[i]);
+        let paths_to_files = [
+            "./test_files/cc1.wat",
+            "./test_files/cc2.wat",
+            "./test_files/cc3.wat",
+        ];
+        for path_to_file in paths_to_files {
+            let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+            let mut wasm_binary = wat2wasm(data).unwrap();
+            let i: usize = thread_rng().gen::<usize>() % (WASM_MAGIC_PREFIX.len() - 1) + 1; // exclude \0 char at 0 index
+            wasm_binary[i] = change_byte_val_randomly_no_collision(wasm_binary[i]);
+            let circuit = TestCircuit::<Fr> {
+                bytes: wasm_binary.clone(),
+                code_hash: CodeDB::hash(&wasm_binary),
+                _marker: PhantomData,
+            };
+            self::test(circuit, false);
+        }
+    }
+
+    #[test]
+    pub fn bad_version_fails() {
+        let paths_to_files = [
+            "./test_files/cc1.wat",
+            "./test_files/cc2.wat",
+            "./test_files/cc3.wat",
+        ];
+        for path_to_file in paths_to_files {
+            let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+            let mut wasm_binary = wat2wasm(data).unwrap();
+            let i: usize = WASM_VERSION_PREFIX_BASE_INDEX + thread_rng().gen::<usize>() % WASM_VERSION_PREFIX_LENGTH;
+            wasm_binary[i] = change_byte_val_randomly_no_collision(wasm_binary[i]);
             let circuit = TestCircuit::<Fr> {
                 bytes: wasm_binary.clone(),
                 code_hash: CodeDB::hash(&wasm_binary),
@@ -214,7 +241,7 @@ mod wasm_circuit_tests {
     #[ignore] // TODO some problems after new module integration
     #[test]
     pub fn test_wrong_sections_order_must_fail() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
+        let path_to_file = "./test_files/cc1.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
         let wasm_binary = wat2wasm(data).unwrap();
         debug!("wasm_binary.len: {}", wasm_binary.len());

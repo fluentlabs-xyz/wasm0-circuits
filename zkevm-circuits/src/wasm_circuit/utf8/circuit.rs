@@ -110,8 +110,8 @@ impl<F: Field> UTF8Chip<F>
             // TODO test
             // cb.condition(
             //     q_enable_expr.clone(),
-            //     |bcb| {
-            //         bcb.require_zero(
+            //     |cb| {
+            //         cb.require_zero(
             //             "test",
             //             (1..pow(2, 7) - 1)
             //                 .fold(
@@ -129,15 +129,15 @@ impl<F: Field> UTF8Chip<F>
             // );
             // cb.condition(
             //     not::expr(is_first_byte_expr.clone()),
-            //     |bcb| {
+            //     |cb| {
             //         let is_bytes_count_1_prev_expr = vc.query_fixed(is_bytes_count_1, Rotation::prev());
-            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_1 = cur.is_byte_count_1", is_bytes_count_1_prev_expr, is_bytes_count_1_expr.clone());
+            //         cb.require_equal("is_first_byte=0 -> prev.is_byte_count_1 = cur.is_byte_count_1", is_bytes_count_1_prev_expr, is_bytes_count_1_expr.clone());
             //         let is_bytes_count_2_prev_expr = vc.query_fixed(is_bytes_count_2, Rotation::prev());
-            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_2 = cur.is_byte_count_2", is_bytes_count_2_prev_expr, is_bytes_count_2_expr.clone());
+            //         cb.require_equal("is_first_byte=0 -> prev.is_byte_count_2 = cur.is_byte_count_2", is_bytes_count_2_prev_expr, is_bytes_count_2_expr.clone());
             //         let is_bytes_count_3_prev_expr = vc.query_fixed(is_bytes_count_3, Rotation::prev());
-            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_3 = cur.is_byte_count_3", is_bytes_count_3_prev_expr, is_bytes_count_3_expr.clone());
+            //         cb.require_equal("is_first_byte=0 -> prev.is_byte_count_3 = cur.is_byte_count_3", is_bytes_count_3_prev_expr, is_bytes_count_3_expr.clone());
             //         let is_bytes_count_4_prev_expr = vc.query_fixed(is_bytes_count_4, Rotation::prev());
-            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_4 = cur.is_byte_count_4", is_bytes_count_4_prev_expr, is_bytes_count_4_expr.clone());
+            //         cb.require_equal("is_first_byte=0 -> prev.is_byte_count_4 = cur.is_byte_count_4", is_bytes_count_4_prev_expr, is_bytes_count_4_expr.clone());
             //     }
             // );
             //
@@ -211,7 +211,7 @@ impl<F: Field> UTF8Chip<F>
             //
             // cb.condition(
             //     not::expr(is_last_byte_expr.clone()),
-            //     |bcb| {
+            //     |cb| {
             //         let codepoint_recovered_prev_expr = select::expr(
             //             not::expr(is_first_byte_expr.clone()),
             //             vc.query_advice(codepoint_recovered, Rotation::prev()),
@@ -225,7 +225,7 @@ impl<F: Field> UTF8Chip<F>
             //                 + is_bytes_count_4_expr.clone() * 0b11110000.expr(),
             //             0b10000000.expr(),
             //         );
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_last_byte=0 -> codepoint_recovered = codepoint_recovered_prev + (byte_val - byte_mask) * byte_mul",
             //             codepoint_recovered_expr.clone(),
             //             codepoint_recovered_prev_expr.clone() + (byte_val_expr.clone() - bit_mask_expr.clone()) * byte_mul_expr.clone(),
@@ -234,8 +234,8 @@ impl<F: Field> UTF8Chip<F>
             // );
             // cb.condition(
             //     is_last_byte_expr.clone(),
-            //     |bcb| {
-            //         bcb.require_equal(
+            //     |cb| {
+            //         cb.require_equal(
             //             "is_last_byte=1 -> codepoint_recovered=codepoint",
             //             codepoint_recovered_expr.clone(),
             //             codepoint_expr.clone(),
@@ -247,9 +247,9 @@ impl<F: Field> UTF8Chip<F>
 
             // cb.condition(
             //     not::expr(is_first_byte_expr.clone()),
-            //     |bcb| {
+            //     |cb| {
             //         let codepoint_prev_expr = vc.query_advice(codepoint, Rotation::prev());
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> prev.codepoint = cur.codepoint",
             //             codepoint_prev_expr,
             //             codepoint_expr.clone(),
@@ -263,11 +263,11 @@ impl<F: Field> UTF8Chip<F>
             //         is_first_byte_expr.clone(),
             //         is_bytes_count_1_expr.clone(),
             //     ]),
-            //     |bcb| {
+            //     |cb| {
             //         let bit_mask_expr = 0b0.expr();
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> byte_val-0b00000000 must belong to [1..2^7-1]",
             //             (1..pow(2, 7)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
@@ -279,11 +279,11 @@ impl<F: Field> UTF8Chip<F>
             //         is_first_byte_expr.clone(),
             //         is_bytes_count_2_expr.clone(),
             //     ]),
-            //     |bcb| {
+            //     |cb| {
             //         let bit_mask_expr = 0b0.expr();
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> byte_val-0b11000000 must belong to [1..2^5-1]",
             //             (1..pow(2, 5)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
@@ -295,11 +295,11 @@ impl<F: Field> UTF8Chip<F>
             //         is_first_byte_expr.clone(),
             //         is_bytes_count_3_expr.clone(),
             //     ]),
-            //     |bcb| {
+            //     |cb| {
             //         let bit_mask_expr = 0b0.expr();
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> byte_val-0b11000000 must belong to [1..2^4-1]",
             //             (1..pow(2, 4)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
@@ -311,11 +311,11 @@ impl<F: Field> UTF8Chip<F>
             //         is_first_byte_expr.clone(),
             //         is_bytes_count_4_expr.clone(),
             //     ]),
-            //     |bcb| {
+            //     |cb| {
             //         let bit_mask_expr = 0b0.expr();
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> byte_val-0b11000000 must belong to [1..2^3-1]",
             //             (1..pow(2, 3)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
@@ -324,11 +324,11 @@ impl<F: Field> UTF8Chip<F>
             // );
             // cb.condition(
             //     not::expr(is_first_byte_expr.clone()),
-            //     |bcb| {
+            //     |cb| {
             //         let bit_mask_expr = 0b10000000.expr();
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr;
             //         // TODO replace with lookup
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> byte_val-0b10000000 must belong to [1..2^6-1]",
             //             (1..pow(2, 6)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),

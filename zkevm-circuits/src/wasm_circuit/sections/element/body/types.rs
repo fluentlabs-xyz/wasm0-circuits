@@ -16,4 +16,6 @@ pub enum AssignType {
     IsElemKind,
 
     BodyItemRevCount,
+
+    ErrorCode,
 }

@@ -8,6 +8,8 @@ pub enum AssignType {
     IsSectionBody,
 
     BodyByteRevIndexL1,
+
+    ErrorCode,
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -15,6 +17,9 @@ pub struct SharedState {
     pub dynamic_indexes_offset: usize,
     pub func_count: usize,
     pub block_level: usize,
+
+    pub error_processing_enabled: bool,
+    pub error_code: u64,
 }
 
 impl SharedState {
@@ -22,5 +27,11 @@ impl SharedState {
         self.dynamic_indexes_offset = 0;
         self.func_count = 0;
         self.block_level = 0;
+        self.error_processing_enabled = false;
+        self.error_code = 0;
+    }
+
+    pub fn error_code_on(&mut self) {
+        self.error_code = 1;
     }
 }

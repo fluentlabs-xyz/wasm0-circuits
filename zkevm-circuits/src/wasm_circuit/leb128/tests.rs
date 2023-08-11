@@ -6,8 +6,8 @@ use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::{Advice, Circuit, Column};
 use log::debug;
 use eth_types::Field;
-use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip, LEB128Config};
-use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_sn_recovered_at_position;
+use crate::wasm_circuit::leb128::circuit::{LEB128Chip, LEB128Config};
+use crate::wasm_circuit::leb128::helpers::leb128_compute_sn_recovered_at_position;
 use crate::wasm_circuit::sections::consts::LebParams;
 
 #[derive(Default)]
@@ -115,8 +115,8 @@ mod leb128_circuit_tests {
     use log::debug;
     use rand::Rng;
     use eth_types::Field;
-    use crate::wasm_circuit::leb128_circuit::consts::{EIGHT_LS_BITS_MASK, EIGHT_MS_BIT_MASK, SEVEN_LS_BITS_MASK};
-    use crate::wasm_circuit::leb128_circuit::tests::TestCircuit;
+    use crate::wasm_circuit::leb128::consts::{EIGHT_LS_BITS_MASK, EIGHT_MS_BIT_MASK, SEVEN_LS_BITS_MASK};
+    use crate::wasm_circuit::leb128::tests::TestCircuit;
 
     const ALL_BIT_DEPTHS_BYTES: &[usize] = &[1, 2, 3, 4, 5, 6, 7, 8];
 

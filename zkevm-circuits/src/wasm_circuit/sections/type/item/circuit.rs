@@ -17,11 +17,11 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::NumType;
 use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::r#type::item::consts::Type::FuncType;
 use crate::wasm_circuit::sections::r#type::item::types::AssignType;
@@ -41,6 +41,7 @@ pub struct WasmTypeSectionItemConfig<F> {
     pub leb128_chip: Rc<LEB128Chip<F>>,
 
     func_count: Column<Advice>,
+    error_code: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
     shared_state: Rc<RefCell<SharedState>>,
@@ -48,13 +49,30 @@ pub struct WasmTypeSectionItemConfig<F> {
     _marker: PhantomData<F>,
 }
 
-impl<'a, F: Field> WasmTypeSectionItemConfig<F>
-{}
+impl<'a, F: Field> WasmTypeSectionItemConfig<F> {}
 
 #[derive(Debug, Clone)]
 pub struct WasmTypeSectionItemChip<F> {
     pub config: WasmTypeSectionItemConfig<F>,
     _marker: PhantomData<F>,
+}
+
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmTypeSectionItemChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmTypeSectionItemChip<F> {}
+
+impl<F: Field> WasmErrorCodeAwareChip<F> for WasmTypeSectionItemChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmTypeSectionItemChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmTypeSectionItemChip<F> {
+    fn func_count_col(&self) -> Column<Advice> {
+        self.config.func_count
+    }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
@@ -164,22 +182,11 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                 }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, offset, None);
+                }
             }
         })
-    }
-}
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmTypeSectionItemChip<F> {}
-
-impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmTypeSectionItemChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmTypeSectionItemChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmTypeSectionItemChip<F> {
-    fn func_count_col(&self) -> Column<Advice> {
-        self.config.func_count
     }
 }
 
@@ -200,6 +207,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmTypeSectionItemConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -289,8 +297,8 @@ impl<F: Field> WasmTypeSectionItemChip<F>
 
             cb.condition(
                 is_type_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "type_section_item type has valid value",
                         byte_value_expr.clone(),
                         FuncType.expr()
@@ -303,8 +311,8 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                     is_input_type_expr.clone(),
                     is_output_type_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "type_section_item input/output type has valid value",
                         byte_value_expr.clone(),
                         vec![
@@ -320,8 +328,8 @@ impl<F: Field> WasmTypeSectionItemChip<F>
                     is_input_count_expr.clone(),
                     is_output_count_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "is_input/output_count -> leb128",
                         not::expr(vc.query_fixed(leb128_chip.config.q_enable.clone(), Rotation::cur())),
                     )
@@ -436,6 +444,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             leb128_chip,
             func_count,
             body_item_rev_count,
+            error_code,
             shared_state,
         };
 

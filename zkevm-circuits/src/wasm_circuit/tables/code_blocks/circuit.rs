@@ -117,9 +117,9 @@ impl<F: Field> CodeBlocksChip<F>
 
             cb.condition(
                 not_q_last_expr.clone(),
-                |bcb| {
+                |cb| {
                     let index_next_expr = vc.query_advice(index, Rotation::next());
-                    bcb.require_zero(
+                    cb.require_zero(
                         "index grows +1",
                         index_expr.clone() + 1.expr() - index_next_expr.clone(),
                     );
@@ -131,8 +131,8 @@ impl<F: Field> CodeBlocksChip<F>
                     not_q_last_expr.clone(),
                     opcode_is_block_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "block -> block | loop | if | end",
                         opcode_is_block_next_expr.clone()
                             + opcode_is_loop_next_expr.clone()
@@ -149,8 +149,8 @@ impl<F: Field> CodeBlocksChip<F>
                     not_q_last_expr.clone(),
                     opcode_is_loop_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "loop -> block | loop | if | end",
                         opcode_is_block_next_expr.clone()
                             + opcode_is_loop_next_expr.clone()
@@ -167,8 +167,8 @@ impl<F: Field> CodeBlocksChip<F>
                     not_q_last_expr.clone(),
                     opcode_is_if_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "if -> block | loop | if | else | end",
                         opcode_is_block_next_expr.clone()
                             + opcode_is_loop_next_expr.clone()
@@ -186,8 +186,8 @@ impl<F: Field> CodeBlocksChip<F>
                     not_q_last_expr.clone(),
                     opcode_is_else_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "else -> end",
                         opcode_is_end_next_expr.clone(),
                         1.expr(),
@@ -200,8 +200,8 @@ impl<F: Field> CodeBlocksChip<F>
                     not_q_last_expr.clone(),
                     opcode_is_block_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "end -> block | loop | if | end",
                         opcode_is_block_next_expr.clone()
                             + opcode_is_loop_next_expr.clone()
@@ -214,8 +214,8 @@ impl<F: Field> CodeBlocksChip<F>
 
             cb.condition(
                 q_last_expr.clone(),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "q_last => opcode_is_end",
                         opcode_is_end_expr.clone(),
                         1.expr(),

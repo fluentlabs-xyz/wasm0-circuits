@@ -12,7 +12,7 @@ use eth_types::{Field, Hash, ToWord};
 
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::table::body::circuit::WasmTableSectionBodyChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::types::SharedState;
@@ -43,6 +43,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let func_count = cs.advice_column();
+        let error_code = cs.advice_column();
 
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
@@ -61,6 +62,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             leb128_chip.clone(),
             dynamic_indexes_chip.clone(),
             func_count,
+            error_code,
             shared_state.clone(),
         );
         let wasm_table_section_body_chip = Rc::new(WasmTableSectionBodyChip::construct(wasm_table_section_body_config));
@@ -129,7 +131,7 @@ mod wasm_table_section_body_tests {
 
     #[test]
     pub fn file1_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
+        let path_to_file = "./test_files/cc1.wat";
         let kind = Kind::Table;
         let bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
@@ -145,7 +147,7 @@ mod wasm_table_section_body_tests {
 
     #[test]
     pub fn file2_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
+        let path_to_file = "./test_files/cc2.wat";
         let kind = Kind::Table;
         let bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);

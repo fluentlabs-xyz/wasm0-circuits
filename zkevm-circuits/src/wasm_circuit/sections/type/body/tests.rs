@@ -12,7 +12,7 @@ use eth_types::{Field, Hash, ToWord};
 
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::r#type::body::circuit::WasmTypeSectionBodyChip;
 use crate::wasm_circuit::sections::r#type::item::circuit::WasmTypeSectionItemChip;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
@@ -45,6 +45,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let func_count = cs.advice_column();
+        let error_code = cs.advice_column();
         let body_item_rev_count_lv1 = cs.advice_column();
         let body_item_rev_count_lv2 = cs.advice_column();
 
@@ -65,6 +66,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             func_count,
             shared_state.clone(),
             body_item_rev_count_lv2,
+            error_code,
         );
         let wasm_type_section_item_chip = Rc::new(WasmTypeSectionItemChip::construct(wasm_type_section_item_config));
         let wasm_type_section_body_config = WasmTypeSectionBodyChip::configure(
@@ -76,6 +78,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             func_count,
             shared_state.clone(),
             body_item_rev_count_lv1,
+            error_code,
         );
         let wasm_type_section_body_chip = Rc::new(WasmTypeSectionBodyChip::construct(wasm_type_section_body_config));
         let test_circuit_config = TestCircuitConfig {
@@ -144,7 +147,7 @@ mod wasm_type_section_body_tests {
     #[test]
     pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/cc1.wat",
+            "./test_files/cc1.wat",
             Kind::Type,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
@@ -161,7 +164,7 @@ mod wasm_type_section_body_tests {
     #[test]
     pub fn file2_ok() {
         let bytecode = wat_extract_section_body_bytecode(
-            "./src/wasm_circuit/test_data/files/cc2.wat",
+            "./test_files/cc2.wat",
             Kind::Type,
         );
         debug!("bytecode (len {}) hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);

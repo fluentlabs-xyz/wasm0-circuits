@@ -10,4 +10,6 @@ pub enum AssignType {
     IsOutputType,
 
     BodyItemRevCount,
+
+    ErrorCode,
 }

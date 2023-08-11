@@ -12,7 +12,7 @@ use eth_types::{Field, Hash, ToWord};
 
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::start::body::circuit::WasmStartSectionBodyChip;
 use crate::wasm_circuit::types::SharedState;
 
@@ -42,6 +42,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Self::Config {
         let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
         let func_count = cs.advice_column();
+        let error_code = cs.advice_column();
 
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
@@ -57,6 +58,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             leb128_chip.clone(),
             func_count,
             shared_state.clone(),
+            error_code,
         );
         let wasm_start_section_body_chip = Rc::new(WasmStartSectionBodyChip::construct(config));
 
@@ -125,7 +127,7 @@ mod wasm_start_section_body_tests {
 
     #[test]
     pub fn file2_dup_fails() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
+        let path_to_file = "./test_files/cc2.wat";
         let kind = Kind::Start;
 
         let mut bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
@@ -143,7 +145,7 @@ mod wasm_start_section_body_tests {
 
     #[test]
     pub fn file1_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc1.wat";
+        let path_to_file = "./test_files/cc1.wat";
         let kind = Kind::Start;
 
         let section_bytecode = wat_extract_section_bytecode(path_to_file, kind, );
@@ -164,7 +166,7 @@ mod wasm_start_section_body_tests {
 
     #[test]
     pub fn file2_ok() {
-        let path_to_file = "./src/wasm_circuit/test_data/files/cc2.wat";
+        let path_to_file = "./test_files/cc2.wat";
         let kind = Kind::Start;
         let expected = [
             8, 1, 2,
