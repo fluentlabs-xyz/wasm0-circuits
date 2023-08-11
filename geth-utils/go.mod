@@ -42,4 +42,4 @@ require (
 // replace github.com/wasm0/zkwasm-gas-injector v0.0.0-20230411142508-c7b0f5abfee3 => ../../zkwasm-gas-injector
 
 //replace github.com/ethereum/go-ethereum v1.10.18 => github.com/wasm0/zkwasm-geth v1.10.23-zkevm.0.20230424123711-e5a412f5a80d
-replace github.com/scroll-tech/go-ethereum => ../../wasm0-geth2
+replace github.com/scroll-tech/go-ethereum => ../../wasm0-geth

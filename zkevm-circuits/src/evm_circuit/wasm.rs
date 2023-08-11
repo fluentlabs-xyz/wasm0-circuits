@@ -174,6 +174,13 @@ use wasm_select::WasmSelectGadget;
 // use wasm_store::WasmStoreGadget;
 use wasm_test::WasmTestGadget;
 use wasm_unary::WasmUnaryGadget;
+use wasm_table::size::WasmTableSizeGadget;
+use wasm_table::set::WasmTableSetGadget;
+use wasm_table::init::WasmTableInitGadget;
+use wasm_table::grow::WasmTableGrowGadget;
+use wasm_table::get::WasmTableGetGadget;
+use wasm_table::fill::WasmTableFillGadget;
+use wasm_table::copy::WasmTableCopyGadget;
 use crate::evm_circuit::EvmCircuitExports;
 use crate::evm_circuit::wasm::end_inner_block::EndInnerBlockGadget;
 use crate::evm_circuit::wasm::error_code_store::ErrorCodeStoreGadget;
@@ -308,6 +315,13 @@ pub(crate) struct ExecutionConfig<F> {
     // wasm_store: Box<WasmStoreGadget<F>>,
     wasm_test: Box<WasmTestGadget<F>>,
     wasm_unary: Box<WasmUnaryGadget<F>>,
+    wasm_table_size: Box<WasmTableSizeGadget<F>>,
+    wasm_table_set: Box<WasmTableSetGadget<F>>,
+    wasm_table_init: Box<WasmTableInitGadget<F>>,
+    wasm_table_grow: Box<WasmTableGrowGadget<F>>,
+    wasm_table_get: Box<WasmTableGetGadget<F>>,
+    wasm_table_fill: Box<WasmTableFillGadget<F>>,
+    wasm_table_copy: Box<WasmTableCopyGadget<F>>,
 }
 
 impl<F: Field> ExecutionConfig<F> {
@@ -555,6 +569,13 @@ impl<F: Field> ExecutionConfig<F> {
             // wasm_store: configure_gadget!(),
             wasm_test: configure_gadget!(),
             wasm_unary: configure_gadget!(),
+            wasm_table_size: configure_gadget!(),
+            wasm_table_set: configure_gadget!(),
+            wasm_table_init: configure_gadget!(),
+            wasm_table_grow: configure_gadget!(),
+            wasm_table_get: configure_gadget!(),
+            wasm_table_fill: configure_gadget!(),
+            wasm_table_copy: configure_gadget!(),
 
             // step and presets
             step: step_curr,
@@ -1301,6 +1322,13 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::WASM_END => assign_exec_step!(self.wasm_end),
             ExecutionState::WASM_BREAK => assign_exec_step!(self.wasm_break),
             ExecutionState::WASM_CALL => assign_exec_step!(self.wasm_call),
+            ExecutionState::WASM_TABLE_SIZE => assign_exec_step!(self.wasm_table_size),
+            ExecutionState::WASM_TABLE_SET => assign_exec_step!(self.wasm_table_set),
+            ExecutionState::WASM_TABLE_INIT => assign_exec_step!(self.wasm_table_init),
+            ExecutionState::WASM_TABLE_GROW => assign_exec_step!(self.wasm_table_grow),
+            ExecutionState::WASM_TABLE_GET => assign_exec_step!(self.wasm_table_get),
+            ExecutionState::WASM_TABLE_FILL => assign_exec_step!(self.wasm_table_fill),
+            ExecutionState::WASM_TABLE_COPY => assign_exec_step!(self.wasm_table_copy),
             // opcode
             ExecutionState::SHA3 => assign_exec_step!(self.evm_keccak256),
             ExecutionState::ADDRESS => assign_exec_step!(self.evm_address),
