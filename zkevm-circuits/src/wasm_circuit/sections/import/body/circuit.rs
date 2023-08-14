@@ -100,7 +100,7 @@ impl<F: Field> WasmFuncCountAwareChip<F> for WasmImportSectionBodyChip<F> {
 impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
     type AssignType = AssignType;
 
-    fn assign(
+    fn assign_internal(
         &self,
         region: &mut Region<F>,
         wb: &WasmBytecode,
@@ -322,7 +322,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                     ).unwrap();
                 }
                 AssignType::FuncCount => {
-                    self.assign_func_count(region, offset);
+                    self.assign_func_count(region, offset)?;
                 }
                 AssignType::ErrorCode => {
                     self.assign_error_code(region, offset, None)

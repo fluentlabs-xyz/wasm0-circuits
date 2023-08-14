@@ -68,7 +68,7 @@ impl<F: Field> WasmFuncCountAwareChip<F> for WasmStartSectionBodyChip<F> {
 impl<F: Field> WasmAssignAwareChip<F> for WasmStartSectionBodyChip<F> {
     type AssignType = AssignType;
 
-    fn assign(
+    fn assign_internal(
         &self,
         region: &mut Region<F>,
         wb: &WasmBytecode,
@@ -92,7 +92,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmStartSectionBodyChip<F> {
             offset,
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
-        self.assign_func_count(region, offset);
+        self.assign_func_count(region, offset)?;
 
         for assign_type in assign_types {
             if *assign_type == AssignType::IsFuncsIndex {

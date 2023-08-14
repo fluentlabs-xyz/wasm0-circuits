@@ -22,7 +22,7 @@ use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, wasm_compute_section_len, WasmAssignAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::configure_transition_check;
 use crate::wasm_circuit::consts::{ControlInstruction, ExportDescType, ImportDescType, SECTION_ID_DEFAULT, WASM_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
-use crate::wasm_circuit::error::{check_wb_for_offset, Error, error_index_out_of_bounds_wb, remap_plonk_error};
+use crate::wasm_circuit::error::{check_wb_offset, Error, error_index_out_of_bounds_wb, remap_plonk_error};
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128::helpers::leb128_compute_last_byte_offset;
 use crate::wasm_circuit::sections::code::body::circuit::WasmCodeSectionBodyChip;
@@ -126,7 +126,7 @@ impl<F: Field> WasmFuncCountAwareChip<F> for WasmChip<F> {
 impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
     type AssignType = AssignType;
 
-    fn assign(
+    fn assign_internal(
         &self,
         region: &mut Region<F>,
         wb: &WasmBytecode,
@@ -135,7 +135,6 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
         assign_value: u64,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
-        check_wb_for_offset(wb, offset)?;
         let q_enable = true;
         debug!(
             "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
@@ -1141,7 +1140,7 @@ impl<F: Field> WasmChip<F>
                         section_len,
                         &wb.bytes[section_start_offset..=section_end_offset],
                     );
-                    self.assign_func_count(region, offset);
+                    self.assign_func_count(region, offset)?;
 
                     let mut next_section_offset = 0;
                     let section_body_offset = offset + 1; // skip section_id
@@ -1160,7 +1159,7 @@ impl<F: Field> WasmChip<F>
                         )?;
                     }
                     for offset in section_body_offset..=section_len_last_byte_offset {
-                        self.assign_func_count(region, offset);
+                        self.assign_func_count(region, offset)?;
                     }
                     let section_body_offset = section_len_last_byte_offset + 1;
                     match wasm_section {

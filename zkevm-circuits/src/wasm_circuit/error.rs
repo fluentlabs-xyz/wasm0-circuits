@@ -26,7 +26,7 @@ pub fn error_index_out_of_bounds_wb(wb: &WasmBytecode, offset: usize) -> Error {
     Error::IndexOutOfBounds(offset, wb.bytes.len())
 }
 
-pub fn check_wb_for_offset(wb: &WasmBytecode, offset: usize) -> Result<(), Error> {
+pub fn check_wb_offset(wb: &WasmBytecode, offset: usize) -> Result<(), Error> {
     if offset >= wb.bytes.len() { return Err(error_index_out_of_bounds_wb(wb, offset)) }
     Ok(())
 }

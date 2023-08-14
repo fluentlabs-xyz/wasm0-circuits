@@ -21,7 +21,7 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::consts::{LimitType, MAX_LEB128_BYTES};
-use crate::wasm_circuit::error::{Error, error_index_out_of_bounds_wb};
+use crate::wasm_circuit::error::{check_wb_offset, Error, error_index_out_of_bounds_wb, remap_plonk_error};
 use crate::wasm_circuit::error::Error::{IndexOutOfBoundsSimple, Leb128MaxBytes};
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
@@ -472,7 +472,7 @@ pub trait WasmSharedStateAwareChip<F: Field> {
 pub trait WasmFuncCountAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
     fn func_count_col(&self) -> Column<Advice>;
 
-    fn assign_func_count(&self, region: &mut Region<F>, offset: usize) {
+    fn assign_func_count(&self, region: &mut Region<F>, offset: usize) -> Result<(), Error> {
         let func_count = self.shared_state().borrow().func_count;
         debug!("assign at offset {} func_count val {}", offset, func_count);
         region.assign_advice(
@@ -480,7 +480,8 @@ pub trait WasmFuncCountAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
             self.func_count_col(),
             offset,
             || Value::known(F::from(func_count as u64)),
-        ).unwrap();
+        ).map_err(remap_plonk_error(offset))?;
+        Ok(())
     }
 }
 
@@ -576,7 +577,7 @@ pub trait WasmErrorAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
 pub trait WasmBlockLevelAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
     fn block_level_col(&self) -> Column<Advice>;
 
-    fn assign_block_level(&self, region: &mut Region<F>, offset: usize) {
+    fn assign_block_level(&self, region: &mut Region<F>, offset: usize) -> Result<(), Error> {
         let block_level = self.shared_state().borrow().block_level;
         debug!("assign at offset {} block_level val {}", offset, block_level);
         region.assign_advice(
@@ -584,7 +585,8 @@ pub trait WasmBlockLevelAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
             self.block_level_col(),
             offset,
             || Value::known(F::from(block_level as u64)),
-        ).unwrap();
+        ).map_err(remap_plonk_error(offset))?;
+        Ok(())
     }
 }
 
@@ -592,6 +594,19 @@ pub trait WasmAssignAwareChip<F: Field> {
     type AssignType;
 
     fn assign(
+        &self,
+        region: &mut Region<F>,
+        wb: &WasmBytecode,
+        offset: usize,
+        assign_types: &[Self::AssignType],
+        assign_value: u64,
+        leb_params: Option<LebParams>,
+    ) -> Result<(), Error> {
+        check_wb_offset(wb, offset)?;
+        self.assign_internal(region, wb, offset, assign_types, assign_value, leb_params)
+    }
+
+    fn assign_internal(
         &self,
         region: &mut Region<F>,
         wb: &WasmBytecode,
