@@ -610,6 +610,7 @@ impl Bytecode {
 
     pub fn write_postfix(&mut self, op: OpcodeId, val: i128) -> &mut Self {
         let op = match op {
+            OpcodeId::RefFunc => Instruction::RefFunc(val as u32),
             OpcodeId::I32Const => Instruction::I32Const(val as i32),
             OpcodeId::I64Const => Instruction::I64Const(val as i64),
             OpcodeId::GetGlobal => Instruction::GlobalGet(val as u32),

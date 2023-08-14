@@ -112,7 +112,7 @@ mod test {
     fn test_table_get() {
         let mut code = bytecode! {
             I32Const[0]
-            I64Const[0xff]
+            RefFunc[0xff]
             TableSet[0]
             I32Const[0]
             TableGet[0]

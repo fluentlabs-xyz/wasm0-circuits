@@ -117,10 +117,10 @@ mod test {
     }
 
     #[test]
-    fn test_table_set_get() {
+    fn test_table_fill() {
         let mut code = bytecode! {
             I32Const[0]
-            I64Const[0xff]
+            RefFunc[0xff]
             I32Const[2]
             TableFill[0]
             Drop

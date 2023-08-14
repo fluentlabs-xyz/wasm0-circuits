@@ -109,6 +109,7 @@ pub enum OpcodeId {
     I64Store32,
     CurrentMemory,
     GrowMemory,
+    RefFunc,
     I32Const,
     I64Const,
     F32Const,
@@ -352,7 +353,7 @@ impl OpcodeId {
     /// Returns `true` if the `OpcodeId` is a `PUSHn`.
     pub fn is_push(&self) -> bool {
         match self {
-            OpcodeId::I32Const | OpcodeId::I64Const => true,
+            OpcodeId::I32Const | OpcodeId::I64Const | OpcodeId::RefFunc => true,
             _ => {
                 self.as_u8() >= Self::PUSH1.as_u8() && self.as_u8() <= Self::PUSH32.as_u8()
             }
@@ -463,6 +464,7 @@ impl OpcodeId {
             OpcodeId::Return => 0x0f,
             OpcodeId::Call => 0x10,
             OpcodeId::CallIndirect => 0x11,
+            OpcodeId::RefFunc => 0x18,
             OpcodeId::Drop => 0x1a,
             OpcodeId::Select => 0x1b,
             OpcodeId::GetLocal => 0x20,
@@ -754,6 +756,7 @@ impl OpcodeId {
 
             OpcodeId::I32Add => (0, 1022),
             OpcodeId::I64Add => (0, 1022),
+            OpcodeId::RefFunc => (1, 1024),
             OpcodeId::I32Const => (1, 1024),
             OpcodeId::I64Const => (1, 1024),
 
@@ -869,6 +872,7 @@ impl OpcodeId {
         // TODO: "we can't relay on this, because we don't know exact encoding size"
         match self {
             OpcodeId::GetGlobal => Some(1),
+            OpcodeId::RefFunc => Some(4),
             OpcodeId::I32Const => Some(4),
             OpcodeId::I64Const => Some(8),
             _ => {
@@ -891,6 +895,7 @@ impl OpcodeId {
     /// push opcodes.
     pub fn data_len(&self) -> usize {
         match self {
+            OpcodeId::RefFunc => 4,
             OpcodeId::I32Const => 4,
             OpcodeId::I64Const => 8,
             _ => {
@@ -940,6 +945,7 @@ impl From<u8> for OpcodeId {
             0x0f => OpcodeId::Return,
             0x10 => OpcodeId::Call,
             0x11 => OpcodeId::CallIndirect,
+            0x18 => OpcodeId::RefFunc,
             0x1a => OpcodeId::Drop,
             0x1b => OpcodeId::Select,
             0x20 => OpcodeId::GetLocal,
@@ -1216,6 +1222,7 @@ impl FromStr for OpcodeId {
             "i64_store32" => OpcodeId::I64Store32,
             "current_memory" => OpcodeId::CurrentMemory,
             "grow_memory" => OpcodeId::GrowMemory,
+            "ref_func" => OpcodeId::RefFunc,
             "i32_const" => OpcodeId::I32Const,
             "i64_const" => OpcodeId::I64Const,
             "f32_const" => OpcodeId::F32Const,

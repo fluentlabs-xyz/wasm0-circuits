@@ -179,6 +179,7 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::I32RemU |
                     OpcodeId::I64RemU => ExecutionState::WASM_BIN,
 
+                    OpcodeId::RefFunc |
                     OpcodeId::I32Const |
                     OpcodeId::I64Const => ExecutionState::WASM_CONST,
 
