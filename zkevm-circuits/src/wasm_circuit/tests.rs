@@ -30,8 +30,8 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
 
     fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
-        let wasm_bytecode_table = WasmBytecodeTable::construct(cs);
-        let config = WasmChip::<F>::configure(cs, Rc::new(wasm_bytecode_table), shared_state);
+        let wb_table = WasmBytecodeTable::construct(cs);
+        let config = WasmChip::<F>::configure(cs, Rc::new(wb_table), shared_state);
 
         config
     }
@@ -42,9 +42,9 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let mut wasm_chip = WasmChip::construct(config);
-        let wasm_bytecode = WasmBytecode::new(self.bytes.clone(), self.code_hash.to_word());
+        let wb = WasmBytecode::new(self.bytes.clone(), self.code_hash.to_word());
 
-        wasm_chip.load(&mut layouter, &wasm_bytecode)?;
+        wasm_chip.load(&mut layouter, &wb).unwrap();
 
         layouter.assign_region(
             || "wasm_chip region",
@@ -53,8 +53,8 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
                 wasm_chip.config.shared_state.borrow_mut().reset();
                 wasm_chip.assign_auto(
                     &mut region,
-                    &wasm_bytecode,
-                )?;
+                    &wb,
+                ).unwrap();
 
                 Ok(())
             }

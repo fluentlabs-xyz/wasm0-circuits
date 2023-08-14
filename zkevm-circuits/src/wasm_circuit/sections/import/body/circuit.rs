@@ -19,7 +19,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmNameAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmNameAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{IMPORT_DESC_TYPE_VALUES, ImportDescType, LimitType, MUTABILITY_VALUES, REF_TYPE_VALUES, RefType};
 use crate::wasm_circuit::error::Error;
@@ -85,7 +85,7 @@ impl<F: Field> WasmNameAwareChip<F> for WasmImportSectionBodyChip<F> {}
 
 impl<F: Field> WasmLimitTypeAwareChip<F> for WasmImportSectionBodyChip<F> {}
 
-impl<F: Field> WasmErrorCodeAwareChip<F> for WasmImportSectionBodyChip<F> {
+impl<F: Field> WasmErrorAwareChip<F> for WasmImportSectionBodyChip<F> {
     fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
 }
 
@@ -103,12 +103,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
     fn assign(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset: usize,
         assign_types: &[Self::AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
-    ) {
+    ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
             "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
@@ -116,7 +116,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
             q_enable,
             assign_types,
             assign_value,
-            wasm_bytecode.bytes[offset],
+            wb.bytes[offset],
         );
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
@@ -125,7 +125,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
             || Value::known(F::from(q_enable as u64)),
         ).unwrap();
 
-        assign_types.iter().for_each(|assign_type| {
+        for assign_type in assign_types {
             if [
                 AssignType::IsItemsCount,
                 AssignType::IsModNameLen,
@@ -146,7 +146,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                 AssignType::IsModName,
                 AssignType::IsImportName,
             ].contains(assign_type) {
-                let byte_val = wasm_bytecode.bytes[offset];
+                let byte_val = wb.bytes[offset];
                 self.config.utf8_chip.assign(
                     region,
                     offset,
@@ -328,7 +328,8 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                     self.assign_error_code(region, offset, None)
                 }
             }
-        });
+        };
+        Ok(())
     }
 }
 
@@ -647,15 +648,15 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             );
 
             // is_items_count+ -> is_item+ (is_mod_name_len+ -> is_mod_name* -> is_import_name_len+ -> is_import_name* -> import_desc+)
-            let importdesc_type_is_global_type_prev_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::prev())(vc);
+            // let importdesc_type_is_global_type_prev_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::prev())(vc);
             let importdesc_type_is_typeidx_expr = importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::cur())(vc);
-            let importdesc_type_is_typeidx_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::next())(vc);
+            // let importdesc_type_is_typeidx_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::next())(vc);
             let importdesc_type_is_mem_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::MemType, Rotation::cur())(vc);
-            let importdesc_type_is_mem_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::MemType, Rotation::next())(vc);
+            // let importdesc_type_is_mem_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::MemType, Rotation::next())(vc);
             let importdesc_type_is_table_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::TableType, Rotation::cur())(vc);
-            let importdesc_type_is_table_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::TableType, Rotation::next())(vc);
+            // let importdesc_type_is_table_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::TableType, Rotation::next())(vc);
             let importdesc_type_is_global_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::cur())(vc);
-            let importdesc_type_is_global_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::next())(vc);
+            // let importdesc_type_is_global_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::next())(vc);
 
             let limit_type_is_min_only_expr = limit_type_chip.config.value_equals(LimitType::MinOnly, Rotation::cur())(vc);
             let limit_type_is_min_max_expr = limit_type_chip.config.value_equals(LimitType::MinMax, Rotation::cur())(vc);
@@ -1415,7 +1416,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
@@ -1423,22 +1424,22 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         // is_items_count+
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            wasm_bytecode,
+            wb,
             offset,
             &[AssignType::IsItemsCount, AssignType::FuncCount],
-        );
+        )?;
         let mut body_item_rev_count = items_count;
         for offset in offset..offset + items_count_leb_len {
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
                 &[AssignType::BodyItemRevCount, AssignType::FuncCount],
                 body_item_rev_count,
                 None,
-            );
+            )?;
         }
-        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
+        self.assign(region, &wb, offset, &[AssignType::QFirst], 1, None)?;
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
@@ -1448,69 +1449,69 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             // is_mod_name_len+
             let (mod_name_len, mod_name_leb_len) = self.markup_leb_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::IsModNameLen, AssignType::FuncCount],
-            );
+            )?;
             let mod_name_len_last_byte_offset = offset + mod_name_leb_len - 1;
             let mod_name_last_byte_offset = mod_name_len_last_byte_offset + mod_name_len as usize;
             for offset in mod_name_len_last_byte_offset..=mod_name_last_byte_offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
                     &[AssignType::BodyByteRevIndex, AssignType::FuncCount],
                     (mod_name_last_byte_offset - offset) as u64,
                     None,
-                );
+                )?;
             }
             offset += mod_name_leb_len;
 
             // is_mod_name*
             self.markup_name_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::IsModName, AssignType::FuncCount],
                 mod_name_len as usize,
                 1,
-            );
+            )?;
             offset += mod_name_len as usize;
 
             // is_import_name_len+
             let (import_name_len, import_name_leb_len) = self.markup_leb_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::IsImportNameLen, AssignType::FuncCount],
-            );
+            )?;
             let import_name_len_last_byte_offset = offset + import_name_leb_len - 1;
             let import_name_last_byte_offset = import_name_len_last_byte_offset + import_name_len as usize;
             for offset in import_name_len_last_byte_offset..=import_name_last_byte_offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
                     &[AssignType::BodyByteRevIndex, AssignType::FuncCount],
                     (import_name_last_byte_offset - offset) as u64,
                     None,
-                );
+                )?;
             }
             offset += import_name_leb_len;
 
             // is_import_name*
             self.markup_name_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::IsImportName, AssignType::FuncCount],
                 import_name_len as usize,
                 1,
-            );
+            )?;
             offset += import_name_len as usize;
 
             // is_importdesc_type{1}
-            let importdesc_type_val = wasm_bytecode.bytes[offset];
+            let importdesc_type_val = wb.bytes[offset];
             let importdesc_type: ImportDescType = importdesc_type_val.try_into().unwrap();
             let importdesc_type_val = importdesc_type_val as u64;
             if importdesc_type == ImportDescType::Typeidx { self.config.shared_state.borrow_mut().func_count += 1; }
@@ -1521,20 +1522,20 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             );
             self.assign(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::IsImportdescType, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
                 1,
                 None,
-            );
+            )?;
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
                 &[AssignType::ImportdescType, AssignType::FuncCount],
                 importdesc_type_val,
                 None,
-            );
+            )?;
             self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
             offset += 1;
 
@@ -1543,19 +1544,19 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 ImportDescType::Typeidx => {
                     let (_importdesc_val, importdesc_val_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsImportdescVal, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
-                    );
+                    )?;
                     for offset in offset..offset + importdesc_val_leb_len {
                         self.assign(
                             region,
-                            &wasm_bytecode,
+                            &wb,
                             offset,
                             &[AssignType::ImportdescType],
                             importdesc_type_val,
                             None,
-                        );
+                        )?;
                         self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
                     }
                     offset += importdesc_val_leb_len;
@@ -1563,69 +1564,69 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 ImportDescType::GlobalType => {
                     let (_importdesc_val, importdesc_val_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsImportdescVal, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
-                    );
+                    )?;
                     for offset in offset..offset + importdesc_val_leb_len {
                         self.assign(
                             region,
-                            &wasm_bytecode,
+                            &wb,
                             offset,
                             &[AssignType::ImportdescType, AssignType::FuncCount],
                             importdesc_type_val,
                             None,
-                        );
+                        )?;
                         self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
                     }
                     offset += importdesc_val_leb_len;
 
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsMut, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
                         1,
                         None,
-                    );
+                    )?;
                     for offset in offset..offset + importdesc_val_leb_len {
                         self.assign(
                             region,
-                            &wasm_bytecode,
+                            &wb,
                             offset,
                             &[AssignType::ImportdescType, AssignType::FuncCount],
                             importdesc_type_val,
                             None,
-                        );
+                        )?;
                         self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
                     }
                     offset += 1;
                 }
                 ImportDescType::MemType => {
                     // limit_type{1}
-                    let limit_type_val = wasm_bytecode.bytes[offset];
+                    let limit_type_val = wb.bytes[offset];
                     let limit_type: LimitType = limit_type_val.try_into().unwrap();
                     let limit_type_val = limit_type_val as u64;
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsLimitType, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
                         1,
                         None,
-                    );
-                    self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                    )?;
+                    self.assign(region, wb, offset, &[AssignType::LimitType], limit_type_val, None)?;
                     offset += 1;
 
                     // limit_min+
                     let (_limit_min, limit_min_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsLimitMin, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
-                    );
+                    )?;
                     for offset in offset..offset + limit_min_leb_len {
-                        self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                        self.assign(region, wb, offset, &[AssignType::LimitType], limit_type_val, None)?;
                     }
                     offset += limit_min_leb_len;
 
@@ -1633,55 +1634,55 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     if limit_type == LimitType::MinMax {
                         let (_limit_max, limit_max_leb_len) = self.markup_leb_section(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
                             &[AssignType::IsLimitMax, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
-                        );
+                        )?;
                         for offset in offset..offset + limit_max_leb_len {
-                            self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                            self.assign(region, wb, offset, &[AssignType::LimitType], limit_type_val, None)?;
                         }
                         offset += limit_max_leb_len;
                     }
                 }
                 ImportDescType::TableType => {
                     // ref_type{1}
-                    let ref_type_val = wasm_bytecode.bytes[offset];
+                    let ref_type_val = wb.bytes[offset];
                     let ref_type: RefType = ref_type_val.try_into().unwrap();
                     let ref_type_val = ref_type_val as u64;
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsRefType, AssignType::FuncCount],
                         1,
                         None,
-                    );
+                    )?;
                     offset += 1;
 
                     // limit_type{1}
-                    let limit_type_val = wasm_bytecode.bytes[offset];
+                    let limit_type_val = wb.bytes[offset];
                     let limit_type: LimitType = limit_type_val.try_into().unwrap();
                     let limit_type_val = limit_type_val as u64;
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsLimitType, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
                         1,
                         None,
-                    );
-                    self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None);
+                    )?;
+                    self.assign(region, wb, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None)?;
                     offset += 1;
 
                     // limit_min+
                     let (limit_min, limit_min_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsLimitMin, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
-                    );
+                    )?;
                     for offset in offset..offset + limit_min_leb_len {
-                        self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None);
+                        self.assign(region, wb, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None)?;
                     }
                     offset += limit_min_leb_len;
 
@@ -1689,12 +1690,12 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     if limit_type == LimitType::MinMax {
                         let (limit_max, limit_max_leb_len) = self.markup_leb_section(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
                             &[AssignType::IsLimitMax, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
-                        );
+                        )?;
                         for offset in offset..offset + limit_max_leb_len {
-                            self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None);
+                            self.assign(region, wb, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None)?;
                         }
                         self.config.limit_type_fields.limit_type_params_lt_chip.assign(region, offset, F::from(limit_min), F::from(limit_max)).unwrap();
                         offset += limit_max_leb_len;
@@ -1705,17 +1706,17 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             for offset in item_start_offset..offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
                     &[AssignType::BodyItemRevCount],
                     body_item_rev_count,
                     None,
-                );
+                )?;
             }
         }
 
         if offset != offset_start {
-            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
+            self.assign(region, &wb, offset - 1, &[AssignType::QLast], 1, None)?;
         }
 
         Ok(offset)

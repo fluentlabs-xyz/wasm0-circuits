@@ -18,7 +18,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBytesAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{MemSegmentType, NumericInstruction, WASM_BLOCK_END};
 use crate::wasm_circuit::error::Error;
@@ -75,7 +75,7 @@ impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmDataSectionBodyChip<F>
 
 impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmDataSectionBodyChip<F> {}
 
-impl<F: Field> WasmErrorCodeAwareChip<F> for WasmDataSectionBodyChip<F> {
+impl<F: Field> WasmErrorAwareChip<F> for WasmDataSectionBodyChip<F> {
     fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
 }
 
@@ -93,12 +93,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
     fn assign(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset: usize,
         assign_types: &[Self::AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
-    ) {
+    ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
             "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?} leb_params {:?}",
@@ -106,7 +106,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
             q_enable,
             assign_types,
             assign_value,
-            wasm_bytecode.bytes[offset],
+            wb.bytes[offset],
             leb_params,
         );
         region.assign_fixed(
@@ -117,7 +117,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
         ).unwrap();
         self.assign_func_count(region, offset);
 
-        assign_types.iter().for_each(|assign_type| {
+        for assign_type in assign_types {
             if [
                 AssignType::IsItemsCount,
                 AssignType::IsMemSegmentSize,
@@ -254,7 +254,8 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                     self.assign_error_code(region, offset, None)
                 }
             }
-        })
+        };
+        Ok(())
     }
 }
 
@@ -363,7 +364,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            // let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
@@ -921,29 +922,29 @@ impl<F: Field> WasmDataSectionBodyChip<F>
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
         // items_count+
-        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
+        self.assign(region, &wb, offset, &[AssignType::QFirst], 1, None)?;
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            wasm_bytecode,
+            wb,
             offset,
             &[AssignType::IsItemsCount],
-        );
+        )?;
         let mut body_item_rev_count = items_count;
         for offset in offset..offset + items_count_leb_len {
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
                 &[AssignType::BodyItemRevCount],
                 body_item_rev_count,
                 None,
-            );
+            )?;
         }
         let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
@@ -959,24 +960,24 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             let item_start_offset = offset;
 
             // is_mem_segment_type{1}
-            let mem_segment_type_val = wasm_bytecode.bytes[offset];
+            let mem_segment_type_val = wb.bytes[offset];
             let mem_segment_type: MemSegmentType = mem_segment_type_val.try_into().unwrap();
             self.assign(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::IsMemSegmentType, AssignType::IsMemSegmentTypeCtx],
                 1,
                 None,
-            );
+            )?;
             self.assign(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::MemSegmentType],
                 mem_segment_type_val as u64,
                 None,
-            );
+            )?;
             offset += 1;
 
             match mem_segment_type {
@@ -984,88 +985,88 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     // is_mem_segment_size_opcode{1}
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsMemSegmentSizeOpcode, AssignType::IsMemSegmentTypeCtx],
                         1,
                         None,
-                    );
+                    )?;
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::MemSegmentType],
                         mem_segment_type_val as u64,
                         None,
-                    );
+                    )?;
                     offset += 1;
 
                     // is_mem_segment_size+
                     let (_mem_segment_size, mem_segment_size_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsMemSegmentSize, AssignType::IsMemSegmentTypeCtx],
-                    );
+                    )?;
                     for offset in offset..offset + mem_segment_size_leb_len {
                         self.assign(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
-                        );
+                        )?;
                     }
                     offset += mem_segment_size_leb_len;
 
                     // is_block_end{1}
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsBlockEnd, AssignType::IsMemSegmentTypeCtx],
                         1,
                         None,
-                    );
+                    )?;
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::MemSegmentType],
                         mem_segment_type_val as u64,
                         None,
-                    );
+                    )?;
                     offset += 1;
 
                     // is_mem_segment_len+
                     let (mem_segment_len, mem_segment_len_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsMemSegmentLen, AssignType::IsMemSegmentTypeCtx],
-                    );
+                    )?;
                     let mem_segment_len_last_byte_offset = offset + mem_segment_len_leb_len - 1;
                     let mem_segment_last_byte_offset = mem_segment_len_last_byte_offset + mem_segment_len as usize;
                     for offset in mem_segment_len_last_byte_offset..=mem_segment_last_byte_offset {
                         self.assign(
                             region,
-                            &wasm_bytecode,
+                            &wb,
                             offset,
                             &[AssignType::BodyByteRevIndex],
                             (mem_segment_last_byte_offset - offset) as u64,
                             None,
-                        );
+                        )?;
                     }
                     for offset in offset..offset + mem_segment_len_leb_len {
                         self.assign(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
-                        );
+                        )?;
                     }
                     offset += mem_segment_len_leb_len;
 
@@ -1073,21 +1074,21 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     for rel_offset in 0..(mem_segment_len as usize) {
                         self.assign(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset + rel_offset,
                             &[AssignType::IsMemSegmentBytes, AssignType::IsMemSegmentTypeCtx],
                             1,
                             None,
-                        );
+                        )?;
                         for offset in offset..offset + mem_segment_len_leb_len {
                             self.assign(
                                 region,
-                                wasm_bytecode,
+                                wb,
                                 offset,
                                 &[AssignType::MemSegmentType],
                                 mem_segment_type_val as u64,
                                 None,
-                            );
+                            )?;
                         }
                     }
                     offset += mem_segment_len as usize;
@@ -1096,31 +1097,31 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     // is_mem_segment_len+
                     let (mem_segment_len, mem_segment_len_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsMemSegmentLen, AssignType::IsMemSegmentTypeCtx],
-                    );
+                    )?;
                     let mem_segment_len_last_byte_offset = offset + mem_segment_len_leb_len - 1;
                     let mem_segment_last_byte_offset = mem_segment_len_last_byte_offset + mem_segment_len as usize;
                     for offset in mem_segment_len_last_byte_offset..=mem_segment_last_byte_offset {
                         self.assign(
                             region,
-                            &wasm_bytecode,
+                            &wb,
                             offset,
                             &[AssignType::BodyByteRevIndex],
                             (mem_segment_last_byte_offset - offset) as u64,
                             None,
-                        );
+                        )?;
                     }
                     for offset in offset..offset + mem_segment_len_leb_len {
                         self.assign(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
-                        );
+                        )?;
                     }
                     offset += mem_segment_len_leb_len;
 
@@ -1128,116 +1129,116 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     for rel_offset in 0..(mem_segment_len as usize) {
                         self.assign(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset + rel_offset,
                             &[AssignType::IsMemSegmentBytes, AssignType::IsMemSegmentTypeCtx],
                             1,
                             None,
-                        );
+                        )?;
                         self.assign(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
-                        );
+                        )?;
                     }
                     offset += mem_segment_len as usize;
                 }
                 MemSegmentType::ActiveVariadic => {
                     // is_mem_index+
-                    let (mem_index, mem_index_leb_len) = self.markup_leb_section(
+                    let (_mem_index, mem_index_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsMemIndex, AssignType::IsMemSegmentTypeCtx],
-                    );
+                    )?;
                     for offset in offset..offset + mem_index_leb_len {
                         self.assign(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
-                        );
+                        )?;
                     }
                     offset += mem_index_leb_len;
 
                     // is_mem_segment_size_opcode{1}
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsMemSegmentSizeOpcode, AssignType::IsMemSegmentTypeCtx],
                         1,
                         None,
-                    );
+                    )?;
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::MemSegmentType],
                         mem_segment_type_val as u64,
                         None,
-                    );
+                    )?;
                     offset += 1;
 
                     // is_mem_segment_size+
-                    let (mem_segment_size, mem_segment_size_leb_len) = self.markup_leb_section(
+                    let (_mem_segment_size, mem_segment_size_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsMemSegmentSize, AssignType::IsMemSegmentTypeCtx],
-                    );
+                    )?;
                     for offset in offset..offset + mem_segment_size_leb_len {
                         self.assign(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
-                        );
+                        )?;
                     }
                     offset += mem_segment_size_leb_len;
 
                     // is_block_end{1}
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsBlockEnd, AssignType::IsMemSegmentTypeCtx],
                         1,
                         None,
-                    );
+                    )?;
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::MemSegmentType],
                         mem_segment_type_val as u64,
                         None,
-                    );
+                    )?;
                     offset += 1;
 
                     // is_mem_segment_len+
                     let (mem_segment_len, mem_segment_len_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsMemSegmentLen, AssignType::IsMemSegmentTypeCtx],
-                    );
+                    )?;
                     for offset in offset..offset + mem_segment_len_leb_len {
                         self.assign(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
-                        );
+                        )?;
                     }
                     offset += mem_segment_len_leb_len;
 
@@ -1245,21 +1246,21 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     for rel_offset in 0..(mem_segment_len as usize) {
                         self.assign(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset + rel_offset,
                             &[AssignType::IsMemSegmentBytes, AssignType::IsMemSegmentTypeCtx],
                             1,
                             None,
-                        );
+                        )?;
                         for offset in offset..offset + mem_segment_len_leb_len {
                             self.assign(
                                 region,
-                                wasm_bytecode,
+                                wb,
                                 offset,
                                 &[AssignType::MemSegmentType],
                                 mem_segment_type_val as u64,
                                 None,
-                            );
+                            )?;
                         }
                     }
                     offset += mem_segment_len as usize;
@@ -1269,17 +1270,17 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             for offset in item_start_offset..offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
                     &[AssignType::BodyItemRevCount],
                     body_item_rev_count,
                     None,
-                );
+                )?;
             }
         }
 
         if offset != offset_start {
-            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
+            self.assign(region, &wb, offset - 1, &[AssignType::QLast], 1, None)?;
         }
 
         Ok(offset)

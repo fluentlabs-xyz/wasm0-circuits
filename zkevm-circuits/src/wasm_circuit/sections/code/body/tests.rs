@@ -28,7 +28,7 @@ struct TestCircuit<'a, F> {
 #[derive(Clone)]
 struct TestCircuitConfig<F: Field> {
     body_chip: Rc<WasmCodeSectionBodyChip<F>>,
-    wasm_bytecode_table: Rc<WasmBytecodeTable>,
+    wb_table: Rc<WasmBytecodeTable>,
     _marker: PhantomData<F>,
 }
 
@@ -41,7 +41,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     fn configure(
         cs: &mut ConstraintSystem<F>,
     ) -> Self::Config {
-        let wasm_bytecode_table = Rc::new(WasmBytecodeTable::construct(cs));
+        let wb_table = Rc::new(WasmBytecodeTable::construct(cs));
         let func_count = cs.advice_column();
         let error_code = cs.advice_column();
         let body_byte_rev_index = cs.advice_column();
@@ -54,13 +54,13 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 
         let leb128_config = LEB128Chip::<F>::configure(
             cs,
-            &wasm_bytecode_table.value,
+            &wb_table.value,
         );
         let leb128_chip = Rc::new(LEB128Chip::construct(leb128_config));
 
         let wasm_code_section_body_config = WasmCodeSectionBodyChip::configure(
             cs,
-            wasm_bytecode_table.clone(),
+            wb_table.clone(),
             leb128_chip.clone(),
             dynamic_indexes_chip.clone(),
             func_count,
@@ -72,7 +72,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         let wasm_code_section_body_chip = WasmCodeSectionBodyChip::construct(wasm_code_section_body_config);
         let test_circuit_config = TestCircuitConfig {
             body_chip: Rc::new(wasm_code_section_body_chip),
-            wasm_bytecode_table: wasm_bytecode_table.clone(),
+            wb_table: wb_table.clone(),
             _marker: Default::default(),
         };
 
@@ -84,16 +84,16 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         mut config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let wasm_bytecode = WasmBytecode::new(self.bytecode.to_vec().clone(), self.code_hash.to_word());
-        config.wasm_bytecode_table.load(&mut layouter, &wasm_bytecode)?;
+        let wb = WasmBytecode::new(self.bytecode.to_vec().clone(), self.code_hash.to_word());
+        config.wb_table.load(&mut layouter, &wb)?;
         layouter.assign_region(
             || "wasm_code_section_body region",
             |mut region| {
                 let mut offset_start = self.offset_start;
-                while offset_start < wasm_bytecode.bytes.len() {
+                while offset_start < wb.bytes.len() {
                     offset_start = config.body_chip.assign_auto(
                         &mut region,
-                        &wasm_bytecode,
+                        &wb,
                         offset_start,
                     ).unwrap();
                 }

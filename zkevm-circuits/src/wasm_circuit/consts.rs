@@ -4,6 +4,7 @@ use halo2_proofs::plonk::Expression;
 use strum_macros::EnumIter;
 use gadgets::util::Expr;
 
+pub const MAX_LEB128_BYTES: usize = 5;
 pub static WASM_VERSION_PREFIX_BASE_INDEX: usize = 4;
 pub static WASM_VERSION_PREFIX_LENGTH: usize = 4;
 pub static WASM_SECTIONS_START_INDEX: usize = WASM_VERSION_PREFIX_BASE_INDEX + WASM_VERSION_PREFIX_LENGTH;

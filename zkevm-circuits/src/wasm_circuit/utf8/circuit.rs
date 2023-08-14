@@ -463,7 +463,7 @@ impl<F: Field> UTF8Chip<F>
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         bytecode_chunk_len: usize,
         bytecode_offset_start: usize,
         region_offset_start: usize,
@@ -473,7 +473,7 @@ impl<F: Field> UTF8Chip<F>
                 region,
                 region_offset_start + offset,
                 true,
-                wasm_bytecode.bytes[bytecode_offset],
+                wb.bytes[bytecode_offset],
             )
         }
     }

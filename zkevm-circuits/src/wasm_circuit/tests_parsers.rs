@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod wasm_parsers_tests {
+    use log::debug;
     use num::checked_pow;
     use wabt::wat2wasm;
     use wasmbin::io::Encode;
@@ -10,6 +11,7 @@ mod wasm_parsers_tests {
     use crate::wasm_circuit::common::wasmbin_unlazify_with_opt;
 
     /// returns section len and quantity of leb bytes
+    #[cfg(any(feature = "test", test))]
     fn compute_section_len(wasm_bytes: &Vec<u8>) -> (u32, u8) {
         let mut section_len: u32 = 0;
         const BASE_INDEX: usize = 1;
@@ -30,26 +32,26 @@ mod wasm_parsers_tests {
         let path_to_file = "./test_files/cc1.wat";
         // let path_to_file = "./test_files/cc2.wat";
         let wat: Vec<u8> = std::fs::read(path_to_file).unwrap();
-        println!("SOURCE WAT: {}", std::str::from_utf8(wat.as_slice()).unwrap());
+        debug!("SOURCE WAT: {}", std::str::from_utf8(wat.as_slice()).unwrap());
         let mut wasm_binary = wat2wasm(wat.clone()).unwrap();
 
         let data = wat2wasm(&wat.clone()).unwrap();
-        println!("");
-        println!("PARSED {}:", path_to_file);
-        println!("data len: {}", data.len());
-        println!("data raw (hex): {:x?}", data);
-        println!("data raw (decimal): {:?}", data);
+        debug!("");
+        debug!("PARSED {}:", path_to_file);
+        debug!("data len: {}", data.len());
+        debug!("data raw (hex): {:x?}", data);
+        debug!("data raw (decimal): {:?}", data);
 
         let mut m = Module::decode_from(data.as_slice()).unwrap();
         for s in m.sections.iter_mut() {
             wasmbin_unlazify_with_opt(s, false).unwrap();
-            println!("---Kind::{:?}:", s.kind());
+            debug!("---Kind::{:?}:", s.kind());
             let mut bytes = Vec::<u8>::new();
             s.encode(&mut bytes).unwrap();
-            println!("section len: {:?}", compute_section_len(&bytes));
-            println!("raw (hex): {:x?}", bytes);
-            println!("raw (decimal): {:?}", bytes);
-            println!("{:#?}", s);
+            debug!("section len: {:?}", compute_section_len(&bytes));
+            debug!("raw (hex): {:x?}", bytes);
+            debug!("raw (decimal): {:?}", bytes);
+            debug!("{:#?}", s);
             match s.kind() {
                 Kind::Type => {}
                 Kind::Code => {
@@ -63,7 +65,7 @@ mod wasm_parsers_tests {
                             for exp in fb.expr.as_slice() {}
                         }
                     };
-                    println!("{:#?}", s);
+                    debug!("{:#?}", s);
                 },
                 Kind::Table => {},
                 Kind::Custom => {}
@@ -77,9 +79,9 @@ mod wasm_parsers_tests {
                 Kind::Start => {}
                 Kind::Data => {}
 
-                _ => {println!("UNPROCESSED/UNKNOWN section '{:?}'", s.kind())}
+                _ => { debug!("UNPROCESSED/UNKNOWN section '{:?}'", s.kind()) }
             }
         }
-        println!("Found {} sections.", m.sections.len());
+        debug!("Found {} sections.", m.sections.len());
     }
 }

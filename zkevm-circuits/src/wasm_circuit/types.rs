@@ -31,7 +31,7 @@ impl SharedState {
         self.error_code = 0;
     }
 
-    pub fn error_code_on(&mut self) {
+    pub fn set_error_code_on(&mut self) {
         self.error_code = 1;
     }
 }

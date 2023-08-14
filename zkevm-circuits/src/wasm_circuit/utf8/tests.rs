@@ -60,7 +60,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         config.eligible_byte_vals_range_table_config.load(&mut layouter)?;
         let utf8_chip = UTF8Chip::construct(config.utf8_config);
         let code_hash = CodeDB::hash(&self.bytes);
-        let wasm_bytecode = WasmBytecode::new(self.bytes.to_vec(), code_hash.to_word());
+        let wb = WasmBytecode::new(self.bytes.to_vec(), code_hash.to_word());
 
         layouter.assign_region(
             || "utf8 region",
@@ -75,7 +75,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
                     ).unwrap();
 
                 }
-                utf8_chip.assign_auto(&mut region, &wasm_bytecode, self.bytes.len(), 0, self.offset_shift);
+                utf8_chip.assign_auto(&mut region, &wb, self.bytes.len(), 0, self.offset_shift);
 
                 Ok(())
             }

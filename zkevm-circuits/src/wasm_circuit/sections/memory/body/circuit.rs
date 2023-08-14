@@ -18,7 +18,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{LIMIT_TYPE_VALUES, LimitType};
 use crate::wasm_circuit::error::Error;
@@ -65,7 +65,7 @@ impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmMemorySectionBodyChip<
 
 impl<F: Field> WasmLimitTypeAwareChip<F> for WasmMemorySectionBodyChip<F> {}
 
-impl<F: Field> WasmErrorCodeAwareChip<F> for WasmMemorySectionBodyChip<F> {
+impl<F: Field> WasmErrorAwareChip<F> for WasmMemorySectionBodyChip<F> {
     fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
 }
 
@@ -83,12 +83,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmMemorySectionBodyChip<F> {
     fn assign(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset: usize,
         assign_types: &[Self::AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
-    ) {
+    ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
             "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
@@ -96,7 +96,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmMemorySectionBodyChip<F> {
             q_enable,
             assign_types,
             assign_value,
-            wasm_bytecode.bytes[offset],
+            wb.bytes[offset],
         );
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
@@ -106,7 +106,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmMemorySectionBodyChip<F> {
         ).unwrap();
         self.assign_func_count(region, offset);
 
-        assign_types.iter().for_each(|assign_type| {
+        for assign_type in assign_types {
             if [
                 AssignType::IsItemsCount,
                 AssignType::IsLimitMin,
@@ -203,7 +203,8 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmMemorySectionBodyChip<F> {
                     self.assign_error_code(region, offset, None)
                 }
             }
-        })
+        };
+        Ok(())
     }
 }
 
@@ -263,9 +264,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             is_limit_type,
             is_limit_min,
             is_limit_max,
-            limit_type,
             limit_type_chip,
-            is_limit_type_ctx,
             ..
         } = limit_type_fields.clone();
 
@@ -291,7 +290,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            // let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
@@ -299,11 +298,11 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             let is_limit_min_expr = vc.query_fixed(is_limit_min, Rotation::cur());
             let is_limit_max_expr = vc.query_fixed(is_limit_max, Rotation::cur());
 
-            let is_limit_type_ctx_expr = vc.query_fixed(is_limit_type_ctx, Rotation::cur());
+            // let is_limit_type_ctx_expr = vc.query_fixed(is_limit_type_ctx, Rotation::cur());
 
             let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
-            let limit_type_prev_expr = vc.query_advice(limit_type, Rotation::prev());
-            let limit_type_expr = vc.query_advice(limit_type, Rotation::cur());
+            // let limit_type_prev_expr = vc.query_advice(limit_type, Rotation::prev());
+            // let limit_type_expr = vc.query_advice(limit_type, Rotation::cur());
 
             let limit_type_is_min_only_expr = limit_type_chip.config.value_equals(LimitType::MinOnly, Rotation::cur())(vc);
             let limit_type_is_min_max_expr = limit_type_chip.config.value_equals(LimitType::MinMax, Rotation::cur())(vc);
@@ -508,27 +507,27 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            wasm_bytecode,
+            wb,
             offset,
             &[AssignType::IsItemsCount],
-        );
+        )?;
         let mut body_item_rev_count = items_count;
         for offset in offset..offset + items_count_leb_len {
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
                 &[AssignType::BodyItemRevCount],
                 body_item_rev_count,
                 None,
-            );
+            )?;
         }
         let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
@@ -537,7 +536,7 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             Tag::MemIndex,
         ).unwrap();
         self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;
-        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
+        self.assign(region, &wb, offset, &[AssignType::QFirst], 1, None)?;
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
@@ -545,29 +544,29 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             let item_start_offset = offset;
 
             // limit_type{1}
-            let limit_type_val = wasm_bytecode.bytes[offset];
+            let limit_type_val = wb.bytes[offset];
             let limit_type: LimitType = limit_type_val.try_into().unwrap();
             let limit_type_val = limit_type_val as u64;
             self.assign(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::IsLimitType, AssignType::IsLimitTypeCtx],
                 1,
                 None,
-            );
-            self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+            )?;
+            self.assign(region, wb, offset, &[AssignType::LimitType], limit_type_val, None)?;
             offset += 1;
 
             // limit_min+
             let (limit_min, limit_min_leb_len) = self.markup_leb_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::IsLimitMin, AssignType::IsLimitTypeCtx],
-            );
+            )?;
             for offset in offset..offset + limit_min_leb_len {
-                self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                self.assign(region, wb, offset, &[AssignType::LimitType], limit_type_val, None)?;
             }
             offset += limit_min_leb_len;
 
@@ -575,12 +574,12 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             if limit_type == LimitType::MinMax {
                 let (limit_max, limit_max_leb_len) = self.markup_leb_section(
                     region,
-                    wasm_bytecode,
+                    wb,
                     offset,
                     &[AssignType::IsLimitMax, AssignType::IsLimitTypeCtx],
-                );
+                )?;
                 for offset in offset..offset + limit_max_leb_len {
-                    self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                    self.assign(region, wb, offset, &[AssignType::LimitType], limit_type_val, None)?;
                 }
                 self.config.limit_type_fields.limit_type_params_lt_chip.assign(region, offset, F::from(limit_min), F::from(limit_max)).unwrap();
                 offset += limit_max_leb_len;
@@ -589,17 +588,17 @@ impl<F: Field> WasmMemorySectionBodyChip<F>
             for offset in item_start_offset..offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
                     &[AssignType::BodyItemRevCount],
                     body_item_rev_count,
                     None,
-                );
+                )?;
             }
         }
 
         if offset != offset_start {
-            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
+            self.assign(region, &wb, offset - 1, &[AssignType::QLast], 1, None)?;
         }
 
         Ok(offset)

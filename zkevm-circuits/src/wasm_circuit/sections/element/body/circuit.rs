@@ -17,7 +17,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
@@ -69,7 +69,7 @@ impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmElementSectionBodyChi
 
 impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmElementSectionBodyChip<F> {}
 
-impl<F: Field> WasmErrorCodeAwareChip<F> for WasmElementSectionBodyChip<F> {
+impl<F: Field> WasmErrorAwareChip<F> for WasmElementSectionBodyChip<F> {
     fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
 }
 
@@ -87,14 +87,14 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmElementSectionBodyChip<F> {
     fn assign(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset: usize,
         assign_types: &[Self::AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
-    ) {
+    ) -> Result<(), Error> {
         let q_enable = true;
-        let byte_val = wasm_bytecode.bytes[offset];
+        let byte_val = wb.bytes[offset];
         debug!(
             "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
             offset,
@@ -111,7 +111,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmElementSectionBodyChip<F> {
         ).unwrap();
         self.assign_func_count(region, offset);
 
-        assign_types.iter().for_each(|&assign_type| {
+        for assign_type in assign_types {
             if [
                 AssignType::IsItemsCount,
                 AssignType::IsNumericInstructionLebArg,
@@ -239,7 +239,8 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmElementSectionBodyChip<F> {
                 }
                 AssignType::ErrorCode => {}
             }
-        })
+        };
+        Ok(())
     }
 }
 
@@ -305,7 +306,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            // let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
@@ -324,7 +325,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
 
             let elem_type_is_0_expr = elem_type_chip.config.value_equals(ElementType::_0, Rotation::cur())(vc);
             let elem_type_is_1_expr = elem_type_chip.config.value_equals(ElementType::_1, Rotation::cur())(vc);
-            let elem_type_is_0_next_expr = elem_type_chip.config.value_equals(ElementType::_0, Rotation::next())(vc);
+            // let elem_type_is_0_next_expr = elem_type_chip.config.value_equals(ElementType::_0, Rotation::next())(vc);
             let elem_type_is_1_next_expr = elem_type_chip.config.value_equals(ElementType::_1, Rotation::next())(vc);
 
             let leb128_sn_expr = vc.query_advice(leb128_chip.config.sn, Rotation::cur());
@@ -683,7 +684,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
@@ -691,22 +692,22 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         // items_count+
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            wasm_bytecode,
+            wb,
             offset,
             &[AssignType::IsItemsCount],
-        );
+        )?;
         let mut body_item_rev_count = items_count;
         for offset in offset..offset + items_count_leb_len {
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
                 &[AssignType::BodyItemRevCount],
                 body_item_rev_count,
                 None,
-            );
+            )?;
         }
-        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
+        self.assign(region, &wb, offset, &[AssignType::QFirst], 1, None)?;
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
@@ -714,18 +715,18 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             let item_start_offset = offset;
 
             // elem_type{1}
-            let elem_type_val = wasm_bytecode.bytes[offset];
+            let elem_type_val = wb.bytes[offset];
             let elem_type: ElementType = elem_type_val.try_into().unwrap();
             let elem_type_val = elem_type_val as u64;
             self.assign(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::IsElemType, AssignType::IsElemTypeCtx],
                 1,
                 None,
-            );
-            self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
+            )?;
+            self.assign(region, wb, offset, &[AssignType::ElemType], elem_type_val, None)?;
             offset += 1;
 
             match elem_type {
@@ -733,48 +734,48 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                     // numeric_instruction{1}
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsNumericInstruction, AssignType::IsElemTypeCtx],
                         1,
                         None,
-                    );
-                    self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
+                    )?;
+                    self.assign(region, wb, offset, &[AssignType::ElemType], elem_type_val, None)?;
                     offset += 1;
 
                     // numeric_instruction_leb_arg+
                     let (_numeric_instruction_leb_arg, numeric_instruction_leb_arg_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsNumericInstructionLebArg, AssignType::IsElemTypeCtx],
-                    );
+                    )?;
                     for offset in offset..offset + numeric_instruction_leb_arg_leb_len {
-                        self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
+                        self.assign(region, wb, offset, &[AssignType::ElemType], elem_type_val, None)?;
                     }
                     offset += numeric_instruction_leb_arg_leb_len;
 
                     // numeric_instruction_block_end{1}
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsBlockEnd, AssignType::IsElemTypeCtx],
                         1,
                         None,
-                    );
-                    self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
+                    )?;
+                    self.assign(region, wb, offset, &[AssignType::ElemType], elem_type_val, None)?;
                     offset += 1;
 
                     // funcs_idx_count+
                     let (funcs_idx_count, funcs_idx_count_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsFuncsIdxCount, AssignType::IsElemTypeCtx],
-                    );
+                    )?;
                     for offset in offset..offset + funcs_idx_count_leb_len {
-                        self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
+                        self.assign(region, wb, offset, &[AssignType::ElemType], elem_type_val, None)?;
                     }
                     offset += funcs_idx_count_leb_len;
 
@@ -782,12 +783,12 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         // func_idx+
                         let (_func_idx, func_idx_leb_len) = self.markup_leb_section(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
                             &[AssignType::IsFuncIdx, AssignType::IsElemTypeCtx],
-                        );
+                        )?;
                         for offset in offset..offset + func_idx_leb_len {
-                            self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
+                            self.assign(region, wb, offset, &[AssignType::ElemType], elem_type_val, None)?;
                         }
                         offset += func_idx_leb_len;
                     }
@@ -796,24 +797,24 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                     // elem_kind{1}
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsElemKind, AssignType::IsElemTypeCtx],
                         1,
                         None,
-                    );
-                    self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
+                    )?;
+                    self.assign(region, wb, offset, &[AssignType::ElemType], elem_type_val, None)?;
                     offset += 1;
 
                     // funcs_idx_count+
                     let (funcs_idx_count, funcs_idx_count_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
                         &[AssignType::IsFuncsIdxCount, AssignType::IsElemTypeCtx],
-                    );
+                    )?;
                     for offset in offset..offset + funcs_idx_count_leb_len {
-                        self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
+                        self.assign(region, wb, offset, &[AssignType::ElemType], elem_type_val, None)?;
                     }
                     offset += funcs_idx_count_leb_len;
 
@@ -821,12 +822,12 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         // func_idxs+
                         let (_func_idxs, func_idxs_leb_len) = self.markup_leb_section(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
                             &[AssignType::IsFuncIdx, AssignType::IsElemTypeCtx],
-                        );
+                        )?;
                         for offset in offset..offset + func_idxs_leb_len {
-                            self.assign(region, wasm_bytecode, offset, &[AssignType::ElemType], elem_type_val, None);
+                            self.assign(region, wb, offset, &[AssignType::ElemType], elem_type_val, None)?;
                         }
                         offset += func_idxs_leb_len;
                     }
@@ -837,17 +838,17 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             for offset in item_start_offset..offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
                     &[AssignType::BodyItemRevCount],
                     body_item_rev_count,
                     None,
-                );
+                )?;
             }
         }
 
         if offset != offset_start {
-            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
+            self.assign(region, &wb, offset - 1, &[AssignType::QLast], 1, None)?;
         }
 
         Ok(offset)

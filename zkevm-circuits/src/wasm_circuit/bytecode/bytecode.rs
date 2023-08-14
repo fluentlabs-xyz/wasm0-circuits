@@ -36,8 +36,8 @@ impl WasmBytecode {
     }
 
     /// get byte value
-    pub fn get(&self, idx: usize) -> u8 {
-        self.bytes[idx]
+    pub fn get(&self, idx: usize) -> Option<&u8> {
+        self.bytes.get(idx)
     }
 }
 

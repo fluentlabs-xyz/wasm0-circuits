@@ -17,7 +17,7 @@ use gadgets::util::{and, not};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::error::Error;
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
@@ -61,7 +61,7 @@ impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmTypeSectionBodyChip<F
 
 impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmTypeSectionBodyChip<F> {}
 
-impl<F: Field> WasmErrorCodeAwareChip<F> for WasmTypeSectionBodyChip<F> {
+impl<F: Field> WasmErrorAwareChip<F> for WasmTypeSectionBodyChip<F> {
     fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
 }
 
@@ -79,12 +79,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionBodyChip<F> {
     fn assign(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset: usize,
         assign_types: &[Self::AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
-    ) {
+    ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
             "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
@@ -92,7 +92,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionBodyChip<F> {
             q_enable,
             assign_types,
             assign_value,
-            wasm_bytecode.bytes[offset],
+            wb.bytes[offset],
         );
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
@@ -102,7 +102,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionBodyChip<F> {
         ).unwrap();
         self.assign_func_count(region, offset);
 
-        assign_types.iter().for_each(|assign_type| {
+        for assign_type in assign_types {
             if [
                 AssignType::IsBodyItemsCount,
             ].contains(&assign_type) {
@@ -160,7 +160,8 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionBodyChip<F> {
                     self.assign_error_code(region, offset, None)
                 }
             }
-        })
+        };
+        Ok(())
     }
 }
 
@@ -213,13 +214,13 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            // let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
             let is_body_expr = vc.query_fixed(is_body, Rotation::cur());
 
-            let byte_value_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            // let byte_value_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
 
             let leb128_is_last_byte_expr = vc.query_fixed(leb128_chip.config.is_last_byte, Rotation::cur());
 
@@ -316,28 +317,28 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            wasm_bytecode,
+            wb,
             offset,
             &[AssignType::IsBodyItemsCount],
-        );
+        )?;
         let mut body_item_rev_count = items_count;
         for offset in offset..offset + items_count_leb_len {
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
                 &[AssignType::BodyItemRevCount],
                 body_item_rev_count,
                 None,
-            );
+            )?;
         }
-        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
+        self.assign(region, &wb, offset, &[AssignType::QFirst], 1, None)?;
         offset += items_count_leb_len;
 
         let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
@@ -354,35 +355,35 @@ impl<F: Field> WasmTypeSectionBodyChip<F>
 
             let next_body_item_offset = self.config.section_item_chip.assign_auto(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
             )?;
             for offset in offset..next_body_item_offset {
                 self.assign(
                     region,
-                    wasm_bytecode,
+                    wb,
                     offset,
                     &[AssignType::IsBody],
                     1,
                     None,
-                );
+                )?;
             }
             offset = next_body_item_offset;
 
             for offset in item_start_offset..offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
                     &[AssignType::BodyItemRevCount],
                     body_item_rev_count,
                     None,
-                );
+                )?;
             }
         }
 
         if offset != offset_start {
-            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
+            self.assign(region, &wb, offset - 1, &[AssignType::QLast], 1, None)?;
         }
 
         Ok(offset)

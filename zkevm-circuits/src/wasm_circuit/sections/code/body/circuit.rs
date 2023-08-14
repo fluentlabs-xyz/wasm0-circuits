@@ -19,7 +19,7 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBlockLevelAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorCodeAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBlockLevelAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{CONTROL_INSTRUCTION_BLOCK, CONTROL_INSTRUCTION_WITH_LEB_ARG, CONTROL_INSTRUCTION_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTION_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, VARIABLE_INSTRUCTION_WITH_LEB_ARG, VariableInstruction, WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
 use crate::wasm_circuit::error::Error;
@@ -89,7 +89,7 @@ impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmCodeSectionBodyChip<
 
 impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmCodeSectionBodyChip<F> {}
 
-impl<F: Field> WasmErrorCodeAwareChip<F> for WasmCodeSectionBodyChip<F> {
+impl<F: Field> WasmErrorAwareChip<F> for WasmCodeSectionBodyChip<F> {
     fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
 }
 
@@ -113,12 +113,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
     fn assign(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset: usize,
         assign_types: &[Self::AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
-    ) {
+    ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
             "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
@@ -126,7 +126,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
             q_enable,
             assign_types,
             assign_value,
-            wasm_bytecode.bytes[offset],
+            wb.bytes[offset],
         );
         region.assign_fixed(
             || format!("assign 'q_enable' val {} at {}", q_enable, offset),
@@ -137,7 +137,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
         self.assign_func_count(region, offset);
         self.assign_block_level(region, offset);
 
-        assign_types.iter().for_each(|&assign_type| {
+        for assign_type in assign_types {
             if [
                 AssignType::IsFuncsCount,
                 AssignType::IsFuncBodyLen,
@@ -223,7 +223,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                     if assign_value == 1 {
-                        let opcode: NumericInstruction = wasm_bytecode.bytes[offset].try_into().unwrap();
+                        let opcode: NumericInstruction = wb.bytes[offset].try_into().unwrap();
                         self.config.numeric_instructions_chip.assign(
                             region,
                             offset,
@@ -247,7 +247,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                     if assign_value == 1 {
-                        let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
+                        let opcode = wb.bytes[offset].try_into().unwrap();
                         self.config.variable_instruction_chip.assign(
                             region,
                             offset,
@@ -271,7 +271,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                     if assign_value == 1 {
-                        let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
+                        let opcode = wb.bytes[offset].try_into().unwrap();
                         self.config.control_instruction_chip.assign(
                             region,
                             offset,
@@ -295,7 +295,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                         || Value::known(F::from(assign_value)),
                     ).unwrap();
                     if assign_value == 1 {
-                        let opcode = wasm_bytecode.bytes[offset].try_into().unwrap();
+                        let opcode = wb.bytes[offset].try_into().unwrap();
                         self.config.parametric_instruction_chip.assign(
                             region,
                             offset,
@@ -347,7 +347,8 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                     self.assign_error_code(region, offset, None)
                 }
             }
-        })
+        };
+        Ok(())
     }
 }
 
@@ -1322,13 +1323,13 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
     fn markup_instruction_section(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset_start: usize,
         block_opcode_number: &mut u64,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
 
-        let opcode = wasm_bytecode.bytes[offset];
+        let opcode = wb.bytes[offset];
 
         let mut assign_type = AssignType::Unknown;
         let mut assign_type_argument = AssignType::Unknown;
@@ -1360,19 +1361,19 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             match opcode {
                 ControlInstruction::Block => {
                     *block_opcode_number += 1;
-                    self.markup_code_blocks(region, &wasm_bytecode, offset, 1, *block_opcode_number, Some(code_blocks::types::Opcode::Block));
+                    self.markup_code_blocks(region, &wb, offset, 1, *block_opcode_number, Some(code_blocks::types::Opcode::Block))?;
                 }
                 ControlInstruction::Loop => {
                     *block_opcode_number += 1;
-                    self.markup_code_blocks(region, &wasm_bytecode, offset, 1, *block_opcode_number, Some(code_blocks::types::Opcode::Loop));
+                    self.markup_code_blocks(region, &wb, offset, 1, *block_opcode_number, Some(code_blocks::types::Opcode::Loop))?;
                 }
                 ControlInstruction::If => {
                     *block_opcode_number += 1;
-                    self.markup_code_blocks(region, &wasm_bytecode, offset, 1, *block_opcode_number, Some(code_blocks::types::Opcode::If));
+                    self.markup_code_blocks(region, &wb, offset, 1, *block_opcode_number, Some(code_blocks::types::Opcode::If))?;
                 }
                 ControlInstruction::Else => {
                     *block_opcode_number += 1;
-                    self.markup_code_blocks(region, &wasm_bytecode, offset, 1, *block_opcode_number, Some(code_blocks::types::Opcode::Else));
+                    self.markup_code_blocks(region, &wb, offset, 1, *block_opcode_number, Some(code_blocks::types::Opcode::Else))?;
                 }
                 _ => {}
             }
@@ -1387,7 +1388,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             self.shared_state().borrow_mut().block_level -= 1;
 
             *block_opcode_number += 1;
-            self.markup_code_blocks(region, &wasm_bytecode, offset, 1, *block_opcode_number, Some(code_blocks::types::Opcode::End));
+            self.markup_code_blocks(region, &wb, offset, 1, *block_opcode_number, Some(code_blocks::types::Opcode::End))?;
         };
 
         if [
@@ -1399,26 +1400,26 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         ].contains(&assign_type) {
             self.assign(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[assign_type],
                 1,
                 None,
-            );
-            self.markup_code_blocks(region, &wasm_bytecode, offset, 1, *block_opcode_number, None);
+            )?;
+            self.markup_code_blocks(region, &wb, offset, 1, *block_opcode_number, None)?;
             offset += 1;
         }
 
         if assign_type_argument == AssignType::IsBlocktypeDelimiter {
             self.assign(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[assign_type_argument],
                 1,
                 None,
-            );
-            self.markup_code_blocks(region, &wasm_bytecode, offset, 1, *block_opcode_number, None);
+            )?;
+            self.markup_code_blocks(region, &wb, offset, 1, *block_opcode_number, None)?;
             offset += 1;
         }
 
@@ -1429,11 +1430,11 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         ].contains(&assign_type_argument) {
             let (instr_arg_val, inst_arg_leb_len) = self.markup_leb_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[assign_type_argument],
-            );
-            self.markup_code_blocks(region, &wasm_bytecode, offset, inst_arg_leb_len, *block_opcode_number, None);
+            )?;
+            self.markup_code_blocks(region, &wb, offset, inst_arg_leb_len, *block_opcode_number, None)?;
             let block_level = self.config.shared_state.borrow().block_level;
             debug!(
                 "assign at offset {} block_level_lt_chip instr_arg_val {} block_level {}",
@@ -1460,21 +1461,21 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
     fn markup_code_blocks(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset_start: usize,
         len: usize,
         block_opcode_number: u64,
         code_blocks_opcode: Option<code_blocks::types::Opcode>,
-    ) {
+    ) -> Result<(), Error> {
         for offset in offset_start..offset_start + len {
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
                 &[AssignType::BlockOpcodeIndex],
                 block_opcode_number,
                 None,
-            )
+            )?
         }
         if let Some(assign_value) = code_blocks_opcode {
             if len != 1 { panic!("when assigning to code_blocks 'len' param must be eq 1") }
@@ -1495,6 +1496,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 assign_value as u64,
             );
         }
+        Ok(())
     }
 
     /// updates `shared_state.dynamic_indexes_offset` to a new offset
@@ -1503,7 +1505,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         offset_start: usize,
     ) -> Result<usize, Error> {
         let mut offset = offset_start;
@@ -1512,23 +1514,23 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         // is_funcs_count+
         let (funcs_count, funcs_count_leb_len) = self.markup_leb_section(
             region,
-            wasm_bytecode,
+            wb,
             offset,
             &[AssignType::IsFuncsCount],
-        );
-        self.markup_code_blocks(region, &wasm_bytecode, offset, funcs_count_leb_len, block_opcode_number, None);
+        )?;
+        self.markup_code_blocks(region, &wb, offset, funcs_count_leb_len, block_opcode_number, None)?;
         let mut body_item_rev_count = funcs_count;
         let funcs_count_last_byte_offset = offset + funcs_count_leb_len - 1;
         self.assign(
             region,
-            &wasm_bytecode,
+            &wb,
             funcs_count_last_byte_offset,
             &[AssignType::BodyItemRevCount],
             body_item_rev_count,
             None,
-        );
+        )?;
         self.config.shared_state.borrow_mut().func_count += funcs_count as usize;
-        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
+        self.assign(region, &wb, offset, &[AssignType::QFirst], 1, None)?;
         offset += funcs_count_leb_len;
 
         for _func_index in 0..funcs_count {
@@ -1537,73 +1539,73 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             self.config.shared_state.borrow_mut().block_level += 1;
             let (func_body_len, func_body_len_leb_len) = self.markup_leb_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::IsFuncBodyLen],
-            );
-            self.markup_code_blocks(region, &wasm_bytecode, offset, func_body_len_leb_len, block_opcode_number, None);
+            )?;
+            self.markup_code_blocks(region, &wb, offset, func_body_len_leb_len, block_opcode_number, None)?;
             let func_body_end_offset = offset + func_body_len_leb_len + (func_body_len as usize) - 1;
             for offset in offset..=func_body_end_offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
                     &[AssignType::BodyItemRevCount],
                     body_item_rev_count,
                     None,
-                );
+                )?;
             }
             let func_body_len_last_byte_offset = offset + func_body_len_leb_len - 1;
             for offset in func_body_len_last_byte_offset..=func_body_end_offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
                     &[AssignType::BodyByteRevIndex],
                     (func_body_end_offset - offset) as u64,
                     None,
-                );
+                )?;
             }
             offset += func_body_len_leb_len;
 
             //  locals{1}(is_local_type_transitions_count+ ...
             let (is_local_type_transitions_count, is_local_type_transitions_count_leb_len) = self.markup_leb_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
                 &[AssignType::IsLocalTypeTransitionsCount],
-            );
-            self.markup_code_blocks(region, &wasm_bytecode, offset, is_local_type_transitions_count_leb_len, block_opcode_number, None);
+            )?;
+            self.markup_code_blocks(region, &wb, offset, is_local_type_transitions_count_leb_len, block_opcode_number, None)?;
             offset += is_local_type_transitions_count_leb_len;
 
             for _is_valtype_transition_index in 0..is_local_type_transitions_count {
                 // -> local_var_descriptor+(is_local_repetition_count+ ...
                 let (_is_local_repetition_count, is_local_repetition_count_leb_len) = self.markup_leb_section(
                     region,
-                    wasm_bytecode,
+                    wb,
                     offset,
                     &[AssignType::IsLocalRepetitionCount],
-                );
-                self.markup_code_blocks(region, &wasm_bytecode, offset, is_local_repetition_count_leb_len, block_opcode_number, None);
+                )?;
+                self.markup_code_blocks(region, &wb, offset, is_local_repetition_count_leb_len, block_opcode_number, None)?;
                 offset += is_local_repetition_count_leb_len;
 
                 // is_local_type{1}
                 self.assign(
                     region,
-                    wasm_bytecode,
+                    wb,
                     offset,
                     &[AssignType::IsLocalType],
                     1,
                     None,
-                );
-                self.markup_code_blocks(region, &wasm_bytecode, offset, 1, block_opcode_number, None);
+                )?;
+                self.markup_code_blocks(region, &wb, offset, 1, block_opcode_number, None)?;
                 offset += 1;
             }
 
             while offset <= func_body_end_offset {
                 offset = self.markup_instruction_section(
                     region,
-                    wasm_bytecode,
+                    wb,
                     offset,
                     &mut block_opcode_number,
                 ).unwrap();
@@ -1612,7 +1614,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
         if offset != offset_start {
             let offset = offset - 1;
-            self.assign(region, &wasm_bytecode, offset, &[AssignType::QLast], 1, None);
+            self.assign(region, &wb, offset, &[AssignType::QLast], 1, None)?;
             self.config.code_blocks_chip.assign(
                 region,
                 block_opcode_number as usize - 1,
