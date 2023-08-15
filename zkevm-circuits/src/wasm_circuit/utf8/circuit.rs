@@ -392,7 +392,7 @@ impl<F: Field> UTF8Chip<F>
         // bytes_count: u8,
     ) -> Result<(), Error> {
         self.config.byte_val_is_zero_chip.assign(region, offset, Value::known(F::from(byte_val as u64)))
-            .map_err(remap_error(Error::AssignExternalChip))?;
+            .map_err(remap_error(Error::FatalAssignExternalChip))?;
 
         region.assign_fixed(
             || format!("assign 'q_enable' to {} at {}", q_enable, offset),

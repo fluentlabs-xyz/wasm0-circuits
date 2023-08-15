@@ -673,7 +673,7 @@ pub trait WasmBytesAwareChip<F: Field>: WasmAssignAwareChip<F> {
         len: usize,
     ) -> Result<usize, Error> {
         let offset_end = offset + len;
-        if offset_end >= wb.bytes.len() { return Err(error_index_out_of_bounds_wb(wb, offset)) }
+        if offset_end >= wb.bytes.len() { return Err(error_index_out_of_bounds_wb(offset)) }
         for offset in offset..offset_end {
             self.assign(
                 region,
@@ -700,7 +700,7 @@ pub trait WasmNameAwareChip<F: Field>: WasmAssignAwareChip<F> {
         assign_value: u64,
     ) -> Result<usize, Error> {
         let offset_end = offset + name_len;
-        if offset_end >= wb.bytes.len() { return Err(error_index_out_of_bounds_wb(wb, offset)) }
+        if offset_end >= wb.bytes.len() { return Err(error_index_out_of_bounds_wb(offset)) }
         for offset in offset..offset_end {
             self.assign(
                 region,

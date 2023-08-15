@@ -12,6 +12,12 @@ pub enum AssignType {
     ErrorCode,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum ErrorCode {
+    Ok = 0,
+    Error = 1,
+}
+
 #[derive(Copy, Clone, Debug, Default)]
 pub struct SharedState {
     pub dynamic_indexes_offset: usize,

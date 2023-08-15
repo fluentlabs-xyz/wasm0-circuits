@@ -595,7 +595,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
             }
             self.config.limit_type_fields.limit_type_params_lt_chip
                 .assign(region, offset, F::from(limit_min), F::from(limit_max))
-                .map_err(remap_error(Error::AssignExternalChip))?;
+                .map_err(remap_error(Error::FatalAssignExternalChip))?;
             offset += limit_max_leb_len;
         }
 

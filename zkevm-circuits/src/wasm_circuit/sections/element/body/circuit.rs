@@ -832,7 +832,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         offset += func_idxs_leb_len;
                     }
                 }
-                _ => { return Err(Error::UnsupportedTypeValue(format!("unsupported element type '{:?}'", elem_type))) }
+                _ => { return Err(Error::FatalUnsupportedTypeValue(format!("unsupported element type '{:?}'", elem_type))) }
             }
 
             for offset in item_start_offset..offset {

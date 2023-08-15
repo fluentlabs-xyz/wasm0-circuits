@@ -22,7 +22,7 @@ use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, wasm_compute_section_len, WasmAssignAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::configure_transition_check;
 use crate::wasm_circuit::consts::{ControlInstruction, ExportDescType, ImportDescType, SECTION_ID_DEFAULT, WASM_MAGIC_PREFIX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX_BASE_INDEX, WASM_VERSION_PREFIX_LENGTH, WasmSection};
-use crate::wasm_circuit::error::{Error, error_index_out_of_bounds_wb, remap_error_to_assign_at_offset};
+use crate::wasm_circuit::error::{Error, error_index_out_of_bounds_wb, is_fatal_error, is_recoverable_error, remap_error_to_assign_at_offset};
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128::helpers::leb128_compute_last_byte_offset;
 use crate::wasm_circuit::sections::code::body::circuit::WasmCodeSectionBodyChip;
@@ -41,7 +41,7 @@ use crate::wasm_circuit::sections::table::body::circuit::WasmTableSectionBodyChi
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
-use crate::wasm_circuit::types::{AssignType, SharedState};
+use crate::wasm_circuit::types::{AssignType, ErrorCode, SharedState};
 use crate::wasm_circuit::utf8::circuit::UTF8Chip;
 
 pub struct WasmSectionConfig<F: Field> {
@@ -153,7 +153,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
 
         for assign_type in assign_types {
             match assign_type {
-                AssignType::Unknown => { return Err(Error::UnknownAssignTypeUsed) }
+                AssignType::Unknown => { return Err(Error::FatalUnknownAssignTypeUsed) }
                 AssignType::QFirst => {
                     region.assign_fixed(
                         || format!("assign 'q_first' val {} at {}", assign_value, offset),
@@ -1094,6 +1094,45 @@ impl<F: Field> WasmChip<F>
         region: &mut Region<F>,
         wb: &WasmBytecode,
     ) -> Result<(), Error> {
+        let res = self.assign_auto_internal(region, wb);
+
+        if let Err(e) = res {
+            return if is_recoverable_error(&e) & self.config.shared_state.borrow().error_processing_enabled {
+                match e {
+                    Error::IndexOutOfBounds(offset) |
+                    Error::AssignAtOffset(offset) |
+                    Error::ParseOpcodeFailed(offset) => {
+                        for offset in offset..wb.bytes.len() {
+                            self.assign(region, wb, offset, &[AssignType::ErrorCode], ErrorCode::Error as u64, None)?;
+                        }
+                    }
+
+                    Error::IndexOutOfBoundsSimple
+                    | Error::Leb128EncodeSigned
+                    | Error::Leb128EncodeUnsigned
+                    | Error::Leb128MaxBytes
+                    | Error::EnumValueNotFound
+                    | Error::ComputationFailed => {
+                        return Err(Error::FatalRecoverableButNotProcessed(
+                            "recoverable error must be converted inside circuit to sustain error processing mechanics".to_string()
+                        ))
+                    }
+
+                    _ => return Err(e)
+                }
+
+                Ok(())
+            } else { Err(e) }
+        }
+
+        res
+    }
+
+    fn assign_auto_internal(
+        &mut self,
+        region: &mut Region<F>,
+        wb: &WasmBytecode,
+    ) -> Result<(), Error> {
         debug!("wb.bytes {:x?}", wb.bytes);
         self.assign(
             region,
@@ -1117,7 +1156,7 @@ impl<F: Field> WasmChip<F>
         loop {
             let section_start_offset = wasm_bytes_offset;
             let section_len_start_offset = section_start_offset + 1;
-            let section_id = wb.get(wasm_bytes_offset).ok_or(error_index_out_of_bounds_wb(wb, wasm_bytes_offset))?;
+            let section_id = wb.get(wasm_bytes_offset).ok_or(error_index_out_of_bounds_wb(wasm_bytes_offset))?;
             let section_id = *section_id as u64;
             wasm_bytes_offset += 1;
             let (section_len, section_len_leb_bytes_count) = wasm_compute_section_len(&wb.bytes, wasm_bytes_offset)?;
@@ -1239,7 +1278,7 @@ impl<F: Field> WasmChip<F>
                                 section_body_offset,
                             ).map_err(remap_error_to_assign_at_offset(offset))?;
                         }
-                        _ => { return Err(Error::UnsupportedValue(format!("unsupported section '{:x?}'", wasm_section))) }
+                        _ => { return Err(Error::FatalUnsupportedValue(format!("unsupported section '{:x?}'", wasm_section))) }
                     }
                     debug!(
                         "wasm_section {:?} section_body_offset {} after assign_auto next_section_offset {}",

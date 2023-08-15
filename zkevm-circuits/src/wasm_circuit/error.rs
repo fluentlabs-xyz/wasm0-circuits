@@ -1,49 +1,79 @@
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 
-#[derive(Debug)]
-pub enum Error {
-    // recoverable/parsing errors
+type Offset = usize;
 
+#[derive(Debug, Clone)]
+pub enum Error {
     IndexOutOfBoundsSimple,
-    /// 1st arg is the offset the error occur, 2nd is the length
-    IndexOutOfBounds(usize, usize),
+    IndexOutOfBounds(Offset),
     Leb128EncodeSigned,
     Leb128EncodeUnsigned,
     Leb128MaxBytes,
-    AssignAtOffset(usize),
+    AssignAtOffset(Offset),
     EnumValueNotFound,
-    ParseOpcodeFailed(usize),
+    ParseOpcodeFailed(Offset),
     ComputationFailed,
 
-    // fatal errors
+    FatalAssignExternalChip,
+    FatalUnknownAssignTypeUsed,
+    FatalUnsupportedValue(String),
+    FatalUnsupportedTypeValue(String),
+    FatalInvalidArgumentValue(String),
 
-    AssignExternalChip,
-    UnknownAssignTypeUsed,
-    UnsupportedValue(String),
-    UnsupportedTypeValue(String),
-    InvalidArgumentValue(String),
+    FatalLeb128Overflow(String),
+    FatalLeb128AlignOverflow(String),
+    FatalLeb128ThresholdOverflow(String),
+    FatalLeb128InvalidArgumentValue(String),
 
-    Leb128Overflow(String),
-    Leb128AlignOverflow(String),
-    Leb128ThresholdOverflow(String),
-    Leb128InvalidArgumentValue(String),
+    FatalRecoverableButNotProcessed(String),
+
+    FatalUnknown(String),
+}
+pub fn is_recoverable_error(e: &Error) -> bool {
+    match e {
+        Error::IndexOutOfBoundsSimple => {}
+        Error::IndexOutOfBounds(_) => {}
+        Error::Leb128EncodeSigned => {}
+        Error::Leb128EncodeUnsigned => {}
+        Error::Leb128MaxBytes => {}
+        Error::AssignAtOffset(_) => {}
+        Error::EnumValueNotFound => {}
+        Error::ParseOpcodeFailed(_) => {}
+        Error::ComputationFailed => {}
+
+        _ => {}
+    }
+    false
+}
+pub fn is_fatal_error(e: &Error) -> bool {
+    match e {
+        Error::FatalAssignExternalChip |
+        Error::FatalUnknownAssignTypeUsed |
+        Error::FatalUnsupportedValue(_) |
+        Error::FatalUnsupportedTypeValue(_) |
+        Error::FatalInvalidArgumentValue(_) |
+        Error::FatalLeb128Overflow(_) |
+        Error::FatalLeb128AlignOverflow(_) |
+        Error::FatalLeb128ThresholdOverflow(_) |
+        Error::FatalLeb128InvalidArgumentValue(_) |
+        Error::FatalRecoverableButNotProcessed(_) |
+        Error::FatalUnknown(_) => { return true }
+
+        _ => {}
+    }
+    false
 }
 
-pub fn error_index_out_of_bounds(start_offset: usize, len: usize) -> Error {
-    Error::IndexOutOfBounds(start_offset, len)
+pub fn error_index_out_of_bounds(offset: usize) -> Error {
+    Error::IndexOutOfBounds(offset)
 }
 
-pub fn error_index_out_of_bounds_wb(wb: &WasmBytecode, offset: usize) -> Error {
-    Error::IndexOutOfBounds(offset, wb.bytes.len())
+pub fn error_index_out_of_bounds_wb(offset: usize) -> Error {
+    Error::IndexOutOfBounds(offset)
 }
 
 pub fn validate_wb_offset(wb: &WasmBytecode, offset: usize) -> Result<(), Error> {
-    if offset >= wb.bytes.len() { return Err(error_index_out_of_bounds_wb(wb, offset)) }
-    Ok(())
-}
-
-pub fn validate_offset(wb: &WasmBytecode, offset: usize) -> Result<(), Error> {
-    if offset >= wb.bytes.len() { return Err(error_index_out_of_bounds_wb(wb, offset)) }
+    if offset >= wb.bytes.len() { return Err(error_index_out_of_bounds_wb(offset)) }
     Ok(())
 }
 

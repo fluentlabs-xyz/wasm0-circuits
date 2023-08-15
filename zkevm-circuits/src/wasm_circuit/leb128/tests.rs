@@ -140,7 +140,7 @@ mod leb128_circuit_tests {
         if bytes.len() == align_to_bytes_count {
             return Ok((bytes.to_vec(), last_byte_index));
         }
-        if bytes.len() > align_to_bytes_count { return Err(Error::Leb128AlignOverflow(format!("bytes count is greater than required. input_number {} align_to_bytes_count {} bytes.len() {}", input_number, align_to_bytes_count, bytes.len()))) }
+        if bytes.len() > align_to_bytes_count { return Err(Error::FatalLeb128AlignOverflow(format!("bytes count is greater than required. input_number {} align_to_bytes_count {} bytes.len() {}", input_number, align_to_bytes_count, bytes.len()))) }
         let mut res_vec = vec![0; align_to_bytes_count];
         for (i, &item) in bytes.iter().enumerate() {
             res_vec[i] = item;
@@ -150,7 +150,7 @@ mod leb128_circuit_tests {
 
     /// singed leb repr and last byte index
     fn convert_to_leb_bytes_signed(input_number: i64, align_to_bytes_count: usize) -> Result<(Vec<u8>, usize), Error> {
-        if input_number >= 0 { return Err(Error::Leb128InvalidArgumentValue(format!("only negative numbers can be converted into signed repr"))) }
+        if input_number >= 0 { return Err(Error::FatalLeb128InvalidArgumentValue(format!("only negative numbers can be converted into signed repr"))) }
         let mut bytes = Vec::new();
         let mut last_byte_index: usize = 0;
         let mut number = input_number;
@@ -185,7 +185,7 @@ mod leb128_circuit_tests {
             return Ok((res.to_vec(), last_byte_index));
         }
         if res.len() > align_to_bytes_count {
-            return Err(Error::Leb128AlignOverflow(format!("bytes count is greater than required. input_number {} align_to_bytes_count {} bytes.len() {}", input_number, align_to_bytes_count, bytes.len())))
+            return Err(Error::FatalLeb128AlignOverflow(format!("bytes count is greater than required. input_number {} align_to_bytes_count {} bytes.len() {}", input_number, align_to_bytes_count, bytes.len())))
         }
         let mut res_vec = vec![EIGHT_LS_BITS_MASK; align_to_bytes_count];
         for (i, &item) in res.iter().enumerate() {
@@ -199,7 +199,7 @@ mod leb128_circuit_tests {
             return Ok(convert_to_leb_bytes_unsigned(number, exact_bytes_count)?);
         }
         let max_signed_value: u64 = i64::MAX as u64;
-        if number >= max_signed_value { return Err(Error::Leb128Overflow(format!("max signed value is {} but given {} (is_signed: {})", max_signed_value, number, is_signed))) }
+        if number >= max_signed_value { return Err(Error::FatalLeb128Overflow(format!("max signed value is {} but given {} (is_signed: {})", max_signed_value, number, is_signed))) }
         Ok(convert_to_leb_bytes_signed(
             if is_signed { -(number as i64) } else { number as i64 },
             exact_bytes_count,
@@ -231,7 +231,7 @@ mod leb128_circuit_tests {
             max_bit_depth_computed -= 1
         }
         if max_bit_depth_computed > max_bit_depth_threshold {
-            return Err(Error::Leb128ThresholdOverflow(format!("computed max bit depth {} is greater threshold {}. there may be problem in program logic", max_bit_depth_computed, max_bit_depth_threshold)))
+            return Err(Error::FatalLeb128ThresholdOverflow(format!("computed max bit depth {} is greater threshold {}. there may be problem in program logic", max_bit_depth_computed, max_bit_depth_threshold)))
         }
         if max_bit_depth_computed > max_bit_depth {
             return Ok(max_bit_depth)

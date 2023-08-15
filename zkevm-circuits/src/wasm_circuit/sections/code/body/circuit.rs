@@ -173,7 +173,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                     ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::Unknown => {
-                    return Err(Error::UnknownAssignTypeUsed)
+                    return Err(Error::FatalUnknownAssignTypeUsed)
                 }
                 AssignType::IsFuncsCount => {
                     region.assign_fixed(
@@ -228,7 +228,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                             region,
                             offset,
                             &opcode,
-                        ).map_err(remap_error(Error::AssignExternalChip))?;
+                        ).map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                 }
                 AssignType::IsNumericInstructionLebArg => {
@@ -252,7 +252,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                             region,
                             offset,
                             &opcode,
-                        ).map_err(remap_error(Error::AssignExternalChip))?;
+                        ).map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                 }
                 AssignType::IsVariableInstructionLebArg => {
@@ -276,7 +276,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                             region,
                             offset,
                             &opcode,
-                        ).map_err(remap_error(Error::AssignExternalChip))?;
+                        ).map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                 }
                 AssignType::IsControlInstructionLebArg => {
@@ -300,7 +300,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                             region,
                             offset,
                             &opcode,
-                        ).map_err(remap_error(Error::AssignExternalChip))?;
+                        ).map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                 }
                 AssignType::IsBlocktypeDelimiter => {
@@ -1447,7 +1447,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 offset,
                 F::from(instr_arg_val),
                 F::from(block_level as u64),
-            ).map_err(remap_error(Error::AssignExternalChip))?;
+            ).map_err(remap_error(Error::FatalAssignExternalChip))?;
             offset += inst_arg_leb_len;
         }
 
@@ -1478,7 +1478,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             )?
         }
         if let Some(assign_value) = code_blocks_opcode {
-            if len != 1 { return Err(Error::InvalidArgumentValue("when assigning to code_blocks 'len' param must be eq 1".to_string())) }
+            if len != 1 { return Err(Error::FatalInvalidArgumentValue("when assigning to code_blocks 'len' param must be eq 1".to_string())) }
             let offset = block_opcode_number as usize - 1;
             if offset == 0 {
                 self.config.code_blocks_chip.assign(region, offset, code_blocks::types::AssignType::QFirst, 1)?;

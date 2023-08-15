@@ -1537,7 +1537,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 None,
             )?;
             self.config.importdesc_type_chip.assign(region, offset, &importdesc_type)
-                .map_err(remap_error(Error::AssignExternalChip))?;
+                .map_err(remap_error(Error::FatalAssignExternalChip))?;
             offset += 1;
 
             // is_importdesc_val+
@@ -1559,7 +1559,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                             None,
                         )?;
                         self.config.importdesc_type_chip.assign(region, offset, &importdesc_type)
-                            .map_err(remap_error(Error::AssignExternalChip))?;
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                     offset += importdesc_val_leb_len;
                 }
@@ -1580,7 +1580,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                             None,
                         )?;
                         self.config.importdesc_type_chip.assign(region, offset, &importdesc_type)
-                            .map_err(remap_error(Error::AssignExternalChip))?;
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                     offset += importdesc_val_leb_len;
 
@@ -1602,7 +1602,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                             None,
                         )?;
                         self.config.importdesc_type_chip.assign(region, offset, &importdesc_type)
-                            .map_err(remap_error(Error::AssignExternalChip))?;
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                     offset += 1;
                 }
@@ -1703,7 +1703,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                         }
                         self.config.limit_type_fields.limit_type_params_lt_chip
                             .assign(region, offset, F::from(limit_min), F::from(limit_max))
-                            .map_err(remap_error(Error::AssignExternalChip))?;
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                         offset += limit_max_leb_len;
                     }
                 }

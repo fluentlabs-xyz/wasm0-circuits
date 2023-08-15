@@ -224,7 +224,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         region,
                         offset,
                         &mem_segment_type,
-                    ).map_err(remap_error(Error::AssignExternalChip))?;
+                    ).map_err(remap_error(Error::FatalAssignExternalChip))?;
                 }
                 AssignType::IsMemIndex => {
                     region.assign_fixed(

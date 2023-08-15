@@ -72,7 +72,7 @@ mod wasm_circuit_tests {
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
-    use rand::{Rng, thread_rng};
+    use rand::{random, Rng};
     use wabt::wat2wasm;
 
     use bus_mapping::state_db::CodeDB;
@@ -143,8 +143,8 @@ mod wasm_circuit_tests {
         let wasm_binary = wat2wasm(data).unwrap();
         debug!("wasm_binary.len: {}", wasm_binary.len());
         debug!("wasm_binary.len hex: {:x?}", wasm_binary.len());
-        debug!("wasm_binary last_index: {}", wasm_binary.len() - 1);
-        debug!("wasm_binary last_index hex: {:x?}", wasm_binary.len() - 1);
+        debug!("wasm_binary last index: {}", wasm_binary.len() - 1);
+        debug!("wasm_binary last index hex: {:x?}", wasm_binary.len() - 1);
         debug!("wasm_binary: {:x?}", wasm_binary);
         let mut code_hash = CodeDB::hash(&wasm_binary);
         let circuit = TestCircuit::<Fr> {
@@ -153,35 +153,6 @@ mod wasm_circuit_tests {
             _marker: PhantomData,
         };
         self::test(circuit, true);
-    }
-
-    /// for development only
-    #[ignore]
-    #[test]
-    pub fn string_to_hex_bytes_test() {
-        let strings = [
-            "g1",
-            "g2",
-            "g3",
-            "js",
-            "global",
-            "Hello, World",
-            "none",
-            "\0asm",
-            "main",
-            "memory",
-            "table",
-            "spectest",
-            "env",
-            "_evm_address",
-            "_evm_balance",
-            "_evm_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func_some_long_name_func",
-            "test",
-            "global-i32",
-        ];
-        for str in strings {
-            debug!("'{}' in hex {:x?} in decimal {:?}", str, str.to_string().as_bytes(), str.to_string().as_bytes());
-        }
     }
 
     #[test]
@@ -194,7 +165,7 @@ mod wasm_circuit_tests {
         for path_to_file in paths_to_files {
             let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
             let mut wasm_binary = wat2wasm(data).unwrap();
-            let i: usize = thread_rng().gen::<usize>() % (WASM_MAGIC_PREFIX.len() - 1) + 1; // exclude \0 char at 0 index
+            let i: usize = random::<usize>() % (WASM_MAGIC_PREFIX.len() - 1) + 1; // exclude \0 char at 0 index
             wasm_binary[i] = change_byte_val_randomly_no_collision(wasm_binary[i]);
             let circuit = TestCircuit::<Fr> {
                 bytes: wasm_binary.clone(),
@@ -215,7 +186,7 @@ mod wasm_circuit_tests {
         for path_to_file in paths_to_files {
             let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
             let mut wasm_binary = wat2wasm(data).unwrap();
-            let i: usize = thread_rng().gen::<usize>() % (WASM_MAGIC_PREFIX.len() - 1) + 1; // exclude \0 char at 0 index
+            let i: usize = random::<usize>() % (WASM_MAGIC_PREFIX.len() - 1) + 1; // exclude \0 char at 0 index
             wasm_binary[i] = change_byte_val_randomly_no_collision(wasm_binary[i]);
             let circuit = TestCircuit::<Fr> {
                 bytes: wasm_binary.clone(),
@@ -236,7 +207,7 @@ mod wasm_circuit_tests {
         for path_to_file in paths_to_files {
             let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
             let mut wasm_binary = wat2wasm(data).unwrap();
-            let i: usize = WASM_VERSION_PREFIX_BASE_INDEX + thread_rng().gen::<usize>() % WASM_VERSION_PREFIX_LENGTH;
+            let i: usize = WASM_VERSION_PREFIX_BASE_INDEX + random::<usize>() % WASM_VERSION_PREFIX_LENGTH;
             wasm_binary[i] = change_byte_val_randomly_no_collision(wasm_binary[i]);
             let circuit = TestCircuit::<Fr> {
                 bytes: wasm_binary.clone(),
@@ -259,22 +230,24 @@ mod wasm_circuit_tests {
         self::test(circuit, false);
     }
 
-    #[ignore] // TODO some problems after new module integration
     #[test]
-    pub fn test_wrong_sections_order_must_fail() {
+    pub fn parse_error_file1_() {
         let path_to_file = "./test_files/cc1.wat";
         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
-        let wasm_binary = wat2wasm(data).unwrap();
-        debug!("wasm_binary.len: {}", wasm_binary.len());
-        debug!("wasm_binary.len hex: {:x?}", wasm_binary.len());
-        debug!("wasm_binary last_index: {}", wasm_binary.len() - 1);
-        debug!("wasm_binary last_index hex: {:x?}", wasm_binary.len() - 1);
-        debug!("wasm_binary (original): {:x?}", wasm_binary);
-        // TODO swap some sections
-        debug!("wasm_binary (modified): {:x?}", wasm_binary);
+        let mut wb = wat2wasm(data).unwrap();
+        debug!("wasm_binary.len: {}", wb.len());
+        debug!("wasm_binary.len hex: {:x?}", wb.len());
+        debug!("wasm_binary last_index: {}", wb.len() - 1);
+        debug!("wasm_binary last_index hex: {:x?}", wb.len() - 1);
+        debug!("wasm_binary (original): {:x?}", wb);
+
+        // made some changes
+        wb[8] = 22; // change section ID to some unknown
+
+        debug!("wasm_binary (modified): {:x?}", wb);
         let circuit = TestCircuit::<Fr> {
-            bytes: wasm_binary.clone(),
-            code_hash: CodeDB::hash(&wasm_binary),
+            bytes: wb.clone(),
+            code_hash: CodeDB::hash(&wb),
             _marker: PhantomData,
         };
         self::test(circuit, false);

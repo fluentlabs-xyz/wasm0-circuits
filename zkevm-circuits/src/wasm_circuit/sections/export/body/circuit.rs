@@ -627,7 +627,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                 None,
             )?;
             self.config.exportdesc_type_chip.assign(region, offset, &exportdesc_type)
-                .map_err(remap_error(Error::AssignExternalChip))?;
+                .map_err(remap_error(Error::FatalAssignExternalChip))?;
             offset += 1;
 
             match exportdesc_type {
@@ -648,7 +648,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                             None,
                         )?;
                         self.config.exportdesc_type_chip.assign(region, offset, &exportdesc_type)
-                            .map_err(remap_error(Error::AssignExternalChip))?;
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                     offset += exportdesc_val_leb_len;
                 }
