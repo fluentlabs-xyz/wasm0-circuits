@@ -18,7 +18,7 @@ use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
-use crate::wasm_circuit::error::Error;
+use crate::wasm_circuit::error::{Error, remap_error_to_assign_at_offset};
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::start::body::types::AssignType;
@@ -91,7 +91,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmStartSectionBodyChip<F> {
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
         self.assign_func_count(region, offset)?;
 
         for assign_type in assign_types {
@@ -102,7 +102,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmStartSectionBodyChip<F> {
                     offset,
                     q_enable,
                     p,
-                );
+                )?;
             }
             match assign_type {
                 AssignType::QFirst => {
@@ -111,7 +111,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmStartSectionBodyChip<F> {
                         self.config.q_first,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::QLast => {
                     region.assign_fixed(
@@ -119,7 +119,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmStartSectionBodyChip<F> {
                         self.config.q_last,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsFuncsIndex => {
                     region.assign_fixed(
@@ -127,10 +127,10 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmStartSectionBodyChip<F> {
                         self.config.is_func_index,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::ErrorCode => {
-                    self.assign_error_code(region, offset, None)
+                    self.assign_error_code(region, offset, None)?;
                 }
             }
         };

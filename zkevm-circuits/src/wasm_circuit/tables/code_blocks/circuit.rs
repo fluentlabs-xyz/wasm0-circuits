@@ -15,6 +15,7 @@ use gadgets::util::{and, Expr, not};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::common::configure_constraints_for_q_first_and_q_last;
+use crate::wasm_circuit::error::{Error, remap_error_to_assign_at_offset};
 use crate::wasm_circuit::tables::code_blocks::types::{AssignType, Opcode, OPCODE_VALUES};
 
 #[derive(Debug, Clone)]
@@ -70,15 +71,15 @@ impl<F: Field> CodeBlocksChip<F>
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
             let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
-            let not_q_first_expr = not::expr(q_first_expr.clone());
+            // let not_q_first_expr = not::expr(q_first_expr.clone());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
 
             let opcode_expr = vc.query_advice(opcode, Rotation::cur());
-            let opcode_next_expr = vc.query_advice(opcode, Rotation::next());
+            // let opcode_next_expr = vc.query_advice(opcode, Rotation::next());
 
             let index_expr = vc.query_advice(index, Rotation::cur());
-            let index_next_expr = vc.query_advice(index, Rotation::next());
+            // let index_next_expr = vc.query_advice(index, Rotation::next());
 
             let opcode_is_block_expr = opcode_chip.config.value_equals(Opcode::Block, Rotation::cur())(vc);
             let opcode_is_block_next_expr = opcode_chip.config.value_equals(Opcode::Block, Rotation::next())(vc);
@@ -246,7 +247,7 @@ impl<F: Field> CodeBlocksChip<F>
         offset: usize,
         assign_type: AssignType,
         assign_value: u64,
-    ) {
+    ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
             "assign at offset {} q_enable {} assign_type {:?} assign_value {:?}",
@@ -268,7 +269,7 @@ impl<F: Field> CodeBlocksChip<F>
                     self.config.index,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).unwrap();
+                ).map_err(remap_error_to_assign_at_offset(offset))?;
             }
             AssignType::Opcode => {
                 region.assign_advice(
@@ -276,13 +277,13 @@ impl<F: Field> CodeBlocksChip<F>
                     self.config.opcode,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).unwrap();
-                let opcode: Opcode = (assign_value as u8).try_into().unwrap();
+                ).map_err(remap_error_to_assign_at_offset(offset))?;
+                let opcode: Opcode = (assign_value as u8).try_into()?;
                 self.config.opcode_chip.assign(
                     region,
                     offset,
                     &opcode,
-                ).unwrap();
+                ).map_err(remap_error_to_assign_at_offset(offset))?;
             }
             AssignType::QFirst => {
                 region.assign_fixed(
@@ -290,7 +291,7 @@ impl<F: Field> CodeBlocksChip<F>
                     self.config.q_first,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).unwrap();
+                ).map_err(remap_error_to_assign_at_offset(offset))?;
             }
             AssignType::QLast => {
                 region.assign_fixed(
@@ -298,8 +299,9 @@ impl<F: Field> CodeBlocksChip<F>
                     self.config.q_last,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).unwrap();
+                ).map_err(remap_error_to_assign_at_offset(offset))?;
             }
         }
+        Ok(())
     }
 }

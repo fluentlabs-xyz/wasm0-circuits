@@ -185,6 +185,27 @@ mod wasm_circuit_tests {
     }
 
     #[test]
+    pub fn invalid_bytecode() {
+        let paths_to_files = [
+            "./test_files/cc1.wat",
+            "./test_files/cc2.wat",
+            "./test_files/cc3.wat",
+        ];
+        for path_to_file in paths_to_files {
+            let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+            let mut wasm_binary = wat2wasm(data).unwrap();
+            let i: usize = thread_rng().gen::<usize>() % (WASM_MAGIC_PREFIX.len() - 1) + 1; // exclude \0 char at 0 index
+            wasm_binary[i] = change_byte_val_randomly_no_collision(wasm_binary[i]);
+            let circuit = TestCircuit::<Fr> {
+                bytes: wasm_binary.clone(),
+                code_hash: CodeDB::hash(&wasm_binary),
+                _marker: PhantomData,
+            };
+            self::test(circuit, false);
+        }
+    }
+
+    #[test]
     pub fn bad_magic_prefix_fails() {
         let paths_to_files = [
             "./test_files/cc1.wat",

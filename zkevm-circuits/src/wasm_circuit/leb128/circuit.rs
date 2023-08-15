@@ -9,6 +9,7 @@ use num_traits::pow;
 use eth_types::Field;
 use gadgets::util::{and, Expr, not, or, select};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use crate::wasm_circuit::error::{Error, remap_error_to_assign_at_offset};
 use crate::wasm_circuit::sections::consts::LebParams;
 
 #[derive(Debug, Clone)]
@@ -232,41 +233,41 @@ impl<F: Field> LEB128Chip<F>
         offset: usize,
         q_enable: bool,
         p: LebParams,
-    ) {
+    ) -> Result<(), Error> {
         region.assign_fixed(
             || format!("assign 'q_enable' to {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
 
         region.assign_fixed(
             || format!("assign 'is_signed' to {} at {}", p.is_signed, offset),
             self.config.is_signed,
             offset,
             || Value::known(F::from(p.is_signed as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
 
         region.assign_fixed(
             || format!("assign 'is_byte_has_cb' to {} at {}", p.is_byte_has_cb(), offset),
             self.config.is_byte_has_cb,
             offset,
             || Value::known(F::from(p.is_byte_has_cb() as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
 
         region.assign_fixed(
             || format!("assign 'is_first_byte' to {} at {}", p.is_first_byte(), offset),
             self.config.is_first_byte,
             offset,
             || Value::known(F::from(p.is_first_byte() as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
 
         region.assign_fixed(
             || format!("assign 'is_last_byte' to {} at {}", p.is_last_byte(), offset),
             self.config.is_last_byte,
             offset,
             || Value::known(F::from(p.is_last_byte() as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
 
         let leb_byte_mul = if p.is_byte_has_cb() || p.is_last_byte() { pow(0b10000000, p.byte_rel_offset) } else { 0 };
         region.assign_advice(
@@ -274,19 +275,16 @@ impl<F: Field> LEB128Chip<F>
             self.config.byte_mul,
             offset,
             || Value::known(F::from(leb_byte_mul)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
 
-        let val = if p.is_signed {
-            F::from(p.sn).neg()
-        } else {
-            F::from(p.sn)
-        };
+        let mut val = F::from(p.sn);
+        if p.is_signed { val = val.neg() }
         region.assign_advice(
             || format!("assign 'sn' is_signed '{}' to {} at {}", p.is_signed, p.sn, offset),
             self.config.sn,
             offset,
             || Value::known(F::from(val)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
 
         let val = if p.is_signed && p.is_last_byte() {
             F::from(p.sn_recovered_at_pos).neg()
@@ -298,6 +296,8 @@ impl<F: Field> LEB128Chip<F>
             self.config.sn_recovered,
             offset,
             || Value::known(val),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
+
+        Ok(())
     }
 }

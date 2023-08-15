@@ -20,7 +20,7 @@ use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::NumType;
-use crate::wasm_circuit::error::{Error, remap_plonk_error};
+use crate::wasm_circuit::error::{Error, remap_error_to_assign_at_offset};
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::r#type::item::consts::Type::FuncType;
@@ -101,7 +101,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
         self.assign_func_count(region, offset)?;
 
         for assign_type in assign_types {
@@ -115,7 +115,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
                     offset,
                     true,
                     p,
-                );
+                )?;
             }
             match assign_type {
                 AssignType::IsType => {
@@ -124,7 +124,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
                         self.config.is_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_plonk_error(offset))?;
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsInputCount => {
                     region.assign_fixed(
@@ -132,7 +132,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
                         self.config.is_input_count,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_plonk_error(offset))?;
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsInputType => {
                     region.assign_fixed(
@@ -140,7 +140,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
                         self.config.is_input_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_plonk_error(offset))?;
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsOutputCount => {
                     region.assign_fixed(
@@ -148,7 +148,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
                         self.config.is_output_count,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_plonk_error(offset))?;
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsOutputType => {
                     region.assign_fixed(
@@ -156,7 +156,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
                         self.config.is_output_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_plonk_error(offset))?;
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::QFirst => {
                     region.assign_fixed(
@@ -164,7 +164,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
                         self.config.q_first,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_plonk_error(offset))?;
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::QLast => {
                     region.assign_fixed(
@@ -172,7 +172,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
                         self.config.q_last,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_plonk_error(offset))?;
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::BodyItemRevCount => {
                     region.assign_advice(
@@ -180,10 +180,10 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
                         self.config.body_item_rev_count,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_plonk_error(offset))?;
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::ErrorCode => {
-                    self.assign_error_code(region, offset, None);
+                    self.assign_error_code(region, offset, None)?;
                 }
             }
         };
@@ -267,7 +267,7 @@ impl<F: Field> WasmTypeSectionItemChip<F>
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            // let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_type_expr = vc.query_fixed(is_type, Rotation::cur());

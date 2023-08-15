@@ -1,6 +1,6 @@
 use num_traits::pow;
 
-use crate::wasm_circuit::error::{Error, error_index_out_of_bounds_simple, remap_io_error};
+use crate::wasm_circuit::error::{Error, remap_error};
 use crate::wasm_circuit::leb128::consts::{EIGHT_MS_BIT_MASK, LEB128_MAX_BYTES_COUNT};
 
 pub fn leb128_compute_sn_recovered_at_position(
@@ -32,13 +32,13 @@ pub fn leb128_compute_last_byte_offset(
 ) -> Result<usize, Error> {
     let mut offset = first_byte_offset;
     loop {
-        let byte = bytes.get(offset);
-        if byte.is_none() { return Err(error_index_out_of_bounds_simple()) }
-        if byte.unwrap() & EIGHT_MS_BIT_MASK == 0 { break }
+        let byte = bytes.get(offset).ok_or(Error::IndexOutOfBoundsSimple)?;
+        if byte & EIGHT_MS_BIT_MASK == 0 { break }
         offset += 1;
         let byte_offset = offset - first_byte_offset;
-        if byte_offset >= LEB128_MAX_BYTES_COUNT { return Err(error_index_out_of_bounds_simple()) }
+        if byte_offset >= LEB128_MAX_BYTES_COUNT { return Err(Error::IndexOutOfBoundsSimple) }
     }
+
     Ok(offset)
 }
 
@@ -70,9 +70,9 @@ pub fn leb128_encode(
     if !is_signed && value < 0 { return Err(Error::Leb128EncodeUnsigned) }
 
     if is_signed {
-        leb128::write::signed(&mut res, value as i64).map_err(remap_io_error(Error::Leb128EncodeSigned))?;
+        leb128::write::signed(&mut res, value as i64).map_err(remap_error(Error::Leb128EncodeSigned))?;
     } else {
-        leb128::write::unsigned(&mut res, value as u64).map_err(remap_io_error(Error::Leb128EncodeUnsigned))?;
+        leb128::write::unsigned(&mut res, value as u64).map_err(remap_error(Error::Leb128EncodeUnsigned))?;
     }
 
     Ok(res)

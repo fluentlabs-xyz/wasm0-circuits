@@ -21,7 +21,7 @@ use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
 use crate::wasm_circuit::consts::{MemSegmentType, NumericInstruction, WASM_BLOCK_END};
-use crate::wasm_circuit::error::Error;
+use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at_offset};
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::data::body::types::AssignType;
@@ -114,7 +114,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
         self.assign_func_count(region, offset)?;
 
         for assign_type in assign_types {
@@ -129,7 +129,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                     offset,
                     q_enable,
                     p,
-                );
+                )?;
             }
             match assign_type {
                 AssignType::QFirst => {
@@ -138,7 +138,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.q_first,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::QLast => {
                     region.assign_fixed(
@@ -146,7 +146,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.q_last,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsItemsCount => {
                     region.assign_fixed(
@@ -154,7 +154,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.is_items_count,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsMemSegmentType => {
                     region.assign_fixed(
@@ -162,7 +162,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.is_mem_segment_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsMemSegmentSizeOpcode => {
                     region.assign_fixed(
@@ -170,7 +170,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.is_mem_segment_size_opcode,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsMemSegmentSize => {
                     region.assign_fixed(
@@ -178,7 +178,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.is_mem_segment_size,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsBlockEnd => {
                     region.assign_fixed(
@@ -186,7 +186,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.is_block_end,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsMemSegmentLen => {
                     region.assign_fixed(
@@ -194,7 +194,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.is_mem_segment_len,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsMemSegmentBytes => {
                     region.assign_fixed(
@@ -202,7 +202,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.is_mem_segment_bytes,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::IsMemSegmentTypeCtx => {
                     region.assign_fixed(
@@ -210,7 +210,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.is_mem_segment_type_ctx,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::MemSegmentType => {
                     region.assign_advice(
@@ -218,13 +218,13 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.mem_segment_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
-                    let mem_segment_type: MemSegmentType = (assign_value as u8).try_into().unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    let mem_segment_type: MemSegmentType = (assign_value as u8).try_into()?;
                     self.config.mem_segment_type_chip.assign(
                         region,
                         offset,
                         &mem_segment_type,
-                    ).unwrap();
+                    ).map_err(remap_error(Error::AssignExternalChip))?;
                 }
                 AssignType::IsMemIndex => {
                     region.assign_fixed(
@@ -232,7 +232,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.is_memidx,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::BodyByteRevIndex => {
                     region.assign_advice(
@@ -240,7 +240,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.body_byte_rev_index,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::BodyItemRevCount => {
                     region.assign_advice(
@@ -248,10 +248,10 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                         self.config.body_item_rev_count,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at_offset(offset))?;
                 }
                 AssignType::ErrorCode => {
-                    self.assign_error_code(region, offset, None)
+                    self.assign_error_code(region, offset, None)?;
                 }
             }
         };
@@ -951,7 +951,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             self.config.shared_state.borrow().dynamic_indexes_offset,
             items_count as usize,
             Tag::DataIndex,
-        ).unwrap();
+        )?;
         self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;
         offset += items_count_leb_len;
 
@@ -961,7 +961,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
 
             // is_mem_segment_type{1}
             let mem_segment_type_val = wb.bytes[offset];
-            let mem_segment_type: MemSegmentType = mem_segment_type_val.try_into().unwrap();
+            let mem_segment_type: MemSegmentType = mem_segment_type_val.try_into()?;
             self.assign(
                 region,
                 wb,

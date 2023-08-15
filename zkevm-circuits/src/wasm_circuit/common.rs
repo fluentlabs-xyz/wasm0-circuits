@@ -21,8 +21,7 @@ use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, Constr
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::consts::{LimitType, MAX_LEB128_BYTES};
-use crate::wasm_circuit::error::{check_wb_offset, Error, error_index_out_of_bounds_wb, remap_plonk_error};
-use crate::wasm_circuit::error::Error::{IndexOutOfBoundsSimple, Leb128MaxBytes};
+use crate::wasm_circuit::error::{Error, error_index_out_of_bounds_wb, remap_error_to_assign_at_offset, validate_wb_offset};
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::leb128::helpers::{leb128_compute_last_byte_offset, leb128_compute_sn, leb128_compute_sn_recovered_at_position};
 use crate::wasm_circuit::sections::consts::LebParams;
@@ -480,7 +479,8 @@ pub trait WasmFuncCountAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
             self.func_count_col(),
             offset,
             || Value::known(F::from(func_count as u64)),
-        ).map_err(remap_plonk_error(offset))?;
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
+
         Ok(())
     }
 }
@@ -544,7 +544,7 @@ pub trait WasmErrorAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
         &self, region: &mut Region<F>,
         offset: usize,
         error_code_replacer: Option<u64>,
-    ) {
+    ) -> Result<(), Error> {
         let error_code = error_code_replacer.unwrap_or(self.shared_state().borrow().error_code);
         debug!("assign at offset {} error_code val {}", offset, error_code);
         region.assign_advice(
@@ -552,7 +552,8 @@ pub trait WasmErrorAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
             self.error_code_col(),
             offset,
             || Value::known(F::from(error_code)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
+        Ok(())
     }
 
     fn assign_error_code_rest(
@@ -560,7 +561,7 @@ pub trait WasmErrorAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
         offset: usize,
         len: usize,
         error_code_replacer: Option<u64>,
-    ) {
+    ) -> Result<(), Error> {
         let error_code = error_code_replacer.unwrap_or(self.shared_state().borrow().error_code);
         for offset in offset..offset + len {
             debug!("assign at offset {} error_code val {}", offset, error_code);
@@ -569,8 +570,9 @@ pub trait WasmErrorAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
                 self.error_code_col(),
                 offset,
                 || Value::known(F::from(error_code)),
-            ).unwrap();
+            ).map_err(remap_error_to_assign_at_offset(offset))?;
         }
+        Ok(())
     }
 }
 
@@ -585,7 +587,7 @@ pub trait WasmBlockLevelAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
             self.block_level_col(),
             offset,
             || Value::known(F::from(block_level as u64)),
-        ).map_err(remap_plonk_error(offset))?;
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
         Ok(())
     }
 }
@@ -602,7 +604,7 @@ pub trait WasmAssignAwareChip<F: Field> {
         assign_value: u64,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
-        check_wb_offset(wb, offset)?;
+        validate_wb_offset(wb, offset)?;
         self.assign_internal(region, wb, offset, assign_types, assign_value, leb_params)
     }
 
@@ -653,7 +655,7 @@ pub trait WasmMarkupLeb128SectionAwareChip<F: Field>: WasmAssignAwareChip<F> {
                 assign_types,
                 1,
                 leb_params,
-            );
+            )?;
         }
 
         Ok((sn, last_byte_rel_offset + 1))
@@ -680,7 +682,7 @@ pub trait WasmBytesAwareChip<F: Field>: WasmAssignAwareChip<F> {
                 assign_types,
                 1,
                 None,
-            );
+            )?;
         }
         Ok(offset + len)
     }
@@ -707,7 +709,7 @@ pub trait WasmNameAwareChip<F: Field>: WasmAssignAwareChip<F> {
                 assign_types,
                 assign_value,
                 None,
-            );
+            )?;
         }
         Ok(offset + name_len)
     }
@@ -715,17 +717,17 @@ pub trait WasmNameAwareChip<F: Field>: WasmAssignAwareChip<F> {
 
 /// Returns section len and leb bytes count representing section len
 pub fn wasm_compute_section_len(wasm_bytes: &[u8], len_start_index: usize) -> Result<(usize, u8), Error> {
-    if len_start_index >= wasm_bytes.len() { return Err(IndexOutOfBoundsSimple) }
     let mut section_len: usize = 0;
     let mut i = len_start_index;
     loop {
-        let byte = wasm_bytes[i];
+        let byte = wasm_bytes.get(i).ok_or(Error::IndexOutOfBoundsSimple)?;
         let mut byte_val: u32 = (byte & 0b1111111) as u32;
-        byte_val = byte_val * checked_pow(0b10000000, i - len_start_index).unwrap();
+        let pow = checked_pow(0b10000000, i - len_start_index).ok_or(Error::ComputationFailed)?;
+        byte_val = byte_val * pow;
         section_len += byte_val as usize;
         if byte & 0b10000000 == 0 { break }
         i += 1;
-        if i - len_start_index >= MAX_LEB128_BYTES { return Err(Leb128MaxBytes) }
+        if i - len_start_index >= MAX_LEB128_BYTES { return Err(Error::Leb128MaxBytes) }
     }
     Ok((section_len, (i - len_start_index + 1) as u8))
 }

@@ -3,6 +3,7 @@ use halo2_proofs::plonk::Expression;
 use strum_macros::EnumIter;
 
 use gadgets::util::Expr;
+use crate::wasm_circuit::error::Error;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AssignType {
@@ -29,13 +30,13 @@ pub const OPCODE_VALUES: &[Opcode] = &[
     Opcode::End,
 ];
 impl TryFrom<u8> for Opcode {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in OPCODE_VALUES {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<Opcode> for usize {

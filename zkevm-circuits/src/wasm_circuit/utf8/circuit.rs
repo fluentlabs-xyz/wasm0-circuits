@@ -14,6 +14,7 @@ use gadgets::util::Expr;
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at_offset};
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
 
 #[derive(Debug, Clone)]
@@ -389,75 +390,78 @@ impl<F: Field> UTF8Chip<F>
         // codepoint_recovered: u64,
         // byte_mul: u64,
         // bytes_count: u8,
-    ) {
-        self.config.byte_val_is_zero_chip.assign(region, offset, Value::known(F::from(byte_val as u64))).unwrap();
+    ) -> Result<(), Error> {
+        self.config.byte_val_is_zero_chip.assign(region, offset, Value::known(F::from(byte_val as u64)))
+            .map_err(remap_error(Error::AssignExternalChip))?;
 
         region.assign_fixed(
             || format!("assign 'q_enable' to {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at_offset(offset))?;
 
         // region.assign_fixed(
         //     || format!("assign 'is_first_byte' to {} at {}", is_first_byte, offset),
         //     self.config.is_first_byte,
         //     offset,
         //     || Value::known(F::from(is_first_byte as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         //
         // region.assign_fixed(
         //     || format!("assign 'is_last_byte' to {} at {}", is_last_byte, offset),
         //     self.config.is_last_byte,
         //     offset,
         //     || Value::known(F::from(is_last_byte as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         //
         // region.assign_fixed(
         //     || format!("assign 'is_bytes_count_1' to {} at {}", bytes_count=1, offset),
         //     self.config.is_bytes_count_1,
         //     offset,
         //     || Value::known(F::from((bytes_count=1) as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         // region.assign_fixed(
         //     || format!("assign 'is_bytes_count_2' to {} at {}", bytes_count=2, offset),
         //     self.config.is_bytes_count_2,
         //     offset,
         //     || Value::known(F::from((bytes_count=2) as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         // region.assign_fixed(
         //     || format!("assign 'is_bytes_count_3' to {} at {}", bytes_count=3, offset),
         //     self.config.is_bytes_count_3,
         //     offset,
         //     || Value::known(F::from((bytes_count=3) as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         // region.assign_fixed(
         //     || format!("assign 'is_bytes_count_4' to {} at {}", bytes_count=4, offset),
         //     self.config.is_bytes_count_4,
         //     offset,
         //     || Value::known(F::from((bytes_count=4) as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         //
         // region.assign_advice(
         //     || format!("assign 'codepoint' to {} at {}", codepoint, offset),
         //     self.config.codepoint,
         //     offset,
         //     || Value::known(F::from(codepoint)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         //
         // region.assign_advice(
         //     || format!("assign 'codepoint_recovered' to {} at {}", codepoint_recovered, offset),
         //     self.config.codepoint_recovered,
         //     offset,
         //     || Value::known(F::from(codepoint_recovered)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         //
         // region.assign_advice(
         //     || format!("assign 'byte_mul' to {} at {}", byte_mul, offset),
         //     self.config.byte_mul,
         //     offset,
         //     || Value::known(F::from(byte_mul)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
+
+        Ok(())
     }
 
     pub fn assign_auto(
@@ -467,14 +471,16 @@ impl<F: Field> UTF8Chip<F>
         bytecode_chunk_len: usize,
         bytecode_offset_start: usize,
         region_offset_start: usize,
-    ) {
+    ) -> Result<(), Error> {
         for (offset, bytecode_offset) in (bytecode_offset_start..bytecode_offset_start + bytecode_chunk_len).enumerate() {
             self.assign(
                 region,
                 region_offset_start + offset,
                 true,
                 wb.bytes[bytecode_offset],
-            )
+            )?;
         }
+
+        Ok(())
     }
 }

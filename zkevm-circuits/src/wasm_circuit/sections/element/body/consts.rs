@@ -2,6 +2,7 @@ use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::plonk::Expression;
 use strum_macros::EnumIter;
 use gadgets::util::Expr;
+use crate::wasm_circuit::error::Error;
 
 // Bit 0 indicates a passive or declarative segment
 const SEGMENT_IS_PASSIVE: isize = 0b100;
@@ -36,13 +37,13 @@ pub const ELEM_TYPE_VALUES: &[ElementType] = &[
     ElementType::_7,
 ];
 impl TryFrom<u8> for ElementType {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in ELEM_TYPE_VALUES {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<ElementType> for usize {

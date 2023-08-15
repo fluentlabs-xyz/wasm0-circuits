@@ -3,6 +3,7 @@ use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::plonk::Expression;
 use strum_macros::EnumIter;
 use gadgets::util::Expr;
+use crate::wasm_circuit::error::Error;
 
 pub const MAX_LEB128_BYTES: usize = 5;
 pub static WASM_VERSION_PREFIX_BASE_INDEX: usize = 4;
@@ -48,13 +49,13 @@ pub const WASM_SECTION_VALUES: &[WasmSection] = &[
     WasmSection::DataCount,
 ];
 impl TryFrom<i32> for WasmSection {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: i32) -> Result<Self, Self::Error> {
         for instr in WASM_SECTION_VALUES {
             if v == *instr as i32 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 pub const WASM_SECTION_ID_MAX: usize = WasmSection::DataCount as usize;
@@ -81,13 +82,13 @@ pub const NUM_TYPE_VALUES: &[NumType] = &[
     // NumType::F64,
 ];
 impl TryFrom<u8> for NumType {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in NUM_TYPE_VALUES {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<NumType> for usize {
@@ -113,13 +114,13 @@ pub const REF_TYPE_VALUES: &[RefType] = &[
     RefType::ExternRef,
 ];
 impl TryFrom<u8> for RefType {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in REF_TYPE_VALUES {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<RefType> for usize {
@@ -145,13 +146,13 @@ pub const LIMIT_TYPE_VALUES: &[LimitType] = &[
     LimitType::MinMax,
 ];
 impl TryFrom<u8> for LimitType {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in LIMIT_TYPE_VALUES {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<LimitType> for usize {
@@ -180,13 +181,13 @@ pub const MEM_SEGMENT_TYPE_VALUES: &[MemSegmentType] = &[
     MemSegmentType::ActiveVariadic,
 ];
 impl TryFrom<u8> for MemSegmentType {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in MEM_SEGMENT_TYPE_VALUES {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<MemSegmentType> for usize {
@@ -216,13 +217,13 @@ pub const IMPORT_DESC_TYPE_VALUES: &[ImportDescType] = &[
     ImportDescType::GlobalType,
 ];
 impl TryFrom<u8> for ImportDescType {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in IMPORT_DESC_TYPE_VALUES {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<ImportDescType> for usize {
@@ -252,13 +253,13 @@ pub const EXPORT_DESC_TYPE_VALUES: &[ExportDescType] = &[
     ExportDescType::Globalidx,
 ];
 impl TryFrom<u8> for ExportDescType {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in EXPORT_DESC_TYPE_VALUES {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<ExportDescType> for usize {
@@ -443,7 +444,7 @@ pub const NUMERIC_INSTRUCTION_WITH_LEB_ARG: &[NumericInstruction] = &[
     NumericInstruction::I64Const,
 ];
 impl TryFrom<u8> for NumericInstruction {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in NUMERIC_INSTRUCTION_WITH_LEB_ARG {
@@ -452,7 +453,7 @@ impl TryFrom<u8> for NumericInstruction {
         for instr in NUMERIC_INSTRUCTIONS_WITHOUT_ARGS {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<NumericInstruction> for usize {
@@ -483,13 +484,13 @@ pub const VARIABLE_INSTRUCTION_WITH_LEB_ARG: &[VariableInstruction] = &[
     VariableInstruction::GlobalSet,
 ];
 impl TryFrom<u8> for VariableInstruction {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in VARIABLE_INSTRUCTION_WITH_LEB_ARG {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<VariableInstruction> for usize {
@@ -534,7 +535,7 @@ pub const CONTROL_INSTRUCTION_BLOCK: &[ControlInstruction] = &[
     ControlInstruction::If,
 ];
 impl TryFrom<u8> for ControlInstruction {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in CONTROL_INSTRUCTION_WITH_LEB_ARG {
@@ -546,7 +547,7 @@ impl TryFrom<u8> for ControlInstruction {
         for instr in CONTROL_INSTRUCTION_BLOCK {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<ControlInstruction> for usize {
@@ -572,13 +573,13 @@ pub const PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS: &[ParametricInstruction] = &[
     ParametricInstruction::Select,
 ];
 impl TryFrom<u8> for ParametricInstruction {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(())
+        Err(Error::EnumValueNotFound)
     }
 }
 impl From<ParametricInstruction> for usize {

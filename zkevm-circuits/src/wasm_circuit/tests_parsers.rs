@@ -33,7 +33,7 @@ mod wasm_parsers_tests {
         // let path_to_file = "./test_files/cc2.wat";
         let wat: Vec<u8> = std::fs::read(path_to_file).unwrap();
         debug!("SOURCE WAT: {}", std::str::from_utf8(wat.as_slice()).unwrap());
-        let mut wasm_binary = wat2wasm(wat.clone()).unwrap();
+        let wasm_binary = wat2wasm(wat.clone()).unwrap();
 
         let data = wat2wasm(&wat.clone()).unwrap();
         debug!("");
