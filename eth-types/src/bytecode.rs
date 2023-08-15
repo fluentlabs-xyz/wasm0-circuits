@@ -608,6 +608,26 @@ impl Bytecode {
         self
     }
 
+    pub fn write_twoargs(&mut self, op: OpcodeId, val1: i128, val2: i128) -> &mut Self {
+        let op = match op {
+            OpcodeId::TableCopy => Instruction::TableCopy { src_table: val1 as u32, dst_table: val2 as u32 },
+            OpcodeId::TableInit => Instruction::TableInit { elem_index: val1 as u32, table: val2 as u32 },
+            _ => {
+                unreachable!("not supported opcode: {:?} ({})", op, op.as_u8())
+            }
+        };
+        let mut buf: Vec<u8> = vec![];
+        op.encode(&mut buf);
+        for (i, b) in buf.iter().enumerate() {
+            if i == 0 {
+                self.write_op_internal(*b);
+            } else {
+                self.write(*b, false);
+            }
+        }
+        self
+    }
+
     pub fn write_postfix(&mut self, op: OpcodeId, val: i128) -> &mut Self {
         let op = match op {
             OpcodeId::RefFunc => Instruction::RefFunc(val as u32),
@@ -906,6 +926,11 @@ macro_rules! bytecode {
 macro_rules! bytecode_internal {
     // Nothing left to do
     ($code:ident, ) => {};
+    // WASM two args opcodes
+    ($code:ident, $x:ident [$v:expr, $u:expr] $($rest:tt)*) => {{
+        $code.write_twoargs($crate::evm_types::OpcodeId::$x, $v as i128, $u as i128);
+        $crate::bytecode_internal!($code, $($rest)*);
+    }};
     // WASM const opcodes
     ($code:ident, $x:ident [$v:expr] $($rest:tt)*) => {{
         $code.write_postfix($crate::evm_types::OpcodeId::$x, $v as i128);

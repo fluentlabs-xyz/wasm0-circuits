@@ -116,8 +116,6 @@ mod test {
         ).run()
     }
 
-/*
-    TODO: working with two op args.
     #[test]
     fn test_table_copy() {
         let mut code = bytecode! {
@@ -131,6 +129,5 @@ mod test {
         code.with_table_decl(TableDecl::default_i32());
         run_test(code);
     }
-*/
 
 }
