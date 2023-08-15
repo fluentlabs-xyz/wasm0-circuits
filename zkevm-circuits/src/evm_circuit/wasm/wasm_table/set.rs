@@ -25,6 +25,7 @@ pub(crate) struct WasmTableSetGadget<F> {
     same_context: SameContextGadget<F>,
     table_index: Cell<F>,
     elem_index: Cell<F>,
+    elem_type: Cell<F>,
     value: Cell<F>,
 }
 
@@ -38,8 +39,10 @@ impl<F: Field> ExecutionGadget<F> for WasmTableSetGadget<F> {
 
         let table_index = cb.query_cell();
         let elem_index = cb.query_cell();
+        let elem_type = cb.query_cell();
         let value = cb.query_cell();
 
+        cb.stack_pop(elem_type.expr());
         cb.stack_pop(elem_index.expr());
         cb.stack_pop(value.expr());
 
@@ -52,7 +55,7 @@ impl<F: Field> ExecutionGadget<F> for WasmTableSetGadget<F> {
 */
 
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(2.expr()),
+            rw_counter: Delta(3.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::TableGet.constant_gas_cost().expr()),
@@ -65,6 +68,7 @@ impl<F: Field> ExecutionGadget<F> for WasmTableSetGadget<F> {
             same_context,
             table_index,
             elem_index,
+            elem_type,
             value,
         }
     }
@@ -80,7 +84,10 @@ impl<F: Field> ExecutionGadget<F> for WasmTableSetGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let [elem_idx, value] = [step.rw_indices[0], step.rw_indices[1]].map(|idx| block.rws[idx].stack_value());
+        let [elem_type, elem_idx, value] =
+            [step.rw_indices[0], step.rw_indices[1], step.rw_indices[2]]
+            .map(|idx| block.rws[idx].stack_value());
+        //self.elem_type.assign(region, offset, Value::<F>::known(elem_type.to_scalar().unwrap()))?;
         self.elem_index.assign(region, offset, Value::<F>::known(elem_idx.to_scalar().unwrap()))?;
         self.value.assign(region, offset, Value::<F>::known(value.to_scalar().unwrap()))?;
 
@@ -112,7 +119,8 @@ mod test {
     fn test_table_set() {
         let mut code = bytecode! {
             I32Const[0]
-            RefFunc[0xff]
+            I32Const[0]
+            RefFunc[0x0]
             TableSet[0]
             Drop
         };

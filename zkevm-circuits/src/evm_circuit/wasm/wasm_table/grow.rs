@@ -116,7 +116,7 @@ mod test {
     #[test]
     fn test_table_grow() {
         let mut code = bytecode! {
-            RefFunc[0xff]
+            RefFunc[0x0]
             I32Const[2]
             TableGrow[0]
             Drop
