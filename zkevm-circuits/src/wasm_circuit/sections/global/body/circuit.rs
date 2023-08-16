@@ -20,15 +20,14 @@ use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
-use crate::wasm_circuit::consts::{NUM_TYPE_VALUES, NumType, WASM_BLOCK_END};
-use crate::wasm_circuit::consts::NumericInstruction::{I32Const, I64Const};
-use crate::wasm_circuit::error::{Error, remap_error_to_assign_at_offset};
+use crate::wasm_circuit::consts::{WASM_BLOCK_END};
+use crate::wasm_circuit::error::{Error, remap_error_to_assign_at, remap_error_to_invalid_enum_value_at};
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::global::body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
-use crate::wasm_circuit::types::SharedState;
+use crate::wasm_circuit::types::{NUM_TYPE_VALUES, NumericInstruction, NumType, SharedState};
 
 #[derive(Debug, Clone)]
 pub struct WasmGlobalSectionBodyConfig<F: Field> {
@@ -109,7 +108,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).map_err(remap_error_to_assign_at_offset(offset))?;
+        ).map_err(remap_error_to_assign_at(offset))?;
         self.assign_func_count(region, offset)?;
 
         for assign_type in assign_types {
@@ -132,7 +131,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         self.config.q_first,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::QLast => {
                     region.assign_fixed(
@@ -140,7 +139,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         self.config.q_last,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsItemsCount => {
                     region.assign_fixed(
@@ -148,7 +147,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         self.config.is_items_count,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsGlobalType => {
                     region.assign_fixed(
@@ -156,7 +155,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         self.config.is_global_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsMutProp => {
                     region.assign_fixed(
@@ -164,7 +163,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         self.config.is_mut_prop,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsInitOpcode => {
                     region.assign_fixed(
@@ -172,7 +171,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         self.config.is_init_opcode,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsInitVal => {
                     region.assign_fixed(
@@ -180,7 +179,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         self.config.is_init_val,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsExprDelimiter => {
                     region.assign_fixed(
@@ -188,7 +187,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         self.config.is_expr_delimiter,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::GlobalType => {
                     region.assign_advice(
@@ -196,13 +195,13 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         self.config.global_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
-                    let global_type: NumType = (assign_value as u8).try_into()?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
+                    let global_type: NumType = (assign_value as u8).try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
                     self.config.global_type_chip.assign(
                         region,
                         offset,
                         &global_type,
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsGlobalTypeCtx => {
                     region.assign_fixed(
@@ -210,7 +209,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         self.config.is_global_type_ctx,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::BodyItemRevCount => {
                     region.assign_advice(
@@ -218,7 +217,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmGlobalSectionBodyChip<F> {
                         self.config.body_item_rev_count,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::ErrorCode => {
                     self.assign_error_code(region, offset, None)?;
@@ -268,8 +267,10 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             "global section has valid setup for mem indexes",
             cs,
             |vc| {
+                let cond = vc.query_fixed(is_items_count, Rotation::cur());
+                let cond = cond * Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
                 LookupArgsParams {
-                    cond: vc.query_fixed(is_items_count, Rotation::cur()),
+                    cond,
                     index: vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
                     tag: Tag::GlobalIndex.expr(),
                     is_terminator: true.expr(),
@@ -283,7 +284,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
             body_item_rev_count,
             |vc| vc.query_fixed(is_items_count, Rotation::cur()),
             |vc| {
-                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
                 let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
 
                 and::expr([
@@ -298,7 +299,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
         cs.create_gate("WasmGlobalSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
-            let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
             // let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
@@ -512,8 +513,8 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                         "is_init_opcode has eligible byte value",
                         byte_val_expr.clone(),
                         vec![
-                            I32Const.expr(),
-                            I64Const.expr(),
+                            NumericInstruction::I32Const.expr(),
+                            NumericInstruction::I64Const.expr(),
                             // add support for float types?
                             // F32Const,
                             // F64Const,
@@ -522,12 +523,12 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
                     let global_type_is_i32_expr = global_type_chip.config.value_equals(NumType::I32, Rotation::cur())(vc);
                     cb.require_zero(
                         "is_init_opcode && global_type_is_i32 => global type corresponds to init opcode",
-                        global_type_is_i32_expr * (NumType::I32.expr() - byte_val_expr.clone() - (NumType::I32 as i32 - I32Const as i32).expr()),
+                        global_type_is_i32_expr * (NumType::I32.expr() - byte_val_expr.clone() - (NumType::I32 as i32 - NumericInstruction::I32Const as i32).expr()),
                     );
                     let global_type_is_i64_expr = global_type_chip.config.value_equals(NumType::I64, Rotation::cur())(vc);
                     cb.require_zero(
                         "is_init_opcode && global_type_is_i64 => global type corresponds to init opcode",
-                        global_type_is_i64_expr * (NumType::I64.expr() - byte_val_expr.clone() - (NumType::I64 as i32 - I64Const as i32).expr()),
+                        global_type_is_i64_expr * (NumType::I64.expr() - byte_val_expr.clone() - (NumType::I64 as i32 - NumericInstruction::I64Const as i32).expr()),
                     );
                 }
             );
@@ -614,7 +615,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F>
 
             // is_global_type{1}
             let global_type_val = wb.bytes[offset];
-            // let global_type: NumType = global_type_val.try_into()?;
+            // let global_type: NumType = global_type_val.try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
             let global_type_val = global_type_val as u64;
             self.assign(
                 region,

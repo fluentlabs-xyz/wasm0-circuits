@@ -12,3 +12,4 @@ pub mod sections;
 pub mod error;
 pub mod utf8;
 pub mod types;
+mod tests_helpers;

@@ -20,14 +20,13 @@ use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
-use crate::wasm_circuit::consts::{LimitType, REF_TYPE_VALUES};
-use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at_offset};
+use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at, remap_error_to_invalid_enum_value_at};
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::table::body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
 use crate::wasm_circuit::tables::dynamic_indexes::types::Tag;
-use crate::wasm_circuit::types::SharedState;
+use crate::wasm_circuit::types::{LimitType, REF_TYPE_VALUES, SharedState};
 
 #[derive(Debug, Clone)]
 pub struct WasmTableSectionBodyConfig<F: Field> {
@@ -100,7 +99,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).map_err(remap_error_to_assign_at_offset(offset))?;
+        ).map_err(remap_error_to_assign_at(offset))?;
         self.assign_func_count(region, offset)?;
 
         for assign_type in assign_types {
@@ -124,7 +123,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
                         self.config.q_first,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::QLast => {
                     region.assign_fixed(
@@ -132,7 +131,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
                         self.config.q_last,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsReferenceTypeCount => {
                     region.assign_fixed(
@@ -140,7 +139,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
                         self.config.is_reference_type_count,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsReferenceType => {
                     region.assign_fixed(
@@ -148,7 +147,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
                         self.config.is_reference_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsLimitType => {
                     region.assign_fixed(
@@ -156,7 +155,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
                         self.config.limit_type_fields.is_limit_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsLimitMin => {
                     region.assign_fixed(
@@ -164,7 +163,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
                         self.config.limit_type_fields.is_limit_min,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsLimitMax => {
                     region.assign_fixed(
@@ -172,7 +171,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
                         self.config.limit_type_fields.is_limit_max,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsLimitTypeCtx => {
                     region.assign_fixed(
@@ -180,7 +179,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
                         self.config.limit_type_fields.is_limit_type_ctx,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::LimitType => {
                     region.assign_advice(
@@ -188,13 +187,13 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
                         self.config.limit_type_fields.limit_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
-                    let limit_type: LimitType = (assign_value as u8).try_into()?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
+                    let limit_type: LimitType = (assign_value as u8).try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
                     self.config.limit_type_fields.limit_type_chip.assign(
                         region,
                         offset,
                         &limit_type,
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::ErrorCode => {
                     self.assign_error_code(region, offset, None)?;
@@ -256,7 +255,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
         cs.create_gate("WasmTableSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
-            let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
             // let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
@@ -557,7 +556,7 @@ impl<F: Field> WasmTableSectionBodyChip<F>
 
         // limit_type{1}
         let limit_type_val = wb.bytes[offset];
-        let limit_type: LimitType = limit_type_val.try_into()?;
+        let limit_type: LimitType = limit_type_val.try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
         let limit_type_val = limit_type_val as u64;
         self.assign(
             region,

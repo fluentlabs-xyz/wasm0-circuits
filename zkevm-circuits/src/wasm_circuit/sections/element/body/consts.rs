@@ -43,7 +43,7 @@ impl TryFrom<u8> for ElementType {
         for instr in ELEM_TYPE_VALUES {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(Error::EnumValueNotFound)
+        Err(Error::InvalidEnumValue)
     }
 }
 impl From<ElementType> for usize {

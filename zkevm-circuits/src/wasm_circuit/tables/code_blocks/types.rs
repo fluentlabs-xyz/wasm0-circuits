@@ -36,7 +36,7 @@ impl TryFrom<u8> for Opcode {
         for instr in OPCODE_VALUES {
             if v == *instr as u8 { return Ok(*instr); }
         }
-        Err(Error::EnumValueNotFound)
+        Err(Error::InvalidEnumValue)
     }
 }
 impl From<Opcode> for usize {

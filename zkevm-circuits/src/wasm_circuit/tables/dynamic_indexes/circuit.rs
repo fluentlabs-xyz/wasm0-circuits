@@ -12,7 +12,7 @@ use eth_types::Field;
 use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::error::{Error, remap_error_to_assign_at_offset};
+use crate::wasm_circuit::error::{Error, remap_error_to_assign_at};
 use crate::wasm_circuit::tables::dynamic_indexes::types::{AssignType, LookupArgsParams, Tag, TAG_VALUES};
 
 #[derive(Debug, Clone)]
@@ -196,7 +196,7 @@ impl<F: Field> DynamicIndexesChip<F>
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).map_err(remap_error_to_assign_at_offset(offset))?;
+        ).map_err(remap_error_to_assign_at(offset))?;
         match assign_type {
             AssignType::Index => {
                 region.assign_advice(
@@ -204,7 +204,7 @@ impl<F: Field> DynamicIndexesChip<F>
                     self.config.index,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at_offset(offset))?;
+                ).map_err(remap_error_to_assign_at(offset))?;
             }
             AssignType::Tag => {
                 region.assign_fixed(
@@ -212,7 +212,7 @@ impl<F: Field> DynamicIndexesChip<F>
                     self.config.tag,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at_offset(offset))?;
+                ).map_err(remap_error_to_assign_at(offset))?;
             }
             AssignType::IsTerminator => {
                 region.assign_fixed(
@@ -220,7 +220,7 @@ impl<F: Field> DynamicIndexesChip<F>
                     self.config.is_terminator,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at_offset(offset))?;
+                ).map_err(remap_error_to_assign_at(offset))?;
             }
         }
 

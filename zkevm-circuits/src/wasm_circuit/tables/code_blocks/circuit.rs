@@ -15,7 +15,7 @@ use gadgets::util::{and, Expr, not};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::common::configure_constraints_for_q_first_and_q_last;
-use crate::wasm_circuit::error::{Error, remap_error_to_assign_at_offset};
+use crate::wasm_circuit::error::{Error, remap_error_to_assign_at, remap_error_to_invalid_enum_value_at};
 use crate::wasm_circuit::tables::code_blocks::types::{AssignType, Opcode, OPCODE_VALUES};
 
 #[derive(Debug, Clone)]
@@ -269,7 +269,7 @@ impl<F: Field> CodeBlocksChip<F>
                     self.config.index,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at_offset(offset))?;
+                ).map_err(remap_error_to_assign_at(offset))?;
             }
             AssignType::Opcode => {
                 region.assign_advice(
@@ -277,13 +277,13 @@ impl<F: Field> CodeBlocksChip<F>
                     self.config.opcode,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at_offset(offset))?;
-                let opcode: Opcode = (assign_value as u8).try_into()?;
+                ).map_err(remap_error_to_assign_at(offset))?;
+                let opcode: Opcode = (assign_value as u8).try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
                 self.config.opcode_chip.assign(
                     region,
                     offset,
                     &opcode,
-                ).map_err(remap_error_to_assign_at_offset(offset))?;
+                ).map_err(remap_error_to_assign_at(offset))?;
             }
             AssignType::QFirst => {
                 region.assign_fixed(
@@ -291,7 +291,7 @@ impl<F: Field> CodeBlocksChip<F>
                     self.config.q_first,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at_offset(offset))?;
+                ).map_err(remap_error_to_assign_at(offset))?;
             }
             AssignType::QLast => {
                 region.assign_fixed(
@@ -299,7 +299,7 @@ impl<F: Field> CodeBlocksChip<F>
                     self.config.q_last,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at_offset(offset))?;
+                ).map_err(remap_error_to_assign_at(offset))?;
             }
         }
         Ok(())

@@ -1,11 +1,14 @@
+use std::marker::PhantomData;
+
 use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
-use std::{marker::PhantomData};
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::{Advice, Circuit, Column};
 use log::debug;
+
 use eth_types::Field;
+
 use crate::wasm_circuit::leb128::circuit::{LEB128Chip, LEB128Config};
 use crate::wasm_circuit::leb128::helpers::leb128_compute_sn_recovered_at_position;
 use crate::wasm_circuit::sections::consts::LebParams;
@@ -110,14 +113,18 @@ impl<'a, F: Field, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, IS_S
 #[cfg(test)]
 mod leb128_circuit_tests {
     use std::marker::PhantomData;
+
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use rand::Rng;
+
     use eth_types::Field;
+
     use crate::wasm_circuit::error::Error;
     use crate::wasm_circuit::leb128::consts::{EIGHT_LS_BITS_MASK, EIGHT_MS_BIT_MASK, SEVEN_LS_BITS_MASK};
     use crate::wasm_circuit::leb128::tests::TestCircuit;
+    use crate::wasm_circuit::tests_helpers::break_bit;
 
     const ALL_BIT_DEPTHS_BYTES: &[usize] = &[1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -206,11 +213,7 @@ mod leb128_circuit_tests {
         )?)
     }
 
-    pub fn break_bit(byte_to_break: &mut u8, break_mask: u8) {
-        *byte_to_break = (!*byte_to_break & break_mask) | (*byte_to_break & !break_mask);
-    }
-
-    pub fn leb_break_continuation_bit(rng: &mut rand::prelude::ThreadRng, leb128: &mut Vec<u8>) {
+    pub fn leb128_break_continuation_bit(rng: &mut rand::prelude::ThreadRng, leb128: &mut Vec<u8>) {
         let byte_number = rng.gen::<usize>() % leb128.len();
         break_bit(&mut leb128[byte_number], EIGHT_MS_BIT_MASK);
     }
@@ -392,7 +395,7 @@ mod leb128_circuit_tests {
                 LEB_BYTES_N,
             ).unwrap();
 
-            leb_break_continuation_bit(&mut rng, &mut input_number_leb128);
+            leb128_break_continuation_bit(&mut rng, &mut input_number_leb128);
             debug!(
                 "{}. LEB_BYTES_N {} IS_SIGNED:{} solid_number {} leb128 {:x?}",
                 i,

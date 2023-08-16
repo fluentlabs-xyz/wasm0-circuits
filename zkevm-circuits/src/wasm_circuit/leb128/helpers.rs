@@ -67,7 +67,7 @@ pub fn leb128_encode(
     value: i128,
 ) -> Result<Vec<u8>, Error> {
     let mut res = vec![];
-    if !is_signed && value < 0 { return Err(Error::Leb128EncodeUnsigned) }
+    if !is_signed && value < 0 { return Err(Error::Leb128Encode) }
 
     if is_signed {
         leb128::write::signed(&mut res, value as i64).map_err(remap_error(Error::Leb128EncodeSigned))?;

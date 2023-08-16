@@ -21,13 +21,12 @@ use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
 use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmNameAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
-use crate::wasm_circuit::consts::{IMPORT_DESC_TYPE_VALUES, ImportDescType, LimitType, MUTABILITY_VALUES, REF_TYPE_VALUES, RefType};
-use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at_offset};
+use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at, remap_error_to_invalid_enum_value_at};
 use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::import::body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
-use crate::wasm_circuit::types::SharedState;
+use crate::wasm_circuit::types::{IMPORT_DESC_TYPE_VALUES, ImportDescType, LimitType, MUTABILITY_VALUES, REF_TYPE_VALUES, RefType, SharedState};
 use crate::wasm_circuit::utf8::circuit::UTF8Chip;
 
 #[derive(Debug, Clone)]
@@ -123,7 +122,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).map_err(remap_error_to_assign_at_offset(offset))?;
+        ).map_err(remap_error_to_assign_at(offset))?;
 
         for assign_type in assign_types {
             if [
@@ -152,7 +151,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                     offset,
                     true,
                     byte_val,
-                );
+                )?;
             }
             match assign_type {
                 AssignType::QFirst => {
@@ -161,7 +160,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.q_first,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::QLast => {
                     region.assign_fixed(
@@ -169,7 +168,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.q_last,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsItemsCount => {
                     region.assign_fixed(
@@ -177,7 +176,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.is_items_count,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsModNameLen => {
                     region.assign_fixed(
@@ -185,7 +184,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.is_mod_name_len,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsModName => {
                     region.assign_fixed(
@@ -193,7 +192,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.is_mod_name,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsImportNameLen => {
                     region.assign_fixed(
@@ -201,7 +200,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.is_import_name_len,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsImportName => {
                     region.assign_fixed(
@@ -209,7 +208,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.is_import_name,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsImportdescType => {
                     region.assign_fixed(
@@ -217,7 +216,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.is_importdesc_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsImportdescVal => {
                     region.assign_fixed(
@@ -225,7 +224,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.is_importdesc_val,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsMut => {
                     region.assign_fixed(
@@ -233,7 +232,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.is_mut_prop,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsImportdescTypeCtx => {
                     region.assign_fixed(
@@ -241,7 +240,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.is_importdesc_type_ctx,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::ImportdescType => {
                     region.assign_advice(
@@ -249,7 +248,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.importdesc_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsLimitType => {
                     region.assign_fixed(
@@ -257,7 +256,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.limit_type_fields.is_limit_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsLimitMin => {
                     region.assign_fixed(
@@ -265,7 +264,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.limit_type_fields.is_limit_min,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsLimitMax => {
                     region.assign_fixed(
@@ -273,7 +272,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.limit_type_fields.is_limit_max,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsLimitTypeCtx => {
                     region.assign_fixed(
@@ -281,7 +280,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.limit_type_fields.is_limit_type_ctx,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::LimitType => {
                     region.assign_advice(
@@ -289,13 +288,13 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.limit_type_fields.limit_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
-                    let limit_type: LimitType = (assign_value as u8).try_into()?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
+                    let limit_type: LimitType = (assign_value as u8).try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
                     self.config.limit_type_fields.limit_type_chip.assign(
                         region,
                         offset,
                         &limit_type,
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::IsRefType => {
                     region.assign_fixed(
@@ -303,7 +302,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.is_ref_type,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::BodyByteRevIndex => {
                     region.assign_advice(
@@ -311,7 +310,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.body_byte_rev_index,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::BodyItemRevCount => {
                     region.assign_advice(
@@ -319,7 +318,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                         self.config.body_item_rev_count,
                         offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at_offset(offset))?;
+                    ).map_err(remap_error_to_assign_at(offset))?;
                 }
                 AssignType::FuncCount => {
                     self.assign_func_count(region, offset)?;
@@ -460,7 +459,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             body_item_rev_count,
             |vc| vc.query_fixed(is_items_count, Rotation::cur()),
             |vc| {
-                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
                 let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
 
                 and::expr([
@@ -495,7 +494,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         cs.create_gate("WasmImportSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
-            let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
@@ -1512,7 +1511,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
 
             // is_importdesc_type{1}
             let importdesc_type_val = wb.bytes[offset];
-            let importdesc_type: ImportDescType = importdesc_type_val.try_into()?;
+            let importdesc_type: ImportDescType = importdesc_type_val.try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
             let importdesc_type_val = importdesc_type_val as u64;
             if importdesc_type == ImportDescType::Typeidx { self.config.shared_state.borrow_mut().func_count += 1; }
             debug!(
@@ -1609,7 +1608,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 ImportDescType::MemType => {
                     // limit_type{1}
                     let limit_type_val = wb.bytes[offset];
-                    let limit_type: LimitType = limit_type_val.try_into()?;
+                    let limit_type: LimitType = limit_type_val.try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
                     let limit_type_val = limit_type_val as u64;
                     self.assign(
                         region,
@@ -1651,7 +1650,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 ImportDescType::TableType => {
                     // ref_type{1}
                     let ref_type_val = wb.bytes[offset];
-                    let ref_type: RefType = ref_type_val.try_into()?;
+                    let ref_type: RefType = ref_type_val.try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
                     let ref_type_val = ref_type_val as u64;
                     self.assign(
                         region,
@@ -1665,7 +1664,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
 
                     // limit_type{1}
                     let limit_type_val = wb.bytes[offset];
-                    let limit_type: LimitType = limit_type_val.try_into()?;
+                    let limit_type: LimitType = limit_type_val.try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
                     let limit_type_val = limit_type_val as u64;
                     self.assign(
                         region,

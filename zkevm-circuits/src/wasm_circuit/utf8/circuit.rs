@@ -14,7 +14,7 @@ use gadgets::util::Expr;
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at_offset};
+use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at};
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
 
 #[derive(Debug, Clone)]
@@ -399,7 +399,7 @@ impl<F: Field> UTF8Chip<F>
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).map_err(remap_error_to_assign_at_offset(offset))?;
+        ).map_err(remap_error_to_assign_at(offset))?;
 
         // region.assign_fixed(
         //     || format!("assign 'is_first_byte' to {} at {}", is_first_byte, offset),
