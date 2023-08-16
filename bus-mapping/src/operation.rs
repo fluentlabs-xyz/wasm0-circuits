@@ -93,6 +93,8 @@ pub enum Target {
     Memory,
     /// Means the target of the operation is the Table.
     Table,
+    /// Means the target of the operation is the Table size.
+    TableSize,
     /// Means the target of the operation is the Stack.
     Stack,
     /// Means that target of the operation is the Global.
@@ -373,6 +375,80 @@ impl PartialOrd for StackOp {
 impl Ord for StackOp {
     fn cmp(&self, other: &Self) -> Ordering {
         (&self.call_id, &self.address).cmp(&(&other.call_id, &other.address))
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct TableSizeOp {
+    /// Call ID
+    pub call_id: usize,
+    /// Table index
+    pub index: u32,
+    /// Value
+    pub value: StackWord,
+}
+
+impl Debug for TableSizeOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("TableSizeOp { ")?;
+        f.write_fmt(format_args!(
+            "call_id: {:?}, index: {:?}, val: 0x{:x}",
+            self.call_id, self.index, self.value
+        ))?;
+        f.write_str(" }")
+    }
+}
+
+impl TableSizeOp {
+    /// Create a new instance of a `StackOp` from it's components.
+    pub const fn new(call_id: usize, index: u32, value: StackWord) -> TableSizeOp {
+        TableSizeOp {
+            call_id,
+            index,
+            value,
+        }
+    }
+
+    /// Returns the [`Target`] (operation type) of this operation.
+    pub const fn target(&self) -> Target {
+        Target::TableSize
+    }
+
+    /// Returns the call id associated to this Operation.
+    pub const fn call_id(&self) -> usize {
+        self.call_id
+    }
+
+    /// Returns the [`StackAddress`] associated to this Operation.
+    pub const fn address(&self) -> u32 {
+        self.index
+    }
+
+    /// Returns the [`Word`] read or written by this operation.
+    pub const fn value(&self) -> &StackWord {
+        &self.value
+    }
+}
+
+impl Op for TableSizeOp {
+    fn into_enum(self) -> OpEnum {
+        OpEnum::TableSize(self)
+    }
+
+    fn reverse(&self) -> Self {
+        unreachable!("TableSizeOp can't be reverted")
+    }
+}
+
+impl PartialOrd for TableSizeOp {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TableSizeOp {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (&self.call_id, &self.index).cmp(&(&other.call_id, &other.index))
     }
 }
 
@@ -1099,6 +1175,8 @@ pub enum OpEnum {
     Memory(MemoryOp),
     /// Table
     Table(TableOp),
+    /// Table size
+    TableSize(TableSizeOp),
     /// Storage
     Storage(StorageOp),
     /// TxAccessListAccount

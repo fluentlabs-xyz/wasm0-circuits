@@ -374,6 +374,8 @@ pub enum RwTableTag {
     Memory,
     /// Table operation
     Table,
+    /// Table size operation
+    TableSize,
     /// Account Storage operation
     AccountStorage,
     /// Tx Access List Account operation

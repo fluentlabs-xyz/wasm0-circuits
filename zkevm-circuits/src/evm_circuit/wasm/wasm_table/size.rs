@@ -38,14 +38,8 @@ impl<F: Field> ExecutionGadget<F> for WasmTableSizeGadget<F> {
         let table_index = cb.query_cell();
         let value = cb.query_cell();
 
+        cb.table_size(table_index.expr(), value.expr());
         cb.stack_push(value.expr());
-
-/*
-        cb.condition(is_size_op.expr(), |cb| {
-            cb.table_size(table_index.expr());
-            cb.stack_push(value.expr()); // Result of operation is size.
-        });
-*/
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(1.expr()),

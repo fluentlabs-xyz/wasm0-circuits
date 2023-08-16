@@ -233,6 +233,14 @@ pub enum Rw {
         memory_address: u64,
         byte: u8,
     },
+    /// Table size
+    TableSize {
+        rw_counter: usize,
+        is_write: bool,
+        call_id: usize,
+        index: usize,
+        value: StackWord,
+    },
     /// TxLog
     TxLog {
         rw_counter: usize,
@@ -510,6 +518,7 @@ impl Rw {
             Self::Start { rw_counter }
             | Self::Memory { rw_counter, .. }
             | Self::Table { rw_counter, .. }
+            | Self::TableSize { rw_counter, .. }
             | Self::Stack { rw_counter, .. }
             | Self::Global { rw_counter, .. }
             | Self::AccountStorage { rw_counter, .. }
@@ -528,6 +537,7 @@ impl Rw {
             Self::Start { .. } => false,
             Self::Memory { is_write, .. }
             | Self::Table { is_write, .. }
+            | Self::TableSize { is_write, .. }
             | Self::Stack { is_write, .. }
             | Self::Global { is_write, .. }
             | Self::AccountStorage { is_write, .. }
@@ -546,6 +556,7 @@ impl Rw {
             Self::Start { .. } => RwTableTag::Start,
             Self::Memory { .. } => RwTableTag::Memory,
             Self::Table { .. } => RwTableTag::Table,
+            Self::TableSize { .. } => RwTableTag::Table,
             Self::Stack { .. } => RwTableTag::Stack,
             Self::Global { .. } => RwTableTag::Global,
             Self::AccountStorage { .. } => RwTableTag::AccountStorage,
@@ -572,6 +583,7 @@ impl Rw {
             | Self::Global { call_id, .. }
             | Self::Memory { call_id, .. } => Some(*call_id),
             | Self::Table { call_id, .. } => Some(*call_id),
+            | Self::TableSize { call_id, .. } => Some(*call_id),
             Self::Start { .. } | Self::Account { .. } => None,
         }
     }
@@ -592,6 +604,9 @@ impl Rw {
             } => Some(*account_address),
             Self::Memory { memory_address, .. } => Some(U256::from(*memory_address).to_address()),
             Self::Table { memory_address, .. } => Some(U256::from(*memory_address).to_address()),
+            Self::TableSize { index, .. } => {
+                Some(Address::from_low_u64_be(*index as u64))
+            }
             Self::Stack { stack_pointer, .. } => {
                 Some(U256::from(*stack_pointer as u64).to_address())
             }
@@ -622,6 +637,7 @@ impl Rw {
             Self::Start { .. }
             | Self::Memory { .. }
             | Self::Table { .. }
+            | Self::TableSize { .. }
             | Self::Stack { .. }
             | Self::Global { .. }
             | Self::AccountStorage { .. }
@@ -642,6 +658,7 @@ impl Rw {
             | Self::Global { .. }
             | Self::Memory { .. }
             | Self::Table { .. }
+            | Self::TableSize { .. }
             | Self::TxRefund { .. }
             | Self::Account { .. }
             | Self::TxAccessListAccount { .. }
@@ -708,6 +725,9 @@ impl Rw {
             | Self::TxAccessListAccountStorage { is_warm, .. } => F::from(*is_warm as u64),
             Self::Memory { byte, .. } => F::from(u64::from(*byte)),
             Self::Table { byte, .. } => F::from(u64::from(*byte)),
+            Self::TableSize { value, .. } => {
+                value.to_scalar().unwrap()
+            }
             Self::TxRefund { value, .. } | Self::TxReceipt { value, .. } => F::from(*value),
         }
     }
@@ -746,6 +766,7 @@ impl Rw {
             | Self::Global { .. }
             | Self::Memory { .. }
             | Self::Table { .. }
+            | Self::TableSize { .. }
             | Self::CallContext { .. }
             | Self::TxLog { .. }
             | Self::TxReceipt { .. } => None,
@@ -932,6 +953,20 @@ impl From<&operation::OperationContainer> for RwMap {
                     is_write: op.rw().is_write(),
                     call_id: op.op().call_id(),
                     global_index: op.op().address() as usize,
+                    value: *op.op().value(),
+                })
+                .collect(),
+        );
+        rws.insert(
+            RwTableTag::TableSize,
+            container
+                .table_sizes
+                .iter()
+                .map(|op| Rw::TableSize {
+                    rw_counter: op.rwc().into(),
+                    is_write: op.rw().is_write(),
+                    call_id: op.op().call_id(),
+                    index: op.op().address() as usize,
                     value: *op.op().value(),
                 })
                 .collect(),

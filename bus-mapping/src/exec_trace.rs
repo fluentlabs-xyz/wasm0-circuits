@@ -16,6 +16,7 @@ impl fmt::Debug for OperationRef {
                 Target::Start => "Start",
                 Target::Memory => "Memory",
                 Target::Table => "Table",
+                Target::TableSize => "TableSize",
                 Target::Stack => "Stack",
                 Target::Global=> "Global",
                 Target::Storage => "Storage",
