@@ -1,8 +1,9 @@
+use strum_macros::EnumIter;
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 
 type Offset = usize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumIter, PartialEq)]
 pub enum Error {
     IndexOutOfBoundsAt(Offset),
     AssignAt(Offset),
@@ -43,6 +44,7 @@ pub fn is_recoverable_error(e: &Error) -> bool {
         Error::InvalidEnumValueAt(_) |
         Error::ComputeValueAt(_) |
         Error::IndexOutOfBoundsSimple |
+        Error::Leb128Encode |
         Error::Leb128EncodeSigned |
         Error::Leb128EncodeUnsigned |
         Error::Leb128MaxBytes |

@@ -7,6 +7,7 @@ use halo2_proofs::{
 };
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
 use halo2_proofs::plonk::Circuit;
+use log::debug;
 
 use eth_types::{Field, Hash, ToWord};
 
@@ -19,7 +20,7 @@ use crate::wasm_circuit::types::SharedState;
 struct TestCircuit<F> {
     bytes: Vec<u8>,
     code_hash: Hash,
-    error_processing_enabled: bool,
+    error_code: u64,
     _marker: PhantomData<F>,
 }
 
@@ -57,6 +58,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
                     &wb,
                     0,
                 ).unwrap();
+                debug!("RESULT error_code {}", wasm_chip.config.shared_state.borrow().error_code);
 
                 Ok(())
             }
@@ -80,17 +82,10 @@ mod wasm_circuit_tests {
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
 
-    use crate::wasm_circuit::consts::{WASM_MAGIC_PREFIX, WASM_VERSION_PREFIX_START_INDEX, WASM_VERSION_PREFIX_LEN, WASM_MAGIC_PREFIX_START_INDEX, WASM_MAGIC_PREFIX_END_INDEX, WASM_VERSION_PREFIX_END_INDEX};
+    use crate::wasm_circuit::consts::{WASM_MAGIC_PREFIX, WASM_MAGIC_PREFIX_END_INDEX, WASM_MAGIC_PREFIX_START_INDEX, WASM_VERSION_PREFIX_END_INDEX, WASM_VERSION_PREFIX_LEN, WASM_VERSION_PREFIX_START_INDEX};
     use crate::wasm_circuit::tests::TestCircuit;
     use crate::wasm_circuit::tests_helpers::mutate_byte;
     use crate::wasm_circuit::types::WasmSection;
-
-    pub fn change_byte_val_randomly_no_collision(old_byte_val: u8) -> u8 {
-        let mut rng = rand::thread_rng();
-        let mut random_byte: u8 = old_byte_val;
-        while random_byte == old_byte_val { random_byte = rng.gen(); }
-        random_byte
-    }
 
     fn test<'a, F: Field>(test_circuit: TestCircuit<F>, is_ok: bool) {
         let k = 10;
@@ -118,7 +113,7 @@ mod wasm_circuit_tests {
 
             bytes: wb.clone(),
             code_hash,
-            error_processing_enabled: false,
+            ..Default::default()
         };
         self::test(circuit, true);
     }
@@ -139,7 +134,7 @@ mod wasm_circuit_tests {
 
             bytes: wb.clone(),
             code_hash,
-            error_processing_enabled: false,
+            ..Default::default()
         };
         self::test(circuit, true);
     }
@@ -160,13 +155,13 @@ mod wasm_circuit_tests {
 
             bytes: wb.clone(),
             code_hash,
-            error_processing_enabled: false,
+            ..Default::default()
         };
         self::test(circuit, true);
     }
 
     #[test]
-    pub fn invalid_bytecode() {
+    pub fn invalid_bytecode_fails() {
         let paths_to_files = [
             "./test_files/cc1.wat",
             "./test_files/cc2.wat",
@@ -176,15 +171,15 @@ mod wasm_circuit_tests {
             let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
             let mut wb = wat2wasm(data).unwrap();
             let i: usize = random::<usize>() % (WASM_MAGIC_PREFIX.len() - 1) + 1; // exclude \0 char at 0 index
-            wb[i] = change_byte_val_randomly_no_collision(wb[i]);
+            mutate_byte(&mut wb[i]);
             let circuit = TestCircuit::<Fr> {
                 _marker: PhantomData,
 
                 bytes: wb.clone(),
                 code_hash: CodeDB::hash(&wb),
-                error_processing_enabled: false,
+                ..Default::default()
             };
-            self::test(circuit, false);
+            self::test(circuit, true);
         }
     }
 
@@ -199,15 +194,15 @@ mod wasm_circuit_tests {
             let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
             let mut wb = wat2wasm(data).unwrap();
             let i: usize = random::<usize>() % (WASM_MAGIC_PREFIX.len() - 1) + 1; // exclude \0 char at 0 index
-            wb[i] = change_byte_val_randomly_no_collision(wb[i]);
+            mutate_byte(&mut wb[i]);
             let circuit = TestCircuit::<Fr> {
                 _marker: PhantomData,
 
                 bytes: wb.clone(),
                 code_hash: CodeDB::hash(&wb),
-                error_processing_enabled: false,
+                ..Default::default()
             };
-            self::test(circuit, false);
+            self::test(circuit, true);
         }
     }
 
@@ -222,15 +217,15 @@ mod wasm_circuit_tests {
             let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
             let mut wb = wat2wasm(data).unwrap();
             let i: usize = WASM_VERSION_PREFIX_START_INDEX + random::<usize>() % WASM_VERSION_PREFIX_LEN;
-            wb[i] = change_byte_val_randomly_no_collision(wb[i]);
+            mutate_byte(&mut wb[i]);
             let circuit = TestCircuit::<Fr> {
                 _marker: PhantomData,
 
                 bytes: wb.clone(),
                 code_hash: CodeDB::hash(&wb),
-                error_processing_enabled: false,
+                ..Default::default()
             };
-            self::test(circuit, false);
+            self::test(circuit, true);
         }
     }
 
@@ -243,7 +238,7 @@ mod wasm_circuit_tests {
 
             bytes: wb.clone(),
             code_hash: CodeDB::hash(&wb),
-            error_processing_enabled: false,
+            ..Default::default()
         };
         self::test(circuit, false);
     }
@@ -269,7 +264,7 @@ mod wasm_circuit_tests {
 
             bytes: wb.clone(),
             code_hash: CodeDB::hash(&wb),
-            error_processing_enabled: true,
+            ..Default::default()
         };
         self::test(circuit, true);
     }
@@ -295,7 +290,7 @@ mod wasm_circuit_tests {
 
             bytes: wb.clone(),
             code_hash: CodeDB::hash(&wb),
-            error_processing_enabled: true,
+            ..Default::default()
         };
         self::test(circuit, true);
     }
@@ -320,7 +315,7 @@ mod wasm_circuit_tests {
 
             bytes: wb.clone(),
             code_hash: CodeDB::hash(&wb),
-            error_processing_enabled: true,
+            ..Default::default()
         };
         self::test(circuit, true);
     }

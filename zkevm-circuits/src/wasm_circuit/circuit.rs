@@ -1100,6 +1100,7 @@ impl<F: Field> WasmChip<F>
                     Error::InvalidByteValueAt(offset) |
                     Error::InvalidEnumValueAt(offset) |
                     Error::ComputeValueAt(offset) => {
+                        debug!("recoverable error offset: {}", offset);
                         self.shared_state().borrow_mut().error_code = ErrorCode::Error as u64;
                         for offset in offset..wb.bytes.len() {
                             self.assign(region, wb, offset, &[AssignType::ErrorCode], ErrorCode::Error as u64, None)?;

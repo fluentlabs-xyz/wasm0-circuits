@@ -5,6 +5,8 @@ pub mod bytecode;
 pub mod tests;
 #[cfg(any(feature = "test", test))]
 pub mod tests_parsers;
+#[cfg(any(feature = "test", test))]
+mod error_tests;
 pub mod leb128;
 pub mod tables;
 pub mod common;

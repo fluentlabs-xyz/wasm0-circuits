@@ -24,16 +24,6 @@ pub enum ErrorCode {
     Error = 1,
 }
 
-#[derive(Copy, Clone, Debug, Default)]
-pub struct SharedState {
-    pub dynamic_indexes_offset: usize,
-    pub func_count: usize,
-    pub block_level: usize,
-
-    pub error_processing_enabled: bool,
-    pub error_code: u64,
-}
-
 #[derive(Copy, Clone, Debug)]
 pub enum WasmSection {
     Custom = 0,
@@ -655,12 +645,22 @@ impl<F: FieldExt> Expr<F> for ParametricInstruction {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default)]
+pub struct SharedState {
+    pub dynamic_indexes_offset: usize,
+    pub func_count: usize,
+    pub block_level: usize,
+
+    pub error_processing_enabled: bool,
+    pub error_code: u64,
+}
+
 impl SharedState {
     pub fn reset(&mut self) {
         self.dynamic_indexes_offset = 0;
         self.func_count = 0;
         self.block_level = 0;
-        // self.error_processing_enabled = false;
+        // self.error_processing_enabled = true;
         self.error_code = 0;
     }
 

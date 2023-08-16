@@ -124,7 +124,7 @@ mod leb128_circuit_tests {
     use crate::wasm_circuit::error::Error;
     use crate::wasm_circuit::leb128::consts::{EIGHT_LS_BITS_MASK, EIGHT_MS_BIT_MASK, SEVEN_LS_BITS_MASK};
     use crate::wasm_circuit::leb128::tests::TestCircuit;
-    use crate::wasm_circuit::tests_helpers::break_bit;
+    use crate::wasm_circuit::tests_helpers::break_bit_by_mask;
 
     const ALL_BIT_DEPTHS_BYTES: &[usize] = &[1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -215,14 +215,14 @@ mod leb128_circuit_tests {
 
     pub fn leb128_break_continuation_bit(rng: &mut rand::prelude::ThreadRng, leb128: &mut Vec<u8>) {
         let byte_number = rng.gen::<usize>() % leb128.len();
-        break_bit(&mut leb128[byte_number], EIGHT_MS_BIT_MASK);
+        break_bit_by_mask(&mut leb128[byte_number], EIGHT_MS_BIT_MASK);
     }
 
     pub fn leb_break_random_bit(rng: &mut rand::prelude::ThreadRng, leb128: &mut Vec<u8>) {
         let byte_to_break_number = rng.gen::<usize>() % leb128.len();
         let bit_to_break_number = rng.gen::<u64>() % 8;
         let bit_to_break_mask = 1 << bit_to_break_number;
-        break_bit(&mut leb128[byte_to_break_number], bit_to_break_mask);
+        break_bit_by_mask(&mut leb128[byte_to_break_number], bit_to_break_mask);
     }
 
     pub fn leb128_bytes_n_to_max_bit_depth(is_signed: bool, leb_bytes_n: usize) -> Result<usize, Error> {
