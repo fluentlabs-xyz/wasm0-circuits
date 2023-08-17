@@ -6,6 +6,7 @@ use eth_types::{Field, ToScalar};
 
 use crate::{
     evm_circuit::{
+        table::{FixedTableTag, Lookup},
         execution::ExecutionGadget,
         step::ExecutionState,
         util::{
@@ -25,8 +26,10 @@ pub(crate) struct WasmTableFillGadget<F> {
     same_context: SameContextGadget<F>,
     table_index: Cell<F>,
     start: Cell<F>,
+    value_type: Cell<F>,
     value: Cell<F>,
     range: Cell<F>,
+    size: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for WasmTableFillGadget<F> {
@@ -39,24 +42,35 @@ impl<F: Field> ExecutionGadget<F> for WasmTableFillGadget<F> {
 
         let table_index = cb.query_cell();
         let start = cb.query_cell();
+        let value_type = cb.query_cell();
         let value = cb.query_cell();
         let range = cb.query_cell();
+        let size = cb.query_cell();
 
         cb.stack_pop(start.expr());
         cb.stack_pop(value.expr());
         cb.stack_pop(range.expr());
 
-/*
-        cb.condition(is_fill_op.expr(), |cb| {
-            cb.stack_pop(start.expr());
-            cb.stack_pop(value.expr());
-            cb.stack_pop(range.expr());
-            cb.table_fill(table_index.expr(), start.expr(), value.expr(), range.expr());
+        cb.table_size(table_index.expr(), size.expr());
+        cb.table_fill(table_index.expr(), start.expr(), value.expr(), range.expr(), size.expr());
+
+        cb.add_lookup("Using Range1024 fixed table, positive value check", Lookup::Fixed {
+                tag: FixedTableTag::Range1024.expr(),
+                values: [value.expr(), 0.expr(), 0.expr()],
         });
-*/
+
+        cb.add_lookup("Using Range1024 fixed table, positive range check", Lookup::Fixed {
+                tag: FixedTableTag::Range1024.expr(),
+                values: [value.expr(), 0.expr(), 0.expr()],
+        });
+
+        cb.add_lookup("Using Range1024 fixed table, substraction check, that result is positive", Lookup::Fixed {
+                tag: FixedTableTag::Range1024.expr(),
+                values: [size.expr() - (value.expr() + range.expr()), 0.expr(), 0.expr()],
+        });
 
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(3.expr()),
+            rw_counter: Delta(4.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::TableGet.constant_gas_cost().expr()),
@@ -69,8 +83,10 @@ impl<F: Field> ExecutionGadget<F> for WasmTableFillGadget<F> {
             same_context,
             table_index,
             start,
+            value_type,
             value,
             range,
+            size,
         }
     }
 
@@ -85,10 +101,11 @@ impl<F: Field> ExecutionGadget<F> for WasmTableFillGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let [start, value, range] =
-            [step.rw_indices[0], step.rw_indices[1], step.rw_indices[2]]
+        let [value_type, start, value, range] =
+            [step.rw_indices[0], step.rw_indices[1], step.rw_indices[2], step.rw_indices[3]]
             .map(|idx| block.rws[idx].stack_value());
         self.start.assign(region, offset, Value::<F>::known(start.to_scalar().unwrap()))?;
+        self.value_type.assign(region, offset, Value::<F>::known(value_type.to_scalar().unwrap()))?;
         self.value.assign(region, offset, Value::<F>::known(value.to_scalar().unwrap()))?;
         self.range.assign(region, offset, Value::<F>::known(range.to_scalar().unwrap()))?;
 
@@ -120,7 +137,8 @@ mod test {
     fn test_table_fill() {
         let mut code = bytecode! {
             I32Const[0]
-            RefFunc[0xff]
+            I32Const[0]
+            RefFunc[0]
             I32Const[2]
             TableFill[0]
             Drop

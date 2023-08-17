@@ -46,14 +46,7 @@ impl<F: Field> ExecutionGadget<F> for WasmTableGrowGadget<F> {
         cb.stack_pop(grow_val.expr());
         cb.stack_push(res_val.expr());
 
-/*
-        cb.condition(is_grow_op.expr(), |cb| {
-            cb.stack_pop(init_val.expr());
-            cb.stack_pop(grow_val.expr()); // Input argument if how much to grow.
-            cb.table_grow(table_index.expr(), init_val.expr(), grow_val.expr(), value.expr());
-            cb.stack_push(value.expr()); // Result of grow.
-        });
-*/
+        cb.table_grow(table_index.expr(), init_val.expr(), grow_val.expr(), res_val.expr());
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(3.expr()),
