@@ -1,20 +1,18 @@
-use std::cell::RefCell;
-use std::marker::PhantomData;
-use std::rc::Rc;
+use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 use halo2_proofs::{
-    plonk::{ConstraintSystem, Error},
+    circuit::{Layouter, SimpleFloorPlanner},
+    plonk::{Circuit, ConstraintSystem, Error},
 };
-use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
-use halo2_proofs::plonk::Circuit;
 
 use eth_types::{Field, Hash, ToWord};
 
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::leb128::circuit::LEB128Chip;
-use crate::wasm_circuit::sections::start::body::circuit::WasmStartSectionBodyChip;
-use crate::wasm_circuit::types::SharedState;
+use crate::wasm_circuit::{
+    bytecode::{bytecode::WasmBytecode, bytecode_table::WasmBytecodeTable},
+    leb128::circuit::LEB128Chip,
+    sections::start::body::circuit::WasmStartSectionBodyChip,
+    types::SharedState,
+};
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -35,21 +33,18 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     type Config = TestCircuitConfig<F>;
     type FloorPlanner = SimpleFloorPlanner;
 
-    fn without_witnesses(&self) -> Self { Self::default() }
+    fn without_witnesses(&self) -> Self {
+        Self::default()
+    }
 
-    fn configure(
-        cs: &mut ConstraintSystem<F>,
-    ) -> Self::Config {
+    fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
         let wb_table = Rc::new(WasmBytecodeTable::construct(cs));
         let func_count = cs.advice_column();
         let error_code = cs.advice_column();
 
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
-        let leb128_config = LEB128Chip::<F>::configure(
-            cs,
-            &wb_table.value,
-        );
+        let leb128_config = LEB128Chip::<F>::configure(cs, &wb_table.value);
         let leb128_chip = Rc::new(LEB128Chip::construct(leb128_config));
 
         let config = WasmStartSectionBodyChip::configure(
@@ -84,15 +79,14 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             |mut region| {
                 let mut offset_start = self.offset_start;
                 while offset_start < wb.bytes.len() {
-                    offset_start = config.start_section_body_chip.assign_auto(
-                        &mut region,
-                        &wb,
-                        offset_start,
-                    ).unwrap();
+                    offset_start = config
+                        .start_section_body_chip
+                        .assign_auto(&mut region, &wb, offset_start, 0)
+                        .unwrap();
                 }
 
                 Ok(())
-            }
+            },
         )?;
 
         Ok(())
@@ -101,21 +95,19 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 
 #[cfg(test)]
 mod wasm_start_section_body_tests {
-    use halo2_proofs::dev::MockProver;
-    use halo2_proofs::halo2curves::bn256::Fr;
+    use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
     use log::debug;
     use wasmbin::sections::Kind;
 
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
 
-    use crate::wasm_circuit::common::{wat_extract_section_body_bytecode, wat_extract_section_bytecode};
-    use crate::wasm_circuit::sections::start::body::tests::TestCircuit;
+    use crate::wasm_circuit::{
+        common::{wat_extract_section_body_bytecode, wat_extract_section_bytecode},
+        sections::start::body::tests::TestCircuit,
+    };
 
-    fn test<'a, F: Field>(
-        test_circuit: TestCircuit<'_, F>,
-        is_ok: bool,
-    ) {
+    fn test<'a, F: Field>(test_circuit: TestCircuit<'_, F>, is_ok: bool) {
         let k = 8;
         let prover = MockProver::run(k, &test_circuit, vec![]).unwrap();
         if is_ok {
@@ -130,9 +122,14 @@ mod wasm_start_section_body_tests {
         let path_to_file = "./test_files/cc2.wat";
         let kind = Kind::Start;
 
-        let mut bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
+        let mut bytecode = wat_extract_section_body_bytecode(path_to_file, kind);
         bytecode.extend(bytecode.clone());
-        debug!("bytecode len {} hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        debug!(
+            "bytecode len {} hex {:x?} bin {:?}",
+            bytecode.len(),
+            bytecode,
+            bytecode
+        );
         let code_hash = CodeDB::hash(&bytecode);
         let test_circuit = TestCircuit::<Fr> {
             code_hash,
@@ -148,12 +145,17 @@ mod wasm_start_section_body_tests {
         let path_to_file = "./test_files/cc1.wat";
         let kind = Kind::Start;
 
-        let section_bytecode = wat_extract_section_bytecode(path_to_file, kind, );
+        let section_bytecode = wat_extract_section_bytecode(path_to_file, kind);
         debug!("section_bytecode {:?}", section_bytecode);
         debug!("section_bytecode (hex) {:x?}", section_bytecode);
 
-        let mut bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
-        debug!("bytecode len {} hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let mut bytecode = wat_extract_section_body_bytecode(path_to_file, kind);
+        debug!(
+            "bytecode len {} hex {:x?} bin {:?}",
+            bytecode.len(),
+            bytecode,
+            bytecode
+        );
         let code_hash = CodeDB::hash(&bytecode);
         let test_circuit = TestCircuit::<Fr> {
             code_hash,
@@ -168,11 +170,9 @@ mod wasm_start_section_body_tests {
     pub fn file2_ok() {
         let path_to_file = "./test_files/cc2.wat";
         let kind = Kind::Start;
-        let expected = [
-            8, 1, 2,
-        ].as_slice().to_vec();
+        let expected = [8, 1, 2].as_slice().to_vec();
 
-        let section_bytecode = wat_extract_section_bytecode(path_to_file, kind, );
+        let section_bytecode = wat_extract_section_bytecode(path_to_file, kind);
         debug!("expected {:?}", expected);
         debug!("section_bytecode {:?}", section_bytecode);
         debug!("");
@@ -180,8 +180,13 @@ mod wasm_start_section_body_tests {
         debug!("section_bytecode (hex) {:x?}", section_bytecode);
         assert_eq!(expected, section_bytecode);
 
-        let mut bytecode = wat_extract_section_body_bytecode(path_to_file, kind, );
-        debug!("bytecode len {} hex {:x?} bin {:?}", bytecode.len(), bytecode, bytecode);
+        let mut bytecode = wat_extract_section_body_bytecode(path_to_file, kind);
+        debug!(
+            "bytecode len {} hex {:x?} bin {:?}",
+            bytecode.len(),
+            bytecode,
+            bytecode
+        );
         let code_hash = CodeDB::hash(&bytecode);
         let test_circuit = TestCircuit::<Fr> {
             code_hash,

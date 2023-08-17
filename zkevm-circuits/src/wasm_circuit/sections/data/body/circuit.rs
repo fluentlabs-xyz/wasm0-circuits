@@ -94,28 +94,30 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
         &self,
         region: &mut Region<F>,
         wb: &WasmBytecode,
-        offset: usize,
+        wb_offset: usize,
+        assign_delta: usize,
         assign_types: &[Self::AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         let q_enable = true;
+        let assign_offset = wb_offset + assign_delta;
         debug!(
             "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?} leb_params {:?}",
-            offset,
+            assign_offset,
             q_enable,
             assign_types,
             assign_value,
-            wb.bytes[offset],
+            wb.bytes[wb_offset],
             leb_params,
         );
         region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
+            || format!("assign 'q_enable' val {} at {}", q_enable, assign_offset),
             self.config.q_enable,
-            offset,
+            assign_offset,
             || Value::known(F::from(q_enable as u64)),
-        ).map_err(remap_error_to_assign_at(offset))?;
-        self.assign_func_count(region, offset)?;
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
+        self.assign_func_count(region, assign_offset)?;
 
         for assign_type in assign_types {
             if [
@@ -126,7 +128,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
                 let p = leb_params.unwrap();
                 self.config.leb128_chip.assign(
                     region,
-                    offset,
+                    assign_offset,
                     q_enable,
                     p,
                 )?;
@@ -134,124 +136,124 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmDataSectionBodyChip<F> {
             match assign_type {
                 AssignType::QFirst => {
                     region.assign_fixed(
-                        || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                        || format!("assign 'q_first' val {} at {}", assign_value, assign_offset),
                         self.config.q_first,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::QLast => {
                     region.assign_fixed(
-                        || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                        || format!("assign 'q_last' val {} at {}", assign_value, assign_offset),
                         self.config.q_last,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsItemsCount => {
                     region.assign_fixed(
-                        || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_items_count' val {} at {}", assign_value, assign_offset),
                         self.config.is_items_count,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsMemSegmentType => {
                     region.assign_fixed(
-                        || format!("assign 'is_mem_segment_type' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_mem_segment_type' val {} at {}", assign_value, assign_offset),
                         self.config.is_mem_segment_type,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsMemSegmentSizeOpcode => {
                     region.assign_fixed(
-                        || format!("assign 'is_mem_segment_size_opcode' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_mem_segment_size_opcode' val {} at {}", assign_value, assign_offset),
                         self.config.is_mem_segment_size_opcode,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsMemSegmentSize => {
                     region.assign_fixed(
-                        || format!("assign 'is_mem_segment_size' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_mem_segment_size' val {} at {}", assign_value, assign_offset),
                         self.config.is_mem_segment_size,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsBlockEnd => {
                     region.assign_fixed(
-                        || format!("assign 'is_block_end' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_block_end' val {} at {}", assign_value, assign_offset),
                         self.config.is_block_end,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsMemSegmentLen => {
                     region.assign_fixed(
-                        || format!("assign 'is_mem_segment_len' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_mem_segment_len' val {} at {}", assign_value, assign_offset),
                         self.config.is_mem_segment_len,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsMemSegmentBytes => {
                     region.assign_fixed(
-                        || format!("assign 'is_mem_segment_bytes' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_mem_segment_bytes' val {} at {}", assign_value, assign_offset),
                         self.config.is_mem_segment_bytes,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsMemSegmentTypeCtx => {
                     region.assign_fixed(
-                        || format!("assign 'is_mem_segment_type_ctx' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_mem_segment_type_ctx' val {} at {}", assign_value, assign_offset),
                         self.config.is_mem_segment_type_ctx,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::MemSegmentType => {
                     region.assign_advice(
-                        || format!("assign 'mem_segment_type' val {} at {}", assign_value, offset),
+                        || format!("assign 'mem_segment_type' val {} at {}", assign_value, assign_offset),
                         self.config.mem_segment_type,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
-                    let mem_segment_type: MemSegmentType = (assign_value as u8).try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    let mem_segment_type: MemSegmentType = (assign_value as u8).try_into().map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
                     self.config.mem_segment_type_chip.assign(
                         region,
-                        offset,
+                        assign_offset,
                         &mem_segment_type,
                     ).map_err(remap_error(Error::FatalAssignExternalChip))?;
                 }
                 AssignType::IsMemIndex => {
                     region.assign_fixed(
-                        || format!("assign 'is_mem_index' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_mem_index' val {} at {}", assign_value, assign_offset),
                         self.config.is_memidx,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::BodyByteRevIndex => {
                     region.assign_advice(
-                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, offset),
+                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, assign_offset),
                         self.config.body_byte_rev_index,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::BodyItemRevCount => {
                     region.assign_advice(
-                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, offset),
+                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, assign_offset),
                         self.config.body_item_rev_count,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(offset))?;
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::ErrorCode => {
-                    self.assign_error_code(region, offset, None)?;
+                    self.assign_error_code(region, assign_offset, None)?;
                 }
             }
         };
@@ -925,16 +927,18 @@ impl<F: Field> WasmDataSectionBodyChip<F>
         &self,
         region: &mut Region<F>,
         wb: &WasmBytecode,
-        offset_start: usize,
+        wb_offset: usize,
+        assign_delta: usize,
     ) -> Result<usize, Error> {
-        let mut offset = offset_start;
+        let mut offset = wb_offset;
 
         // items_count+
-        self.assign(region, &wb, offset, &[AssignType::QFirst], 1, None)?;
+        self.assign(region, &wb, offset, assign_delta, &[AssignType::QFirst], 1, None)?;
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
             wb,
             offset,
+            assign_delta,
             &[AssignType::IsItemsCount],
         )?;
         let mut body_item_rev_count = items_count;
@@ -943,6 +947,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 region,
                 &wb,
                 offset,
+                assign_delta,
                 &[AssignType::BodyItemRevCount],
                 body_item_rev_count,
                 None,
@@ -968,6 +973,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 region,
                 wb,
                 offset,
+                assign_delta,
                 &[AssignType::IsMemSegmentType, AssignType::IsMemSegmentTypeCtx],
                 1,
                 None,
@@ -976,6 +982,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                 region,
                 wb,
                 offset,
+                assign_delta,
                 &[AssignType::MemSegmentType],
                 mem_segment_type_val as u64,
                 None,
@@ -989,6 +996,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsMemSegmentSizeOpcode, AssignType::IsMemSegmentTypeCtx],
                         1,
                         None,
@@ -997,6 +1005,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::MemSegmentType],
                         mem_segment_type_val as u64,
                         None,
@@ -1008,6 +1017,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsMemSegmentSize, AssignType::IsMemSegmentTypeCtx],
                     )?;
                     for offset in offset..offset + mem_segment_size_leb_len {
@@ -1015,6 +1025,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             wb,
                             offset,
+                            assign_delta,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
@@ -1027,6 +1038,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsBlockEnd, AssignType::IsMemSegmentTypeCtx],
                         1,
                         None,
@@ -1035,6 +1047,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::MemSegmentType],
                         mem_segment_type_val as u64,
                         None,
@@ -1046,6 +1059,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsMemSegmentLen, AssignType::IsMemSegmentTypeCtx],
                     )?;
                     let mem_segment_len_last_byte_offset = offset + mem_segment_len_leb_len - 1;
@@ -1055,6 +1069,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             &wb,
                             offset,
+                            assign_delta,
                             &[AssignType::BodyByteRevIndex],
                             (mem_segment_last_byte_offset - offset) as u64,
                             None,
@@ -1065,6 +1080,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             wb,
                             offset,
+                            assign_delta,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
@@ -1078,6 +1094,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             wb,
                             offset + rel_offset,
+                            assign_delta,
                             &[AssignType::IsMemSegmentBytes, AssignType::IsMemSegmentTypeCtx],
                             1,
                             None,
@@ -1087,6 +1104,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                                 region,
                                 wb,
                                 offset,
+                                assign_delta,
                                 &[AssignType::MemSegmentType],
                                 mem_segment_type_val as u64,
                                 None,
@@ -1101,6 +1119,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsMemSegmentLen, AssignType::IsMemSegmentTypeCtx],
                     )?;
                     let mem_segment_len_last_byte_offset = offset + mem_segment_len_leb_len - 1;
@@ -1110,6 +1129,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             &wb,
                             offset,
+                            assign_delta,
                             &[AssignType::BodyByteRevIndex],
                             (mem_segment_last_byte_offset - offset) as u64,
                             None,
@@ -1120,6 +1140,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             wb,
                             offset,
+                            assign_delta,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
@@ -1133,6 +1154,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             wb,
                             offset + rel_offset,
+                            assign_delta,
                             &[AssignType::IsMemSegmentBytes, AssignType::IsMemSegmentTypeCtx],
                             1,
                             None,
@@ -1141,6 +1163,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             wb,
                             offset,
+                            assign_delta,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
@@ -1154,6 +1177,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsMemIndex, AssignType::IsMemSegmentTypeCtx],
                     )?;
                     for offset in offset..offset + mem_index_leb_len {
@@ -1161,6 +1185,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             wb,
                             offset,
+                            assign_delta,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
@@ -1173,6 +1198,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsMemSegmentSizeOpcode, AssignType::IsMemSegmentTypeCtx],
                         1,
                         None,
@@ -1181,6 +1207,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::MemSegmentType],
                         mem_segment_type_val as u64,
                         None,
@@ -1192,6 +1219,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsMemSegmentSize, AssignType::IsMemSegmentTypeCtx],
                     )?;
                     for offset in offset..offset + mem_segment_size_leb_len {
@@ -1199,6 +1227,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             wb,
                             offset,
+                            assign_delta,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
@@ -1211,6 +1240,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsBlockEnd, AssignType::IsMemSegmentTypeCtx],
                         1,
                         None,
@@ -1219,6 +1249,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::MemSegmentType],
                         mem_segment_type_val as u64,
                         None,
@@ -1230,6 +1261,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                         region,
                         wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsMemSegmentLen, AssignType::IsMemSegmentTypeCtx],
                     )?;
                     for offset in offset..offset + mem_segment_len_leb_len {
@@ -1237,6 +1269,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             wb,
                             offset,
+                            assign_delta,
                             &[AssignType::MemSegmentType],
                             mem_segment_type_val as u64,
                             None,
@@ -1250,6 +1283,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                             region,
                             wb,
                             offset + rel_offset,
+                            assign_delta,
                             &[AssignType::IsMemSegmentBytes, AssignType::IsMemSegmentTypeCtx],
                             1,
                             None,
@@ -1259,6 +1293,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                                 region,
                                 wb,
                                 offset,
+                                assign_delta,
                                 &[AssignType::MemSegmentType],
                                 mem_segment_type_val as u64,
                                 None,
@@ -1274,6 +1309,7 @@ impl<F: Field> WasmDataSectionBodyChip<F>
                     region,
                     &wb,
                     offset,
+                    assign_delta,
                     &[AssignType::BodyItemRevCount],
                     body_item_rev_count,
                     None,
@@ -1281,8 +1317,8 @@ impl<F: Field> WasmDataSectionBodyChip<F>
             }
         }
 
-        if offset != offset_start {
-            self.assign(region, &wb, offset - 1, &[AssignType::QLast], 1, None)?;
+        if offset != wb_offset {
+            self.assign(region, &wb, offset - 1, assign_delta, &[AssignType::QLast], 1, None)?;
         }
 
         Ok(offset)

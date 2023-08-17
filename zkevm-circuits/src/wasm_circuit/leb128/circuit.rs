@@ -230,61 +230,61 @@ impl<F: Field> LEB128Chip<F>
     pub fn assign(
         &self,
         region: &mut Region<F>,
-        offset: usize,
+        assign_offset: usize,
         q_enable: bool,
         p: LebParams,
     ) -> Result<(), Error> {
         region.assign_fixed(
-            || format!("assign 'q_enable' to {} at {}", q_enable, offset),
+            || format!("assign 'q_enable' to {} at {}", q_enable, assign_offset),
             self.config.q_enable,
-            offset,
+            assign_offset,
             || Value::known(F::from(q_enable as u64)),
-        ).map_err(remap_error_to_assign_at(offset))?;
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
 
         region.assign_fixed(
-            || format!("assign 'is_signed' to {} at {}", p.is_signed, offset),
+            || format!("assign 'is_signed' to {} at {}", p.is_signed, assign_offset),
             self.config.is_signed,
-            offset,
+            assign_offset,
             || Value::known(F::from(p.is_signed as u64)),
-        ).map_err(remap_error_to_assign_at(offset))?;
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
 
         region.assign_fixed(
-            || format!("assign 'is_byte_has_cb' to {} at {}", p.is_byte_has_cb(), offset),
+            || format!("assign 'is_byte_has_cb' to {} at {}", p.is_byte_has_cb(), assign_offset),
             self.config.is_byte_has_cb,
-            offset,
+            assign_offset,
             || Value::known(F::from(p.is_byte_has_cb() as u64)),
-        ).map_err(remap_error_to_assign_at(offset))?;
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
 
         region.assign_fixed(
-            || format!("assign 'is_first_byte' to {} at {}", p.is_first_byte(), offset),
+            || format!("assign 'is_first_byte' to {} at {}", p.is_first_byte(), assign_offset),
             self.config.is_first_byte,
-            offset,
+            assign_offset,
             || Value::known(F::from(p.is_first_byte() as u64)),
-        ).map_err(remap_error_to_assign_at(offset))?;
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
 
         region.assign_fixed(
-            || format!("assign 'is_last_byte' to {} at {}", p.is_last_byte(), offset),
+            || format!("assign 'is_last_byte' to {} at {}", p.is_last_byte(), assign_offset),
             self.config.is_last_byte,
-            offset,
+            assign_offset,
             || Value::known(F::from(p.is_last_byte() as u64)),
-        ).map_err(remap_error_to_assign_at(offset))?;
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
 
         let leb_byte_mul = if p.is_byte_has_cb() || p.is_last_byte() { pow(0b10000000, p.byte_rel_offset) } else { 0 };
         region.assign_advice(
-            || format!("assign 'leb_byte_mul' to {} at {}", leb_byte_mul, offset),
+            || format!("assign 'leb_byte_mul' to {} at {}", leb_byte_mul, assign_offset),
             self.config.byte_mul,
-            offset,
+            assign_offset,
             || Value::known(F::from(leb_byte_mul)),
-        ).map_err(remap_error_to_assign_at(offset))?;
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
 
         let mut val = F::from(p.sn);
         if p.is_signed { val = val.neg() }
         region.assign_advice(
-            || format!("assign 'sn' is_signed '{}' to {} at {}", p.is_signed, p.sn, offset),
+            || format!("assign 'sn' is_signed '{}' to {} at {}", p.is_signed, p.sn, assign_offset),
             self.config.sn,
-            offset,
+            assign_offset,
             || Value::known(F::from(val)),
-        ).map_err(remap_error_to_assign_at(offset))?;
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
 
         let val = if p.is_signed && p.is_last_byte() {
             F::from(p.sn_recovered_at_pos).neg()
@@ -292,11 +292,11 @@ impl<F: Field> LEB128Chip<F>
             F::from(p.sn_recovered_at_pos)
         };
         region.assign_advice(
-            || format!("assign 'sn_recovered' is_signed '{}' to {} at {}", p.is_signed, p.sn_recovered_at_pos, offset),
+            || format!("assign 'sn_recovered' is_signed '{}' to {} at {}", p.is_signed, p.sn_recovered_at_pos, assign_offset),
             self.config.sn_recovered,
-            offset,
+            assign_offset,
             || Value::known(val),
-        ).map_err(remap_error_to_assign_at(offset))?;
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
 
         Ok(())
     }

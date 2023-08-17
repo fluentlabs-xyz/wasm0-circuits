@@ -57,6 +57,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
                     &mut region,
                     &wb,
                     0,
+                    0,
                 ).unwrap();
                 debug!("RESULT error_code {}", wasm_chip.config.shared_state.borrow().error_code);
 
