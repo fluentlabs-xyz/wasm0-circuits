@@ -81,7 +81,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let wb = WasmBytecode::new(self.bytecode.to_vec().clone(), self.code_hash.to_word());
-        config.wb_table.load(&mut layouter, &wb)?;
+        config.wb_table.load(&mut layouter, &wb, false, 0)?;
         layouter.assign_region(
             || "wasm_data_section_body region",
             |mut region| {

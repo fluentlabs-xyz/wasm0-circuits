@@ -1,8 +1,7 @@
-use halo2_proofs::arithmetic::FieldExt;
-use halo2_proofs::plonk::Expression;
-use strum_macros::EnumIter;
-use gadgets::util::Expr;
 use crate::wasm_circuit::error::Error;
+use gadgets::util::Expr;
+use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
+use strum_macros::EnumIter;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AssignType {
@@ -62,7 +61,9 @@ impl TryFrom<i32> for WasmSection {
 
     fn try_from(v: i32) -> Result<Self, Self::Error> {
         for instr in WASM_SECTION_VALUES {
-            if v == *instr as i32 { return Ok(*instr); }
+            if v == *instr as i32 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }
@@ -97,7 +98,9 @@ impl TryFrom<u8> for NumType {
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in NUM_TYPE_VALUES {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }
@@ -123,17 +126,16 @@ pub enum RefType {
     ExternRef = 0x71,
 }
 
-pub const REF_TYPE_VALUES: &[RefType] = &[
-    RefType::FuncRef,
-    RefType::ExternRef,
-];
+pub const REF_TYPE_VALUES: &[RefType] = &[RefType::FuncRef, RefType::ExternRef];
 
 impl TryFrom<u8> for RefType {
     type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in REF_TYPE_VALUES {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }
@@ -159,17 +161,16 @@ pub enum LimitType {
     MinMax = 0x1,
 }
 
-pub const LIMIT_TYPE_VALUES: &[LimitType] = &[
-    LimitType::MinOnly,
-    LimitType::MinMax,
-];
+pub const LIMIT_TYPE_VALUES: &[LimitType] = &[LimitType::MinOnly, LimitType::MinMax];
 
 impl TryFrom<u8> for LimitType {
     type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in LIMIT_TYPE_VALUES {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }
@@ -189,7 +190,8 @@ impl<F: FieldExt> Expr<F> for LimitType {
 }
 
 /// https://webassembly.github.io/spec/core/binary/modules.html#data-section
-/// Bit 0 indicates a passive segment, bit 1 indicates the presence of an explicit memory index for an active segment.
+/// Bit 0 indicates a passive segment, bit 1 indicates the presence of an explicit memory index for
+/// an active segment.
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MemSegmentType {
     Active = 0x0,
@@ -208,7 +210,9 @@ impl TryFrom<u8> for MemSegmentType {
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in MEM_SEGMENT_TYPE_VALUES {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }
@@ -248,7 +252,9 @@ impl TryFrom<u8> for ImportDescType {
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in IMPORT_DESC_TYPE_VALUES {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }
@@ -288,7 +294,9 @@ impl TryFrom<u8> for ExportDescType {
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in EXPORT_DESC_TYPE_VALUES {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }
@@ -314,10 +322,7 @@ pub enum Mutability {
     Var = 0x1,
 }
 
-pub const MUTABILITY_VALUES: &[Mutability] = &[
-    Mutability::Const,
-    Mutability::Var,
-];
+pub const MUTABILITY_VALUES: &[Mutability] = &[Mutability::Const, Mutability::Var];
 
 impl<F: FieldExt> Expr<F> for Mutability {
     #[inline]
@@ -471,24 +476,24 @@ pub enum NumericInstruction {
     I64extend32S = 0xc4,
 }
 
-pub const NUMERIC_INSTRUCTIONS_WITHOUT_ARGS: &[NumericInstruction] = &[
-    NumericInstruction::I32Add,
-    NumericInstruction::I64Add,
-];
-pub const NUMERIC_INSTRUCTION_WITH_LEB_ARG: &[NumericInstruction] = &[
-    NumericInstruction::I32Const,
-    NumericInstruction::I64Const,
-];
+pub const NUMERIC_INSTRUCTIONS_WITHOUT_ARGS: &[NumericInstruction] =
+    &[NumericInstruction::I32Add, NumericInstruction::I64Add];
+pub const NUMERIC_INSTRUCTION_WITH_LEB_ARG: &[NumericInstruction] =
+    &[NumericInstruction::I32Const, NumericInstruction::I64Const];
 
 impl TryFrom<u8> for NumericInstruction {
     type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in NUMERIC_INSTRUCTION_WITH_LEB_ARG {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         for instr in NUMERIC_INSTRUCTIONS_WITHOUT_ARGS {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }
@@ -529,7 +534,9 @@ impl TryFrom<u8> for VariableInstruction {
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in VARIABLE_INSTRUCTION_WITH_LEB_ARG {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }
@@ -564,10 +571,8 @@ pub enum ControlInstruction {
     CallIndirect = 0x11,
 }
 
-pub const CONTROL_INSTRUCTION_WITHOUT_ARGS: &[ControlInstruction] = &[
-    ControlInstruction::Unreachable,
-    ControlInstruction::Else,
-];
+pub const CONTROL_INSTRUCTION_WITHOUT_ARGS: &[ControlInstruction] =
+    &[ControlInstruction::Unreachable, ControlInstruction::Else];
 pub const CONTROL_INSTRUCTION_WITH_LEB_ARG: &[ControlInstruction] = &[
     ControlInstruction::Br,
     ControlInstruction::BrIf,
@@ -584,13 +589,19 @@ impl TryFrom<u8> for ControlInstruction {
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in CONTROL_INSTRUCTION_WITH_LEB_ARG {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         for instr in CONTROL_INSTRUCTION_WITHOUT_ARGS {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         for instr in CONTROL_INSTRUCTION_BLOCK {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }
@@ -616,17 +627,17 @@ pub enum ParametricInstruction {
     // SelectT = 0x1C,
 }
 
-pub const PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS: &[ParametricInstruction] = &[
-    ParametricInstruction::Drop,
-    ParametricInstruction::Select,
-];
+pub const PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS: &[ParametricInstruction] =
+    &[ParametricInstruction::Drop, ParametricInstruction::Select];
 
 impl TryFrom<u8> for ParametricInstruction {
     type Error = Error;
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }
@@ -647,6 +658,7 @@ impl<F: FieldExt> Expr<F> for ParametricInstruction {
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct SharedState {
+    pub bytecode_number: u64,
     pub dynamic_indexes_offset: usize,
     pub func_count: usize,
     pub block_level: usize,
@@ -657,9 +669,11 @@ pub struct SharedState {
 
 impl SharedState {
     pub fn reset(&mut self) {
+        self.bytecode_number = 1;
         self.dynamic_indexes_offset = 0;
         self.func_count = 0;
         self.block_level = 0;
+
         // self.error_processing_enabled = true;
         self.error_code = 0;
     }

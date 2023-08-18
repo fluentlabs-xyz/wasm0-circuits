@@ -1,16 +1,16 @@
-use strum_macros::EnumIter;
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use strum_macros::EnumIter;
 
-type Offset = usize;
+type AssignOffset = usize;
 
 #[derive(Debug, Clone, EnumIter, PartialEq)]
 pub enum Error {
-    IndexOutOfBoundsAt(Offset),
-    AssignAt(Offset),
-    InvalidByteValueAt(Offset),
-    ParseOpcodeFailedAt(Offset),
-    InvalidEnumValueAt(Offset),
-    ComputeValueAt(Offset),
+    IndexOutOfBoundsAt(AssignOffset),
+    AssignAt(AssignOffset),
+    InvalidByteValueAt(AssignOffset),
+    ParseOpcodeFailedAt(AssignOffset),
+    InvalidEnumValueAt(AssignOffset),
+    ComputeValueAt(AssignOffset),
 
     InvalidEnumValue,
     IndexOutOfBoundsSimple,
@@ -37,71 +37,71 @@ pub enum Error {
 }
 pub fn is_recoverable_error(e: &Error) -> bool {
     return match e {
-        Error::IndexOutOfBoundsAt(_) |
-        Error::AssignAt(_) |
-        Error::ParseOpcodeFailedAt(_) |
-        Error::InvalidByteValueAt(_) |
-        Error::InvalidEnumValueAt(_) |
-        Error::ComputeValueAt(_) |
-        Error::IndexOutOfBoundsSimple |
-        Error::Leb128Encode |
-        Error::Leb128EncodeSigned |
-        Error::Leb128EncodeUnsigned |
-        Error::Leb128MaxBytes |
-        Error::InvalidEnumValue |
-        Error::ComputationFailed => { true }
+        Error::IndexOutOfBoundsAt(_)
+        | Error::AssignAt(_)
+        | Error::ParseOpcodeFailedAt(_)
+        | Error::InvalidByteValueAt(_)
+        | Error::InvalidEnumValueAt(_)
+        | Error::ComputeValueAt(_)
+        | Error::IndexOutOfBoundsSimple
+        | Error::Leb128Encode
+        | Error::Leb128EncodeSigned
+        | Error::Leb128EncodeUnsigned
+        | Error::Leb128MaxBytes
+        | Error::InvalidEnumValue
+        | Error::ComputationFailed => true,
 
-        _ => false
-    }
+        _ => false,
+    };
 }
 pub fn is_fatal_error(e: &Error) -> bool {
     return match e {
-        Error::FatalAssignExternalChip |
-        Error::FatalUnknownAssignTypeUsed(_) |
-        Error::FatalUnsupportedValue(_) |
-        Error::FatalUnsupportedTypeValue(_) |
-        Error::FatalInvalidArgumentValue(_) |
-        Error::FatalLeb128Overflow(_) |
-        Error::FatalLeb128AlignOverflow(_) |
-        Error::FatalLeb128ThresholdOverflow(_) |
-        Error::FatalLeb128InvalidArgumentValue(_) |
-        Error::FatalRecoverableButNotProcessed(_) |
-        Error::FatalUnknown(_) => { true }
+        Error::FatalAssignExternalChip
+        | Error::FatalUnknownAssignTypeUsed(_)
+        | Error::FatalUnsupportedValue(_)
+        | Error::FatalUnsupportedTypeValue(_)
+        | Error::FatalInvalidArgumentValue(_)
+        | Error::FatalLeb128Overflow(_)
+        | Error::FatalLeb128AlignOverflow(_)
+        | Error::FatalLeb128ThresholdOverflow(_)
+        | Error::FatalLeb128InvalidArgumentValue(_)
+        | Error::FatalRecoverableButNotProcessed(_)
+        | Error::FatalUnknown(_) => true,
 
-        _ => false
+        _ => false,
+    };
+}
+
+pub fn error_index_out_of_bounds(assign_offset: usize) -> Error {
+    Error::IndexOutOfBoundsAt(assign_offset)
+}
+
+pub fn validate_wb_offset(wb: &WasmBytecode, assign_offset: usize) -> Result<(), Error> {
+    if assign_offset >= wb.bytes.len() {
+        return Err(error_index_out_of_bounds(assign_offset));
     }
-}
-
-pub fn error_index_out_of_bounds(offset: usize) -> Error {
-    Error::IndexOutOfBoundsAt(offset)
-}
-
-pub fn error_index_out_of_bounds_wb(offset: usize) -> Error {
-    Error::IndexOutOfBoundsAt(offset)
-}
-
-pub fn validate_wb_offset(wb: &WasmBytecode, offset: usize) -> Result<(), Error> {
-    if offset >= wb.bytes.len() { return Err(error_index_out_of_bounds_wb(offset)) }
     Ok(())
 }
 
-pub fn remap_error_to_index_out_of_bounds_at<E>(offset: usize) -> impl FnOnce(E) -> Error {
-    move |_| Error::IndexOutOfBoundsAt(offset)
+pub fn remap_error_to_index_out_of_bounds_at<E>(assign_offset: usize) -> impl FnOnce(E) -> Error {
+    move |_| Error::IndexOutOfBoundsAt(assign_offset)
 }
-pub fn remap_error_to_assign_at<E>(offset: usize) -> impl FnOnce(E) -> Error {
-    move |_| Error::AssignAt(offset)
+pub fn remap_error_to_assign_at<E>(assign_offset: usize) -> impl FnOnce(E) -> Error {
+    move |_| Error::AssignAt(assign_offset)
 }
-pub fn remap_error_to_invalid_byte_value_at<E>(offset: usize) -> impl FnOnce(E) -> Error {
-    move |_| Error::InvalidByteValueAt(offset)
+pub fn remap_error_to_invalid_byte_value_at<E>(assign_offset: usize) -> impl FnOnce(E) -> Error {
+    move |_| Error::InvalidByteValueAt(assign_offset)
 }
-pub fn remap_error_to_parse_opcode_failed_at<E>(offset: usize) -> impl FnOnce(E) -> Error {
-    move |_| Error::ParseOpcodeFailedAt(offset)
+pub fn remap_error_to_parse_opcode_failed_at<E>(assign_offset: usize) -> impl FnOnce(E) -> Error {
+    move |_| Error::ParseOpcodeFailedAt(assign_offset)
 }
-pub fn remap_error_to_invalid_enum_value_at<E>(offset: usize) -> impl FnOnce(E) -> Error {
-    move |_| Error::InvalidEnumValueAt(offset)
+pub fn remap_error_to_invalid_enum_value_at<E>(assign_offset: usize) -> impl FnOnce(E) -> Error {
+    move |_| Error::InvalidEnumValueAt(assign_offset)
 }
-pub fn remap_error_to_compute_value_at<E>(offset: usize) -> impl FnOnce(E) -> Error {
-    move |_| Error::ComputeValueAt(offset)
+pub fn remap_error_to_compute_value_at<E>(assign_offset: usize) -> impl FnOnce(E) -> Error {
+    move |_| Error::ComputeValueAt(assign_offset)
 }
 
-pub fn remap_error<E>(to: Error) -> impl FnOnce(E) -> Error { |_| to }
+pub fn remap_error<E>(to: Error) -> impl FnOnce(E) -> Error {
+    |_| to
+}

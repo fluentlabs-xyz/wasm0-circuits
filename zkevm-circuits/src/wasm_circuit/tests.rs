@@ -1,26 +1,26 @@
-use std::cell::RefCell;
-use std::marker::PhantomData;
-use std::rc::Rc;
+use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 use halo2_proofs::{
-    plonk::{ConstraintSystem, Error},
+    circuit::{Layouter, SimpleFloorPlanner},
+    plonk::{Circuit, ConstraintSystem, Error},
 };
-use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner};
-use halo2_proofs::plonk::Circuit;
 use log::debug;
 
 use eth_types::{Field, Hash, ToWord};
 
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::circuit::{WasmChip, WasmConfig};
-use crate::wasm_circuit::types::SharedState;
+use crate::wasm_circuit::{
+    bytecode::{bytecode::WasmBytecode, bytecode_table::WasmBytecodeTable},
+    circuit::{WasmChip, WasmConfig},
+    types::SharedState,
+};
 
 #[derive(Default)]
 struct TestCircuit<F> {
     bytes: Vec<u8>,
     code_hash: Hash,
     error_code: u64,
+    wb_offset: usize,
+    assign_delta: usize,
     _marker: PhantomData<F>,
 }
 
@@ -28,7 +28,9 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
     type Config = WasmConfig<F>;
     type FloorPlanner = SimpleFloorPlanner;
 
-    fn without_witnesses(&self) -> Self { Self::default() }
+    fn without_witnesses(&self) -> Self {
+        Self::default()
+    }
 
     fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
         let mut shared_state = Rc::new(RefCell::new(SharedState::default()));
@@ -47,22 +49,24 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         let mut wasm_chip = WasmChip::construct(config);
         let wb = WasmBytecode::new(self.bytes.clone(), self.code_hash.to_word());
 
-        wasm_chip.load(&mut layouter, &wb).unwrap();
+        wasm_chip
+            .load(&mut layouter, &wb, 1 /* skip zero row */)
+            .unwrap();
 
         layouter.assign_region(
             || "wasm_chip region",
             |mut region| {
                 wasm_chip.config.shared_state.borrow_mut().reset();
-                wasm_chip.assign_auto(
-                    &mut region,
-                    &wb,
-                    0,
-                    0,
-                ).unwrap();
-                debug!("RESULT error_code {}", wasm_chip.config.shared_state.borrow().error_code);
+                wasm_chip
+                    .assign_auto(&mut region, &wb, self.wb_offset, self.assign_delta)
+                    .unwrap();
+                debug!(
+                    "RESULT error_code {}",
+                    wasm_chip.config.shared_state.borrow().error_code
+                );
 
                 Ok(())
-            }
+            },
         )?;
 
         Ok(())
@@ -74,19 +78,24 @@ mod wasm_circuit_tests {
     use std::marker::PhantomData;
 
     use ethers_core::k256::pkcs8::der::Encode;
-    use halo2_proofs::dev::MockProver;
-    use halo2_proofs::halo2curves::bn256::Fr;
+    use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
     use log::debug;
-    use rand::{random, Rng, thread_rng};
+    use rand::{random, thread_rng, Rng};
     use wabt::wat2wasm;
 
     use bus_mapping::state_db::CodeDB;
     use eth_types::Field;
 
-    use crate::wasm_circuit::consts::{WASM_MAGIC_PREFIX, WASM_MAGIC_PREFIX_END_INDEX, WASM_MAGIC_PREFIX_START_INDEX, WASM_VERSION_PREFIX_END_INDEX, WASM_VERSION_PREFIX_LEN, WASM_VERSION_PREFIX_START_INDEX};
-    use crate::wasm_circuit::tests::TestCircuit;
-    use crate::wasm_circuit::tests_helpers::mutate_byte;
-    use crate::wasm_circuit::types::WasmSection;
+    use crate::wasm_circuit::{
+        consts::{
+            WASM_MAGIC_PREFIX, WASM_MAGIC_PREFIX_END_INDEX, WASM_MAGIC_PREFIX_START_INDEX,
+            WASM_VERSION_PREFIX_END_INDEX, WASM_VERSION_PREFIX_LEN,
+            WASM_VERSION_PREFIX_START_INDEX,
+        },
+        tests::TestCircuit,
+        tests_helpers::mutate_byte,
+        types::WasmSection,
+    };
 
     fn test<'a, F: Field>(test_circuit: TestCircuit<F>, is_ok: bool) {
         let k = 10;
@@ -217,7 +226,8 @@ mod wasm_circuit_tests {
         for path_to_file in paths_to_files {
             let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
             let mut wb = wat2wasm(data).unwrap();
-            let i: usize = WASM_VERSION_PREFIX_START_INDEX + random::<usize>() % WASM_VERSION_PREFIX_LEN;
+            let i: usize =
+                WASM_VERSION_PREFIX_START_INDEX + random::<usize>() % WASM_VERSION_PREFIX_LEN;
             mutate_byte(&mut wb[i]);
             let circuit = TestCircuit::<Fr> {
                 _marker: PhantomData,
@@ -256,7 +266,8 @@ mod wasm_circuit_tests {
         debug!("wb (original): {:x?}", wb);
 
         // mutate some data
-        let idx: usize = thread_rng().gen_range(WASM_MAGIC_PREFIX_START_INDEX..=WASM_MAGIC_PREFIX_END_INDEX);
+        let idx: usize =
+            thread_rng().gen_range(WASM_MAGIC_PREFIX_START_INDEX..=WASM_MAGIC_PREFIX_END_INDEX);
         mutate_byte(&mut wb[idx]);
 
         debug!("wb (modified): {:x?}", wb);
@@ -282,7 +293,8 @@ mod wasm_circuit_tests {
         debug!("wb (original): {:x?}", wb);
 
         // mutate some data
-        let idx: usize = thread_rng().gen_range(WASM_VERSION_PREFIX_START_INDEX..=WASM_VERSION_PREFIX_END_INDEX);
+        let idx: usize =
+            thread_rng().gen_range(WASM_VERSION_PREFIX_START_INDEX..=WASM_VERSION_PREFIX_END_INDEX);
         mutate_byte(&mut wb[idx]);
 
         debug!("wb (modified): {:x?}", wb);

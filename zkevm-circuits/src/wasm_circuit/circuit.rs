@@ -1,48 +1,71 @@
-use std::cell::RefCell;
-use std::marker::PhantomData;
-use std::rc::Rc;
+use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 use halo2_proofs::{
-    plonk::{Column, ConstraintSystem},
+    circuit::{Chip, Layouter, Region, Value},
+    plonk::{Advice, Column, ConstraintSystem, Fixed},
+    poly::Rotation,
 };
-use halo2_proofs::circuit::{Chip, Layouter, Region, Value};
-use halo2_proofs::plonk::{Advice, Fixed};
-use halo2_proofs::poly::Rotation;
 use log::debug;
 
 use eth_types::Field;
-use gadgets::is_zero::{IsZeroChip, IsZeroInstruction};
-use gadgets::less_than::{LtChip, LtInstruction};
-use gadgets::util::{and, Expr, not, or};
+use gadgets::{
+    is_zero::{IsZeroChip, IsZeroInstruction},
+    less_than::{LtChip, LtInstruction},
+    util::{and, not, or, Expr},
+};
 
-use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::table::PoseidonTable;
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{char_numer_to_byte, configure_constraints_for_q_first_and_q_last, wasm_compute_section_len, WasmAssignAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
-use crate::wasm_circuit::common::configure_transition_check;
-use crate::wasm_circuit::consts::{SECTION_ID_DEFAULT, WASM_MAGIC_PREFIX, WASM_MAGIC_PREFIX_START_INDEX, WASM_SECTION_ID_MAX, WASM_SECTIONS_START_INDEX, WASM_VERSION_PREFIX, WASM_VERSION_PREFIX_LEN, WASM_VERSION_PREFIX_START_INDEX};
-use crate::wasm_circuit::error::{Error, error_index_out_of_bounds_wb, is_recoverable_error, remap_error_to_assign_at, remap_error_to_compute_value_at, remap_error_to_invalid_enum_value_at};
-use crate::wasm_circuit::leb128::circuit::LEB128Chip;
-use crate::wasm_circuit::leb128::helpers::leb128_compute_last_byte_offset;
-use crate::wasm_circuit::sections::code::body::circuit::WasmCodeSectionBodyChip;
-use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::data::body::circuit::WasmDataSectionBodyChip;
-use crate::wasm_circuit::sections::element::body::circuit::WasmElementSectionBodyChip;
-use crate::wasm_circuit::sections::export::body::circuit::WasmExportSectionBodyChip;
-use crate::wasm_circuit::sections::function::body::circuit::WasmFunctionSectionBodyChip;
-use crate::wasm_circuit::sections::global::body::circuit::WasmGlobalSectionBodyChip;
-use crate::wasm_circuit::sections::import::body::circuit::WasmImportSectionBodyChip;
-use crate::wasm_circuit::sections::memory::body::circuit::WasmMemorySectionBodyChip;
-use crate::wasm_circuit::sections::r#type::body::circuit::WasmTypeSectionBodyChip;
-use crate::wasm_circuit::sections::r#type::item::circuit::WasmTypeSectionItemChip;
-use crate::wasm_circuit::sections::start::body::circuit::WasmStartSectionBodyChip;
-use crate::wasm_circuit::sections::table::body::circuit::WasmTableSectionBodyChip;
-use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
-use crate::wasm_circuit::tables::dynamic_indexes::types::{LookupArgsParams, Tag};
-use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
-use crate::wasm_circuit::types::{AssignType, ControlInstruction, ErrorCode, ExportDescType, ImportDescType, SharedState, WasmSection};
-use crate::wasm_circuit::utf8::circuit::UTF8Chip;
+use crate::{
+    evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
+    table::PoseidonTable,
+    wasm_circuit::{
+        bytecode::{bytecode::WasmBytecode, bytecode_table::WasmBytecodeTable},
+        common::{
+            char_digit_to_byte_number, configure_constraints_for_q_first_and_q_last,
+            configure_transition_check, wasm_compute_section_len, WasmAssignAwareChip,
+            WasmBytecodeNumberAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip,
+            WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip,
+            WasmSharedStateAwareChip,
+        },
+        consts::{
+            SECTION_ID_DEFAULT, WASM_MAGIC_PREFIX, WASM_MAGIC_PREFIX_LEN,
+            WASM_MAGIC_PREFIX_START_INDEX, WASM_SECTIONS_START_INDEX, WASM_SECTION_ID_MAX,
+            WASM_VERSION_PREFIX, WASM_VERSION_PREFIX_LEN, WASM_VERSION_PREFIX_START_INDEX,
+        },
+        error::{
+            error_index_out_of_bounds, is_recoverable_error, remap_error_to_assign_at,
+            remap_error_to_compute_value_at, remap_error_to_invalid_enum_value_at, Error,
+        },
+        leb128::{circuit::LEB128Chip, helpers::leb128_compute_last_byte_offset},
+        sections::{
+            code::body::circuit::WasmCodeSectionBodyChip,
+            consts::LebParams,
+            data::body::circuit::WasmDataSectionBodyChip,
+            element::body::circuit::WasmElementSectionBodyChip,
+            export::body::circuit::WasmExportSectionBodyChip,
+            function::body::circuit::WasmFunctionSectionBodyChip,
+            global::body::circuit::WasmGlobalSectionBodyChip,
+            import::body::circuit::WasmImportSectionBodyChip,
+            memory::body::circuit::WasmMemorySectionBodyChip,
+            r#type::{
+                body::circuit::WasmTypeSectionBodyChip, item::circuit::WasmTypeSectionItemChip,
+            },
+            start::body::circuit::WasmStartSectionBodyChip,
+            table::body::circuit::WasmTableSectionBodyChip,
+        },
+        tables::{
+            dynamic_indexes::{
+                circuit::DynamicIndexesChip,
+                types::{LookupArgsParams, Tag},
+            },
+            fixed_range::config::RangeTableConfig,
+        },
+        types::{
+            AssignType, ControlInstruction, ErrorCode, ExportDescType, ImportDescType, SharedState,
+            WasmSection,
+        },
+        utf8::circuit::UTF8Chip,
+    },
+};
 
 pub struct WasmSectionConfig<F: Field> {
     _marker: PhantomData<F>,
@@ -50,6 +73,8 @@ pub struct WasmSectionConfig<F: Field> {
 
 #[derive(Debug, Clone)]
 pub struct WasmConfig<F: Field> {
+    bytecode_number: Column<Advice>,
+
     q_enable: Column<Fixed>,
     q_first: Column<Fixed>,
     q_last: Column<Fixed>,
@@ -100,7 +125,6 @@ pub struct WasmConfig<F: Field> {
 
 impl<F: Field> WasmConfig<F> {}
 
-
 #[derive(Debug, Clone)]
 pub struct WasmChip<F: Field> {
     pub config: WasmConfig<F>,
@@ -111,16 +135,28 @@ impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmChip<F> {}
 
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmChip<F> {}
 
+impl<F: Field> WasmBytecodeNumberAwareChip<F> for WasmChip<F> {
+    fn bytecode_number_col(&self) -> Column<Advice> {
+        self.config.bytecode_number
+    }
+}
+
 impl<F: Field> WasmErrorAwareChip<F> for WasmChip<F> {
-    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+    fn error_code_col(&self) -> Column<Advice> {
+        self.config.error_code
+    }
 }
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
+        self.config.shared_state.clone()
+    }
 }
 
 impl<F: Field> WasmFuncCountAwareChip<F> for WasmChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
+    fn func_count_col(&self) -> Column<Advice> {
+        self.config.func_count
+    }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
@@ -140,110 +176,171 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
         let assign_offset = wb_offset + assign_delta;
         debug!(
             "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
-            assign_offset,
-            q_enable,
-            assign_types,
-            assign_value,
-            wb.bytes[wb_offset],
+            assign_offset, q_enable, assign_types, assign_value, wb.bytes[wb_offset],
         );
-        region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, assign_offset),
-            self.config.q_enable,
-            assign_offset,
-            || Value::known(F::from(q_enable as u64)),
-        ).map_err(|v| { Error::AssignAt(assign_offset) })?;
+        region
+            .assign_fixed(
+                || format!("assign 'q_enable' val {} at {}", q_enable, assign_offset),
+                self.config.q_enable,
+                assign_offset,
+                || Value::known(F::from(q_enable as u64)),
+            )
+            .map_err(|v| Error::AssignAt(assign_offset))?;
+        self.assign_bytecode_number(region, assign_offset, None)
+            .map_err(|v| Error::AssignAt(assign_offset))?;
 
         for assign_type in assign_types {
             match assign_type {
-                AssignType::Unknown => { return Err(Error::FatalUnknownAssignTypeUsed("unknown assign type is an impossible situation".to_string())) }
+                AssignType::Unknown => {
+                    return Err(Error::FatalUnknownAssignTypeUsed(
+                        "unknown assign type is an impossible situation".to_string(),
+                    ))
+                }
                 AssignType::QFirst => {
-                    region.assign_fixed(
-                        || format!("assign 'q_first' val {} at {}", assign_value, assign_offset),
-                        self.config.q_first,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'q_first' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.q_first,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::QLast => {
-                    region.assign_fixed(
-                        || format!("assign 'q_last' val {} at {}", assign_value, assign_offset),
-                        self.config.q_last,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || format!("assign 'q_last' val {} at {}", assign_value, assign_offset),
+                            self.config.q_last,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsSectionId => {
-                    region.assign_fixed(
-                        || format!("assign 'is_section_id' val {} at {}", assign_value, assign_offset),
-                        self.config.is_section_id,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_section_id' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_section_id,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsSectionLen => {
-                    region.assign_fixed(
-                        || format!("assign 'is_section_len' val {} at {}", assign_value, assign_offset),
-                        self.config.is_section_len,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_section_len' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_section_len,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                     let p = leb_params.unwrap();
-                    self.config.leb128_chip.assign(
-                        region,
-                        assign_offset,
-                        q_enable,
-                        p,
-                    )?;
+                    self.config
+                        .leb128_chip
+                        .assign(region, assign_offset, q_enable, p)?;
                 }
                 AssignType::IsSectionBody => {
-                    region.assign_fixed(
-                        || format!("assign 'is_section_body' val {} at {}", assign_value, assign_offset),
-                        self.config.is_section_body,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_section_body' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_section_body,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::BodyByteRevIndexL1 => {
-                    region.assign_advice(
-                        || format!("assign 'body_byte_rev_index_l1' val {} at {}", assign_value, assign_offset),
-                        self.config.body_byte_rev_index_l1,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_advice(
+                            || {
+                                format!(
+                                    "assign 'body_byte_rev_index_l1' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.body_byte_rev_index_l1,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::ErrorCode => {
                     self.assign_error_code(region, assign_offset, None)?;
                 }
             }
 
-            for (index, index_at_magic_prefix) in self.config.index_at_magic_prefix.iter().enumerate() {
-                index_at_magic_prefix.assign(region, assign_offset, Value::known(F::from(wb_offset as u64) - F::from(index as u64)))
+            for (index, index_at_magic_prefix) in
+                self.config.index_at_magic_prefix.iter().enumerate()
+            {
+                index_at_magic_prefix
+                    .assign(
+                        region,
+                        assign_offset,
+                        Value::known(F::from(wb_offset as u64) - F::from(index as u64)),
+                    )
                     .map_err(remap_error_to_assign_at(assign_offset))?;
             }
-            for (index, index_at_magic_prefix_prev) in self.config.index_at_magic_prefix_prev.iter().enumerate() {
-                index_at_magic_prefix_prev.assign(region, assign_offset, Value::known(F::from(wb_offset as u64) - F::from(index as u64) - F::from(1)))
+            for (index, index_at_magic_prefix_prev) in
+                self.config.index_at_magic_prefix_prev.iter().enumerate()
+            {
+                index_at_magic_prefix_prev
+                    .assign(
+                        region,
+                        assign_offset,
+                        Value::known(
+                            F::from(wb_offset as u64) - F::from(index as u64) - F::from(1),
+                        ),
+                    )
                     .map_err(remap_error_to_assign_at(assign_offset))?;
             }
-        };
+        }
         Ok(())
     }
 }
 
-impl<F: Field> WasmChip<F>
-{
+impl<F: Field> WasmChip<F> {
     pub fn load(
         &self,
         layouter: &mut impl Layouter<F>,
         wb: &WasmBytecode,
+        assign_delta: usize,
     ) -> Result<(), Error> {
-        self.config.wb_table.load(layouter, wb).unwrap();
+        self.config
+            .wb_table
+            .load(layouter, wb, true, assign_delta)
+            .unwrap();
         self.config.range_table_config_0_256.load(layouter).unwrap();
-        self.config.section_id_range_table_config.load(layouter).unwrap();
+        self.config
+            .section_id_range_table_config
+            .load(layouter)
+            .unwrap();
         self.config.range_table_config_0_128.load(layouter).unwrap();
 
         self.config
             .poseidon_table
-            .dev_load(layouter, &[wb.bytes.clone()]).unwrap();
+            .dev_load(layouter, &[wb.bytes.clone()])
+            .unwrap();
 
         Ok(())
     }
@@ -253,7 +350,9 @@ impl<F: Field> WasmChip<F>
         wb_table: Rc<WasmBytecodeTable>,
         shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmConfig<F> {
-        let index_at_magic_prefix_count = WASM_MAGIC_PREFIX.len() + WASM_VERSION_PREFIX_LEN;
+        let index_at_magic_prefix_count = WASM_MAGIC_PREFIX_LEN + WASM_VERSION_PREFIX_LEN;
+
+        let bytecode_number = cs.advice_column();
 
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -277,17 +376,11 @@ impl<F: Field> WasmChip<F>
         let range_table_config_0_128 = Rc::new(RangeTableConfig::configure(cs));
         let poseidon_table = PoseidonTable::dev_construct(cs);
 
-        let leb128_config = LEB128Chip::configure(
-            cs,
-            &wb_table.value,
-        );
+        let leb128_config = LEB128Chip::configure(cs, &wb_table.value);
         let mut leb128_chip = Rc::new(LEB128Chip::construct(leb128_config));
 
-        let utf8_config = UTF8Chip::configure(
-            cs,
-            range_table_config_0_128.clone(),
-            &wb_table.value,
-        );
+        let utf8_config =
+            UTF8Chip::configure(cs, range_table_config_0_128.clone(), &wb_table.value);
         let mut utf8_chip = Rc::new(UTF8Chip::construct(utf8_config));
 
         let config = DynamicIndexesChip::configure(cs);
@@ -339,7 +432,8 @@ impl<F: Field> WasmChip<F>
             body_item_rev_count_l1,
             error_code,
         );
-        let wasm_function_section_body_chip = Rc::new(WasmFunctionSectionBodyChip::construct(config));
+        let wasm_function_section_body_chip =
+            Rc::new(WasmFunctionSectionBodyChip::construct(config));
 
         let config = WasmMemorySectionBodyChip::configure(
             cs,
@@ -436,25 +530,30 @@ impl<F: Field> WasmChip<F>
         let wasm_table_section_body_chip = Rc::new(WasmTableSectionBodyChip::construct(config));
 
         let mut index_at_magic_prefix: Vec<IsZeroChip<F>> = Vec::new();
-        for index in 0..index_at_magic_prefix_count {
+        for index in 1..=index_at_magic_prefix_count {
             let value_inv = cs.advice_column();
             let index_at_magic_prefix_config = IsZeroChip::configure(
                 cs,
                 |vc| vc.query_fixed(q_enable, Rotation::cur()),
                 |vc| vc.query_advice(wb_table.index, Rotation::cur()) - index.expr(),
-                value_inv
+                value_inv,
             );
             let chip = IsZeroChip::construct(index_at_magic_prefix_config);
             index_at_magic_prefix.push(chip);
         }
         let mut index_at_magic_prefix_prev: Vec<IsZeroChip<F>> = Vec::new();
-        for index in 0..index_at_magic_prefix_count {
+        for index in 1..=index_at_magic_prefix_count {
             let value_inv = cs.advice_column();
             let index_at_magic_prefix_prev_config = IsZeroChip::configure(
                 cs,
-                |vc| and::expr([vc.query_fixed(q_enable, Rotation::cur()), not::expr(vc.query_fixed(q_first, Rotation::cur()))]),
+                |vc| {
+                    and::expr([
+                        vc.query_fixed(q_enable, Rotation::cur()),
+                        not::expr(vc.query_fixed(q_first, Rotation::cur())),
+                    ])
+                },
                 |vc| vc.query_advice(wb_table.index, Rotation::prev()) - index.expr(),
-                value_inv
+                value_inv,
             );
             let chip = IsZeroChip::construct(index_at_magic_prefix_prev_config);
             index_at_magic_prefix_prev.push(chip);
@@ -463,14 +562,18 @@ impl<F: Field> WasmChip<F>
         Self::configure_len_prefixed_bytes_span_checks(
             cs,
             leb128_chip.as_ref(),
-            |vc| { vc.query_fixed(is_section_body, Rotation::cur()) },
+            |vc| vc.query_fixed(is_section_body, Rotation::cur()),
             body_byte_rev_index_l1,
             |vc| {
                 let not_q_last_expr = not::expr(vc.query_fixed(q_last, Rotation::cur()));
                 let is_section_len_expr = vc.query_fixed(is_section_len, Rotation::cur());
                 let is_section_body_next_expr = vc.query_fixed(is_section_body, Rotation::next());
 
-                and::expr([not_q_last_expr, is_section_len_expr, is_section_body_next_expr])
+                and::expr([
+                    not_q_last_expr,
+                    is_section_len_expr,
+                    is_section_body_next_expr,
+                ])
             },
             |vc| {
                 let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
@@ -479,78 +582,93 @@ impl<F: Field> WasmChip<F>
 
                 or::expr([
                     q_last_expr,
-                    and::expr([
-                        is_section_body_expr,
-                        is_section_id_next_expr,
-                    ])
+                    and::expr([is_section_body_expr, is_section_id_next_expr]),
                 ])
             },
         );
 
         Self::configure_error_code(cs, q_enable, q_first, q_last, error_code);
 
+        Self::configure_bytecode_number(cs, q_enable, q_first, q_last, bytecode_number);
+
         cs.lookup("all bytecode values are byte values", |vc| {
-            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(
+                vc,
+                q_enable,
+                &shared_state.borrow(),
+                error_code,
+            );
 
             let bytecode_value_expr = vc.query_advice(wb_table.value, Rotation::cur());
 
-            vec![(q_enable_expr * bytecode_value_expr, range_table_config_0_256.value)]
+            vec![(
+                q_enable_expr * bytecode_value_expr,
+                range_table_config_0_256.value,
+            )]
         });
 
         for (index, char) in WASM_MAGIC_PREFIX.chars().enumerate() {
-            cs.lookup_any(
-                "byte_val=ord(specific_char) at index",
-                |vc| {
-                    let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+            cs.lookup_any("byte_val=ord(specific_char) at index", |vc| {
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
 
-                    let byte_index_expr = vc.query_advice(wb_table.index, Rotation::cur());
-                    let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
-                    vec![
-                        (q_enable_expr.clone() * index.expr(), byte_index_expr),
-                        (q_enable_expr.clone() * (char as i32).expr(), byte_val_expr),
-                    ]
-                }
-            );
+                let byte_index_expr = vc.query_advice(wb_table.index, Rotation::cur());
+                let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
+                vec![
+                    (q_enable_expr.clone() * (index + 1).expr(), byte_index_expr),
+                    (q_enable_expr.clone() * (char as i32).expr(), byte_val_expr),
+                ]
+            });
         }
-        for index in WASM_VERSION_PREFIX_START_INDEX..WASM_VERSION_PREFIX_START_INDEX + WASM_VERSION_PREFIX_LEN {
-            let version_val = if index == WASM_VERSION_PREFIX_START_INDEX { 1 } else { 0 };
-            cs.lookup_any(
-                "byte_val[index]=version_val[index]",
-                |vc| {
-                    let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+        for index in WASM_VERSION_PREFIX_START_INDEX
+            ..WASM_VERSION_PREFIX_START_INDEX + WASM_VERSION_PREFIX_LEN
+        {
+            let version_val = if index == WASM_VERSION_PREFIX_START_INDEX {
+                1
+            } else {
+                0
+            };
+            cs.lookup_any("byte_val[index]=version_val[index]", |vc| {
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
 
-                    let byte_index_expr = vc.query_advice(wb_table.index, Rotation::cur());
-                    let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
-                    vec![
-                        (q_enable_expr.clone() * index.expr(), byte_index_expr),
-                        (q_enable_expr.clone() * version_val.expr(), byte_val_expr),
-                    ]
-                }
-            );
+                let byte_index_expr = vc.query_advice(wb_table.index, Rotation::cur());
+                let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
+                vec![
+                    (q_enable_expr.clone() * index.expr(), byte_index_expr),
+                    (q_enable_expr.clone() * version_val.expr(), byte_val_expr),
+                ]
+            });
         }
 
         let section_id_lt_chip_config = LtChip::configure(
             cs,
             |vc| {
-                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
                 let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
                 let not_q_first_expr = not::expr(q_first_expr.clone());
 
-                and::expr([
-                    not_q_first_expr.clone(),
-                    q_enable_expr.clone(),
-                ])
+                and::expr([not_q_first_expr.clone(), q_enable_expr.clone()])
             },
-            |vc| {
-                vc.query_advice(section_id, Rotation::prev())
-            },
-            |vc| {
-                vc.query_advice(section_id, Rotation::cur())
-            },
+            |vc| vc.query_advice(section_id, Rotation::prev()),
+            |vc| vc.query_advice(section_id, Rotation::cur()),
         );
         let section_id_lt_chip = LtChip::construct(section_id_lt_chip_config);
 
-        cs.create_gate("basic row checks", |vc| {
+        cs.create_gate("error-processing aware gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
             let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
@@ -845,161 +963,234 @@ impl<F: Field> WasmChip<F>
         });
 
         cs.lookup("section_id is a valid number", |vc| {
-            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(
+                vc,
+                q_enable,
+                &shared_state.borrow(),
+                error_code,
+            );
 
             let section_id_expr = vc.query_advice(section_id, Rotation::cur());
 
-            vec![(q_enable_expr * section_id_expr, section_id_range_table_config.value)]
+            vec![(
+                q_enable_expr * section_id_expr,
+                section_id_range_table_config.value,
+            )]
         });
 
         // start section crosschecks
-        dynamic_indexes_chip.lookup_args(
-            "start section: func index refs are valid",
-            cs,
-            |vc| {
-                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
-                let cond = vc.query_fixed(wasm_start_section_body_chip.config.is_func_index, Rotation::cur()) * q_enable_expr;
-                let sn_expr = vc.query_advice(wasm_start_section_body_chip.config.leb128_chip.config.sn, Rotation::cur());
-                LookupArgsParams {
-                    cond,
-                    index: sn_expr.clone(),
-                    tag: Tag::FuncIndex.expr(),
-                    is_terminator: false.expr(),
-                }
+        dynamic_indexes_chip.lookup_args("start section: func index refs are valid", cs, |vc| {
+            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(
+                vc,
+                q_enable,
+                &shared_state.borrow(),
+                error_code,
+            );
+            let cond = vc.query_fixed(
+                wasm_start_section_body_chip.config.is_func_index,
+                Rotation::cur(),
+            ) * q_enable_expr;
+            let sn_expr = vc.query_advice(
+                wasm_start_section_body_chip.config.leb128_chip.config.sn,
+                Rotation::cur(),
+            );
+            LookupArgsParams {
+                cond,
+                index: sn_expr.clone(),
+                tag: Tag::FuncIndex.expr(),
+                is_terminator: false.expr(),
             }
-        );
+        });
         // import section crosschecks
-        dynamic_indexes_chip.lookup_args(
-            "import section: typeidx refs are valid",
-            cs,
-            |vc| {
-                let cond = and::expr([
-                    vc.query_fixed(wasm_import_section_body_chip.config.is_importdesc_type, Rotation::cur()),
-                    wasm_import_section_body_chip.config.importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::cur())(vc),
-                ]);
-                let cond = cond * Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+        dynamic_indexes_chip.lookup_args("import section: typeidx refs are valid", cs, |vc| {
+            let cond = and::expr([
+                vc.query_fixed(
+                    wasm_import_section_body_chip.config.is_importdesc_type,
+                    Rotation::cur(),
+                ),
+                wasm_import_section_body_chip
+                    .config
+                    .importdesc_type_chip
+                    .config
+                    .value_equals(ImportDescType::Typeidx, Rotation::cur())(vc),
+            ]);
+            let cond = cond
+                * Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
 
-                LookupArgsParams {
-                    cond,
-                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    tag: Tag::TypeIndex.expr(),
-                    is_terminator: false.expr(),
-                }
+            LookupArgsParams {
+                cond,
+                index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                tag: Tag::TypeIndex.expr(),
+                is_terminator: false.expr(),
             }
-        );
+        });
         // export section crosschecks
-        dynamic_indexes_chip.lookup_args(
-            "export section: funcidx refs are valid",
-            cs,
-            |vc| {
-                let cond = and::expr([
-                    vc.query_fixed(wasm_export_section_body_chip.config.is_exportdesc_type, Rotation::cur()),
-                    wasm_export_section_body_chip.config.exportdesc_type_chip.config.value_equals(ExportDescType::Funcidx, Rotation::cur())(vc),
-                ]);
-                let cond = cond * Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+        dynamic_indexes_chip.lookup_args("export section: funcidx refs are valid", cs, |vc| {
+            let cond = and::expr([
+                vc.query_fixed(
+                    wasm_export_section_body_chip.config.is_exportdesc_type,
+                    Rotation::cur(),
+                ),
+                wasm_export_section_body_chip
+                    .config
+                    .exportdesc_type_chip
+                    .config
+                    .value_equals(ExportDescType::Funcidx, Rotation::cur())(vc),
+            ]);
+            let cond = cond
+                * Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
 
-                LookupArgsParams {
-                    cond,
-                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    tag: Tag::TypeIndex.expr(),
-                    is_terminator: false.expr(),
-                }
+            LookupArgsParams {
+                cond,
+                index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                tag: Tag::TypeIndex.expr(),
+                is_terminator: false.expr(),
             }
-        );
-        dynamic_indexes_chip.lookup_args(
-            "export section: tableidx refs are valid",
-            cs,
-            |vc| {
-                let cond = and::expr([
-                    vc.query_fixed(wasm_export_section_body_chip.config.is_exportdesc_type, Rotation::cur()),
-                    wasm_export_section_body_chip.config.exportdesc_type_chip.config.value_equals(ExportDescType::Tableidx, Rotation::cur())(vc),
-                ]);
-                let cond = cond * Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+        });
+        dynamic_indexes_chip.lookup_args("export section: tableidx refs are valid", cs, |vc| {
+            let cond = and::expr([
+                vc.query_fixed(
+                    wasm_export_section_body_chip.config.is_exportdesc_type,
+                    Rotation::cur(),
+                ),
+                wasm_export_section_body_chip
+                    .config
+                    .exportdesc_type_chip
+                    .config
+                    .value_equals(ExportDescType::Tableidx, Rotation::cur())(vc),
+            ]);
+            let cond = cond
+                * Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
 
-                LookupArgsParams {
-                    cond,
-                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    tag: Tag::TableIndex.expr(),
-                    is_terminator: false.expr(),
-                }
+            LookupArgsParams {
+                cond,
+                index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                tag: Tag::TableIndex.expr(),
+                is_terminator: false.expr(),
             }
-        );
-        dynamic_indexes_chip.lookup_args(
-            "export section: memidx refs are valid",
-            cs,
-            |vc| {
-                let cond = and::expr([
-                    vc.query_fixed(wasm_export_section_body_chip.config.is_exportdesc_type, Rotation::cur()),
-                    wasm_export_section_body_chip.config.exportdesc_type_chip.config.value_equals(ExportDescType::Memidx, Rotation::cur())(vc),
-                ]);
-                let cond = cond * Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+        });
+        dynamic_indexes_chip.lookup_args("export section: memidx refs are valid", cs, |vc| {
+            let cond = and::expr([
+                vc.query_fixed(
+                    wasm_export_section_body_chip.config.is_exportdesc_type,
+                    Rotation::cur(),
+                ),
+                wasm_export_section_body_chip
+                    .config
+                    .exportdesc_type_chip
+                    .config
+                    .value_equals(ExportDescType::Memidx, Rotation::cur())(vc),
+            ]);
+            let cond = cond
+                * Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
 
-                LookupArgsParams {
-                    cond,
-                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    tag: Tag::MemIndex.expr(),
-                    is_terminator: false.expr(),
-                }
+            LookupArgsParams {
+                cond,
+                index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                tag: Tag::MemIndex.expr(),
+                is_terminator: false.expr(),
             }
-        );
-        dynamic_indexes_chip.lookup_args(
-            "export section: globalidx refs are valid",
-            cs,
-            |vc| {
-                let cond = and::expr([
-                    vc.query_fixed(wasm_export_section_body_chip.config.is_exportdesc_type, Rotation::cur()),
-                    wasm_export_section_body_chip.config.exportdesc_type_chip.config.value_equals(ExportDescType::Globalidx, Rotation::cur())(vc),
-                ]);
-                let cond = cond * Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+        });
+        dynamic_indexes_chip.lookup_args("export section: globalidx refs are valid", cs, |vc| {
+            let cond = and::expr([
+                vc.query_fixed(
+                    wasm_export_section_body_chip.config.is_exportdesc_type,
+                    Rotation::cur(),
+                ),
+                wasm_export_section_body_chip
+                    .config
+                    .exportdesc_type_chip
+                    .config
+                    .value_equals(ExportDescType::Globalidx, Rotation::cur())(vc),
+            ]);
+            let cond = cond
+                * Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
 
-                LookupArgsParams {
-                    cond,
-                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    tag: Tag::GlobalIndex.expr(),
-                    is_terminator: false.expr(),
-                }
+            LookupArgsParams {
+                cond,
+                index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                tag: Tag::GlobalIndex.expr(),
+                is_terminator: false.expr(),
             }
-        );
+        });
         // func section crosschecks
-        dynamic_indexes_chip.lookup_args(
-            "function section: funcidx refs are valid",
-            cs,
-            |vc| {
-                let cond = and::expr([
-                    vc.query_fixed(wasm_function_section_body_chip.config.is_typeidx, Rotation::cur()),
-                ]);
-                let cond = cond * Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+        dynamic_indexes_chip.lookup_args("function section: funcidx refs are valid", cs, |vc| {
+            let cond = and::expr([vc.query_fixed(
+                wasm_function_section_body_chip.config.is_typeidx,
+                Rotation::cur(),
+            )]);
+            let cond = cond
+                * Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
 
-                LookupArgsParams {
-                    cond,
-                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    tag: Tag::TypeIndex.expr(),
-                    is_terminator: false.expr(),
-                }
+            LookupArgsParams {
+                cond,
+                index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                tag: Tag::TypeIndex.expr(),
+                is_terminator: false.expr(),
             }
-        );
+        });
         // data section crosschecks
-        dynamic_indexes_chip.lookup_args(
-            "data section: memidx refs are valid",
-            cs,
-            |vc| {
-                let cond = vc.query_fixed(wasm_data_section_body_chip.config.is_memidx, Rotation::cur());
-                let cond = cond * Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+        dynamic_indexes_chip.lookup_args("data section: memidx refs are valid", cs, |vc| {
+            let cond = vc.query_fixed(
+                wasm_data_section_body_chip.config.is_memidx,
+                Rotation::cur(),
+            );
+            let cond = cond
+                * Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
 
-                LookupArgsParams {
-                    cond,
-                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    tag: Tag::MemIndex.expr(),
-                    is_terminator: false.expr(),
-                }
+            LookupArgsParams {
+                cond,
+                index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                tag: Tag::MemIndex.expr(),
+                is_terminator: false.expr(),
             }
-        );
+        });
         // code section crosschecks
         dynamic_indexes_chip.lookup_args(
             "code section has valid setup for func indexes",
             cs,
             |vc| {
-                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
                 let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
                 let cond = and::expr([q_last_expr, q_enable_expr]);
                 LookupArgsParams {
@@ -1008,30 +1199,40 @@ impl<F: Field> WasmChip<F>
                     tag: Tag::FuncIndex.expr(),
                     is_terminator: true.expr(),
                 }
-            }
+            },
         );
-        dynamic_indexes_chip.lookup_args(
-            "code section: call opcode param is valid",
-            cs,
-            |vc| {
-                let cond = and::expr([
-                    vc.query_fixed(wasm_code_section_body_chip.config.is_control_instruction, Rotation::cur()),
-                    wasm_code_section_body_chip.config.control_instruction_chip.config.value_equals(ControlInstruction::Call, Rotation::cur())(vc),
-                ]);
-                let cond = cond * Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+        dynamic_indexes_chip.lookup_args("code section: call opcode param is valid", cs, |vc| {
+            let cond = and::expr([
+                vc.query_fixed(
+                    wasm_code_section_body_chip.config.is_control_instruction,
+                    Rotation::cur(),
+                ),
+                wasm_code_section_body_chip
+                    .config
+                    .control_instruction_chip
+                    .config
+                    .value_equals(ControlInstruction::Call, Rotation::cur())(vc),
+            ]);
+            let cond = cond
+                * Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
 
-                LookupArgsParams {
-                    cond,
-                    index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
-                    tag: Tag::FuncIndex.expr(),
-                    is_terminator: false.expr(),
-                }
+            LookupArgsParams {
+                cond,
+                index: vc.query_advice(leb128_chip.config.sn, Rotation::next()),
+                tag: Tag::FuncIndex.expr(),
+                is_terminator: false.expr(),
             }
-        );
+        });
 
         let config = WasmConfig {
             _marker: PhantomData,
 
+            bytecode_number,
             poseidon_table,
             wb_table,
             q_enable,
@@ -1094,7 +1295,9 @@ impl<F: Field> WasmChip<F>
         let res = self.assign_auto_internal(region, wb, wb_offset, assign_delta);
 
         if let Err(e) = res {
-            return if is_recoverable_error(&e) & self.config.shared_state.borrow().error_processing_enabled {
+            return if is_recoverable_error(&e)
+                & self.config.shared_state.borrow().error_processing_enabled
+            {
                 debug!("detected recoverable error: {:?}", e);
                 match e {
                     Error::IndexOutOfBoundsAt(offset) |
@@ -1125,7 +1328,9 @@ impl<F: Field> WasmChip<F>
                 }
 
                 Ok(())
-            } else { Err(e) }
+            } else {
+                Err(e)
+            };
         }
 
         res
@@ -1160,54 +1365,72 @@ impl<F: Field> WasmChip<F>
 
         // check magic prefix and version
         for (idx, ch) in WASM_MAGIC_PREFIX.chars().enumerate() {
-            let offset = wb_offset + WASM_MAGIC_PREFIX_START_INDEX + idx;
-            let byte_val = *wb.bytes.get(offset).ok_or(Error::IndexOutOfBoundsAt(offset))?;
-            let ch = ch as u8;
-            if byte_val != ch { return Err(Error::InvalidByteValueAt(offset)) }
+            let wb_offset = wb_offset + WASM_MAGIC_PREFIX_START_INDEX + idx;
+            let assign_offset = wb_offset + assign_delta;
+            let byte_val = *wb
+                .bytes
+                .get(wb_offset)
+                .ok_or(Error::IndexOutOfBoundsAt(assign_offset))?;
+            if byte_val != ch as u8 {
+                return Err(Error::InvalidByteValueAt(assign_offset));
+            }
         }
         for (idx, ch) in WASM_VERSION_PREFIX.chars().enumerate() {
-            let offset = wb_offset + WASM_VERSION_PREFIX_START_INDEX + idx;
-            let byte_val = *wb.bytes.get(offset).ok_or(Error::IndexOutOfBoundsAt(offset))?;
-            let ch_byte_val = char_numer_to_byte(&ch);
-            if byte_val != ch_byte_val { return Err(Error::InvalidByteValueAt(offset)) }
+            let wb_offset = wb_offset + WASM_VERSION_PREFIX_START_INDEX + idx;
+            let assign_offset = wb_offset + assign_delta;
+            let byte_val = *wb
+                .bytes
+                .get(wb_offset)
+                .ok_or(Error::IndexOutOfBoundsAt(assign_offset))?;
+            if byte_val != char_digit_to_byte_number(&ch) {
+                return Err(Error::InvalidByteValueAt(assign_offset));
+            }
         }
 
-        let mut offset = WASM_SECTIONS_START_INDEX;
+        let mut wb_offset = WASM_SECTIONS_START_INDEX;
         let mut section_id_prev: i64 = SECTION_ID_DEFAULT as i64;
-        loop {
-            let section_start_offset = offset;
+        while wb_offset < wb.bytes.len() {
+            let section_start_offset = wb_offset;
             let section_len_start_offset = section_start_offset + 1;
-            let section_id = wb.get(offset).ok_or(error_index_out_of_bounds_wb(offset))?;
-            let section_id = *section_id as u64;
-            offset += 1;
-            let (section_len, section_len_leb_bytes_count) = wasm_compute_section_len(&wb.bytes, offset)
-                .map_err(remap_error_to_compute_value_at(offset))?;
-            offset += section_len_leb_bytes_count as usize;
-            offset += section_len;
-            let section_body_start_offset = section_len_start_offset + (section_len_leb_bytes_count as usize);
+            let section_id = *wb
+                .get(wb_offset)
+                .ok_or(error_index_out_of_bounds(wb_offset + assign_delta))?
+                as u64;
+            wb_offset += 1;
+            let (section_len, section_len_leb_bytes_count) =
+                wasm_compute_section_len(&wb.bytes, wb_offset)
+                    .map_err(remap_error_to_compute_value_at(wb_offset + assign_delta))?;
+            wb_offset += section_len_leb_bytes_count as usize;
+            wb_offset += section_len;
+            let section_body_start_offset =
+                section_len_start_offset + section_len_leb_bytes_count as usize;
             let section_len_end_offset = section_body_start_offset - 1;
-            let section_body_end_offset = section_start_offset + section_len_leb_bytes_count as usize + section_len;
+            let section_body_end_offset =
+                section_start_offset + section_len_leb_bytes_count as usize + section_len;
             let section_end_offset = section_body_end_offset;
 
-            for offset in section_start_offset..=section_end_offset {
-                if offset == section_start_offset {
-                    let wasm_section: WasmSection = (section_id as i32).try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
+            for wb_offset in section_start_offset..=section_end_offset {
+                if wb_offset == section_start_offset {
+                    let wasm_section: WasmSection = (section_id as i32).try_into().map_err(
+                        remap_error_to_invalid_enum_value_at(wb_offset + assign_delta),
+                    )?;
                     debug!(
                         "wasm_section {:?}(id={}) at offset {} section_len {} bytecode(hex) {:x?}",
                         wasm_section,
                         section_id,
-                        offset,
+                        wb_offset + assign_delta,
                         section_len,
                         &wb.bytes[section_start_offset..=section_end_offset],
                     );
-                    self.assign_func_count(region, offset)?;
+                    self.assign_func_count(region, wb_offset + assign_delta)?;
 
                     let mut next_section_offset = 0;
-                    let section_body_offset = offset + 1; // skip section_id
-                    let section_len_last_byte_offset = leb128_compute_last_byte_offset(
-                        &wb.bytes[..],
-                        section_body_offset,
-                    ).map_err(remap_error_to_compute_value_at(section_body_offset))?;
+                    let section_body_offset = wb_offset + 1; // skip section_id
+                    let section_len_last_byte_offset =
+                        leb128_compute_last_byte_offset(&wb.bytes[..], section_body_offset)
+                            .map_err(remap_error_to_compute_value_at(
+                                section_body_offset + assign_delta,
+                            ))?;
                     for offset in section_len_last_byte_offset..=section_body_end_offset {
                         self.assign(
                             region,
@@ -1220,99 +1443,93 @@ impl<F: Field> WasmChip<F>
                         )?;
                     }
                     for offset in section_body_offset..=section_len_last_byte_offset {
-                        self.assign_func_count(region, offset)?;
+                        self.assign_func_count(region, offset + assign_delta)?;
                     }
                     let section_body_offset = section_len_last_byte_offset + 1;
                     match wasm_section {
                         WasmSection::Type => {
-                            next_section_offset = self.config.wasm_type_section_body_chip.assign_auto(
-                                region,
-                                wb,
-                                section_body_offset,
-                                assign_delta,
-                            ).map_err(remap_error_to_assign_at(offset))?;
+                            next_section_offset = self
+                                .config
+                                .wasm_type_section_body_chip
+                                .assign_auto(region, wb, section_body_offset, assign_delta)
+                                .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                         }
                         WasmSection::Import => {
-                            next_section_offset = self.config.wasm_import_section_body_chip.assign_auto(
-                                region,
-                                wb,
-                                section_body_offset,
-                                assign_delta,
-                            ).map_err(remap_error_to_assign_at(offset))?;
+                            next_section_offset = self
+                                .config
+                                .wasm_import_section_body_chip
+                                .assign_auto(region, wb, section_body_offset, assign_delta)
+                                .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                         }
                         WasmSection::Function => {
-                            next_section_offset = self.config.wasm_function_section_body_chip.assign_auto(
-                                region,
-                                wb,
-                                section_body_offset,
-                                assign_delta,
-                            ).map_err(remap_error_to_assign_at(offset))?;
+                            next_section_offset = self
+                                .config
+                                .wasm_function_section_body_chip
+                                .assign_auto(region, wb, section_body_offset, assign_delta)
+                                .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                         }
                         WasmSection::Table => {
-                            next_section_offset = self.config.wasm_table_section_body_chip.assign_auto(
-                                region,
-                                wb,
-                                section_body_offset,
-                                assign_delta,
-                            ).map_err(remap_error_to_assign_at(offset))?;
+                            next_section_offset = self
+                                .config
+                                .wasm_table_section_body_chip
+                                .assign_auto(region, wb, section_body_offset, assign_delta)
+                                .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                         }
                         WasmSection::Memory => {
-                            next_section_offset = self.config.wasm_memory_section_body_chip.assign_auto(
-                                region,
-                                wb,
-                                section_body_offset,
-                                assign_delta,
-                            ).map_err(remap_error_to_assign_at(offset))?;
+                            next_section_offset = self
+                                .config
+                                .wasm_memory_section_body_chip
+                                .assign_auto(region, wb, section_body_offset, assign_delta)
+                                .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                         }
                         WasmSection::Global => {
-                            next_section_offset = self.config.wasm_global_section_body_chip.assign_auto(
-                                region,
-                                wb,
-                                section_body_offset,
-                                assign_delta,
-                            ).map_err(remap_error_to_assign_at(offset))?;
+                            next_section_offset = self
+                                .config
+                                .wasm_global_section_body_chip
+                                .assign_auto(region, wb, section_body_offset, assign_delta)
+                                .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                         }
                         WasmSection::Export => {
-                            next_section_offset = self.config.wasm_export_section_body_chip.assign_auto(
-                                region,
-                                wb,
-                                section_body_offset,
-                                assign_delta,
-                            ).map_err(remap_error_to_assign_at(offset))?;
+                            next_section_offset = self
+                                .config
+                                .wasm_export_section_body_chip
+                                .assign_auto(region, wb, section_body_offset, assign_delta)
+                                .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                         }
                         WasmSection::Start => {
-                            next_section_offset = self.config.wasm_start_section_body_chip.assign_auto(
-                                region,
-                                wb,
-                                section_body_offset,
-                                assign_delta,
-                            ).map_err(remap_error_to_assign_at(offset))?;
+                            next_section_offset = self
+                                .config
+                                .wasm_start_section_body_chip
+                                .assign_auto(region, wb, section_body_offset, assign_delta)
+                                .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                         }
                         WasmSection::Element => {
-                            next_section_offset = self.config.wasm_element_section_body_chip.assign_auto(
-                                region,
-                                wb,
-                                section_body_offset,
-                                assign_delta,
-                            ).map_err(remap_error_to_assign_at(offset))?;
+                            next_section_offset = self
+                                .config
+                                .wasm_element_section_body_chip
+                                .assign_auto(region, wb, section_body_offset, assign_delta)
+                                .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                         }
                         WasmSection::Code => {
-                            next_section_offset = self.config.wasm_code_section_body_chip.assign_auto(
-                                region,
-                                wb,
-                                section_body_offset,
-                                assign_delta,
-                            ).map_err(remap_error_to_assign_at(offset))?;
+                            next_section_offset = self
+                                .config
+                                .wasm_code_section_body_chip
+                                .assign_auto(region, wb, section_body_offset, assign_delta)
+                                .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                         }
                         WasmSection::Data => {
-                            next_section_offset = self.config.wasm_data_section_body_chip.assign_auto(
-                                region,
-                                wb,
-                                section_body_offset,
-                                assign_delta,
-                            ).map_err(remap_error_to_assign_at(offset))?;
+                            next_section_offset = self
+                                .config
+                                .wasm_data_section_body_chip
+                                .assign_auto(region, wb, section_body_offset, assign_delta)
+                                .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                         }
-                        _ => { return Err(Error::FatalUnsupportedValue(format!("unsupported section value '{:x?}'", wasm_section))) }
+                        _ => {
+                            return Err(Error::FatalUnsupportedValue(format!(
+                                "unsupported section value '{:x?}'",
+                                wasm_section
+                            )))
+                        }
                     }
                     debug!(
                         "wasm_section {:?} section_body_offset {} after assign_auto next_section_offset {}",
@@ -1321,18 +1538,23 @@ impl<F: Field> WasmChip<F>
                         next_section_offset,
                     );
                 }
-                region.assign_advice(
-                    || format!("assign 'section_id' to {} at {}", section_id, offset),
-                    self.config.section_id,
-                    offset,
-                    || Value::known(F::from(section_id))
-                ).map_err(remap_error_to_assign_at(offset))?;
-                self.config.section_id_lt_chip.assign(
-                    region,
-                    offset,
-                    F::from(section_id_prev as u64),
-                    F::from(section_id),
-                ).map_err(remap_error_to_assign_at(offset))?;
+                region
+                    .assign_advice(
+                        || format!("assign at {} section_id val {}", wb_offset, section_id),
+                        self.config.section_id,
+                        wb_offset,
+                        || Value::known(F::from(section_id)),
+                    )
+                    .map_err(remap_error_to_assign_at(wb_offset))?;
+                self.config
+                    .section_id_lt_chip
+                    .assign(
+                        region,
+                        wb_offset,
+                        F::from(section_id_prev as u64),
+                        F::from(section_id),
+                    )
+                    .map_err(remap_error_to_assign_at(wb_offset + assign_delta))?;
                 section_id_prev = section_id as i64;
             }
 
@@ -1366,8 +1588,6 @@ impl<F: Field> WasmChip<F>
                     None,
                 )?;
             }
-
-            if offset >= wb.bytes.len() { break }
         }
 
         let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(

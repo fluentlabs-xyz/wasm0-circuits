@@ -28,8 +28,8 @@ use crate::{
         bytecode::{bytecode::WasmBytecode, bytecode_table::WasmBytecodeTable},
         consts::MAX_LEB128_BYTES,
         error::{
-            error_index_out_of_bounds_wb, remap_error_to_assign_at,
-            remap_error_to_compute_value_at, validate_wb_offset, Error,
+            error_index_out_of_bounds, remap_error_to_assign_at, remap_error_to_compute_value_at,
+            validate_wb_offset, Error,
         },
         leb128::{
             circuit::LEB128Chip,
@@ -553,9 +553,9 @@ pub trait WasmErrorAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
         region: &mut Region<F>,
         assign_offset: usize,
         len: usize,
-        error_code_replacer: Option<u64>,
+        explicit_error_code: Option<u64>,
     ) -> Result<(), Error> {
-        let error_code = error_code_replacer.unwrap_or(self.shared_state().borrow().error_code);
+        let error_code = explicit_error_code.unwrap_or(self.shared_state().borrow().error_code);
         for offset in assign_offset..assign_offset + len {
             debug!("assign at offset {} error_code val {}", offset, error_code);
             region
@@ -586,6 +586,75 @@ pub trait WasmErrorAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
             } else {
                 1.expr()
             }
+    }
+}
+
+pub trait WasmBytecodeNumberAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
+    fn bytecode_number_col(&self) -> Column<Advice>;
+    fn configure_bytecode_number(
+        cs: &mut ConstraintSystem<F>,
+        q_enable: Column<Fixed>,
+        q_first: Column<Fixed>,
+        q_last: Column<Fixed>,
+        bytecode_number: Column<Advice>,
+    ) {
+        cs.create_gate("bytecode-number gate", |vc| {
+            let mut cb = BaseConstraintBuilder::default();
+
+            let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let not_q_first_expr = not::expr(q_first_expr.clone());
+            let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let bytecode_number_expr = vc.query_advice(bytecode_number, Rotation::cur());
+
+            cb.condition(not_q_first_expr.clone(), |cb| {
+                let bytecode_number_prev_expr = vc.query_advice(bytecode_number, Rotation::prev());
+                cb.require_equal(
+                    "not_q_first => bytecode_number=prev.bytecode_number",
+                    bytecode_number_expr.clone(),
+                    bytecode_number_prev_expr.clone(),
+                );
+            });
+            cb.condition(and::expr([q_last_expr.clone()]), |cb| {
+                let bytecode_number_next_expr = vc.query_advice(bytecode_number, Rotation::next());
+                cb.require_equal(
+                    "q_last && next.q_first => bytecode_number=next.bytecode_number-1",
+                    bytecode_number_expr.clone(),
+                    bytecode_number_next_expr.clone() - 1.expr(),
+                );
+            });
+
+            cb.gate(q_enable_expr)
+        });
+    }
+
+    fn assign_bytecode_number(
+        &self,
+        region: &mut Region<F>,
+        assign_offset: usize,
+        explicit_bytecode_number: Option<u64>,
+    ) -> Result<(), Error> {
+        let bytecode_number =
+            explicit_bytecode_number.unwrap_or(self.shared_state().borrow().bytecode_number);
+        debug!(
+            "assign at offset {} bytecode_number val {}",
+            assign_offset, bytecode_number
+        );
+        region
+            .assign_advice(
+                || {
+                    format!(
+                        "assign 'bytecode_number' val {} at {}",
+                        bytecode_number, assign_offset
+                    )
+                },
+                self.bytecode_number_col(),
+                assign_offset,
+                || Value::known(F::from(bytecode_number)),
+            )
+            .map_err(remap_error_to_assign_at(assign_offset))?;
+
+        Ok(())
     }
 }
 
@@ -716,7 +785,7 @@ pub trait WasmBytesAwareChip<F: Field>: WasmAssignAwareChip<F> {
     ) -> Result<usize, Error> {
         let offset_end = wb_offset + len;
         if offset_end >= wb.bytes.len() {
-            return Err(error_index_out_of_bounds_wb(wb_offset));
+            return Err(error_index_out_of_bounds(wb_offset));
         }
         for offset in wb_offset..offset_end {
             self.assign(
@@ -747,7 +816,7 @@ pub trait WasmNameAwareChip<F: Field>: WasmAssignAwareChip<F> {
     ) -> Result<usize, Error> {
         let offset_end = wb_offset + name_len;
         if offset_end >= wb.bytes.len() {
-            return Err(error_index_out_of_bounds_wb(wb_offset));
+            return Err(error_index_out_of_bounds(wb_offset));
         }
         for offset in wb_offset..offset_end {
             self.assign(
@@ -764,7 +833,7 @@ pub trait WasmNameAwareChip<F: Field>: WasmAssignAwareChip<F> {
     }
 }
 
-pub fn char_numer_to_byte(ch: &char) -> u8 {
+pub fn char_digit_to_byte_number(ch: &char) -> u8 {
     *ch as u8 - 48
 }
 
