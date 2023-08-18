@@ -1362,31 +1362,14 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
 
     pub(crate) fn table_fill(&mut self, index: Expression<F>,
       start: Expression<F>, value: Expression<F>, range: Expression<F>, size: Expression<F>) {
-        self.rw_lookup(
-            "Table size lookup",
-            0.expr(),
-            RwTableTag::TableSize,
-            RwValues::new(
-                self.curr.state.call_id.expr(),
-                index,
-                0.expr(),
-                0.expr(),
-                size,
-                0.expr(),
-                0.expr(),
-                0.expr(),
-            ),
-        );
     }
 
     pub(crate) fn table_set(&mut self, index: Expression<F>, elem_index: Expression<F>, value: Expression<F>) {
-        todo!()
-        //self.table_lookup(1.expr(), index, value, None)
+        self.table_lookup(1.expr(), index, elem_index, value, None)
     }
 
-    pub(crate) fn table_get(&mut self, index: Expression<F>, value: Expression<F>) {
-        todo!()
-        //self.table_lookup(0.expr(), index, value, None)
+    pub(crate) fn table_get(&mut self, index: Expression<F>, elem_index: Expression<F>, value: Expression<F>) {
+        self.table_lookup(0.expr(), index, elem_index, value, None)
     }
 
     pub(crate) fn table_copy(&mut self, index: Expression<F>, index2: Expression<F>, elem_index: Expression<F>,
@@ -1398,8 +1381,9 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
     pub(crate) fn table_lookup(
         &mut self,
         is_write: Expression<F>,
-        table_address: Expression<F>,
-        byte: Expression<F>,
+        table_index: Expression<F>,
+        elem_index: Expression<F>,
+        value: Expression<F>,
         call_id: Option<Expression<F>>,
     ) {
         self.rw_lookup(
@@ -1408,10 +1392,10 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             RwTableTag::Table,
             RwValues::new(
                 call_id.unwrap_or_else(|| self.curr.state.call_id.expr()),
-                table_address,
+                table_index * 1024.expr() + elem_index.expr(),
                 0.expr(),
                 0.expr(),
-                byte,
+                value,
                 0.expr(),
                 0.expr(),
                 0.expr(),

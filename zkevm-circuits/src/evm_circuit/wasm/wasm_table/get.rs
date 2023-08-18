@@ -6,6 +6,7 @@ use eth_types::{Field, ToScalar};
 
 use crate::{
     evm_circuit::{
+        table::{FixedTableTag, Lookup},
         execution::ExecutionGadget,
         step::ExecutionState,
         util::{
@@ -26,6 +27,7 @@ pub(crate) struct WasmTableGetGadget<F> {
     table_index: Cell<F>,
     elem_index: Cell<F>,
     value: Cell<F>,
+    size: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for WasmTableGetGadget<F> {
@@ -39,17 +41,24 @@ impl<F: Field> ExecutionGadget<F> for WasmTableGetGadget<F> {
         let table_index = cb.query_cell();
         let elem_index = cb.query_cell();
         let value = cb.query_cell();
+        let size = cb.query_cell();
 
         cb.stack_pop(elem_index.expr());
         cb.stack_push(value.expr());
 
-/*
-        cb.condition(is_get_op.expr(), |cb| {
-            cb.stack_pop(elem_index.expr());
-            cb.table_set(table_index.expr(), elem_index.expr(), value.expr());
-            cb.stack_push(value.expr());
+        cb.table_size(table_index.expr(), size.expr());
+
+        cb.add_lookup("Using Range1024 fixed table, elem_index positive check", Lookup::Fixed {
+                tag: FixedTableTag::Range1024.expr(),
+                values: [elem_index.expr(), 0.expr(), 0.expr()],
         });
-*/
+
+        cb.add_lookup("Using Range1024 fixed table, substraction positive check", Lookup::Fixed {
+                tag: FixedTableTag::Range1024.expr(),
+                values: [size.expr() - elem_index.expr(), 0.expr(), 0.expr()],
+        });
+
+        cb.table_set(table_index.expr(), elem_index.expr(), value.expr());
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(2.expr()),
@@ -66,6 +75,7 @@ impl<F: Field> ExecutionGadget<F> for WasmTableGetGadget<F> {
             table_index,
             elem_index,
             value,
+            size,
         }
     }
 
