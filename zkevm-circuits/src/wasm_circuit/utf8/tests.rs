@@ -1,15 +1,15 @@
-use halo2_proofs::{
-    plonk::{ConstraintSystem, Error},
+use crate::wasm_circuit::{
+    bytecode::bytecode::WasmBytecode,
+    tables::fixed_range::config::RangeTableConfig,
+    utf8::circuit::{UTF8Chip, UTF8Config},
 };
-use std::{marker::PhantomData};
-use std::rc::Rc;
-use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
-use halo2_proofs::plonk::{Advice, Circuit, Column};
 use bus_mapping::state_db::CodeDB;
 use eth_types::{Field, ToWord};
-use crate::wasm_circuit::utf8::circuit::{UTF8Chip, UTF8Config};
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
+use halo2_proofs::{
+    circuit::{Layouter, SimpleFloorPlanner, Value},
+    plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
+};
+use std::{marker::PhantomData, rc::Rc};
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -30,18 +30,15 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     type Config = TestCircuitConfig<F>;
     type FloorPlanner = SimpleFloorPlanner;
 
-    fn without_witnesses(&self) -> Self { Self::default() }
+    fn without_witnesses(&self) -> Self {
+        Self::default()
+    }
 
-    fn configure(
-        cs: &mut ConstraintSystem<F>,
-    ) -> Self::Config {
+    fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
         let bytes = cs.advice_column();
         let eligible_byte_vals_range_table_config = Rc::new(RangeTableConfig::configure(cs));
-        let utf8_config = UTF8Chip::<F>::configure(
-            cs,
-            eligible_byte_vals_range_table_config.clone(),
-            &bytes,
-        );
+        let utf8_config =
+            UTF8Chip::<F>::configure(cs, eligible_byte_vals_range_table_config.clone(), &bytes);
         let test_circuit_config = TestCircuitConfig {
             bytes,
             eligible_byte_vals_range_table_config: eligible_byte_vals_range_table_config.clone(),
@@ -57,28 +54,31 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        config.eligible_byte_vals_range_table_config.load(&mut layouter)?;
+        config
+            .eligible_byte_vals_range_table_config
+            .load(&mut layouter)?;
         let utf8_chip = UTF8Chip::construct(config.utf8_config);
         let code_hash = CodeDB::hash(&self.bytes);
-        let wb = WasmBytecode::new(self.bytes.to_vec(), code_hash.to_word());
+        let wb = WasmBytecode::new(self.bytes.to_vec());
 
         layouter.assign_region(
             || "utf8 region",
             |mut region| {
                 for (offset, &byte_val) in self.bytes.iter().enumerate() {
                     let offset = offset + self.offset_shift;
-                    region.assign_advice(
-                        || format!("assign 'byte_val' to {} at {}", byte_val, offset),
-                        config.bytes,
-                        offset,
-                        || Value::known(F::from(byte_val as u64)),
-                    ).unwrap();
-
+                    region
+                        .assign_advice(
+                            || format!("assign 'byte_val' to {} at {}", byte_val, offset),
+                            config.bytes,
+                            offset,
+                            || Value::known(F::from(byte_val as u64)),
+                        )
+                        .unwrap();
                 }
                 utf8_chip.assign_auto(&mut region, &wb, self.bytes.len(), 0, self.offset_shift);
 
                 Ok(())
-            }
+            },
         )?;
 
         Ok(())
@@ -87,18 +87,14 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 
 #[cfg(test)]
 mod utf8_circuit_tests {
-    use std::marker::PhantomData;
-    use ethers_core::k256::pkcs8::der::Encode;
-    use halo2_proofs::dev::MockProver;
-    use halo2_proofs::halo2curves::bn256::Fr;
-    use log::debug;
-    use eth_types::Field;
     use crate::wasm_circuit::utf8::tests::TestCircuit;
+    use eth_types::Field;
+    use ethers_core::k256::pkcs8::der::Encode;
+    use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
+    use log::debug;
+    use std::marker::PhantomData;
 
-    fn test<'a, F: Field>(
-        test_circuit: TestCircuit<'_, F>,
-        is_ok: bool,
-    ) {
+    fn test<'a, F: Field>(test_circuit: TestCircuit<'_, F>, is_ok: bool) {
         let k = 10;
         let prover = MockProver::run(k, &test_circuit, vec![]).unwrap();
         if is_ok {
@@ -112,7 +108,7 @@ mod utf8_circuit_tests {
         let circuit = TestCircuit::<Fr> {
             bytes: utf8_bytecode,
             offset_shift,
-            _marker: PhantomData
+            _marker: PhantomData,
         };
         self::test(circuit, is_ok);
     }

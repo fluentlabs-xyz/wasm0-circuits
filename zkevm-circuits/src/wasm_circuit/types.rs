@@ -3,6 +3,16 @@ use gadgets::util::Expr;
 use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
 use strum_macros::EnumIter;
 
+pub type AssignOffset = usize;
+pub type Offset = usize;
+pub type NewOffset = usize;
+pub type WbOffset = usize;
+pub type NewWbOffset = usize;
+pub type Sn = u64;
+pub type Leb128Length = usize;
+pub type Leb128BytesCount = u8;
+pub type SectionLength = usize;
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AssignType {
     Unknown,

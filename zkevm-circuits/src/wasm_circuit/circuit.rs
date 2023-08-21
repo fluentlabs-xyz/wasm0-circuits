@@ -20,8 +20,8 @@ use crate::{
     wasm_circuit::{
         bytecode::{bytecode::WasmBytecode, bytecode_table::WasmBytecodeTable},
         common::{
-            char_digit_to_byte_number, configure_constraints_for_q_first_and_q_last,
-            configure_transition_check, wasm_compute_section_len, WasmAssignAwareChip,
+            configure_constraints_for_q_first_and_q_last, configure_transition_check,
+            digit_char_to_number, wasm_compute_section_len, WasmAssignAwareChip,
             WasmBytecodeNumberAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip,
             WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip,
             WasmSharedStateAwareChip,
@@ -29,7 +29,8 @@ use crate::{
         consts::{
             SECTION_ID_DEFAULT, WASM_MAGIC_PREFIX, WASM_MAGIC_PREFIX_LEN,
             WASM_MAGIC_PREFIX_START_INDEX, WASM_SECTIONS_START_INDEX, WASM_SECTION_ID_MAX,
-            WASM_VERSION_PREFIX, WASM_VERSION_PREFIX_LEN, WASM_VERSION_PREFIX_START_INDEX,
+            WASM_VERSION_PREFIX, WASM_VERSION_PREFIX_END_INDEX, WASM_VERSION_PREFIX_LEN,
+            WASM_VERSION_PREFIX_START_INDEX,
         },
         error::{
             error_index_out_of_bounds, is_recoverable_error, remap_error_to_assign_at,
@@ -60,8 +61,8 @@ use crate::{
             fixed_range::config::RangeTableConfig,
         },
         types::{
-            AssignType, ControlInstruction, ErrorCode, ExportDescType, ImportDescType, SharedState,
-            WasmSection,
+            AssignType, ControlInstruction, ErrorCode, ExportDescType, ImportDescType, NewWbOffset,
+            Offset, SharedState, WasmSection,
         },
         utf8::circuit::UTF8Chip,
     },
@@ -100,9 +101,8 @@ pub struct WasmConfig<F: Field> {
     wasm_element_section_body_chip: Rc<WasmElementSectionBodyChip<F>>,
     section_id_lt_chip: LtChip<F, 1>,
     dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
-    index_at_magic_prefix_count: usize,
+    magic_prefix_count: usize,
     index_at_magic_prefix: Vec<IsZeroChip<F>>,
-    index_at_magic_prefix_prev: Vec<IsZeroChip<F>>,
     poseidon_table: PoseidonTable,
     range_table_config_0_256: RangeTableConfig<F, 0, 256>,
     section_id_range_table_config: RangeTableConfig<F, 0, { WASM_SECTION_ID_MAX + 1 }>,
@@ -175,7 +175,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
         let q_enable = true;
         let assign_offset = wb_offset + assign_delta;
         debug!(
-            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            "assign at {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
             assign_offset, q_enable, assign_types, assign_value, wb.bytes[wb_offset],
         );
         region
@@ -289,32 +289,18 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
                     self.assign_error_code(region, assign_offset, None)?;
                 }
             }
-
-            for (index, index_at_magic_prefix) in
-                self.config.index_at_magic_prefix.iter().enumerate()
-            {
-                index_at_magic_prefix
-                    .assign(
-                        region,
-                        assign_offset,
-                        Value::known(F::from(wb_offset as u64) - F::from(index as u64)),
-                    )
-                    .map_err(remap_error_to_assign_at(assign_offset))?;
-            }
-            for (index, index_at_magic_prefix_prev) in
-                self.config.index_at_magic_prefix_prev.iter().enumerate()
-            {
-                index_at_magic_prefix_prev
-                    .assign(
-                        region,
-                        assign_offset,
-                        Value::known(
-                            F::from(wb_offset as u64) - F::from(index as u64) - F::from(1),
-                        ),
-                    )
-                    .map_err(remap_error_to_assign_at(assign_offset))?;
-            }
         }
+
+        for (index, index_at_magic_prefix) in self.config.index_at_magic_prefix.iter().enumerate() {
+            index_at_magic_prefix
+                .assign(
+                    region,
+                    assign_offset,
+                    Value::known(F::from(wb_offset as u64) - F::from(index as u64)),
+                )
+                .map_err(remap_error_to_assign_at(assign_offset))?;
+        }
+
         Ok(())
     }
 }
@@ -328,7 +314,7 @@ impl<F: Field> WasmChip<F> {
     ) -> Result<(), Error> {
         self.config
             .wb_table
-            .load(layouter, wb, true, assign_delta)
+            .load(layouter, wb, assign_delta)
             .unwrap();
         self.config.range_table_config_0_256.load(layouter).unwrap();
         self.config
@@ -350,7 +336,7 @@ impl<F: Field> WasmChip<F> {
         wb_table: Rc<WasmBytecodeTable>,
         shared_state: Rc<RefCell<SharedState>>,
     ) -> WasmConfig<F> {
-        let index_at_magic_prefix_count = WASM_MAGIC_PREFIX_LEN + WASM_VERSION_PREFIX_LEN;
+        let magic_prefix_count = WASM_MAGIC_PREFIX_LEN + WASM_VERSION_PREFIX_LEN;
 
         let bytecode_number = cs.advice_column();
 
@@ -530,21 +516,9 @@ impl<F: Field> WasmChip<F> {
         let wasm_table_section_body_chip = Rc::new(WasmTableSectionBodyChip::construct(config));
 
         let mut index_at_magic_prefix: Vec<IsZeroChip<F>> = Vec::new();
-        for index in 1..=index_at_magic_prefix_count {
+        for index in 0..magic_prefix_count {
             let value_inv = cs.advice_column();
             let index_at_magic_prefix_config = IsZeroChip::configure(
-                cs,
-                |vc| vc.query_fixed(q_enable, Rotation::cur()),
-                |vc| vc.query_advice(wb_table.index, Rotation::cur()) - index.expr(),
-                value_inv,
-            );
-            let chip = IsZeroChip::construct(index_at_magic_prefix_config);
-            index_at_magic_prefix.push(chip);
-        }
-        let mut index_at_magic_prefix_prev: Vec<IsZeroChip<F>> = Vec::new();
-        for index in 1..=index_at_magic_prefix_count {
-            let value_inv = cs.advice_column();
-            let index_at_magic_prefix_prev_config = IsZeroChip::configure(
                 cs,
                 |vc| {
                     and::expr([
@@ -552,11 +526,11 @@ impl<F: Field> WasmChip<F> {
                         not::expr(vc.query_fixed(q_first, Rotation::cur())),
                     ])
                 },
-                |vc| vc.query_advice(wb_table.index, Rotation::prev()) - index.expr(),
+                |vc| vc.query_advice(wb_table.index, Rotation::cur()) - index.expr(),
                 value_inv,
             );
-            let chip = IsZeroChip::construct(index_at_magic_prefix_prev_config);
-            index_at_magic_prefix_prev.push(chip);
+            let chip = IsZeroChip::construct(index_at_magic_prefix_config);
+            index_at_magic_prefix.push(chip);
         }
 
         Self::configure_len_prefixed_bytes_span_checks(
@@ -615,11 +589,13 @@ impl<F: Field> WasmChip<F> {
                     &shared_state.borrow(),
                     error_code,
                 );
+                let q_enable_expr =
+                    q_enable_expr * not::expr(vc.query_fixed(q_first, Rotation::cur()));
 
                 let byte_index_expr = vc.query_advice(wb_table.index, Rotation::cur());
                 let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
                 vec![
-                    (q_enable_expr.clone() * (index + 1).expr(), byte_index_expr),
+                    (q_enable_expr.clone() * index.expr(), byte_index_expr),
                     (q_enable_expr.clone() * (char as i32).expr(), byte_val_expr),
                 ]
             });
@@ -639,6 +615,9 @@ impl<F: Field> WasmChip<F> {
                     &shared_state.borrow(),
                     error_code,
                 );
+                let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+                let not_q_first_expr = not::expr(q_first_expr.clone());
+                let q_enable_expr = q_enable_expr * not_q_first_expr;
 
                 let byte_index_expr = vc.query_advice(wb_table.index, Rotation::cur());
                 let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
@@ -668,12 +647,19 @@ impl<F: Field> WasmChip<F> {
         );
         let section_id_lt_chip = LtChip::construct(section_id_lt_chip_config);
 
-        cs.create_gate("error-processing aware gate", |vc| {
+        cs.create_gate("WasmCircuit gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
-            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(
+                vc,
+                q_enable,
+                &shared_state.borrow(),
+                error_code,
+            );
             let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let q_first_prev_expr = vc.query_fixed(q_first, Rotation::prev());
             let not_q_first_expr = not::expr(q_first_expr.clone());
+            let not_q_first_prev_expr = not::expr(q_first_prev_expr.clone());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
 
@@ -686,12 +672,14 @@ impl<F: Field> WasmChip<F> {
 
             let func_count_expr = vc.query_advice(func_count, Rotation::cur());
 
-            let bytecode_index_expr = vc.query_advice(wb_table.index, Rotation::cur());
-            let bytecode_index_next_expr = vc.query_advice(wb_table.index, Rotation::next());
+            let byte_index_expr = vc.query_advice(wb_table.index, Rotation::cur());
+            let byte_index_next_expr = vc.query_advice(wb_table.index, Rotation::next());
 
             let section_id_expr = vc.query_advice(section_id, Rotation::cur());
+            let section_id_prev_expr = vc.query_advice(section_id, Rotation::prev());
 
-            let leb128_is_last_byte_expr = vc.query_fixed(leb128_chip.config.is_last_byte, Rotation::cur());
+            let leb128_is_last_byte_expr =
+                vc.query_fixed(leb128_chip.config.is_last_byte, Rotation::cur());
 
             let wb_table_code_hash = vc.query_advice(wb_table.code_hash, Rotation::cur());
             let poseidon_table_hash_id = vc.query_advice(poseidon_table.hash_id, Rotation::cur());
@@ -700,6 +688,15 @@ impl<F: Field> WasmChip<F> {
             cb.require_boolean("is_section_id is boolean", is_section_id_expr.clone());
             cb.require_boolean("is_section_len is boolean", is_section_len_expr.clone());
             cb.require_boolean("is_section_body is boolean", is_section_body_expr.clone());
+
+            cb.condition(
+                q_first_expr.clone(),
+                |cb| {
+                    cb.require_zero("q_first => index=0", vc.query_advice(wb_table.index, Rotation::cur()));
+                    cb.require_zero("q_first => value=0", vc.query_advice(wb_table.value, Rotation::cur()));
+                    cb.require_zero("q_first => code_hash=0", vc.query_advice(wb_table.code_hash, Rotation::cur()));
+                }
+            );
 
             configure_constraints_for_q_first_and_q_last(
                 &mut cb,
@@ -711,7 +708,10 @@ impl<F: Field> WasmChip<F> {
                 &[],
             );
 
-            cb.require_zero("index=0 => q_first=1", and::expr([q_first_expr.clone(), index_val_expr.clone(), ]));
+            cb.require_zero(
+                "index=0 => q_first=1",
+                and::expr([q_first_expr.clone(), index_val_expr.clone()]),
+            );
 
             let mut is_index_at_magic_prefix_expr = index_at_magic_prefix.iter()
                 .fold(0.expr(), |acc, x| { acc.clone() + x.config().expr() });
@@ -727,89 +727,114 @@ impl<F: Field> WasmChip<F> {
 
             // bytecode checks
             cb.condition(
-                not::expr(q_last_expr.clone()),
+                and::expr([not_q_first_expr.clone(), not_q_last_expr.clone()]),
                 |cb| {
                     cb.require_equal(
-                        "next.bytecode_index = cur.bytecode_index + 1",
-                        bytecode_index_expr.clone() + 1.expr(),
-                        bytecode_index_next_expr.clone(),
+                        "not_q_first && not_q_last => next.byte_index=cur.byte_index+1",
+                        byte_index_expr.clone() + 1.expr(),
+                        byte_index_next_expr.clone(),
                     );
-                }
+                },
             );
+            cb.condition(q_first_expr.clone(), |cb| {
+                cb.require_zero("q_first => byte_index=0", byte_index_expr.clone());
+            });
 
             // wasm magic prefix to sections transition check
-            let mut is_index_at_magic_prefix_expr = index_at_magic_prefix.iter()
-                .fold(0.expr(), |acc, x| { acc.clone() + x.config().expr() });
-            cb.condition(
-                is_index_at_magic_prefix_expr.clone(),
-                |cb| {
-                    cb.require_zero(
-                        "bytecode[0..7] -> !is_section_id && !is_section_len && !is_section_body",
-                        or::expr([
-                            is_section_id_expr.clone(),
-                            is_section_len_expr.clone(),
-                            is_section_body_expr.clone(),
-                        ]),
-                    )
-                }
-            );
-            cb.condition(
-                not::expr(is_index_at_magic_prefix_expr.clone()),
-                |cb| {
-                    cb.require_equal(
-                        "not(bytecode[0..7]) -> one_of([is_section_id, is_section_len, is_section_body])=1",
-                        is_section_id_expr.clone() + is_section_len_expr.clone() + is_section_body_expr.clone(),
-                        1.expr(),
-                    )
-                }
-            );
-            cb.condition(
-                is_section_body_expr.clone(),
-                |cb| {
-                    cb.require_equal(
-                        "is_section_body -> exactly one section chip is enabled",
-                        vc.query_fixed(wasm_type_section_body_chip.config.q_enable, Rotation::cur())
-                            + vc.query_fixed(wasm_import_section_body_chip.config.q_enable, Rotation::cur())
-                            + vc.query_fixed(wasm_function_section_body_chip.config.q_enable, Rotation::cur())
-                            + vc.query_fixed(wasm_memory_section_body_chip.config.q_enable, Rotation::cur())
-                            + vc.query_fixed(wasm_export_section_body_chip.config.q_enable, Rotation::cur())
-                            + vc.query_fixed(wasm_data_section_body_chip.config.q_enable, Rotation::cur())
-                            + vc.query_fixed(wasm_global_section_body_chip.config.q_enable, Rotation::cur())
-                            + vc.query_fixed(wasm_code_section_body_chip.config.q_enable, Rotation::cur())
-                            + vc.query_fixed(wasm_start_section_body_chip.config.q_enable, Rotation::cur())
-                            + vc.query_fixed(wasm_table_section_body_chip.config.q_enable, Rotation::cur())
-                            + vc.query_fixed(wasm_element_section_body_chip.config.q_enable, Rotation::cur())
-                            + is_section_id_expr.clone()
-                            + is_section_len_expr.clone()
-                        ,
-                        1.expr(),
-                    );
-                }
-            );
+            let mut is_index_at_magic_prefix_expr = index_at_magic_prefix
+                .iter()
+                .fold(0.expr(), |acc, x| acc.clone() + x.config().expr());
+            cb.condition(is_index_at_magic_prefix_expr.clone(), |cb| {
+                cb.require_zero(
+                    "bytecode[0..7] -> !is_section_id && !is_section_len && !is_section_body",
+                    or::expr([
+                        is_section_id_expr.clone(),
+                        is_section_len_expr.clone(),
+                        is_section_body_expr.clone(),
+                    ]),
+                )
+            });
+            cb.condition(not::expr(is_index_at_magic_prefix_expr.clone()), |cb| {
+                cb.require_equal(
+                    "not(bytecode[0..7]) -> one_of([is_section_id, is_section_len, is_section_body])=1",
+                    is_section_id_expr.clone()
+                        + is_section_len_expr.clone()
+                        + is_section_body_expr.clone(),
+                    1.expr(),
+                )
+            });
+            cb.condition(is_section_body_expr.clone(), |cb| {
+                cb.require_equal(
+                    "is_section_body -> exactly one section chip is enabled",
+                    vc.query_fixed(wasm_type_section_body_chip.config.q_enable, Rotation::cur())
+                        + vc.query_fixed(
+                            wasm_import_section_body_chip.config.q_enable,
+                            Rotation::cur(),
+                        )
+                        + vc.query_fixed(
+                            wasm_function_section_body_chip.config.q_enable,
+                            Rotation::cur(),
+                        )
+                        + vc.query_fixed(
+                            wasm_memory_section_body_chip.config.q_enable,
+                            Rotation::cur(),
+                        )
+                        + vc.query_fixed(
+                            wasm_export_section_body_chip.config.q_enable,
+                            Rotation::cur(),
+                        )
+                        + vc.query_fixed(
+                            wasm_data_section_body_chip.config.q_enable,
+                            Rotation::cur(),
+                        )
+                        + vc.query_fixed(
+                            wasm_global_section_body_chip.config.q_enable,
+                            Rotation::cur(),
+                        )
+                        + vc.query_fixed(
+                            wasm_code_section_body_chip.config.q_enable,
+                            Rotation::cur(),
+                        )
+                        + vc.query_fixed(
+                            wasm_start_section_body_chip.config.q_enable,
+                            Rotation::cur(),
+                        )
+                        + vc.query_fixed(
+                            wasm_table_section_body_chip.config.q_enable,
+                            Rotation::cur(),
+                        )
+                        + vc.query_fixed(
+                            wasm_element_section_body_chip.config.q_enable,
+                            Rotation::cur(),
+                        )
+                        + is_section_id_expr.clone()
+                        + is_section_len_expr.clone(),
+                    1.expr(),
+                );
+            });
             // func_count constraints
-            cb.condition(
-                q_first_expr.clone(),
-                |cb| {
-                    cb.require_zero(
-                        "q_first => func_count=0",
-                        func_count_expr.clone(),
-                    );
-                }
-            );
+            cb.condition(q_first_expr.clone(), |cb| {
+                cb.require_zero("q_first => func_count=0", func_count_expr.clone());
+            });
             let importdesc_type_is_typeidx_expr = and::expr([
-                vc.query_fixed(wasm_import_section_body_chip.config.is_importdesc_type, Rotation::cur()),
-                wasm_import_section_body_chip.config.importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::cur())(vc),
+                vc.query_fixed(
+                    wasm_import_section_body_chip.config.is_importdesc_type,
+                    Rotation::cur(),
+                ),
+                wasm_import_section_body_chip
+                    .config
+                    .importdesc_type_chip
+                    .config
+                    .value_equals(ImportDescType::Typeidx, Rotation::cur())(vc),
             ]);
-            let wasm_code_section_q_first_expr = vc.query_fixed(wasm_code_section_body_chip.config.q_first, Rotation::cur());
+            let wasm_code_section_q_first_expr =
+                vc.query_fixed(wasm_code_section_body_chip.config.q_first, Rotation::cur());
             let not_func_count_inc_expr = and::expr([
                 not::expr(importdesc_type_is_typeidx_expr.clone()),
                 not::expr(wasm_code_section_q_first_expr.clone()),
             ]);
             cb.condition(
-                and::expr([
-                    not_q_first_expr.clone(),
-                    not_func_count_inc_expr.clone(),
-                ]),
+                and::expr([not_q_first_expr.clone(), not_func_count_inc_expr.clone()]),
                 |cb| {
                     let func_count_prev_expr = vc.query_advice(func_count, Rotation::prev());
                     cb.require_equal(
@@ -817,42 +842,37 @@ impl<F: Field> WasmChip<F> {
                         func_count_prev_expr.clone(),
                         func_count_expr.clone(),
                     );
-                }
+                },
             );
-            cb.condition(
-                importdesc_type_is_typeidx_expr.clone(),
-                |cb| {
-                    let func_count_prev_expr = vc.query_advice(func_count, Rotation::prev());
-                    cb.require_equal(
-                        "importdesc_type_is_typeidx => func_count increased by 1",
-                        func_count_prev_expr.clone() + 1.expr(),
-                        func_count_expr.clone(),
-                    );
-                }
-            );
-            cb.condition(
-                wasm_code_section_q_first_expr.clone(),
-                |cb| {
-                    let func_count_prev_expr = vc.query_advice(func_count, Rotation::prev());
-                    let wasm_code_section_leb128_sn_expr = vc.query_advice(wasm_code_section_body_chip.config.leb128_chip.config.sn, Rotation::cur());
-                    cb.require_equal(
-                        "wasm_code_section_q_first => func_count grew by specific number",
-                        func_count_prev_expr.clone() + wasm_code_section_leb128_sn_expr.clone(),
-                        func_count_expr.clone(),
-                    );
-                }
-            );
+            cb.condition(importdesc_type_is_typeidx_expr.clone(), |cb| {
+                let func_count_prev_expr = vc.query_advice(func_count, Rotation::prev());
+                cb.require_equal(
+                    "importdesc_type_is_typeidx => func_count increased by 1",
+                    func_count_prev_expr.clone() + 1.expr(),
+                    func_count_expr.clone(),
+                );
+            });
+            cb.condition(wasm_code_section_q_first_expr.clone(), |cb| {
+                let func_count_prev_expr = vc.query_advice(func_count, Rotation::prev());
+                let wasm_code_section_leb128_sn_expr = vc.query_advice(
+                    wasm_code_section_body_chip.config.leb128_chip.config.sn,
+                    Rotation::cur(),
+                );
+                cb.require_equal(
+                    "wasm_code_section_q_first => func_count grew by specific number",
+                    func_count_prev_expr.clone() + wasm_code_section_leb128_sn_expr.clone(),
+                    func_count_expr.clone(),
+                );
+            });
 
             // wasm section layout check
             cb.condition(
-                and::expr([
-                    not_q_first_expr.clone(),
-                    index_at_magic_prefix_prev[WASM_SECTIONS_START_INDEX - 1].config().expr(),
-                ]),
+                    index_at_magic_prefix[WASM_VERSION_PREFIX_END_INDEX].config().expr(),
                 |cb| {
+                    let is_section_id_next_expr = vc.query_fixed(is_section_id, Rotation::next());
                     cb.require_equal(
-                        "if previous bytecode index is 7 -> is_section_id",
-                        is_section_id_expr.clone(),
+                        "prev.bytecode.index=WASM_VERSION_PREFIX_END_INDEX -> is_section_id",
+                        is_section_id_next_expr.clone(),
                         1.expr(),
                     )
                 }
@@ -862,10 +882,7 @@ impl<F: Field> WasmChip<F> {
                 &mut cb,
                 vc,
                 "check next: is_section_id{1} -> is_section_len+",
-                and::expr([
-                    not_q_last_expr.clone(),
-                    is_section_id_expr.clone(),
-                ]),
+                and::expr([not_q_last_expr.clone(), is_section_id_expr.clone()]),
                 true,
                 &[is_section_len],
             );
@@ -873,10 +890,7 @@ impl<F: Field> WasmChip<F> {
                 &mut cb,
                 vc,
                 "check next: is_section_len+ -> is_section_body+",
-                and::expr([
-                    not_q_last_expr.clone(),
-                    is_section_len_expr.clone(),
-                ]),
+                and::expr([not_q_last_expr.clone(), is_section_len_expr.clone()]),
                 true,
                 &[is_section_len, is_section_body],
             );
@@ -896,33 +910,27 @@ impl<F: Field> WasmChip<F> {
                 &mut cb,
                 vc,
                 "check next: is_section_body+ -> is_section_id{1} || q_last",
-                and::expr([
-                    not_q_last_expr.clone(),
-                    is_section_body_expr.clone(),
-                ]),
+                and::expr([not_q_last_expr.clone(), is_section_body_expr.clone()]),
                 true,
                 &[is_section_body, is_section_id],
             );
-            cb.condition(
-                is_section_id_expr.clone(),
-                |cb| {
-                    cb.require_equal(
-                        "is_section_id -> section_id=bytecode_value",
-                        section_id_expr.clone(),
-                        byte_val_expr.clone(),
-                    )
-                }
-            );
-            cb.condition(
+            cb.condition(is_section_id_expr.clone(), |cb| {
+                cb.require_equal(
+                    "is_section_id -> section_id=bytecode_value",
+                    section_id_expr.clone(),
+                    byte_val_expr.clone(),
+                )
+            });
+            cb.condition(and::expr([
                 not_q_first_expr.clone(),
-                |cb| {
-                    cb.require_equal(
-                        "prev.hash = cur.hash",
-                        vc.query_advice(wb_table.code_hash, Rotation::prev()),
-                        vc.query_advice(wb_table.code_hash, Rotation::cur()),
-                    );
-                }
-            );
+                not_q_first_prev_expr.clone(),
+            ]), |cb| {
+                cb.require_equal(
+                    "prev.hash = cur.hash",
+                    vc.query_advice(wb_table.code_hash, Rotation::prev()),
+                    vc.query_advice(wb_table.code_hash, Rotation::cur()),
+                );
+            });
 
             // for the first 8 bytes section_id=SECTION_ID_DEFAULT
             for i in 0..WASM_SECTIONS_START_INDEX {
@@ -932,25 +940,13 @@ impl<F: Field> WasmChip<F> {
                 );
             }
 
-            // prev.section_id <= cur.section_id
-            let mut cb = BaseConstraintBuilder::default();
-
-            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
-            let not_q_first_expr = not::expr(q_first_expr.clone());
-
-            let section_id_prev_expr = vc.query_advice(section_id, Rotation::prev());
-            let section_id_expr = vc.query_advice(section_id, Rotation::cur());
-
-            cb.condition(
-                not_q_first_expr.clone(),
-                |cb| {
-                    cb.require_zero(
-                        "prev.section_id <= cur.section_id",
-                        (section_id_lt_chip.config().is_lt(vc, None) - 1.expr())
-                            * (section_id_expr.clone() - section_id_prev_expr.clone())
-                    );
-                }
-            );
+            cb.condition(not_q_first_expr.clone(), |cb| {
+                cb.require_zero(
+                    "prev.section_id <= cur.section_id",
+                    (section_id_lt_chip.config().is_lt(vc, None) - 1.expr())
+                        * (section_id_expr.clone() - section_id_prev_expr.clone()),
+                );
+            });
 
             // code_hash check
             cb.require_zero(
@@ -1241,8 +1237,7 @@ impl<F: Field> WasmChip<F> {
             range_table_config_0_256,
             section_id_range_table_config,
             index_at_magic_prefix,
-            index_at_magic_prefix_prev,
-            index_at_magic_prefix_count,
+            magic_prefix_count,
             section_id,
             is_section_id,
             is_section_len,
@@ -1291,14 +1286,20 @@ impl<F: Field> WasmChip<F> {
         wb: &WasmBytecode,
         wb_offset: usize,
         assign_delta: usize,
-    ) -> Result<(), Error> {
-        let res = self.assign_auto_internal(region, wb, wb_offset, assign_delta);
+    ) -> Result<NewWbOffset, Error> {
+        let result = self.assign_auto_internal(region, wb, wb_offset, assign_delta);
+        let assign_delta = assign_delta
+            + if self.config.wb_table.zero_row_enabled {
+                1
+            } else {
+                0
+            };
 
-        if let Err(e) = res {
+        if let Err(e) = result {
             return if is_recoverable_error(&e)
                 & self.config.shared_state.borrow().error_processing_enabled
             {
-                debug!("detected recoverable error: {:?}", e);
+                println!("detected recoverable error: {:?}", e);
                 match e {
                     Error::IndexOutOfBoundsAt(offset) |
                     Error::AssignAt(offset) |
@@ -1306,9 +1307,11 @@ impl<F: Field> WasmChip<F> {
                     Error::InvalidByteValueAt(offset) |
                     Error::InvalidEnumValueAt(offset) |
                     Error::ComputeValueAt(offset) => {
-                        debug!("recoverable error offset: {}", offset);
+                        println!("recoverable error offset: {}", offset);
                         self.shared_state().borrow_mut().error_code = ErrorCode::Error as u64;
-                        for offset in offset..wb.bytes.len() {
+                        // cannot use offset received from error because of forward checks 
+                        // and also structure markups happen after return with error 
+                        for offset in 0..wb.bytes.len() {
                             self.assign(region, wb, offset, assign_delta, &[AssignType::ErrorCode], ErrorCode::Error as u64, None)?;
                         }
                     }
@@ -1327,13 +1330,13 @@ impl<F: Field> WasmChip<F> {
                     _ => return Err(e)
                 }
 
-                Ok(())
+                Ok(wb.bytes.len() + assign_delta)
             } else {
                 Err(e)
             };
         }
 
-        res
+        return Ok(wb.bytes.len() + assign_delta);
     }
 
     fn assign_auto_internal(
@@ -1342,7 +1345,7 @@ impl<F: Field> WasmChip<F> {
         wb: &WasmBytecode,
         wb_offset: usize,
         assign_delta: usize,
-    ) -> Result<(), Error> {
+    ) -> Result<Offset, Error> {
         debug!("wb.bytes {:x?}", wb.bytes);
         self.assign(
             region,
@@ -1353,6 +1356,12 @@ impl<F: Field> WasmChip<F> {
             1,
             None,
         )?;
+        let assign_delta = assign_delta
+            + if self.config.wb_table.zero_row_enabled {
+                1
+            } else {
+                0
+            };
         self.assign(
             region,
             wb,
@@ -1364,26 +1373,30 @@ impl<F: Field> WasmChip<F> {
         )?;
 
         // check magic prefix and version
+        let assign_offset_start = wb_offset + WASM_MAGIC_PREFIX_START_INDEX + assign_delta;
         for (idx, ch) in WASM_MAGIC_PREFIX.chars().enumerate() {
             let wb_offset = wb_offset + WASM_MAGIC_PREFIX_START_INDEX + idx;
             let assign_offset = wb_offset + assign_delta;
+            self.assign(region, &wb, wb_offset, assign_delta, &[], 1, None)?;
             let byte_val = *wb
                 .bytes
                 .get(wb_offset)
-                .ok_or(Error::IndexOutOfBoundsAt(assign_offset))?;
-            if byte_val != ch as u8 {
-                return Err(Error::InvalidByteValueAt(assign_offset));
+                .ok_or(Error::IndexOutOfBoundsAt(assign_offset_start))?;
+            if byte_val != (ch as u8) {
+                return Err(Error::InvalidByteValueAt(assign_offset_start));
             }
         }
+        let assign_offset_start = wb_offset + WASM_VERSION_PREFIX_START_INDEX + assign_delta;
         for (idx, ch) in WASM_VERSION_PREFIX.chars().enumerate() {
             let wb_offset = wb_offset + WASM_VERSION_PREFIX_START_INDEX + idx;
             let assign_offset = wb_offset + assign_delta;
+            self.assign(region, &wb, wb_offset, assign_delta, &[], 1, None)?;
             let byte_val = *wb
                 .bytes
                 .get(wb_offset)
-                .ok_or(Error::IndexOutOfBoundsAt(assign_offset))?;
-            if byte_val != char_digit_to_byte_number(&ch) {
-                return Err(Error::InvalidByteValueAt(assign_offset));
+                .ok_or(Error::IndexOutOfBoundsAt(assign_offset_start))?;
+            if byte_val != digit_char_to_number(&ch) {
+                return Err(Error::InvalidByteValueAt(assign_offset_start));
             }
         }
 
@@ -1415,10 +1428,11 @@ impl<F: Field> WasmChip<F> {
                         remap_error_to_invalid_enum_value_at(wb_offset + assign_delta),
                     )?;
                     debug!(
-                        "wasm_section {:?}(id={}) at offset {} section_len {} bytecode(hex) {:x?}",
+                        "wasm_section {:?}(id={}) at offset {} offset_end {} section_len {} bytecode(hex) {:x?}",
                         wasm_section,
                         section_id,
-                        wb_offset + assign_delta,
+                        wb_offset,
+                        wb_offset + section_len - 1,
                         section_len,
                         &wb.bytes[section_start_offset..=section_end_offset],
                     );
@@ -1542,7 +1556,7 @@ impl<F: Field> WasmChip<F> {
                     .assign_advice(
                         || format!("assign at {} section_id val {}", wb_offset, section_id),
                         self.config.section_id,
-                        wb_offset,
+                        wb_offset + assign_delta,
                         || Value::known(F::from(section_id)),
                     )
                     .map_err(remap_error_to_assign_at(wb_offset))?;
@@ -1550,7 +1564,7 @@ impl<F: Field> WasmChip<F> {
                     .section_id_lt_chip
                     .assign(
                         region,
-                        wb_offset,
+                        wb_offset + assign_delta,
                         F::from(section_id_prev as u64),
                         F::from(section_id),
                     )
@@ -1598,6 +1612,6 @@ impl<F: Field> WasmChip<F> {
         )?;
         self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;
 
-        Ok(())
+        Ok(wb_offset + assign_delta)
     }
 }

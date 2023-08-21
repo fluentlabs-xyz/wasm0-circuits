@@ -1,7 +1,5 @@
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::{bytecode::bytecode::WasmBytecode, types::AssignOffset};
 use strum_macros::EnumIter;
-
-type AssignOffset = usize;
 
 #[derive(Debug, Clone, EnumIter, PartialEq)]
 pub enum Error {

@@ -1,35 +1,49 @@
-use std::cell::RefCell;
-use std::marker::PhantomData;
-use std::rc::Rc;
+use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 use halo2_proofs::{
-    plonk::{Column, ConstraintSystem},
+    circuit::{Chip, Region, Value},
+    plonk::{Advice, Column, ConstraintSystem, Fixed},
+    poly::Rotation,
 };
-use halo2_proofs::circuit::{Chip, Region, Value};
-use halo2_proofs::plonk::{Advice, Fixed};
-use halo2_proofs::poly::Rotation;
 use itertools::Itertools;
 use log::debug;
 
 use eth_types::Field;
-use gadgets::binary_number::BinaryNumberChip;
-use gadgets::less_than::{LtChip, LtInstruction};
-use gadgets::util::{and, Expr, not, or};
+use gadgets::{
+    binary_number::BinaryNumberChip,
+    less_than::{LtChip, LtInstruction},
+    util::{and, not, or, Expr},
+};
 
-use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmBlockLevelAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
-use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
-use crate::wasm_circuit::consts::{WASM_BLOCK_END, WASM_BLOCKTYPE_DELIMITER};
-use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at, remap_error_to_invalid_enum_value_at};
-use crate::wasm_circuit::leb128::circuit::LEB128Chip;
-use crate::wasm_circuit::sections::code::body::types::AssignType;
-use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::tables::code_blocks;
-use crate::wasm_circuit::tables::code_blocks::circuit::CodeBlocksChip;
-use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
-use crate::wasm_circuit::types::{CONTROL_INSTRUCTION_BLOCK, CONTROL_INSTRUCTION_WITH_LEB_ARG, CONTROL_INSTRUCTION_WITHOUT_ARGS, ControlInstruction, NUMERIC_INSTRUCTION_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NumericInstruction, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, ParametricInstruction, SharedState, VARIABLE_INSTRUCTION_WITH_LEB_ARG, VariableInstruction};
+use crate::{
+    evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
+    wasm_circuit::{
+        bytecode::{bytecode::WasmBytecode, bytecode_table::WasmBytecodeTable},
+        common::{
+            configure_constraints_for_q_first_and_q_last, configure_transition_check,
+            WasmAssignAwareChip, WasmBlockLevelAwareChip, WasmCountPrefixedItemsAwareChip,
+            WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip,
+            WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip,
+        },
+        consts::{WASM_BLOCKTYPE_DELIMITER, WASM_BLOCK_END},
+        error::{
+            remap_error, remap_error_to_assign_at, remap_error_to_invalid_enum_value_at, Error,
+        },
+        leb128::circuit::LEB128Chip,
+        sections::{code::body::types::AssignType, consts::LebParams},
+        tables::{
+            code_blocks, code_blocks::circuit::CodeBlocksChip,
+            dynamic_indexes::circuit::DynamicIndexesChip,
+        },
+        types::{
+            ControlInstruction, NumericInstruction, ParametricInstruction, SharedState,
+            VariableInstruction, CONTROL_INSTRUCTION_BLOCK, CONTROL_INSTRUCTION_WITHOUT_ARGS,
+            CONTROL_INSTRUCTION_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS,
+            NUMERIC_INSTRUCTION_WITH_LEB_ARG, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS,
+            VARIABLE_INSTRUCTION_WITH_LEB_ARG,
+        },
+    },
+};
 
 #[derive(Debug, Clone)]
 pub struct WasmCodeSectionBodyConfig<F: Field> {
@@ -90,7 +104,9 @@ impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmCodeSectionBodyChip<
 impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmCodeSectionBodyChip<F> {}
 
 impl<F: Field> WasmErrorAwareChip<F> for WasmCodeSectionBodyChip<F> {
-    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+    fn error_code_col(&self) -> Column<Advice> {
+        self.config.error_code
+    }
 }
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmCodeSectionBodyChip<F> {
@@ -100,11 +116,15 @@ impl<F: Field> WasmSharedStateAwareChip<F> for WasmCodeSectionBodyChip<F> {
 }
 
 impl<F: Field> WasmFuncCountAwareChip<F> for WasmCodeSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
+    fn func_count_col(&self) -> Column<Advice> {
+        self.config.func_count
+    }
 }
 
 impl<F: Field> WasmBlockLevelAwareChip<F> for WasmCodeSectionBodyChip<F> {
-    fn block_level_col(&self) -> Column<Advice> { self.config.block_level }
+    fn block_level_col(&self) -> Column<Advice> {
+        self.config.block_level
+    }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
@@ -123,19 +143,17 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
         let q_enable = true;
         let assign_offset = wb_offset + assign_delta;
         debug!(
-            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
-            assign_offset,
-            q_enable,
-            assign_types,
-            assign_value,
-            wb.bytes[wb_offset],
+            "assign at {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            assign_offset, q_enable, assign_types, assign_value, wb.bytes[wb_offset],
         );
-        region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, assign_offset),
-            self.config.q_enable,
-            assign_offset,
-            || Value::known(F::from(q_enable as u64)),
-        ).map_err(remap_error_to_assign_at(assign_offset))?;
+        region
+            .assign_fixed(
+                || format!("assign 'q_enable' val {} at {}", q_enable, assign_offset),
+                self.config.q_enable,
+                assign_offset,
+                || Value::known(F::from(q_enable as u64)),
+            )
+            .map_err(remap_error_to_assign_at(assign_offset))?;
         self.assign_func_count(region, assign_offset)?;
         self.assign_block_level(region, assign_offset)?;
 
@@ -147,215 +165,347 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
                 AssignType::IsLocalRepetitionCount,
                 AssignType::IsNumericInstructionLebArg,
                 AssignType::IsVariableInstructionLebArg,
-                AssignType::IsControlInstructionLebArg
-            ].contains(&assign_type) {
+                AssignType::IsControlInstructionLebArg,
+            ]
+            .contains(&assign_type)
+            {
                 let p = leb_params.unwrap();
-                self.config.leb128_chip.assign(
-                    region,
-                    assign_offset,
-                    q_enable,
-                    p,
-                )?;
+                self.config
+                    .leb128_chip
+                    .assign(region, assign_offset, q_enable, p)?;
             }
             match assign_type {
                 AssignType::Unknown => {
-                    return Err(Error::FatalUnknownAssignTypeUsed("unknown assign type is an impossible situation".to_string()))
+                    return Err(Error::FatalUnknownAssignTypeUsed(
+                        "unknown assign type is an impossible situation".to_string(),
+                    ))
                 }
                 AssignType::QFirst => {
-                    region.assign_fixed(
-                        || format!("assign 'q_first' val {} at {}", assign_value, assign_offset),
-                        self.config.q_first,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'q_first' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.q_first,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::QLast => {
-                    region.assign_fixed(
-                        || format!("assign 'q_last' val {} at {}", assign_value, assign_offset),
-                        self.config.q_last,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || format!("assign 'q_last' val {} at {}", assign_value, assign_offset),
+                            self.config.q_last,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsFuncsCount => {
-                    region.assign_fixed(
-                        || format!("assign 'is_funcs_count' val {} at {}", assign_value, assign_offset),
-                        self.config.is_funcs_count,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_funcs_count' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_funcs_count,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsFuncBodyLen => {
-                    region.assign_fixed(
-                        || format!("assign 'is_func_body_len' val {} at {}", assign_value, assign_offset),
-                        self.config.is_func_body_len,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_func_body_len' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_func_body_len,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsLocalTypeTransitionsCount => {
-                    region.assign_fixed(
-                        || format!("assign 'is_local_type_transitions_count' val {} at {}", assign_value, assign_offset),
-                        self.config.is_local_type_transitions_count,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_local_type_transitions_count' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_local_type_transitions_count,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsLocalRepetitionCount => {
-                    region.assign_fixed(
-                        || format!("assign 'is_local_repetition_count' val {} at {}", assign_value, assign_offset),
-                        self.config.is_local_repetition_count,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_local_repetition_count' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_local_repetition_count,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsLocalType => {
-                    region.assign_fixed(
-                        || format!("assign 'is_local_type' val {} at {}", assign_value, assign_offset),
-                        self.config.is_local_type,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_local_type' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_local_type,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsNumericInstruction => {
-                    region.assign_fixed(
-                        || format!("assign 'is_numeric_instruction' val {} at {}", assign_value, assign_offset),
-                        self.config.is_numeric_instruction,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
-                    if assign_value == 1 {
-                        let opcode: NumericInstruction = wb.bytes[wb_offset].try_into().map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
-                        self.config.numeric_instructions_chip.assign(
-                            region,
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_numeric_instruction' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_numeric_instruction,
                             assign_offset,
-                            &opcode,
-                        ).map_err(remap_error(Error::FatalAssignExternalChip))?;
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
+                    if assign_value == 1 {
+                        let opcode: NumericInstruction = wb.bytes[wb_offset]
+                            .try_into()
+                            .map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
+                        self.config
+                            .numeric_instructions_chip
+                            .assign(region, assign_offset, &opcode)
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                 }
                 AssignType::IsNumericInstructionLebArg => {
-                    region.assign_fixed(
-                        || format!("assign 'is_numeric_instruction_leb_arg' val {} at {}", assign_value, assign_offset),
-                        self.config.is_numeric_instruction_leb_arg,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_numeric_instruction_leb_arg' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_numeric_instruction_leb_arg,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsVariableInstruction => {
-                    region.assign_fixed(
-                        || format!("assign 'is_variable_instruction' val {} at {}", assign_value, assign_offset),
-                        self.config.is_variable_instruction,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
-                    if assign_value == 1 {
-                        let opcode = wb.bytes[wb_offset].try_into().map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
-                        self.config.variable_instruction_chip.assign(
-                            region,
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_variable_instruction' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_variable_instruction,
                             assign_offset,
-                            &opcode,
-                        ).map_err(remap_error(Error::FatalAssignExternalChip))?;
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
+                    if assign_value == 1 {
+                        let opcode = wb.bytes[wb_offset]
+                            .try_into()
+                            .map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
+                        self.config
+                            .variable_instruction_chip
+                            .assign(region, assign_offset, &opcode)
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                 }
                 AssignType::IsVariableInstructionLebArg => {
-                    region.assign_fixed(
-                        || format!("assign 'is_variable_instruction_leb_arg' val {} at {}", assign_value, assign_offset),
-                        self.config.is_variable_instruction_leb_arg,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_variable_instruction_leb_arg' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_variable_instruction_leb_arg,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsControlInstruction => {
-                    region.assign_fixed(
-                        || format!("assign 'is_control_instruction' val {} at {}", assign_value, assign_offset),
-                        self.config.is_control_instruction,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
-                    if assign_value == 1 {
-                        let opcode = wb.bytes[wb_offset].try_into().map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
-                        self.config.control_instruction_chip.assign(
-                            region,
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_control_instruction' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_control_instruction,
                             assign_offset,
-                            &opcode,
-                        ).map_err(remap_error(Error::FatalAssignExternalChip))?;
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
+                    if assign_value == 1 {
+                        let opcode = wb.bytes[wb_offset]
+                            .try_into()
+                            .map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
+                        self.config
+                            .control_instruction_chip
+                            .assign(region, assign_offset, &opcode)
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                 }
                 AssignType::IsControlInstructionLebArg => {
-                    region.assign_fixed(
-                        || format!("assign 'is_control_instruction_leb_arg' val {} at {}", assign_value, assign_offset),
-                        self.config.is_control_instruction_leb_arg,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_control_instruction_leb_arg' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_control_instruction_leb_arg,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsParametricInstruction => {
-                    region.assign_fixed(
-                        || format!("assign 'is_parametric_instruction' val {} at {}", assign_value, assign_offset),
-                        self.config.is_parametric_instruction,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
-                    if assign_value == 1 {
-                        let opcode = wb.bytes[wb_offset].try_into().map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
-                        self.config.parametric_instruction_chip.assign(
-                            region,
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_parametric_instruction' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_parametric_instruction,
                             assign_offset,
-                            &opcode,
-                        ).map_err(remap_error(Error::FatalAssignExternalChip))?;
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
+                    if assign_value == 1 {
+                        let opcode = wb.bytes[wb_offset]
+                            .try_into()
+                            .map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
+                        self.config
+                            .parametric_instruction_chip
+                            .assign(region, assign_offset, &opcode)
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                 }
                 AssignType::IsBlocktypeDelimiter => {
-                    region.assign_fixed(
-                        || format!("assign 'is_blocktype_delimiter' val {} at {}", assign_value, assign_offset),
-                        self.config.is_blocktype_delimiter,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_blocktype_delimiter' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_blocktype_delimiter,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsBlockEnd => {
-                    region.assign_fixed(
-                        || format!("assign 'is_block_end' val {} at {}", assign_value, assign_offset),
-                        self.config.is_block_end,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_block_end' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_block_end,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::BodyByteRevIndex => {
-                    region.assign_advice(
-                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, assign_offset),
-                        self.config.body_byte_rev_index,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_advice(
+                            || {
+                                format!(
+                                    "assign 'body_byte_rev_index' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.body_byte_rev_index,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::BodyItemRevCount => {
-                    region.assign_advice(
-                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, assign_offset),
-                        self.config.body_item_rev_count,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_advice(
+                            || {
+                                format!(
+                                    "assign 'body_item_rev_count' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.body_item_rev_count,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::BlockOpcodeIndex => {
-                    region.assign_advice(
-                        || format!("assign 'block_opcode_number' val {} at {}", assign_value, assign_offset),
-                        self.config.block_opcode_number,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_advice(
+                            || {
+                                format!(
+                                    "assign 'block_opcode_number' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.block_opcode_number,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::ErrorCode => {
                     self.assign_error_code(region, assign_offset, None)?;
                 }
             }
-        };
+        }
         Ok(())
     }
 }
 
-impl<F: Field> WasmCodeSectionBodyChip<F>
-{
+impl<F: Field> WasmCodeSectionBodyChip<F> {
     pub fn construct(config: WasmCodeSectionBodyConfig<F>) -> Self {
         let instance = Self {
             config,
@@ -431,27 +581,33 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
         let config = LtChip::configure(
             cs,
             |vc| {
-                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
                 let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
                 let not_q_first_expr = not::expr(q_first_expr.clone());
-                let is_br_prev_expr = control_instruction_chip.config.value_equals(ControlInstruction::Br, Rotation::prev())(vc);
-                let is_br_if_prev_expr = control_instruction_chip.config.value_equals(ControlInstruction::BrIf, Rotation::prev())(vc);
+                let is_br_prev_expr = control_instruction_chip
+                    .config
+                    .value_equals(ControlInstruction::Br, Rotation::prev())(
+                    vc
+                );
+                let is_br_if_prev_expr = control_instruction_chip
+                    .config
+                    .value_equals(ControlInstruction::BrIf, Rotation::prev())(
+                    vc
+                );
 
                 and::expr([
                     q_enable_expr.clone(),
                     not_q_first_expr,
-                    or::expr([
-                        is_br_prev_expr,
-                        is_br_if_prev_expr,
-                    ])
+                    or::expr([is_br_prev_expr, is_br_if_prev_expr]),
                 ])
             },
-            |vc| {
-                vc.query_advice(leb128_chip.config.sn, Rotation::cur())
-            },
-            |vc| {
-                vc.query_advice(block_level, Rotation::cur())
-            },
+            |vc| vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
+            |vc| vc.query_advice(block_level, Rotation::cur()),
         );
         let block_level_lt_chip = Rc::new(LtChip::construct(config));
 
@@ -459,28 +615,38 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             cs,
             leb128_chip.as_ref(),
             |vc| {
-                or::expr([
-                    is_local_type_transitions_count,
-                    is_local_repetition_count,
-                    is_local_type,
-                    is_numeric_instruction,
-                    is_numeric_instruction_leb_arg,
-                    is_variable_instruction,
-                    is_variable_instruction_leb_arg,
-                    is_control_instruction,
-                    is_control_instruction_leb_arg,
-                    is_parametric_instruction,
-                    is_blocktype_delimiter,
-                    is_block_end,
-                ].map(|c| vc.query_fixed(c, Rotation::cur())).iter().collect_vec())
+                or::expr(
+                    [
+                        is_local_type_transitions_count,
+                        is_local_repetition_count,
+                        is_local_type,
+                        is_numeric_instruction,
+                        is_numeric_instruction_leb_arg,
+                        is_variable_instruction,
+                        is_variable_instruction_leb_arg,
+                        is_control_instruction,
+                        is_control_instruction_leb_arg,
+                        is_parametric_instruction,
+                        is_blocktype_delimiter,
+                        is_block_end,
+                    ]
+                    .map(|c| vc.query_fixed(c, Rotation::cur()))
+                    .iter()
+                    .collect_vec(),
+                )
             },
             body_byte_rev_index,
             |vc| {
                 let not_q_last_expr = not::expr(vc.query_fixed(q_last, Rotation::cur()));
                 let is_func_body_len_expr = vc.query_fixed(is_func_body_len, Rotation::cur());
-                let is_local_type_transitions_count_next_expr = vc.query_fixed(is_local_type_transitions_count, Rotation::next());
+                let is_local_type_transitions_count_next_expr =
+                    vc.query_fixed(is_local_type_transitions_count, Rotation::next());
 
-                and::expr([not_q_last_expr, is_func_body_len_expr, is_local_type_transitions_count_next_expr])
+                and::expr([
+                    not_q_last_expr,
+                    is_func_body_len_expr,
+                    is_local_type_transitions_count_next_expr,
+                ])
             },
             |vc| {
                 let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
@@ -489,10 +655,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
                 or::expr([
                     q_last_expr,
-                    and::expr([
-                        is_block_end_expr,
-                        is_func_body_len_next_expr,
-                    ])
+                    and::expr([is_block_end_expr, is_func_body_len_next_expr]),
                 ])
             },
         );
@@ -503,20 +666,21 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             body_item_rev_count,
             |vc| vc.query_fixed(is_funcs_count, Rotation::cur()),
             |vc| {
-                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
                 let is_funcs_count_expr = vc.query_fixed(is_funcs_count, Rotation::cur());
 
-                and::expr([
-                    q_enable_expr,
-                    not::expr(is_funcs_count_expr),
-                ])
+                and::expr([q_enable_expr, not::expr(is_funcs_count_expr)])
             },
             |vc| {
                 let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
                 let is_block_end_prev_expr = vc.query_fixed(is_block_end, Rotation::prev());
                 let is_func_body_len_expr = vc.query_fixed(is_func_body_len, Rotation::cur());
                 let is_funcs_count_prev_expr = vc.query_fixed(is_funcs_count, Rotation::prev());
-
 
                 and::expr([
                     not::expr(q_first_expr),
@@ -537,34 +701,52 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             },
         );
 
-        cs.lookup_any(
-            "code_blocks_chip lines are valid",
-            |vc| {
-                let control_opcode_is_block_expr = control_instruction_chip.config.value_equals(ControlInstruction::Block, Rotation::cur())(vc);
-                let control_opcode_is_loop_expr = control_instruction_chip.config.value_equals(ControlInstruction::Loop, Rotation::cur())(vc);
-                let control_opcode_is_if_expr = control_instruction_chip.config.value_equals(ControlInstruction::If, Rotation::cur())(vc);
-                let control_opcode_is_else_expr = control_instruction_chip.config.value_equals(ControlInstruction::Else, Rotation::cur())(vc);
+        cs.lookup_any("code_blocks_chip lines are valid", |vc| {
+            let control_opcode_is_block_expr =
+                control_instruction_chip
+                    .config
+                    .value_equals(ControlInstruction::Block, Rotation::cur())(vc);
+            let control_opcode_is_loop_expr =
+                control_instruction_chip
+                    .config
+                    .value_equals(ControlInstruction::Loop, Rotation::cur())(vc);
+            let control_opcode_is_if_expr =
+                control_instruction_chip
+                    .config
+                    .value_equals(ControlInstruction::If, Rotation::cur())(vc);
+            let control_opcode_is_else_expr =
+                control_instruction_chip
+                    .config
+                    .value_equals(ControlInstruction::Else, Rotation::cur())(vc);
 
-                let is_block_end_expr = vc.query_fixed(is_block_end, Rotation::cur());
+            let is_block_end_expr = vc.query_fixed(is_block_end, Rotation::cur());
 
-                let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
-                let block_opcode_number_expr = vc.query_advice(block_opcode_number, Rotation::cur());
-                let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
+            let block_opcode_number_expr = vc.query_advice(block_opcode_number, Rotation::cur());
+            let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
 
-                let block_opcode_number_increased_expr = control_opcode_is_block_expr.clone()
-                    + control_opcode_is_loop_expr.clone()
-                    + control_opcode_is_if_expr.clone()
-                    + control_opcode_is_else_expr.clone()
-                    + is_block_end_expr.clone();
+            let block_opcode_number_increased_expr = control_opcode_is_block_expr.clone()
+                + control_opcode_is_loop_expr.clone()
+                + control_opcode_is_if_expr.clone()
+                + control_opcode_is_else_expr.clone()
+                + is_block_end_expr.clone();
 
-                let c = &code_blocks_chip.config;
-                vec![
-                    (block_opcode_number_increased_expr.clone() * block_opcode_number_expr.clone(), vc.query_advice(c.index, Rotation::cur())),
-                    (block_opcode_number_increased_expr.clone() * byte_val_expr.clone(), vc.query_advice(c.opcode, Rotation::cur())),
-                    (block_opcode_number_increased_expr.clone() * q_last_expr.clone(), vc.query_fixed(c.q_last, Rotation::cur())),
-                ]
-            }
-        );
+            let c = &code_blocks_chip.config;
+            vec![
+                (
+                    block_opcode_number_increased_expr.clone() * block_opcode_number_expr.clone(),
+                    vc.query_advice(c.index, Rotation::cur()),
+                ),
+                (
+                    block_opcode_number_increased_expr.clone() * byte_val_expr.clone(),
+                    vc.query_advice(c.opcode, Rotation::cur()),
+                ),
+                (
+                    block_opcode_number_increased_expr.clone() * q_last_expr.clone(),
+                    vc.query_fixed(c.q_last, Rotation::cur()),
+                ),
+            ]
+        });
 
         cs.create_gate("WasmCodeSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
@@ -1364,19 +1546,51 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             match opcode {
                 ControlInstruction::Block => {
                     *block_opcode_number += 1;
-                    self.markup_code_blocks(region, &wb, offset, assign_delta, 1, *block_opcode_number, Some(code_blocks::types::Opcode::Block))?;
+                    self.markup_code_blocks(
+                        region,
+                        &wb,
+                        offset,
+                        assign_delta,
+                        1,
+                        *block_opcode_number,
+                        Some(code_blocks::types::Opcode::Block),
+                    )?;
                 }
                 ControlInstruction::Loop => {
                     *block_opcode_number += 1;
-                    self.markup_code_blocks(region, &wb, offset, assign_delta, 1, *block_opcode_number, Some(code_blocks::types::Opcode::Loop))?;
+                    self.markup_code_blocks(
+                        region,
+                        &wb,
+                        offset,
+                        assign_delta,
+                        1,
+                        *block_opcode_number,
+                        Some(code_blocks::types::Opcode::Loop),
+                    )?;
                 }
                 ControlInstruction::If => {
                     *block_opcode_number += 1;
-                    self.markup_code_blocks(region, &wb, offset, assign_delta, 1, *block_opcode_number, Some(code_blocks::types::Opcode::If))?;
+                    self.markup_code_blocks(
+                        region,
+                        &wb,
+                        offset,
+                        assign_delta,
+                        1,
+                        *block_opcode_number,
+                        Some(code_blocks::types::Opcode::If),
+                    )?;
                 }
                 ControlInstruction::Else => {
                     *block_opcode_number += 1;
-                    self.markup_code_blocks(region, &wb, offset, assign_delta, 1, *block_opcode_number, Some(code_blocks::types::Opcode::Else))?;
+                    self.markup_code_blocks(
+                        region,
+                        &wb,
+                        offset,
+                        assign_delta,
+                        1,
+                        *block_opcode_number,
+                        Some(code_blocks::types::Opcode::Else),
+                    )?;
                 }
                 _ => {}
             }
@@ -1391,7 +1605,15 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             self.shared_state().borrow_mut().block_level -= 1;
 
             *block_opcode_number += 1;
-            self.markup_code_blocks(region, &wb, offset, assign_delta, 1, *block_opcode_number, Some(code_blocks::types::Opcode::End))?;
+            self.markup_code_blocks(
+                region,
+                &wb,
+                offset,
+                assign_delta,
+                1,
+                *block_opcode_number,
+                Some(code_blocks::types::Opcode::End),
+            )?;
         };
 
         if [
@@ -1400,17 +1622,19 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             AssignType::IsControlInstruction,
             AssignType::IsParametricInstruction,
             AssignType::IsBlockEnd,
-        ].contains(&assign_type) {
-            self.assign(
+        ]
+        .contains(&assign_type)
+        {
+            self.assign(region, wb, offset, assign_delta, &[assign_type], 1, None)?;
+            self.markup_code_blocks(
                 region,
-                wb,
+                &wb,
                 offset,
                 assign_delta,
-                &[assign_type],
                 1,
+                *block_opcode_number,
                 None,
             )?;
-            self.markup_code_blocks(region, &wb, offset, assign_delta, 1, *block_opcode_number, None)?;
             offset += 1;
         }
 
@@ -1424,7 +1648,15 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 1,
                 None,
             )?;
-            self.markup_code_blocks(region, &wb, offset, assign_delta, 1, *block_opcode_number, None)?;
+            self.markup_code_blocks(
+                region,
+                &wb,
+                offset,
+                assign_delta,
+                1,
+                *block_opcode_number,
+                None,
+            )?;
             offset += 1;
         }
 
@@ -1432,33 +1664,41 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             AssignType::IsNumericInstructionLebArg,
             AssignType::IsVariableInstructionLebArg,
             AssignType::IsControlInstructionLebArg,
-        ].contains(&assign_type_argument) {
-            let (instr_arg_val, inst_arg_leb_len) = self.markup_leb_section(
+        ]
+        .contains(&assign_type_argument)
+        {
+            let (instr_arg_val, inst_arg_leb_len) =
+                self.markup_leb_section(region, wb, offset, assign_delta, &[assign_type_argument])?;
+            self.markup_code_blocks(
                 region,
-                wb,
+                &wb,
                 offset,
                 assign_delta,
-                &[assign_type_argument],
+                inst_arg_leb_len,
+                *block_opcode_number,
+                None,
             )?;
-            self.markup_code_blocks(region, &wb, offset, assign_delta, inst_arg_leb_len, *block_opcode_number, None)?;
             let block_level = self.config.shared_state.borrow().block_level;
             debug!(
-                "assign at offset {} block_level_lt_chip instr_arg_val {} block_level {}",
-                offset,
+                "assign at {} block_level_lt_chip instr_arg_val {} block_level {}",
+                offset + assign_delta,
                 instr_arg_val,
                 block_level,
             );
-            self.config.block_level_lt_chip.assign(
-                region,
-                offset,
-                F::from(instr_arg_val),
-                F::from(block_level as u64),
-            ).map_err(remap_error(Error::FatalAssignExternalChip))?;
+            self.config
+                .block_level_lt_chip
+                .assign(
+                    region,
+                    offset + assign_delta,
+                    F::from(instr_arg_val),
+                    F::from(block_level as u64),
+                )
+                .map_err(remap_error(Error::FatalAssignExternalChip))?;
             offset += inst_arg_leb_len;
         }
 
         if offset == wb_offset {
-            return Err(Error::ParseOpcodeFailedAt(offset))
+            return Err(Error::ParseOpcodeFailedAt(offset));
         }
 
         Ok(offset)
@@ -1486,10 +1726,19 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             )?
         }
         if let Some(assign_value) = code_blocks_opcode {
-            if len != 1 { return Err(Error::FatalInvalidArgumentValue("when assigning to code_blocks 'len' param must be eq 1".to_string())) }
+            if len != 1 {
+                return Err(Error::FatalInvalidArgumentValue(
+                    "when assigning to code_blocks 'len' param must be eq 1".to_string(),
+                ));
+            }
             let offset = block_opcode_number as usize - 1;
             if offset == 0 {
-                self.config.code_blocks_chip.assign(region, offset, code_blocks::types::AssignType::QFirst, 1)?;
+                self.config.code_blocks_chip.assign(
+                    region,
+                    offset,
+                    code_blocks::types::AssignType::QFirst,
+                    1,
+                )?;
             }
             self.config.code_blocks_chip.assign(
                 region,
@@ -1529,7 +1778,15 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             assign_delta,
             &[AssignType::IsFuncsCount],
         )?;
-        self.markup_code_blocks(region, &wb, offset, assign_delta, funcs_count_leb_len, block_opcode_number, None)?;
+        self.markup_code_blocks(
+            region,
+            &wb,
+            offset,
+            assign_delta,
+            funcs_count_leb_len,
+            block_opcode_number,
+            None,
+        )?;
         let mut body_item_rev_count = funcs_count;
         let funcs_count_last_byte_offset = offset + funcs_count_leb_len - 1;
         self.assign(
@@ -1542,7 +1799,15 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             None,
         )?;
         self.config.shared_state.borrow_mut().func_count += funcs_count as usize;
-        self.assign(region, &wb, offset, assign_delta, &[AssignType::QFirst], 1, None)?;
+        self.assign(
+            region,
+            &wb,
+            offset,
+            assign_delta,
+            &[AssignType::QFirst],
+            1,
+            None,
+        )?;
         offset += funcs_count_leb_len;
 
         for _func_index in 0..funcs_count {
@@ -1556,8 +1821,17 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                 assign_delta,
                 &[AssignType::IsFuncBodyLen],
             )?;
-            self.markup_code_blocks(region, &wb, offset, assign_delta, func_body_len_leb_len, block_opcode_number, None)?;
-            let func_body_end_offset = offset + func_body_len_leb_len + (func_body_len as usize) - 1;
+            self.markup_code_blocks(
+                region,
+                &wb,
+                offset,
+                assign_delta,
+                func_body_len_leb_len,
+                block_opcode_number,
+                None,
+            )?;
+            let func_body_end_offset =
+                offset + func_body_len_leb_len + (func_body_len as usize) - 1;
             for offset in offset..=func_body_end_offset {
                 self.assign(
                     region,
@@ -1584,26 +1858,44 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
             offset += func_body_len_leb_len;
 
             //  locals{1}(is_local_type_transitions_count+ ...
-            let (is_local_type_transitions_count, is_local_type_transitions_count_leb_len) = self.markup_leb_section(
+            let (is_local_type_transitions_count, is_local_type_transitions_count_leb_len) = self
+                .markup_leb_section(
                 region,
                 wb,
                 offset,
                 assign_delta,
                 &[AssignType::IsLocalTypeTransitionsCount],
             )?;
-            self.markup_code_blocks(region, &wb, offset, assign_delta, is_local_type_transitions_count_leb_len, block_opcode_number, None)?;
+            self.markup_code_blocks(
+                region,
+                &wb,
+                offset,
+                assign_delta,
+                is_local_type_transitions_count_leb_len,
+                block_opcode_number,
+                None,
+            )?;
             offset += is_local_type_transitions_count_leb_len;
 
             for _is_valtype_transition_index in 0..is_local_type_transitions_count {
                 // -> local_var_descriptor+(is_local_repetition_count+ ...
-                let (_is_local_repetition_count, is_local_repetition_count_leb_len) = self.markup_leb_section(
+                let (_is_local_repetition_count, is_local_repetition_count_leb_len) = self
+                    .markup_leb_section(
+                        region,
+                        wb,
+                        offset,
+                        assign_delta,
+                        &[AssignType::IsLocalRepetitionCount],
+                    )?;
+                self.markup_code_blocks(
                     region,
-                    wb,
+                    &wb,
                     offset,
                     assign_delta,
-                    &[AssignType::IsLocalRepetitionCount],
+                    is_local_repetition_count_leb_len,
+                    block_opcode_number,
+                    None,
                 )?;
-                self.markup_code_blocks(region, &wb, offset, assign_delta, is_local_repetition_count_leb_len, block_opcode_number, None)?;
                 offset += is_local_repetition_count_leb_len;
 
                 // is_local_type{1}
@@ -1616,7 +1908,15 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
                     1,
                     None,
                 )?;
-                self.markup_code_blocks(region, &wb, offset, assign_delta, 1, block_opcode_number, None)?;
+                self.markup_code_blocks(
+                    region,
+                    &wb,
+                    offset,
+                    assign_delta,
+                    1,
+                    block_opcode_number,
+                    None,
+                )?;
                 offset += 1;
             }
 
@@ -1633,7 +1933,15 @@ impl<F: Field> WasmCodeSectionBodyChip<F>
 
         if offset != wb_offset {
             let offset = offset - 1;
-            self.assign(region, &wb, offset, assign_delta, &[AssignType::QLast], 1, None)?;
+            self.assign(
+                region,
+                &wb,
+                offset,
+                assign_delta,
+                &[AssignType::QLast],
+                1,
+                None,
+            )?;
             self.config.code_blocks_chip.assign(
                 region,
                 block_opcode_number as usize - 1,

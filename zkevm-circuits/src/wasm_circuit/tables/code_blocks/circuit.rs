@@ -1,22 +1,26 @@
-use std::marker::PhantomData;
-use std::rc::Rc;
+use std::{marker::PhantomData, rc::Rc};
 
 use halo2_proofs::{
-    plonk::{Column, ConstraintSystem},
+    circuit::{Region, Value},
+    plonk::{Advice, Column, ConstraintSystem, Fixed},
+    poly::Rotation,
 };
-use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Advice, Fixed};
-use halo2_proofs::poly::Rotation;
 use log::debug;
 
 use eth_types::Field;
-use gadgets::binary_number::BinaryNumberChip;
-use gadgets::util::{and, Expr, not};
+use gadgets::{
+    binary_number::BinaryNumberChip,
+    util::{and, not, Expr},
+};
 
-use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::common::configure_constraints_for_q_first_and_q_last;
-use crate::wasm_circuit::error::{Error, remap_error_to_assign_at, remap_error_to_invalid_enum_value_at};
-use crate::wasm_circuit::tables::code_blocks::types::{AssignType, Opcode, OPCODE_VALUES};
+use crate::{
+    evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
+    wasm_circuit::{
+        common::configure_constraints_for_q_first_and_q_last,
+        error::{remap_error_to_assign_at, remap_error_to_invalid_enum_value_at, Error},
+        tables::code_blocks::types::{AssignType, Opcode, OPCODE_VALUES},
+    },
+};
 
 #[derive(Debug, Clone)]
 pub struct CodeBlocksConfig<F> {
@@ -39,8 +43,7 @@ pub struct CodeBlocksChip<F> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> CodeBlocksChip<F>
-{
+impl<F: Field> CodeBlocksChip<F> {
     pub fn construct(config: CodeBlocksConfig<F>) -> Self {
         let instance = Self {
             config,
@@ -49,9 +52,7 @@ impl<F: Field> CodeBlocksChip<F>
         instance
     }
 
-    pub fn configure(
-        cs: &mut ConstraintSystem<F>,
-    ) -> CodeBlocksConfig<F> {
+    pub fn configure(cs: &mut ConstraintSystem<F>) -> CodeBlocksConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
         let q_last = cs.fixed_column();
@@ -59,11 +60,7 @@ impl<F: Field> CodeBlocksChip<F>
 
         let index = cs.advice_column();
 
-        let config = BinaryNumberChip::configure(
-            cs,
-            q_enable,
-            Some(opcode.into()),
-        );
+        let config = BinaryNumberChip::configure(cs, q_enable, Some(opcode.into()));
         let opcode_chip = Rc::new(BinaryNumberChip::construct(config));
 
         cs.create_gate("CodeBlocks gate", |vc| {
@@ -81,16 +78,43 @@ impl<F: Field> CodeBlocksChip<F>
             let index_expr = vc.query_advice(index, Rotation::cur());
             // let index_next_expr = vc.query_advice(index, Rotation::next());
 
-            let opcode_is_block_expr = opcode_chip.config.value_equals(Opcode::Block, Rotation::cur())(vc);
-            let opcode_is_block_next_expr = opcode_chip.config.value_equals(Opcode::Block, Rotation::next())(vc);
-            let opcode_is_loop_expr = opcode_chip.config.value_equals(Opcode::Loop, Rotation::cur())(vc);
-            let opcode_is_loop_next_expr = opcode_chip.config.value_equals(Opcode::Loop, Rotation::next())(vc);
-            let opcode_is_if_expr = opcode_chip.config.value_equals(Opcode::If, Rotation::cur())(vc);
-            let opcode_is_if_next_expr = opcode_chip.config.value_equals(Opcode::If, Rotation::next())(vc);
-            let opcode_is_else_expr = opcode_chip.config.value_equals(Opcode::Else, Rotation::cur())(vc);
-            let opcode_is_else_next_expr = opcode_chip.config.value_equals(Opcode::Else, Rotation::next())(vc);
-            let opcode_is_end_expr = opcode_chip.config.value_equals(Opcode::End, Rotation::cur())(vc);
-            let opcode_is_end_next_expr = opcode_chip.config.value_equals(Opcode::End, Rotation::next())(vc);
+            let opcode_is_block_expr =
+                opcode_chip
+                    .config
+                    .value_equals(Opcode::Block, Rotation::cur())(vc);
+            let opcode_is_block_next_expr =
+                opcode_chip
+                    .config
+                    .value_equals(Opcode::Block, Rotation::next())(vc);
+            let opcode_is_loop_expr =
+                opcode_chip
+                    .config
+                    .value_equals(Opcode::Loop, Rotation::cur())(vc);
+            let opcode_is_loop_next_expr =
+                opcode_chip
+                    .config
+                    .value_equals(Opcode::Loop, Rotation::next())(vc);
+            let opcode_is_if_expr =
+                opcode_chip.config.value_equals(Opcode::If, Rotation::cur())(vc);
+            let opcode_is_if_next_expr =
+                opcode_chip
+                    .config
+                    .value_equals(Opcode::If, Rotation::next())(vc);
+            let opcode_is_else_expr =
+                opcode_chip
+                    .config
+                    .value_equals(Opcode::Else, Rotation::cur())(vc);
+            let opcode_is_else_next_expr =
+                opcode_chip
+                    .config
+                    .value_equals(Opcode::Else, Rotation::next())(vc);
+            let opcode_is_end_expr = opcode_chip
+                .config
+                .value_equals(Opcode::End, Rotation::cur())(vc);
+            let opcode_is_end_next_expr =
+                opcode_chip
+                    .config
+                    .value_equals(Opcode::End, Rotation::next())(vc);
 
             cb.require_boolean("q_enable is boolean", q_enable_expr.clone());
 
@@ -116,58 +140,44 @@ impl<F: Field> CodeBlocksChip<F>
                 q_first_expr.clone(),
             );
 
-            cb.condition(
-                not_q_last_expr.clone(),
-                |cb| {
-                    let index_next_expr = vc.query_advice(index, Rotation::next());
-                    cb.require_zero(
-                        "index grows +1",
-                        index_expr.clone() + 1.expr() - index_next_expr.clone(),
-                    );
-                }
-            );
+            cb.condition(not_q_last_expr.clone(), |cb| {
+                let index_next_expr = vc.query_advice(index, Rotation::next());
+                cb.require_zero(
+                    "index grows +1",
+                    index_expr.clone() + 1.expr() - index_next_expr.clone(),
+                );
+            });
 
             cb.condition(
-                and::expr([
-                    not_q_last_expr.clone(),
-                    opcode_is_block_expr.clone(),
-                ]),
+                and::expr([not_q_last_expr.clone(), opcode_is_block_expr.clone()]),
                 |cb| {
                     cb.require_equal(
                         "block -> block | loop | if | end",
                         opcode_is_block_next_expr.clone()
                             + opcode_is_loop_next_expr.clone()
                             + opcode_is_if_next_expr.clone()
-                            + opcode_is_end_next_expr.clone()
-                        ,
+                            + opcode_is_end_next_expr.clone(),
                         1.expr(),
                     );
-                }
+                },
             );
 
             cb.condition(
-                and::expr([
-                    not_q_last_expr.clone(),
-                    opcode_is_loop_expr.clone(),
-                ]),
+                and::expr([not_q_last_expr.clone(), opcode_is_loop_expr.clone()]),
                 |cb| {
                     cb.require_equal(
                         "loop -> block | loop | if | end",
                         opcode_is_block_next_expr.clone()
                             + opcode_is_loop_next_expr.clone()
                             + opcode_is_if_next_expr.clone()
-                            + opcode_is_end_next_expr.clone()
-                        ,
+                            + opcode_is_end_next_expr.clone(),
                         1.expr(),
                     );
-                }
+                },
             );
 
             cb.condition(
-                and::expr([
-                    not_q_last_expr.clone(),
-                    opcode_is_if_expr.clone(),
-                ]),
+                and::expr([not_q_last_expr.clone(), opcode_is_if_expr.clone()]),
                 |cb| {
                     cb.require_equal(
                         "if -> block | loop | if | else | end",
@@ -175,32 +185,21 @@ impl<F: Field> CodeBlocksChip<F>
                             + opcode_is_loop_next_expr.clone()
                             + opcode_is_if_next_expr.clone()
                             + opcode_is_else_next_expr.clone()
-                            + opcode_is_end_next_expr.clone()
-                        ,
+                            + opcode_is_end_next_expr.clone(),
                         1.expr(),
                     );
-                }
+                },
             );
 
             cb.condition(
-                and::expr([
-                    not_q_last_expr.clone(),
-                    opcode_is_else_expr.clone(),
-                ]),
+                and::expr([not_q_last_expr.clone(), opcode_is_else_expr.clone()]),
                 |cb| {
-                    cb.require_equal(
-                        "else -> end",
-                        opcode_is_end_next_expr.clone(),
-                        1.expr(),
-                    );
-                }
+                    cb.require_equal("else -> end", opcode_is_end_next_expr.clone(), 1.expr());
+                },
             );
 
             cb.condition(
-                and::expr([
-                    not_q_last_expr.clone(),
-                    opcode_is_block_expr.clone(),
-                ]),
+                and::expr([not_q_last_expr.clone(), opcode_is_block_expr.clone()]),
                 |cb| {
                     cb.require_equal(
                         "end -> block | loop | if | end",
@@ -210,19 +209,16 @@ impl<F: Field> CodeBlocksChip<F>
                             + opcode_is_end_next_expr.clone(),
                         1.expr(),
                     );
-                }
+                },
             );
 
-            cb.condition(
-                q_last_expr.clone(),
-                |cb| {
-                    cb.require_equal(
-                        "q_last => opcode_is_end",
-                        opcode_is_end_expr.clone(),
-                        1.expr(),
-                    );
-                }
-            );
+            cb.condition(q_last_expr.clone(), |cb| {
+                cb.require_equal(
+                    "q_last => opcode_is_end",
+                    opcode_is_end_expr.clone(),
+                    1.expr(),
+                );
+            });
 
             cb.gate(q_enable_expr.clone())
         });
@@ -244,62 +240,70 @@ impl<F: Field> CodeBlocksChip<F>
     pub fn assign(
         &self,
         region: &mut Region<F>,
-        offset: usize,
+        assign_offset: usize,
         assign_type: AssignType,
         assign_value: u64,
     ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
-            "assign at offset {} q_enable {} assign_type {:?} assign_value {:?}",
-            offset,
-            q_enable,
-            assign_type,
-            assign_value,
+            "assign at {} q_enable {} assign_type {:?} assign_value {:?}",
+            assign_offset, q_enable, assign_type, assign_value,
         );
-        region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
-            self.config.q_enable,
-            offset,
-            || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
+        region
+            .assign_fixed(
+                || format!("assign 'q_enable' val {} at {}", q_enable, assign_offset),
+                self.config.q_enable,
+                assign_offset,
+                || Value::known(F::from(q_enable as u64)),
+            )
+            .unwrap();
         match assign_type {
             AssignType::Index => {
-                region.assign_advice(
-                    || format!("assign 'index' val {} at {}", assign_value, offset),
-                    self.config.index,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at(offset))?;
+                region
+                    .assign_advice(
+                        || format!("assign 'index' val {} at {}", assign_value, assign_offset),
+                        self.config.index,
+                        assign_offset,
+                        || Value::known(F::from(assign_value)),
+                    )
+                    .map_err(remap_error_to_assign_at(assign_offset))?;
             }
             AssignType::Opcode => {
-                region.assign_advice(
-                    || format!("assign 'opcode' val {} at {}", assign_value, offset),
-                    self.config.opcode,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at(offset))?;
-                let opcode: Opcode = (assign_value as u8).try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
-                self.config.opcode_chip.assign(
-                    region,
-                    offset,
-                    &opcode,
-                ).map_err(remap_error_to_assign_at(offset))?;
+                region
+                    .assign_advice(
+                        || format!("assign 'opcode' val {} at {}", assign_value, assign_offset),
+                        self.config.opcode,
+                        assign_offset,
+                        || Value::known(F::from(assign_value)),
+                    )
+                    .map_err(remap_error_to_assign_at(assign_offset))?;
+                let opcode: Opcode = (assign_value as u8)
+                    .try_into()
+                    .map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
+                self.config
+                    .opcode_chip
+                    .assign(region, assign_offset, &opcode)
+                    .map_err(remap_error_to_assign_at(assign_offset))?;
             }
             AssignType::QFirst => {
-                region.assign_fixed(
-                    || format!("assign 'q_first' val {} at {}", assign_value, offset),
-                    self.config.q_first,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at(offset))?;
+                region
+                    .assign_fixed(
+                        || format!("assign 'q_first' val {} at {}", assign_value, assign_offset),
+                        self.config.q_first,
+                        assign_offset,
+                        || Value::known(F::from(assign_value)),
+                    )
+                    .map_err(remap_error_to_assign_at(assign_offset))?;
             }
             AssignType::QLast => {
-                region.assign_fixed(
-                    || format!("assign 'q_last' val {} at {}", assign_value, offset),
-                    self.config.q_last,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at(offset))?;
+                region
+                    .assign_fixed(
+                        || format!("assign 'q_last' val {} at {}", assign_value, assign_offset),
+                        self.config.q_last,
+                        assign_offset,
+                        || Value::known(F::from(assign_value)),
+                    )
+                    .map_err(remap_error_to_assign_at(assign_offset))?;
             }
         }
         Ok(())

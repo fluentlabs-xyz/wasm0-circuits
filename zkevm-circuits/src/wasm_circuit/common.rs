@@ -39,7 +39,9 @@ use crate::{
             },
         },
         sections::consts::LebParams,
-        types::{LimitType, SharedState},
+        types::{
+            Leb128BytesCount, Leb128Length, LimitType, NewWbOffset, SectionLength, SharedState, Sn,
+        },
     },
 };
 
@@ -450,10 +452,7 @@ pub trait WasmFuncCountAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
 
     fn assign_func_count(&self, region: &mut Region<F>, assign_offset: usize) -> Result<(), Error> {
         let func_count = self.shared_state().borrow().func_count;
-        debug!(
-            "assign at offset {} func_count val {}",
-            assign_offset, func_count
-        );
+        debug!("assign at {} func_count val {}", assign_offset, func_count);
         region
             .assign_advice(
                 || {
@@ -528,10 +527,7 @@ pub trait WasmErrorAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
         error_code_replacer: Option<u64>,
     ) -> Result<(), Error> {
         let error_code = error_code_replacer.unwrap_or(self.shared_state().borrow().error_code);
-        debug!(
-            "assign at offset {} error_code val {}",
-            assign_offset, error_code
-        );
+        debug!("assign at {} error_code val {}", assign_offset, error_code);
         region
             .assign_advice(
                 || {
@@ -557,7 +553,7 @@ pub trait WasmErrorAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
     ) -> Result<(), Error> {
         let error_code = explicit_error_code.unwrap_or(self.shared_state().borrow().error_code);
         for offset in assign_offset..assign_offset + len {
-            debug!("assign at offset {} error_code val {}", offset, error_code);
+            debug!("assign at {} error_code val {}", offset, error_code);
             region
                 .assign_advice(
                     || format!("assign 'error_code' val {} at {}", error_code, offset),
@@ -603,6 +599,7 @@ pub trait WasmBytecodeNumberAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
 
             let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
             let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let q_first_next_expr = vc.query_fixed(q_first, Rotation::next());
             let not_q_first_expr = not::expr(q_first_expr.clone());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let bytecode_number_expr = vc.query_advice(bytecode_number, Rotation::cur());
@@ -615,14 +612,18 @@ pub trait WasmBytecodeNumberAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
                     bytecode_number_prev_expr.clone(),
                 );
             });
-            cb.condition(and::expr([q_last_expr.clone()]), |cb| {
-                let bytecode_number_next_expr = vc.query_advice(bytecode_number, Rotation::next());
-                cb.require_equal(
-                    "q_last && next.q_first => bytecode_number=next.bytecode_number-1",
-                    bytecode_number_expr.clone(),
-                    bytecode_number_next_expr.clone() - 1.expr(),
-                );
-            });
+            cb.condition(
+                and::expr([q_last_expr.clone(), q_first_next_expr.clone()]),
+                |cb| {
+                    let bytecode_number_next_expr =
+                        vc.query_advice(bytecode_number, Rotation::next());
+                    cb.require_equal(
+                        "q_last && next.q_first => bytecode_number=next.bytecode_number-1",
+                        bytecode_number_expr.clone(),
+                        bytecode_number_next_expr.clone() - 1.expr(),
+                    );
+                },
+            );
 
             cb.gate(q_enable_expr)
         });
@@ -637,7 +638,7 @@ pub trait WasmBytecodeNumberAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
         let bytecode_number =
             explicit_bytecode_number.unwrap_or(self.shared_state().borrow().bytecode_number);
         debug!(
-            "assign at offset {} bytecode_number val {}",
+            "assign at {} bytecode_number val {}",
             assign_offset, bytecode_number
         );
         region
@@ -668,7 +669,7 @@ pub trait WasmBlockLevelAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
     ) -> Result<(), Error> {
         let block_level = self.shared_state().borrow().block_level;
         debug!(
-            "assign at offset {} block_level val {}",
+            "assign at {} block_level val {}",
             assign_offset, block_level
         );
         region
@@ -726,7 +727,6 @@ pub trait WasmAssignAwareChip<F: Field> {
 }
 
 pub trait WasmMarkupLeb128SectionAwareChip<F: Field>: WasmAssignAwareChip<F> {
-    /// returns sn and leb len
     fn markup_leb_section(
         &self,
         region: &mut Region<F>,
@@ -734,7 +734,7 @@ pub trait WasmMarkupLeb128SectionAwareChip<F: Field>: WasmAssignAwareChip<F> {
         wb_offset: usize,
         assign_delta: usize,
         assign_types: &[Self::AssignType],
-    ) -> Result<(u64, usize), Error> {
+    ) -> Result<(Sn, Leb128Length), Error> {
         let is_signed = false;
         let (sn, last_byte_offset) =
             leb128_compute_sn(wb.bytes.as_slice(), is_signed, wb_offset)
@@ -773,7 +773,6 @@ pub trait WasmMarkupLeb128SectionAwareChip<F: Field>: WasmAssignAwareChip<F> {
 }
 
 pub trait WasmBytesAwareChip<F: Field>: WasmAssignAwareChip<F> {
-    /// returns new wb_offset
     fn markup_bytes_section(
         &self,
         region: &mut Region<F>,
@@ -782,7 +781,7 @@ pub trait WasmBytesAwareChip<F: Field>: WasmAssignAwareChip<F> {
         wb_offset: usize,
         assign_delta: usize,
         len: usize,
-    ) -> Result<usize, Error> {
+    ) -> Result<NewWbOffset, Error> {
         let offset_end = wb_offset + len;
         if offset_end >= wb.bytes.len() {
             return Err(error_index_out_of_bounds(wb_offset));
@@ -803,7 +802,6 @@ pub trait WasmBytesAwareChip<F: Field>: WasmAssignAwareChip<F> {
 }
 
 pub trait WasmNameAwareChip<F: Field>: WasmAssignAwareChip<F> {
-    /// returns new wb_offset
     fn markup_name_section(
         &self,
         region: &mut Region<F>,
@@ -813,7 +811,7 @@ pub trait WasmNameAwareChip<F: Field>: WasmAssignAwareChip<F> {
         assign_types: &[Self::AssignType],
         name_len: usize,
         assign_value: u64,
-    ) -> Result<usize, Error> {
+    ) -> Result<NewWbOffset, Error> {
         let offset_end = wb_offset + name_len;
         if offset_end >= wb.bytes.len() {
             return Err(error_index_out_of_bounds(wb_offset));
@@ -833,12 +831,14 @@ pub trait WasmNameAwareChip<F: Field>: WasmAssignAwareChip<F> {
     }
 }
 
-pub fn char_digit_to_byte_number(ch: &char) -> u8 {
+pub fn digit_char_to_number(ch: &char) -> u8 {
     *ch as u8 - 48
 }
 
-/// Returns section len and leb bytes count representing section len
-pub fn wasm_compute_section_len(wb: &[u8], len_start_index: usize) -> Result<(usize, u8), Error> {
+pub fn wasm_compute_section_len(
+    wb: &[u8],
+    len_start_index: usize,
+) -> Result<(SectionLength, Leb128BytesCount), Error> {
     let mut section_len: usize = 0;
     let mut i = len_start_index;
     loop {

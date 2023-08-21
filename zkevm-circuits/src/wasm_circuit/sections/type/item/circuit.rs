@@ -26,7 +26,7 @@ use crate::{
             consts::LebParams,
             r#type::item::{consts::Type::FuncType, types::AssignType},
         },
-        types::{NumType, SharedState},
+        types::{NewWbOffset, NumType, SharedState},
     },
 };
 
@@ -98,7 +98,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
         let q_enable = true;
         let assign_offset = wb_offset + assign_delta;
         debug!(
-            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            "assign at {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
             assign_offset, q_enable, assign_types, assign_value, wb.bytes[wb_offset],
         );
         region
@@ -488,14 +488,13 @@ impl<F: Field> WasmTypeSectionItemChip<F> {
         config
     }
 
-    /// returns new offset
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
         assign_delta: usize,
-    ) -> Result<usize, Error> {
+    ) -> Result<NewWbOffset, Error> {
         let mut offset = wb_offset;
         // is_type{1}
         self.assign(

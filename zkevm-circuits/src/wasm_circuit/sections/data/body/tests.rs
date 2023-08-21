@@ -39,7 +39,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     }
 
     fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
-        let wb_table = Rc::new(WasmBytecodeTable::construct(cs));
+        let wb_table = Rc::new(WasmBytecodeTable::construct(cs, false));
         let func_count = cs.advice_column();
         let error_code = cs.advice_column();
         let body_byte_rev_index = cs.advice_column();
@@ -80,8 +80,8 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let wb = WasmBytecode::new(self.bytecode.to_vec().clone(), self.code_hash.to_word());
-        config.wb_table.load(&mut layouter, &wb, false, 0)?;
+        let wb = WasmBytecode::new(self.bytecode.to_vec().clone());
+        config.wb_table.load(&mut layouter, &wb, 0)?;
         layouter.assign_region(
             || "wasm_data_section_body region",
             |mut region| {
