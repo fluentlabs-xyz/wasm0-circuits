@@ -17,13 +17,12 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
-use crate::wasm_circuit::consts::ExportDescType;
-use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmMarkupLeb128SectionAwareChip, WasmNameAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at, remap_error_to_invalid_enum_value_at};
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::export::body::types::AssignType;
-use crate::wasm_circuit::types::SharedState;
+use crate::wasm_circuit::types::{ExportDescType, SharedState};
 
 #[derive(Debug, Clone)]
 pub struct WasmExportSectionBodyConfig<F: Field> {
@@ -45,6 +44,8 @@ pub struct WasmExportSectionBodyConfig<F: Field> {
     body_byte_rev_index: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
+    error_code: Column<Advice>,
+
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
@@ -58,34 +59,56 @@ pub struct WasmExportSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmExportSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmExportSectionBodyChip<F> {}
+
+impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmExportSectionBodyChip<F> {}
+
+impl<F: Field> WasmNameAwareChip<F> for WasmExportSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorAwareChip<F> for WasmExportSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmExportSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmExportSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
+}
+
 impl<F: Field> WasmAssignAwareChip<F> for WasmExportSectionBodyChip<F> {
     type AssignType = AssignType;
 
-    fn assign(
+    fn assign_internal(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        offset: usize,
+        wb: &WasmBytecode,
+        wb_offset: usize,
+        assign_delta: usize,
         assign_types: &[Self::AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
-    ) {
+    ) -> Result<(), Error> {
         let q_enable = true;
+        let assign_offset = wb_offset + assign_delta;
         debug!(
             "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
-            offset,
+            assign_offset,
             q_enable,
             assign_types,
             assign_value,
-            wasm_bytecode.bytes[offset],
+            wb.bytes[wb_offset],
         );
         region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
+            || format!("assign 'q_enable' val {} at {}", q_enable, assign_offset),
             self.config.q_enable,
-            offset,
+            assign_offset,
             || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
-        self.assign_func_count(region, offset);
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
+        self.assign_func_count(region, assign_offset)?;
 
         for assign_type in assign_types {
             if [
@@ -96,117 +119,107 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmExportSectionBodyChip<F> {
                 let p = leb_params.unwrap();
                 self.config.leb128_chip.assign(
                     region,
-                    offset,
+                    assign_offset,
                     q_enable,
                     p,
-                );
+                )?;
             }
             match assign_type {
                 AssignType::QFirst => {
                     region.assign_fixed(
-                        || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                        || format!("assign 'q_first' val {} at {}", assign_value, assign_offset),
                         self.config.q_first,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::QLast => {
                     region.assign_fixed(
-                        || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                        || format!("assign 'q_last' val {} at {}", assign_value, assign_offset),
                         self.config.q_last,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsItemsCount => {
                     region.assign_fixed(
-                        || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_items_count' val {} at {}", assign_value, assign_offset),
                         self.config.is_items_count,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsExportNameLen => {
                     region.assign_fixed(
-                        || format!("assign 'is_export_name_len' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_export_name_len' val {} at {}", assign_value, assign_offset),
                         self.config.is_export_name_len,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsExportName => {
                     region.assign_fixed(
-                        || format!("assign 'is_export_name' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_export_name' val {} at {}", assign_value, assign_offset),
                         self.config.is_export_name,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsExportdescType => {
                     region.assign_fixed(
-                        || format!("assign 'is_exportdesc_type' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_exportdesc_type' val {} at {}", assign_value, assign_offset),
                         self.config.is_exportdesc_type,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsExportdescVal => {
                     region.assign_fixed(
-                        || format!("assign 'is_exportdesc_val' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_exportdesc_val' val {} at {}", assign_value, assign_offset),
                         self.config.is_exportdesc_val,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsExportdescTypeCtx => {
                     region.assign_fixed(
-                        || format!("assign 'is_exportdesc_type_ctx' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_exportdesc_type_ctx' val {} at {}", assign_value, assign_offset),
                         self.config.is_exportdesc_type_ctx,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::ExportdescType => {
                     region.assign_advice(
-                        || format!("assign 'exportdesc_type' val {} at {}", assign_value, offset),
+                        || format!("assign 'exportdesc_type' val {} at {}", assign_value, assign_offset),
                         self.config.exportdesc_type,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::BodyByteRevIndex => {
                     region.assign_advice(
-                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, offset),
+                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, assign_offset),
                         self.config.body_byte_rev_index,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::BodyItemRevCount => {
                     region.assign_advice(
-                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, offset),
+                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, assign_offset),
                         self.config.body_item_rev_count,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, assign_offset, None)?;
                 }
             }
-        }
+        };
+        Ok(())
     }
-}
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmExportSectionBodyChip<F> {}
-
-impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmExportSectionBodyChip<F> {}
-
-impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmExportSectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmExportSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmExportSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
 }
 
 impl<F: Field> WasmExportSectionBodyChip<F>
@@ -227,6 +240,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         shared_state: Rc<RefCell<SharedState>>,
         body_byte_rev_index: Column<Advice>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmExportSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -277,7 +291,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
             body_item_rev_count,
             |vc| vc.query_fixed(is_items_count, Rotation::cur()),
             |vc| {
-                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
                 let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
 
                 and::expr([
@@ -306,8 +320,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
         cs.create_gate("WasmExportSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
-            let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+            // let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
@@ -359,8 +373,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                     is_export_name_len_expr.clone(),
                     is_exportdesc_val_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_items_count || is_export_name_len || is_exportdesc_val -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -373,8 +387,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                     is_exportdesc_type_expr.clone(),
                     is_exportdesc_val_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_exportdesc_type || is_exportdesc_val => is_exportdesc_type_ctx",
                         is_exportdesc_type_ctx_expr.clone(),
                         1.expr(),
@@ -386,8 +400,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
                     is_exportdesc_type_ctx_prev_expr.clone(),
                     is_exportdesc_type_ctx_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_exportdesc_type_ctx && prev.is_exportdesc_type_ctx => exportdesc_type=prev.exportdesc_type",
                         exportdesc_type_expr.clone(),
                         exportdesc_type_prev_expr.clone(),
@@ -490,8 +504,8 @@ impl<F: Field> WasmExportSectionBodyChip<F>
 
             cb.condition(
                 is_exportdesc_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_exportdesc_type -> byte_val has valid value",
                         byte_val_expr.clone(),
                         vec![
@@ -525,6 +539,7 @@ impl<F: Field> WasmExportSectionBodyChip<F>
             func_count,
             body_byte_rev_index,
             body_item_rev_count,
+            error_code,
             shared_state,
         };
 
@@ -532,54 +547,35 @@ impl<F: Field> WasmExportSectionBodyChip<F>
     }
 
     /// returns new offset
-    fn markup_name_section(
-        &self,
-        region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        offset: usize,
-        assign_types: &[AssignType],
-        name_len: usize,
-    ) -> usize {
-        for rel_offset in 0..name_len {
-            self.assign(
-                region,
-                wasm_bytecode,
-                offset + rel_offset,
-                assign_types,
-                1,
-                None,
-            );
-        }
-        offset + name_len
-    }
-
-    /// returns new offset
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        offset_start: usize,
+        wb: &WasmBytecode,
+        wb_offset: usize,
+        assign_delta: usize,
     ) -> Result<usize, Error> {
-        let mut offset = offset_start;
+        let mut offset = wb_offset;
 
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            wasm_bytecode,
+            wb,
             offset,
+            assign_delta,
             &[AssignType::IsItemsCount],
-        );
+        )?;
         let mut body_item_rev_count = items_count;
         for offset in offset..offset + items_count_leb_len {
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
+                assign_delta,
                 &[AssignType::BodyItemRevCount],
                 body_item_rev_count,
                 None,
-            );
+            )?;
         }
-        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
+        self.assign(region, &wb, offset, assign_delta,&[AssignType::QFirst], 1, None)?;
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
@@ -588,72 +584,82 @@ impl<F: Field> WasmExportSectionBodyChip<F>
 
             let (export_name_len, export_name_len_leb_len) = self.markup_leb_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
+                assign_delta,
                 &[AssignType::IsExportNameLen],
-            );
+            )?;
             let export_name_len_last_byte_offset = offset + export_name_len_leb_len - 1;
             let export_name_last_byte_offset = export_name_len_last_byte_offset + export_name_len as usize;
             for offset in export_name_len_last_byte_offset..=export_name_last_byte_offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
+                    assign_delta,
                     &[AssignType::BodyByteRevIndex],
                     (export_name_last_byte_offset - offset) as u64,
                     None,
-                );
+                )?;
             }
             offset += export_name_len_leb_len;
 
             let export_name_new_offset = self.markup_name_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
+                assign_delta,
                 &[AssignType::IsExportName],
                 export_name_len as usize,
-            );
+                1,
+            )?;
             offset = export_name_new_offset;
 
-            let exportdesc_type_val = wasm_bytecode.bytes.as_slice()[offset];
-            let exportdesc_type: ExportDescType = wasm_bytecode.bytes.as_slice()[offset].try_into().unwrap();
+            let exportdesc_type_val = wb.bytes.as_slice()[offset];
+            let exportdesc_type: ExportDescType = wb.bytes.as_slice()[offset].try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
             self.assign(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
+                assign_delta,
                 &[AssignType::IsExportdescType, AssignType::IsExportdescTypeCtx],
                 1,
                 None,
-            );
+            )?;
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
+                assign_delta,
                 &[AssignType::ExportdescType],
                 exportdesc_type_val as u64,
                 None,
-            );
-            self.config.exportdesc_type_chip.assign(region, offset, &exportdesc_type).unwrap();
+            )?;
+            self.config.exportdesc_type_chip.assign(region, offset, &exportdesc_type)
+                .map_err(remap_error(Error::FatalAssignExternalChip))?;
             offset += 1;
 
             match exportdesc_type {
                 ExportDescType::Funcidx | ExportDescType::Tableidx | ExportDescType::Memidx | ExportDescType::Globalidx => {
-                    let (exportdesc_val, exportdesc_val_leb_len) = self.markup_leb_section(
+                    let (_exportdesc_val, exportdesc_val_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsExportdescVal, AssignType::IsExportdescTypeCtx],
-                    );
+                    )?;
                     for offset in offset..offset + exportdesc_val_leb_len {
                         self.assign(
                             region,
-                            &wasm_bytecode,
+                            &wb,
                             offset,
+                            assign_delta,
                             &[AssignType::ExportdescType],
                             exportdesc_type_val as u64,
                             None,
-                        );
-                        self.config.exportdesc_type_chip.assign(region, offset, &exportdesc_type).unwrap();
+                        )?;
+                        self.config.exportdesc_type_chip.assign(region, offset, &exportdesc_type)
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                     offset += exportdesc_val_leb_len;
                 }
@@ -662,17 +668,18 @@ impl<F: Field> WasmExportSectionBodyChip<F>
             for offset in item_start_offset..offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
+                    assign_delta,
                     &[AssignType::BodyItemRevCount],
                     body_item_rev_count,
                     None,
-                );
+                )?;
             }
         }
 
-        if offset != offset_start {
-            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
+        if offset != wb_offset {
+            self.assign(region, &wb, offset - 1, assign_delta,&[AssignType::QLast], 1, None)?;
         }
 
         Ok(offset)

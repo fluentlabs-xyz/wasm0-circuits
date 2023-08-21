@@ -12,7 +12,7 @@ use eth_types::Field;
 use gadgets::util::{and, Expr, not, or};
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::error::Error;
+use crate::wasm_circuit::error::{Error, remap_error_to_assign_at};
 use crate::wasm_circuit::tables::dynamic_indexes::types::{AssignType, LookupArgsParams, Tag, TAG_VALUES};
 
 #[derive(Debug, Clone)]
@@ -78,15 +78,15 @@ impl<F: Field> DynamicIndexesChip<F>
 
             cb.condition(
                 is_terminator_expr.clone(),
-                |bcb| {
+                |cb| {
                     let is_terminator_prev_expr = vc.query_fixed(is_terminator, Rotation::prev());
                     let is_terminator_next_expr = vc.query_fixed(is_terminator, Rotation::next());
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_terminator -> prev.is_terminator=0",
                         is_terminator_prev_expr.clone(),
                         0.expr(),
                     );
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_terminator -> next.is_terminator=0",
                         is_terminator_next_expr.clone(),
                         0.expr(),
@@ -105,12 +105,12 @@ impl<F: Field> DynamicIndexesChip<F>
                         is_terminator_next_expr.clone(),
                     ]),
                 ]),
-                |bcb| {
-                    bcb.require_zero(
+                |cb| {
+                    cb.require_zero(
                         "tags are equal inside tag-block",
                         tag_expr.clone() - tag_next_expr.clone(),
                     );
-                    bcb.require_equal(
+                    cb.require_equal(
                         "index grows 1 by 1 inside tag-block",
                         index_expr.clone() + 1.expr(),
                         index_next_expr.clone(),
@@ -182,7 +182,7 @@ impl<F: Field> DynamicIndexesChip<F>
         offset: usize,
         assign_type: AssignType,
         assign_value: u64,
-    ) {
+    ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
             "assign at offset {} q_enable {} assign_type {:?} assign_value {:?}",
@@ -196,7 +196,7 @@ impl<F: Field> DynamicIndexesChip<F>
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at(offset))?;
         match assign_type {
             AssignType::Index => {
                 region.assign_advice(
@@ -204,7 +204,7 @@ impl<F: Field> DynamicIndexesChip<F>
                     self.config.index,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).unwrap();
+                ).map_err(remap_error_to_assign_at(offset))?;
             }
             AssignType::Tag => {
                 region.assign_fixed(
@@ -212,7 +212,7 @@ impl<F: Field> DynamicIndexesChip<F>
                     self.config.tag,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).unwrap();
+                ).map_err(remap_error_to_assign_at(offset))?;
             }
             AssignType::IsTerminator => {
                 region.assign_fixed(
@@ -220,9 +220,11 @@ impl<F: Field> DynamicIndexesChip<F>
                     self.config.is_terminator,
                     offset,
                     || Value::known(F::from(assign_value)),
-                ).unwrap();
+                ).map_err(remap_error_to_assign_at(offset))?;
             }
         }
+
+        Ok(())
     }
 
     /// returns new offset
@@ -241,20 +243,20 @@ impl<F: Field> DynamicIndexesChip<F>
                 offset,
                 AssignType::Index,
                 rel_offset as u64,
-            );
+            )?;
             self.assign(
                 region,
                 offset,
                 AssignType::Tag,
                 tag as u64,
-            );
+            )?;
             if rel_offset == indexes_count {
                 self.assign(
                     region,
                     offset,
                     AssignType::IsTerminator,
                     1,
-                );
+                )?;
             }
         }
 

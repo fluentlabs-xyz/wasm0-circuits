@@ -14,6 +14,7 @@ use gadgets::util::Expr;
 
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
+use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at};
 use crate::wasm_circuit::tables::fixed_range::config::RangeTableConfig;
 
 #[derive(Debug, Clone)]
@@ -110,8 +111,8 @@ impl<F: Field> UTF8Chip<F>
             // TODO test
             // cb.condition(
             //     q_enable_expr.clone(),
-            //     |bcb| {
-            //         bcb.require_zero(
+            //     |cb| {
+            //         cb.require_zero(
             //             "test",
             //             (1..pow(2, 7) - 1)
             //                 .fold(
@@ -129,15 +130,15 @@ impl<F: Field> UTF8Chip<F>
             // );
             // cb.condition(
             //     not::expr(is_first_byte_expr.clone()),
-            //     |bcb| {
+            //     |cb| {
             //         let is_bytes_count_1_prev_expr = vc.query_fixed(is_bytes_count_1, Rotation::prev());
-            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_1 = cur.is_byte_count_1", is_bytes_count_1_prev_expr, is_bytes_count_1_expr.clone());
+            //         cb.require_equal("is_first_byte=0 -> prev.is_byte_count_1 = cur.is_byte_count_1", is_bytes_count_1_prev_expr, is_bytes_count_1_expr.clone());
             //         let is_bytes_count_2_prev_expr = vc.query_fixed(is_bytes_count_2, Rotation::prev());
-            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_2 = cur.is_byte_count_2", is_bytes_count_2_prev_expr, is_bytes_count_2_expr.clone());
+            //         cb.require_equal("is_first_byte=0 -> prev.is_byte_count_2 = cur.is_byte_count_2", is_bytes_count_2_prev_expr, is_bytes_count_2_expr.clone());
             //         let is_bytes_count_3_prev_expr = vc.query_fixed(is_bytes_count_3, Rotation::prev());
-            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_3 = cur.is_byte_count_3", is_bytes_count_3_prev_expr, is_bytes_count_3_expr.clone());
+            //         cb.require_equal("is_first_byte=0 -> prev.is_byte_count_3 = cur.is_byte_count_3", is_bytes_count_3_prev_expr, is_bytes_count_3_expr.clone());
             //         let is_bytes_count_4_prev_expr = vc.query_fixed(is_bytes_count_4, Rotation::prev());
-            //         bcb.require_equal("is_first_byte=0 -> prev.is_byte_count_4 = cur.is_byte_count_4", is_bytes_count_4_prev_expr, is_bytes_count_4_expr.clone());
+            //         cb.require_equal("is_first_byte=0 -> prev.is_byte_count_4 = cur.is_byte_count_4", is_bytes_count_4_prev_expr, is_bytes_count_4_expr.clone());
             //     }
             // );
             //
@@ -211,7 +212,7 @@ impl<F: Field> UTF8Chip<F>
             //
             // cb.condition(
             //     not::expr(is_last_byte_expr.clone()),
-            //     |bcb| {
+            //     |cb| {
             //         let codepoint_recovered_prev_expr = select::expr(
             //             not::expr(is_first_byte_expr.clone()),
             //             vc.query_advice(codepoint_recovered, Rotation::prev()),
@@ -225,7 +226,7 @@ impl<F: Field> UTF8Chip<F>
             //                 + is_bytes_count_4_expr.clone() * 0b11110000.expr(),
             //             0b10000000.expr(),
             //         );
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_last_byte=0 -> codepoint_recovered = codepoint_recovered_prev + (byte_val - byte_mask) * byte_mul",
             //             codepoint_recovered_expr.clone(),
             //             codepoint_recovered_prev_expr.clone() + (byte_val_expr.clone() - bit_mask_expr.clone()) * byte_mul_expr.clone(),
@@ -234,8 +235,8 @@ impl<F: Field> UTF8Chip<F>
             // );
             // cb.condition(
             //     is_last_byte_expr.clone(),
-            //     |bcb| {
-            //         bcb.require_equal(
+            //     |cb| {
+            //         cb.require_equal(
             //             "is_last_byte=1 -> codepoint_recovered=codepoint",
             //             codepoint_recovered_expr.clone(),
             //             codepoint_expr.clone(),
@@ -247,9 +248,9 @@ impl<F: Field> UTF8Chip<F>
 
             // cb.condition(
             //     not::expr(is_first_byte_expr.clone()),
-            //     |bcb| {
+            //     |cb| {
             //         let codepoint_prev_expr = vc.query_advice(codepoint, Rotation::prev());
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> prev.codepoint = cur.codepoint",
             //             codepoint_prev_expr,
             //             codepoint_expr.clone(),
@@ -263,11 +264,11 @@ impl<F: Field> UTF8Chip<F>
             //         is_first_byte_expr.clone(),
             //         is_bytes_count_1_expr.clone(),
             //     ]),
-            //     |bcb| {
+            //     |cb| {
             //         let bit_mask_expr = 0b0.expr();
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> byte_val-0b00000000 must belong to [1..2^7-1]",
             //             (1..pow(2, 7)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
@@ -279,11 +280,11 @@ impl<F: Field> UTF8Chip<F>
             //         is_first_byte_expr.clone(),
             //         is_bytes_count_2_expr.clone(),
             //     ]),
-            //     |bcb| {
+            //     |cb| {
             //         let bit_mask_expr = 0b0.expr();
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> byte_val-0b11000000 must belong to [1..2^5-1]",
             //             (1..pow(2, 5)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
@@ -295,11 +296,11 @@ impl<F: Field> UTF8Chip<F>
             //         is_first_byte_expr.clone(),
             //         is_bytes_count_3_expr.clone(),
             //     ]),
-            //     |bcb| {
+            //     |cb| {
             //         let bit_mask_expr = 0b0.expr();
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> byte_val-0b11000000 must belong to [1..2^4-1]",
             //             (1..pow(2, 4)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
@@ -311,11 +312,11 @@ impl<F: Field> UTF8Chip<F>
             //         is_first_byte_expr.clone(),
             //         is_bytes_count_4_expr.clone(),
             //     ]),
-            //     |bcb| {
+            //     |cb| {
             //         let bit_mask_expr = 0b0.expr();
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr.clone();
             //         // TODO replace with lookup
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> byte_val-0b11000000 must belong to [1..2^3-1]",
             //             (1..pow(2, 3)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
@@ -324,11 +325,11 @@ impl<F: Field> UTF8Chip<F>
             // );
             // cb.condition(
             //     not::expr(is_first_byte_expr.clone()),
-            //     |bcb| {
+            //     |cb| {
             //         let bit_mask_expr = 0b10000000.expr();
             //         let byte_val_without_mask_expr = byte_val_expr.clone() - bit_mask_expr;
             //         // TODO replace with lookup
-            //         bcb.require_equal(
+            //         cb.require_equal(
             //             "is_first_byte=0 -> byte_val-0b10000000 must belong to [1..2^6-1]",
             //             (1..pow(2, 6)-1).fold(1.expr(), |acc, x| { acc.clone() * (x.expr() - byte_val_without_mask_expr.clone()) }),
             //             0.expr(),
@@ -389,92 +390,97 @@ impl<F: Field> UTF8Chip<F>
         // codepoint_recovered: u64,
         // byte_mul: u64,
         // bytes_count: u8,
-    ) {
-        self.config.byte_val_is_zero_chip.assign(region, offset, Value::known(F::from(byte_val as u64))).unwrap();
+    ) -> Result<(), Error> {
+        self.config.byte_val_is_zero_chip.assign(region, offset, Value::known(F::from(byte_val as u64)))
+            .map_err(remap_error(Error::FatalAssignExternalChip))?;
 
         region.assign_fixed(
             || format!("assign 'q_enable' to {} at {}", q_enable, offset),
             self.config.q_enable,
             offset,
             || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at(offset))?;
 
         // region.assign_fixed(
         //     || format!("assign 'is_first_byte' to {} at {}", is_first_byte, offset),
         //     self.config.is_first_byte,
         //     offset,
         //     || Value::known(F::from(is_first_byte as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         //
         // region.assign_fixed(
         //     || format!("assign 'is_last_byte' to {} at {}", is_last_byte, offset),
         //     self.config.is_last_byte,
         //     offset,
         //     || Value::known(F::from(is_last_byte as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         //
         // region.assign_fixed(
         //     || format!("assign 'is_bytes_count_1' to {} at {}", bytes_count=1, offset),
         //     self.config.is_bytes_count_1,
         //     offset,
         //     || Value::known(F::from((bytes_count=1) as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         // region.assign_fixed(
         //     || format!("assign 'is_bytes_count_2' to {} at {}", bytes_count=2, offset),
         //     self.config.is_bytes_count_2,
         //     offset,
         //     || Value::known(F::from((bytes_count=2) as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         // region.assign_fixed(
         //     || format!("assign 'is_bytes_count_3' to {} at {}", bytes_count=3, offset),
         //     self.config.is_bytes_count_3,
         //     offset,
         //     || Value::known(F::from((bytes_count=3) as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         // region.assign_fixed(
         //     || format!("assign 'is_bytes_count_4' to {} at {}", bytes_count=4, offset),
         //     self.config.is_bytes_count_4,
         //     offset,
         //     || Value::known(F::from((bytes_count=4) as u64)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         //
         // region.assign_advice(
         //     || format!("assign 'codepoint' to {} at {}", codepoint, offset),
         //     self.config.codepoint,
         //     offset,
         //     || Value::known(F::from(codepoint)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         //
         // region.assign_advice(
         //     || format!("assign 'codepoint_recovered' to {} at {}", codepoint_recovered, offset),
         //     self.config.codepoint_recovered,
         //     offset,
         //     || Value::known(F::from(codepoint_recovered)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
         //
         // region.assign_advice(
         //     || format!("assign 'byte_mul' to {} at {}", byte_mul, offset),
         //     self.config.byte_mul,
         //     offset,
         //     || Value::known(F::from(byte_mul)),
-        // ).unwrap();
+        // ).map_err(remap_error_to_assign_at_offset(offset))?;
+
+        Ok(())
     }
 
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
+        wb: &WasmBytecode,
         bytecode_chunk_len: usize,
         bytecode_offset_start: usize,
         region_offset_start: usize,
-    ) {
+    ) -> Result<(), Error> {
         for (offset, bytecode_offset) in (bytecode_offset_start..bytecode_offset_start + bytecode_chunk_len).enumerate() {
             self.assign(
                 region,
                 region_offset_start + offset,
                 true,
-                wasm_bytecode.bytes[bytecode_offset],
-            )
+                wb.bytes[bytecode_offset],
+            )?;
         }
+
+        Ok(())
     }
 }

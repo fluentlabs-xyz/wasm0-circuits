@@ -12,9 +12,8 @@ pub struct RangeTableConfig<F: Field, const RANGE_START: usize, const RANGE_FINI
     _marker: PhantomData<F>,
 }
 
-impl<F: Field, const RANGE_START: usize, const RANGE_FINISH: usize> RangeTableConfig<F, RANGE_START, RANGE_FINISH> {
+impl<F: Field, const RANGE_START: usize, const COUNT: usize> RangeTableConfig<F, RANGE_START, COUNT> {
     pub fn configure(cs: &mut ConstraintSystem<F>) -> Self {
-        if RANGE_FINISH <= RANGE_START { panic!("range finish must be greater range start") }
         let value = cs.lookup_table_column();
 
         Self {
@@ -27,7 +26,7 @@ impl<F: Field, const RANGE_START: usize, const RANGE_FINISH: usize> RangeTableCo
         layouter.assign_table(
             || "load range-check table",
             |mut table| {
-                for (offset, value) in (RANGE_START..RANGE_FINISH).enumerate() {
+                for (offset, value) in (RANGE_START..RANGE_START+COUNT).enumerate() {
                     table.assign_cell(
                         || "num_bits",
                         self.value,

@@ -16,10 +16,10 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
-use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::error::{Error, remap_error_to_assign_at};
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::function::body::types::AssignType;
 use crate::wasm_circuit::types::SharedState;
@@ -37,6 +37,8 @@ pub struct WasmFunctionSectionBodyConfig<F: Field> {
     func_count: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
+    error_code: Column<Advice>,
+
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
@@ -51,97 +53,13 @@ pub struct WasmFunctionSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> WasmAssignAwareChip<F> for WasmFunctionSectionBodyChip<F> {
-    type AssignType = AssignType;
-
-    fn assign(
-        &self,
-        region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        offset: usize,
-        assign_types: &[Self::AssignType],
-        assign_value: u64,
-        leb_params: Option<LebParams>,
-    ) {
-        let q_enable = true;
-        debug!(
-            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
-            offset,
-            q_enable,
-            assign_types,
-            assign_value,
-            wasm_bytecode.bytes[offset],
-        );
-        region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
-            self.config.q_enable,
-            offset,
-            || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
-        self.assign_func_count(region, offset);
-
-        assign_types.iter().for_each(|assign_type| {
-            if [
-                AssignType::IsItemsCount,
-                AssignType::IsTypeidx,
-            ].contains(&assign_type) {
-                let p = leb_params.unwrap();
-                self.config.leb128_chip.assign(
-                    region,
-                    offset,
-                    q_enable,
-                    p,
-                );
-            }
-            match assign_type {
-                AssignType::QFirst => {
-                    region.assign_fixed(
-                        || format!("assign 'q_first' val {} at {}", assign_value, offset),
-                        self.config.q_first,
-                        offset,
-                        || Value::known(F::from(assign_value)),
-                    ).unwrap();
-                }
-                AssignType::QLast => {
-                    region.assign_fixed(
-                        || format!("assign 'q_last' val {} at {}", assign_value, offset),
-                        self.config.q_last,
-                        offset,
-                        || Value::known(F::from(assign_value)),
-                    ).unwrap();
-                }
-                AssignType::IsItemsCount => {
-                    region.assign_fixed(
-                        || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
-                        self.config.is_items_count,
-                        offset,
-                        || Value::known(F::from(assign_value)),
-                    ).unwrap();
-                }
-                AssignType::IsTypeidx => {
-                    region.assign_fixed(
-                        || format!("assign 'is_typeidx' val {} at {}", assign_value, offset),
-                        self.config.is_typeidx,
-                        offset,
-                        || Value::known(F::from(assign_value)),
-                    ).unwrap();
-                }
-                AssignType::BodyItemRevCount => {
-                    region.assign_advice(
-                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, offset),
-                        self.config.body_item_rev_count,
-                        offset,
-                        || Value::known(F::from(assign_value)),
-                    ).unwrap();
-                }
-            }
-        })
-    }
-}
-
 impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmFunctionSectionBodyChip<F> {}
 
 impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmFunctionSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorAwareChip<F> for WasmFunctionSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmFunctionSectionBodyChip<F> {
     fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
@@ -149,6 +67,100 @@ impl<F: Field> WasmSharedStateAwareChip<F> for WasmFunctionSectionBodyChip<F> {
 
 impl<F: Field> WasmFuncCountAwareChip<F> for WasmFunctionSectionBodyChip<F> {
     fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
+}
+
+impl<F: Field> WasmAssignAwareChip<F> for WasmFunctionSectionBodyChip<F> {
+    type AssignType = AssignType;
+
+    fn assign_internal(
+        &self,
+        region: &mut Region<F>,
+        wb: &WasmBytecode,
+        wb_offset: usize,
+        assign_delta: usize,
+        assign_types: &[Self::AssignType],
+        assign_value: u64,
+        leb_params: Option<LebParams>,
+    ) -> Result<(), Error> {
+        let q_enable = true;
+        let assign_offset = wb_offset + assign_delta;
+        debug!(
+            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            assign_offset,
+            q_enable,
+            assign_types,
+            assign_value,
+            wb.bytes[wb_offset],
+        );
+        region.assign_fixed(
+            || format!("assign 'q_enable' val {} at {}", q_enable, assign_offset),
+            self.config.q_enable,
+            assign_offset,
+            || Value::known(F::from(q_enable as u64)),
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
+        self.assign_func_count(region, assign_offset)?;
+
+        for assign_type in assign_types {
+            if [
+                AssignType::IsItemsCount,
+                AssignType::IsTypeidx,
+            ].contains(&assign_type) {
+                let p = leb_params.unwrap();
+                self.config.leb128_chip.assign(
+                    region,
+                    assign_offset,
+                    q_enable,
+                    p,
+                )?;
+            }
+            match assign_type {
+                AssignType::QFirst => {
+                    region.assign_fixed(
+                        || format!("assign 'q_first' val {} at {}", assign_value, assign_offset),
+                        self.config.q_first,
+                        assign_offset,
+                        || Value::known(F::from(assign_value)),
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                }
+                AssignType::QLast => {
+                    region.assign_fixed(
+                        || format!("assign 'q_last' val {} at {}", assign_value, assign_offset),
+                        self.config.q_last,
+                        assign_offset,
+                        || Value::known(F::from(assign_value)),
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                }
+                AssignType::IsItemsCount => {
+                    region.assign_fixed(
+                        || format!("assign 'is_items_count' val {} at {}", assign_value, assign_offset),
+                        self.config.is_items_count,
+                        assign_offset,
+                        || Value::known(F::from(assign_value)),
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                }
+                AssignType::IsTypeidx => {
+                    region.assign_fixed(
+                        || format!("assign 'is_typeidx' val {} at {}", assign_value, assign_offset),
+                        self.config.is_typeidx,
+                        assign_offset,
+                        || Value::known(F::from(assign_value)),
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                }
+                AssignType::BodyItemRevCount => {
+                    region.assign_advice(
+                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, assign_offset),
+                        self.config.body_item_rev_count,
+                        assign_offset,
+                        || Value::known(F::from(assign_value)),
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, assign_offset, None)?;
+                }
+            }
+        };
+        Ok(())
+    }
 }
 
 impl<F: Field> WasmFunctionSectionBodyChip<F>
@@ -163,11 +175,12 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: Rc<WasmBytecodeTable>,
+        _bytecode_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmFunctionSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -181,7 +194,7 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
             body_item_rev_count,
             |vc| vc.query_fixed(is_items_count, Rotation::cur()),
             |vc| {
-                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
                 let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
 
                 and::expr([
@@ -204,8 +217,7 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
         cs.create_gate("WasmFunctionSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
-            let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
-            let q_first_expr = vc.query_fixed(q_first, Rotation::cur());
+            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
@@ -239,8 +251,8 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
                     is_items_count_expr.clone(),
                     is_typeidx_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_items_count || is_typeidx -> leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -310,6 +322,7 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
             leb128_chip,
             func_count,
             body_item_rev_count,
+            error_code,
             shared_state,
         };
 
@@ -320,29 +333,32 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        offset_start: usize,
+        wb: &WasmBytecode,
+        wb_offset: usize,
+        assign_delta: usize,
     ) -> Result<usize, Error> {
-        let mut offset = offset_start;
+        let mut offset = wb_offset;
 
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            wasm_bytecode,
+            wb,
             offset,
+            assign_delta,
             &[AssignType::IsItemsCount],
-        );
+        )?;
         let mut body_item_rev_count = items_count;
         for offset in offset..offset + items_count_leb_len {
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
+                assign_delta,
                 &[AssignType::BodyItemRevCount],
                 body_item_rev_count,
                 None,
-            );
+            )?;
         }
-        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
+        self.assign(region, &wb, offset, assign_delta,&[AssignType::QFirst], 1, None)?;
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
@@ -351,26 +367,28 @@ impl<F: Field> WasmFunctionSectionBodyChip<F>
 
             let (_typeidx_val, typeidx_val_leb_len) = self.markup_leb_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
+                assign_delta,
                 &[AssignType::IsTypeidx],
-            );
+            )?;
             offset += typeidx_val_leb_len;
 
             for offset in item_start_offset..offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
+                    assign_delta,
                     &[AssignType::BodyItemRevCount],
                     body_item_rev_count,
                     None,
-                );
+                )?;
             }
         }
 
-        if offset != offset_start {
-            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
+        if offset != wb_offset {
+            self.assign(region, &wb, offset - 1, assign_delta,&[AssignType::QLast], 1, None)?;
         }
 
         Ok(offset)

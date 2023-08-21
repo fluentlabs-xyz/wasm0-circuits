@@ -19,16 +19,15 @@ use gadgets::util::{and, Expr, not, or};
 use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
 use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
 use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
+use crate::wasm_circuit::common::{LimitTypeFields, WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmLenPrefixedBytesSpanAwareChip, WasmLimitTypeAwareChip, WasmMarkupLeb128SectionAwareChip, WasmNameAwareChip, WasmSharedStateAwareChip};
 use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
-use crate::wasm_circuit::consts::{IMPORT_DESC_TYPE_VALUES, ImportDescType, LimitType, MUTABILITY_VALUES, REF_TYPE_VALUES, RefType};
-use crate::wasm_circuit::error::Error;
-use crate::wasm_circuit::leb128_circuit::circuit::LEB128Chip;
+use crate::wasm_circuit::error::{Error, remap_error, remap_error_to_assign_at, remap_error_to_invalid_enum_value_at};
+use crate::wasm_circuit::leb128::circuit::LEB128Chip;
 use crate::wasm_circuit::sections::consts::LebParams;
 use crate::wasm_circuit::sections::import::body::types::AssignType;
 use crate::wasm_circuit::tables::dynamic_indexes::circuit::DynamicIndexesChip;
-use crate::wasm_circuit::types::SharedState;
-use crate::wasm_circuit::utf8_circuit::circuit::UTF8Chip;
+use crate::wasm_circuit::types::{IMPORT_DESC_TYPE_VALUES, ImportDescType, LimitType, MUTABILITY_VALUES, REF_TYPE_VALUES, RefType, SharedState};
+use crate::wasm_circuit::utf8::circuit::UTF8Chip;
 
 #[derive(Debug, Clone)]
 pub struct WasmImportSectionBodyConfig<F: Field> {
@@ -59,6 +58,8 @@ pub struct WasmImportSectionBodyConfig<F: Field> {
     body_byte_rev_index: Column<Advice>,
     body_item_rev_count: Column<Advice>,
 
+    error_code: Column<Advice>,
+
     shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
@@ -73,35 +74,59 @@ pub struct WasmImportSectionBodyChip<F: Field> {
     _marker: PhantomData<F>,
 }
 
+impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmNameAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmLimitTypeAwareChip<F> for WasmImportSectionBodyChip<F> {}
+
+impl<F: Field> WasmErrorAwareChip<F> for WasmImportSectionBodyChip<F> {
+    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+}
+
+impl<F: Field> WasmSharedStateAwareChip<F> for WasmImportSectionBodyChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+}
+
+impl<F: Field> WasmFuncCountAwareChip<F> for WasmImportSectionBodyChip<F> {
+    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
+}
+
 impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
     type AssignType = AssignType;
 
-    fn assign(
+    fn assign_internal(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        offset: usize,
+        wb: &WasmBytecode,
+        wb_offset: usize,
+        assign_delta: usize,
         assign_types: &[Self::AssignType],
         assign_value: u64,
         leb_params: Option<LebParams>,
-    ) {
+    ) -> Result<(), Error> {
         let q_enable = true;
+        let assign_offset = wb_offset + assign_delta;
         debug!(
             "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
-            offset,
+            assign_offset,
             q_enable,
             assign_types,
             assign_value,
-            wasm_bytecode.bytes[offset],
+            wb.bytes[wb_offset],
         );
         region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
+            || format!("assign 'q_enable' val {} at {}", q_enable, assign_offset),
             self.config.q_enable,
-            offset,
+            assign_offset,
             || Value::known(F::from(q_enable as u64)),
-        ).unwrap();
+        ).map_err(remap_error_to_assign_at(assign_offset))?;
 
-        assign_types.iter().for_each(|assign_type| {
+        for assign_type in assign_types {
             if [
                 AssignType::IsItemsCount,
                 AssignType::IsModNameLen,
@@ -113,213 +138,201 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
                 let p = leb_params.unwrap();
                 self.config.leb128_chip.assign(
                     region,
-                    offset,
+                    assign_offset,
                     true,
                     p,
-                );
+                )?;
             }
             if [
                 AssignType::IsModName,
                 AssignType::IsImportName,
             ].contains(assign_type) {
-                let byte_val = wasm_bytecode.bytes[offset];
+                let byte_val = wb.bytes[wb_offset];
                 self.config.utf8_chip.assign(
                     region,
-                    offset,
+                    assign_offset,
                     true,
                     byte_val,
-                );
+                )?;
             }
             match assign_type {
                 AssignType::QFirst => {
                     region.assign_fixed(
-                        || format!("assign 'q_first' val {} at {}", assign_value, offset),
+                        || format!("assign 'q_first' val {} at {}", assign_value, assign_offset),
                         self.config.q_first,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::QLast => {
                     region.assign_fixed(
-                        || format!("assign 'q_last' val {} at {}", assign_value, offset),
+                        || format!("assign 'q_last' val {} at {}", assign_value, assign_offset),
                         self.config.q_last,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsItemsCount => {
                     region.assign_fixed(
-                        || format!("assign 'is_items_count' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_items_count' val {} at {}", assign_value, assign_offset),
                         self.config.is_items_count,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsModNameLen => {
                     region.assign_fixed(
-                        || format!("assign 'is_mod_name_len' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_mod_name_len' val {} at {}", assign_value, assign_offset),
                         self.config.is_mod_name_len,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsModName => {
                     region.assign_fixed(
-                        || format!("assign 'is_mod_name' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_mod_name' val {} at {}", assign_value, assign_offset),
                         self.config.is_mod_name,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsImportNameLen => {
                     region.assign_fixed(
-                        || format!("assign 'is_import_name_len' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_import_name_len' val {} at {}", assign_value, assign_offset),
                         self.config.is_import_name_len,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsImportName => {
                     region.assign_fixed(
-                        || format!("assign 'is_import_name' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_import_name' val {} at {}", assign_value, assign_offset),
                         self.config.is_import_name,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsImportdescType => {
                     region.assign_fixed(
-                        || format!("assign 'is_importdesc_type' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_importdesc_type' val {} at {}", assign_value, assign_offset),
                         self.config.is_importdesc_type,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsImportdescVal => {
                     region.assign_fixed(
-                        || format!("assign 'is_importdesc_val' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_importdesc_val' val {} at {}", assign_value, assign_offset),
                         self.config.is_importdesc_val,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsMut => {
                     region.assign_fixed(
-                        || format!("assign 'is_mut_prop' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_mut_prop' val {} at {}", assign_value, assign_offset),
                         self.config.is_mut_prop,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsImportdescTypeCtx => {
                     region.assign_fixed(
-                        || format!("assign 'is_importdesc_type_ctx' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_importdesc_type_ctx' val {} at {}", assign_value, assign_offset),
                         self.config.is_importdesc_type_ctx,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::ImportdescType => {
                     region.assign_advice(
-                        || format!("assign 'importdesc_type' val {} at {}", assign_value, offset),
+                        || format!("assign 'importdesc_type' val {} at {}", assign_value, assign_offset),
                         self.config.importdesc_type,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsLimitType => {
                     region.assign_fixed(
-                        || format!("assign 'is_limit_type' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_limit_type' val {} at {}", assign_value, assign_offset),
                         self.config.limit_type_fields.is_limit_type,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsLimitMin => {
                     region.assign_fixed(
-                        || format!("assign 'is_limit_min' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_limit_min' val {} at {}", assign_value, assign_offset),
                         self.config.limit_type_fields.is_limit_min,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsLimitMax => {
                     region.assign_fixed(
-                        || format!("assign 'is_limit_max' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_limit_max' val {} at {}", assign_value, assign_offset),
                         self.config.limit_type_fields.is_limit_max,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsLimitTypeCtx => {
                     region.assign_fixed(
-                        || format!("assign 'is_limit_type_ctx' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_limit_type_ctx' val {} at {}", assign_value, assign_offset),
                         self.config.limit_type_fields.is_limit_type_ctx,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::LimitType => {
                     region.assign_advice(
-                        || format!("assign 'limit_type' val {} at {}", assign_value, offset),
+                        || format!("assign 'limit_type' val {} at {}", assign_value, assign_offset),
                         self.config.limit_type_fields.limit_type,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
-                    let limit_type: LimitType = (assign_value as u8).try_into().unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    let limit_type: LimitType = (assign_value as u8).try_into().map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
                     self.config.limit_type_fields.limit_type_chip.assign(
                         region,
-                        offset,
+                        assign_offset,
                         &limit_type,
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsRefType => {
                     region.assign_fixed(
-                        || format!("assign 'is_ref_type' val {} at {}", assign_value, offset),
+                        || format!("assign 'is_ref_type' val {} at {}", assign_value, assign_offset),
                         self.config.is_ref_type,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::BodyByteRevIndex => {
                     region.assign_advice(
-                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, offset),
+                        || format!("assign 'body_byte_rev_index' val {} at {}", assign_value, assign_offset),
                         self.config.body_byte_rev_index,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::BodyItemRevCount => {
                     region.assign_advice(
-                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, offset),
+                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, assign_offset),
                         self.config.body_item_rev_count,
-                        offset,
+                        assign_offset,
                         || Value::known(F::from(assign_value)),
-                    ).unwrap();
+                    ).map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::FuncCount => {
-                    self.assign_func_count(region, offset);
+                    self.assign_func_count(region, assign_offset)?;
+                }
+                AssignType::ErrorCode => {
+                    self.assign_error_code(region, assign_offset, None)?;
                 }
             }
-        });
+        };
+        Ok(())
     }
 }
-
-impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmImportSectionBodyChip<F> {}
-
-impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmImportSectionBodyChip<F> {}
-
-impl<F: Field> WasmLenPrefixedBytesSpanAwareChip<F> for WasmImportSectionBodyChip<F> {}
-
-impl<F: Field> WasmSharedStateAwareChip<F> for WasmImportSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
-}
-
-impl<F: Field> WasmFuncCountAwareChip<F> for WasmImportSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
-}
-
-impl<F: Field> WasmLimitTypeAwareChip<F> for WasmImportSectionBodyChip<F> {}
 
 impl<F: Field> WasmImportSectionBodyChip<F>
 {
@@ -341,6 +354,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         shared_state: Rc<RefCell<SharedState>>,
         body_byte_rev_index: Column<Advice>,
         body_item_rev_count: Column<Advice>,
+        error_code: Column<Advice>,
     ) -> WasmImportSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -447,7 +461,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             body_item_rev_count,
             |vc| vc.query_fixed(is_items_count, Rotation::cur()),
             |vc| {
-                let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
                 let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
 
                 and::expr([
@@ -482,7 +496,7 @@ impl<F: Field> WasmImportSectionBodyChip<F>
         cs.create_gate("WasmImportSectionBody gate", |vc| {
             let mut cb = BaseConstraintBuilder::default();
 
-            let q_enable_expr = vc.query_fixed(q_enable, Rotation::cur());
+            let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let not_q_last_expr = not::expr(q_last_expr.clone());
             let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
@@ -538,8 +552,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     is_importdesc_val_expr.clone(),
                     is_mut_prop_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_importdesc_type || is_importdesc_val || is_mut_prop => is_importdesc_type_ctx",
                         is_importdesc_type_ctx_expr.clone(),
                         1.expr(),
@@ -551,8 +565,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     is_importdesc_type_ctx_prev_expr.clone(),
                     is_importdesc_type_ctx_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_importdesc_type_ctx && prev.is_importdesc_type_ctx => importdesc_type=prev.importdesc_type",
                         importdesc_type_expr.clone(),
                         importdesc_type_prev_expr.clone(),
@@ -580,8 +594,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
 
             cb.condition(
                 is_ref_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "reference_type => byte value is valid",
                         byte_val_expr.clone(),
                         REF_TYPE_VALUES.iter().map(|&v| v.expr()).collect_vec(),
@@ -605,8 +619,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     is_limit_min_expr.clone(),
                     is_limit_max_expr.clone(),
                 ]),
-                |bcb| {
-                    bcb.require_equal(
+                |cb| {
+                    cb.require_equal(
                         "is_items_count || is_mod_name_len || is_import_name_len || is_importdesc_val || is_limit_min || is_limit_max => leb128",
                         vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur()),
                         1.expr(),
@@ -625,8 +639,8 @@ impl<F: Field> WasmImportSectionBodyChip<F>
 
             cb.condition(
                 is_mut_prop_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_mut_prop => byte_val is valid",
                         byte_val_expr.clone(),
                         MUTABILITY_VALUES.iter().map(|&v| v.expr()).collect_vec(),
@@ -635,15 +649,15 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             );
 
             // is_items_count+ -> is_item+ (is_mod_name_len+ -> is_mod_name* -> is_import_name_len+ -> is_import_name* -> import_desc+)
-            let importdesc_type_is_global_type_prev_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::prev())(vc);
+            // let importdesc_type_is_global_type_prev_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::prev())(vc);
             let importdesc_type_is_typeidx_expr = importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::cur())(vc);
-            let importdesc_type_is_typeidx_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::next())(vc);
+            // let importdesc_type_is_typeidx_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::Typeidx, Rotation::next())(vc);
             let importdesc_type_is_mem_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::MemType, Rotation::cur())(vc);
-            let importdesc_type_is_mem_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::MemType, Rotation::next())(vc);
+            // let importdesc_type_is_mem_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::MemType, Rotation::next())(vc);
             let importdesc_type_is_table_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::TableType, Rotation::cur())(vc);
-            let importdesc_type_is_table_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::TableType, Rotation::next())(vc);
+            // let importdesc_type_is_table_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::TableType, Rotation::next())(vc);
             let importdesc_type_is_global_type_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::cur())(vc);
-            let importdesc_type_is_global_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::next())(vc);
+            // let importdesc_type_is_global_type_next_expr = importdesc_type_chip.config.value_equals(ImportDescType::GlobalType, Rotation::next())(vc);
 
             let limit_type_is_min_only_expr = limit_type_chip.config.value_equals(LimitType::MinOnly, Rotation::cur())(vc);
             let limit_type_is_min_max_expr = limit_type_chip.config.value_equals(LimitType::MinMax, Rotation::cur())(vc);
@@ -1350,13 +1364,13 @@ impl<F: Field> WasmImportSectionBodyChip<F>
 
             cb.condition(
                 is_importdesc_type_expr.clone(),
-                |bcb| {
-                    bcb.require_in_set(
+                |cb| {
+                    cb.require_in_set(
                         "is_importdesc_type => value is valid",
                         byte_val_expr.clone(),
                         IMPORT_DESC_TYPE_VALUES.iter().map(|&v| v.expr()).collect_vec()
                     );
-                    bcb.require_equal(
+                    cb.require_equal(
                         "is_importdesc_type => importdesc_type has valid value",
                         importdesc_type_expr.clone(),
                         byte_val_expr.clone(),
@@ -1392,69 +1406,44 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             func_count,
             body_byte_rev_index,
             body_item_rev_count,
+            error_code,
             shared_state,
         };
 
         config
     }
 
-    fn markup_name_section(
-        &self,
-        region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        assign_types: &[AssignType],
-        offset: usize,
-        name_len: usize,
-    ) {
-        assign_types.iter().for_each(|assign_type| {
-            if ![
-                AssignType::IsModName,
-                AssignType::IsImportName,
-                AssignType::FuncCount,
-            ].contains(&assign_type) {
-                panic!("unsupported assign type {:?}", assign_type)
-            }
-            for byte_offset in 0..name_len {
-                self.assign(
-                    region,
-                    wasm_bytecode,
-                    offset + byte_offset,
-                    assign_types,
-                    1,
-                    None,
-                );
-            }
-        })
-    }
-
     /// returns new offset
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
-        wasm_bytecode: &WasmBytecode,
-        offset_start: usize,
+        wb: &WasmBytecode,
+        wb_offset: usize,
+        assign_delta: usize,
     ) -> Result<usize, Error> {
-        let mut offset = offset_start;
+        let mut offset = wb_offset;
 
         // is_items_count+
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
-            wasm_bytecode,
+            wb,
             offset,
+            assign_delta,
             &[AssignType::IsItemsCount, AssignType::FuncCount],
-        );
+        )?;
         let mut body_item_rev_count = items_count;
         for offset in offset..offset + items_count_leb_len {
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
+                assign_delta,
                 &[AssignType::BodyItemRevCount, AssignType::FuncCount],
                 body_item_rev_count,
                 None,
-            );
+            )?;
         }
-        self.assign(region, &wasm_bytecode, offset, &[AssignType::QFirst], 1, None);
+        self.assign(region, &wb, offset, assign_delta, &[AssignType::QFirst], 1, None)?;
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
@@ -1464,68 +1453,76 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             // is_mod_name_len+
             let (mod_name_len, mod_name_leb_len) = self.markup_leb_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
+                assign_delta,
                 &[AssignType::IsModNameLen, AssignType::FuncCount],
-            );
+            )?;
             let mod_name_len_last_byte_offset = offset + mod_name_leb_len - 1;
             let mod_name_last_byte_offset = mod_name_len_last_byte_offset + mod_name_len as usize;
             for offset in mod_name_len_last_byte_offset..=mod_name_last_byte_offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
+                    assign_delta,
                     &[AssignType::BodyByteRevIndex, AssignType::FuncCount],
                     (mod_name_last_byte_offset - offset) as u64,
                     None,
-                );
+                )?;
             }
             offset += mod_name_leb_len;
 
             // is_mod_name*
             self.markup_name_section(
                 region,
-                wasm_bytecode,
-                &[AssignType::IsModName, AssignType::FuncCount],
+                wb,
                 offset,
+                assign_delta,
+                &[AssignType::IsModName, AssignType::FuncCount],
                 mod_name_len as usize,
-            );
+                1,
+            )?;
             offset += mod_name_len as usize;
 
             // is_import_name_len+
             let (import_name_len, import_name_leb_len) = self.markup_leb_section(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
+                assign_delta,
                 &[AssignType::IsImportNameLen, AssignType::FuncCount],
-            );
+            )?;
             let import_name_len_last_byte_offset = offset + import_name_leb_len - 1;
             let import_name_last_byte_offset = import_name_len_last_byte_offset + import_name_len as usize;
             for offset in import_name_len_last_byte_offset..=import_name_last_byte_offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
+                    assign_delta,
                     &[AssignType::BodyByteRevIndex, AssignType::FuncCount],
                     (import_name_last_byte_offset - offset) as u64,
                     None,
-                );
+                )?;
             }
             offset += import_name_leb_len;
 
             // is_import_name*
             self.markup_name_section(
                 region,
-                wasm_bytecode,
-                &[AssignType::IsImportName, AssignType::FuncCount],
+                wb,
                 offset,
+                assign_delta,
+                &[AssignType::IsImportName, AssignType::FuncCount],
                 import_name_len as usize,
-            );
+                1,
+            )?;
             offset += import_name_len as usize;
 
             // is_importdesc_type{1}
-            let importdesc_type_val = wasm_bytecode.bytes[offset];
-            let importdesc_type: ImportDescType = importdesc_type_val.try_into().unwrap();
+            let importdesc_type_val = wb.bytes[offset];
+            let importdesc_type: ImportDescType = importdesc_type_val.try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
             let importdesc_type_val = importdesc_type_val as u64;
             if importdesc_type == ImportDescType::Typeidx { self.config.shared_state.borrow_mut().func_count += 1; }
             debug!(
@@ -1535,21 +1532,24 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             );
             self.assign(
                 region,
-                wasm_bytecode,
+                wb,
                 offset,
+                assign_delta,
                 &[AssignType::IsImportdescType, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
                 1,
                 None,
-            );
+            )?;
             self.assign(
                 region,
-                &wasm_bytecode,
+                &wb,
                 offset,
+                assign_delta,
                 &[AssignType::ImportdescType, AssignType::FuncCount],
                 importdesc_type_val,
                 None,
-            );
-            self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
+            )?;
+            self.config.importdesc_type_chip.assign(region, offset, &importdesc_type)
+                .map_err(remap_error(Error::FatalAssignExternalChip))?;
             offset += 1;
 
             // is_importdesc_val+
@@ -1557,89 +1557,100 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                 ImportDescType::Typeidx => {
                     let (_importdesc_val, importdesc_val_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsImportdescVal, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
-                    );
+                    )?;
                     for offset in offset..offset + importdesc_val_leb_len {
                         self.assign(
                             region,
-                            &wasm_bytecode,
+                            &wb,
                             offset,
+                            assign_delta,
                             &[AssignType::ImportdescType],
                             importdesc_type_val,
                             None,
-                        );
-                        self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
+                        )?;
+                        self.config.importdesc_type_chip.assign(region, offset, &importdesc_type)
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                     offset += importdesc_val_leb_len;
                 }
                 ImportDescType::GlobalType => {
                     let (_importdesc_val, importdesc_val_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsImportdescVal, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
-                    );
+                    )?;
                     for offset in offset..offset + importdesc_val_leb_len {
                         self.assign(
                             region,
-                            &wasm_bytecode,
+                            &wb,
                             offset,
+                            assign_delta,
                             &[AssignType::ImportdescType, AssignType::FuncCount],
                             importdesc_type_val,
                             None,
-                        );
-                        self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
+                        )?;
+                        self.config.importdesc_type_chip.assign(region, offset, &importdesc_type)
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                     offset += importdesc_val_leb_len;
 
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsMut, AssignType::IsImportdescTypeCtx, AssignType::FuncCount],
                         1,
                         None,
-                    );
+                    )?;
                     for offset in offset..offset + importdesc_val_leb_len {
                         self.assign(
                             region,
-                            &wasm_bytecode,
+                            &wb,
                             offset,
+                            assign_delta,
                             &[AssignType::ImportdescType, AssignType::FuncCount],
                             importdesc_type_val,
                             None,
-                        );
-                        self.config.importdesc_type_chip.assign(region, offset, &importdesc_type).unwrap();
+                        )?;
+                        self.config.importdesc_type_chip.assign(region, offset, &importdesc_type)
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                     }
                     offset += 1;
                 }
                 ImportDescType::MemType => {
                     // limit_type{1}
-                    let limit_type_val = wasm_bytecode.bytes[offset];
-                    let limit_type: LimitType = limit_type_val.try_into().unwrap();
+                    let limit_type_val = wb.bytes[offset];
+                    let limit_type: LimitType = limit_type_val.try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
                     let limit_type_val = limit_type_val as u64;
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsLimitType, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
                         1,
                         None,
-                    );
-                    self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                    )?;
+                    self.assign(region, wb, offset, assign_delta, &[AssignType::LimitType], limit_type_val, None)?;
                     offset += 1;
 
                     // limit_min+
                     let (_limit_min, limit_min_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsLimitMin, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
-                    );
+                    )?;
                     for offset in offset..offset + limit_min_leb_len {
-                        self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                        self.assign(region, wb, offset, assign_delta, &[AssignType::LimitType], limit_type_val, None)?;
                     }
                     offset += limit_min_leb_len;
 
@@ -1647,55 +1658,59 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     if limit_type == LimitType::MinMax {
                         let (_limit_max, limit_max_leb_len) = self.markup_leb_section(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
+                            assign_delta,
                             &[AssignType::IsLimitMax, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
-                        );
+                        )?;
                         for offset in offset..offset + limit_max_leb_len {
-                            self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType], limit_type_val, None);
+                            self.assign(region, wb, offset, assign_delta, &[AssignType::LimitType], limit_type_val, None)?;
                         }
                         offset += limit_max_leb_len;
                     }
                 }
                 ImportDescType::TableType => {
                     // ref_type{1}
-                    let ref_type_val = wasm_bytecode.bytes[offset];
-                    let ref_type: RefType = ref_type_val.try_into().unwrap();
+                    let ref_type_val = wb.bytes[offset];
+                    let ref_type: RefType = ref_type_val.try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
                     let ref_type_val = ref_type_val as u64;
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsRefType, AssignType::FuncCount],
                         1,
                         None,
-                    );
+                    )?;
                     offset += 1;
 
                     // limit_type{1}
-                    let limit_type_val = wasm_bytecode.bytes[offset];
-                    let limit_type: LimitType = limit_type_val.try_into().unwrap();
+                    let limit_type_val = wb.bytes[offset];
+                    let limit_type: LimitType = limit_type_val.try_into().map_err(remap_error_to_invalid_enum_value_at(offset))?;
                     let limit_type_val = limit_type_val as u64;
                     self.assign(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsLimitType, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
                         1,
                         None,
-                    );
-                    self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None);
+                    )?;
+                    self.assign(region, wb, offset, assign_delta, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None)?;
                     offset += 1;
 
                     // limit_min+
                     let (limit_min, limit_min_leb_len) = self.markup_leb_section(
                         region,
-                        wasm_bytecode,
+                        wb,
                         offset,
+                        assign_delta,
                         &[AssignType::IsLimitMin, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
-                    );
+                    )?;
                     for offset in offset..offset + limit_min_leb_len {
-                        self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None);
+                        self.assign(region, wb, offset, assign_delta, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None)?;
                     }
                     offset += limit_min_leb_len;
 
@@ -1703,14 +1718,17 @@ impl<F: Field> WasmImportSectionBodyChip<F>
                     if limit_type == LimitType::MinMax {
                         let (limit_max, limit_max_leb_len) = self.markup_leb_section(
                             region,
-                            wasm_bytecode,
+                            wb,
                             offset,
+                            assign_delta,
                             &[AssignType::IsLimitMax, AssignType::IsLimitTypeCtx, AssignType::FuncCount],
-                        );
+                        )?;
                         for offset in offset..offset + limit_max_leb_len {
-                            self.assign(region, wasm_bytecode, offset, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None);
+                            self.assign(region, wb, offset, assign_delta, &[AssignType::LimitType, AssignType::FuncCount], limit_type_val, None)?;
                         }
-                        self.config.limit_type_fields.limit_type_params_lt_chip.assign(region, offset, F::from(limit_min), F::from(limit_max)).unwrap();
+                        self.config.limit_type_fields.limit_type_params_lt_chip
+                            .assign(region, offset, F::from(limit_min), F::from(limit_max))
+                            .map_err(remap_error(Error::FatalAssignExternalChip))?;
                         offset += limit_max_leb_len;
                     }
                 }
@@ -1719,17 +1737,18 @@ impl<F: Field> WasmImportSectionBodyChip<F>
             for offset in item_start_offset..offset {
                 self.assign(
                     region,
-                    &wasm_bytecode,
+                    &wb,
                     offset,
+                    assign_delta,
                     &[AssignType::BodyItemRevCount],
                     body_item_rev_count,
                     None,
-                );
+                )?;
             }
         }
 
-        if offset != offset_start {
-            self.assign(region, &wasm_bytecode, offset - 1, &[AssignType::QLast], 1, None);
+        if offset != wb_offset {
+            self.assign(region, &wb, offset - 1, assign_delta, &[AssignType::QLast], 1, None)?;
         }
 
         Ok(offset)

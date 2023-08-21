@@ -4,4 +4,6 @@ pub enum AssignType {
     QLast,
 
     IsFuncsIndex,
+
+    ErrorCode,
 }

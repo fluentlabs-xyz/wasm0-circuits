@@ -1,13 +1,16 @@
+use std::marker::PhantomData;
+
 use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
-use std::{marker::PhantomData};
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::{Advice, Circuit, Column};
 use log::debug;
+
 use eth_types::Field;
-use crate::wasm_circuit::leb128_circuit::circuit::{LEB128Chip, LEB128Config};
-use crate::wasm_circuit::leb128_circuit::helpers::leb128_compute_sn_recovered_at_position;
+
+use crate::wasm_circuit::leb128::circuit::{LEB128Chip, LEB128Config};
+use crate::wasm_circuit::leb128::helpers::leb128_compute_sn_recovered_at_position;
 use crate::wasm_circuit::sections::consts::LebParams;
 
 #[derive(Default)]
@@ -76,7 +79,7 @@ impl<'a, F: Field, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, IS_S
                         self.leb_bytes_last_byte_index as usize,
                         leb_byte,
                     );
-                    let p = LebParams{
+                    let p = LebParams {
                         is_signed: self.is_signed,
                         byte_rel_offset,
                         last_byte_rel_offset: self.leb_bytes_last_byte_index as usize,
@@ -96,7 +99,7 @@ impl<'a, F: Field, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, IS_S
                         offset,
                         true,
                         p,
-                    );
+                    ).unwrap();
                 }
 
                 Ok(())
@@ -110,18 +113,23 @@ impl<'a, F: Field, const IS_SIGNED: bool> Circuit<F> for TestCircuit<'a, F, IS_S
 #[cfg(test)]
 mod leb128_circuit_tests {
     use std::marker::PhantomData;
+
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::halo2curves::bn256::Fr;
     use log::debug;
     use rand::Rng;
+
     use eth_types::Field;
-    use crate::wasm_circuit::leb128_circuit::consts::{EIGHT_LS_BITS_MASK, EIGHT_MS_BIT_MASK, SEVEN_LS_BITS_MASK};
-    use crate::wasm_circuit::leb128_circuit::tests::TestCircuit;
+
+    use crate::wasm_circuit::error::Error;
+    use crate::wasm_circuit::leb128::consts::{EIGHT_LS_BITS_MASK, EIGHT_MS_BIT_MASK, SEVEN_LS_BITS_MASK};
+    use crate::wasm_circuit::leb128::tests::TestCircuit;
+    use crate::wasm_circuit::tests_helpers::break_bit_by_mask;
 
     const ALL_BIT_DEPTHS_BYTES: &[usize] = &[1, 2, 3, 4, 5, 6, 7, 8];
 
     /// unsigned leb repr and last byte index
-    fn convert_to_leb_bytes_unsigned(input_number: u64, align_to_bytes_count: usize) -> (Vec<u8>, usize) {
+    fn convert_to_leb_bytes_unsigned(input_number: u64, align_to_bytes_count: usize) -> Result<(Vec<u8>, usize), Error> {
         let mut bytes = Vec::new();
         let mut last_byte_index: usize = 0;
         let mut number = input_number;
@@ -137,29 +145,23 @@ mod leb128_circuit_tests {
 
         let bytes = bytes.as_mut_slice();
         if bytes.len() == align_to_bytes_count {
-            return (bytes.to_vec(), last_byte_index);
+            return Ok((bytes.to_vec(), last_byte_index));
         }
-        if bytes.len() > align_to_bytes_count {
-            panic!("bytes count is greater than required. input_number {} align_to_bytes_count {} bytes.len() {}", input_number, align_to_bytes_count, bytes.len())
-        }
+        if bytes.len() > align_to_bytes_count { return Err(Error::FatalLeb128AlignOverflow(format!("bytes count is greater than required. input_number {} align_to_bytes_count {} bytes.len() {}", input_number, align_to_bytes_count, bytes.len()))) }
         let mut res_vec = vec![0; align_to_bytes_count];
         for (i, &item) in bytes.iter().enumerate() {
             res_vec[i] = item;
         }
-        (res_vec, last_byte_index)
+        Ok((res_vec, last_byte_index))
     }
 
     /// singed leb repr and last byte index
-    fn convert_to_leb_bytes_signed(input_number: i64, align_to_bytes_count: usize) -> (Vec<u8>, usize) {
-        if input_number >= 0 {
-            panic!("only negative numbers can be converted into signed repr")
-        }
+    fn convert_to_leb_bytes_signed(input_number: i64, align_to_bytes_count: usize) -> Result<(Vec<u8>, usize), Error> {
+        if input_number >= 0 { return Err(Error::FatalLeb128InvalidArgumentValue(format!("only negative numbers can be converted into signed repr"))) }
         let mut bytes = Vec::new();
         let mut last_byte_index: usize = 0;
         let mut number = input_number;
-        if number < 0 {
-            number = -number;
-        }
+        if number < 0 { number = -number }
         let mut twos_complement_val: u64 = 1;
         let mut overflow: u64 = 0;
         let mut is_full_7_bit = false;
@@ -187,61 +189,57 @@ mod leb128_circuit_tests {
 
         let res = bytes.as_mut_slice();
         if res.len() == align_to_bytes_count {
-            return (res.to_vec(), last_byte_index);
+            return Ok((res.to_vec(), last_byte_index));
         }
         if res.len() > align_to_bytes_count {
-            panic!("bytes count is greater than required. input_number {} align_to_bytes_count {} bytes.len() {}", input_number, align_to_bytes_count, bytes.len())
+            return Err(Error::FatalLeb128AlignOverflow(format!("bytes count is greater than required. input_number {} align_to_bytes_count {} bytes.len() {}", input_number, align_to_bytes_count, bytes.len())))
         }
         let mut res_vec = vec![EIGHT_LS_BITS_MASK; align_to_bytes_count];
         for (i, &item) in res.iter().enumerate() {
             res_vec[i] = item;
         }
-        (res_vec, last_byte_index)
+        Ok((res_vec, last_byte_index))
     }
 
-    pub fn convert_to_leb_bytes(is_signed: bool, number: u64, exact_bytes_count: usize) -> (Vec<u8>, usize) {
+    pub fn convert_to_leb_bytes(is_signed: bool, number: u64, exact_bytes_count: usize) -> Result<(Vec<u8>, usize), Error> {
         if !is_signed || number == 0 {
-            return convert_to_leb_bytes_unsigned(number, exact_bytes_count);
+            return Ok(convert_to_leb_bytes_unsigned(number, exact_bytes_count)?);
         }
         let max_signed_value: u64 = i64::MAX as u64;
-        if number >= max_signed_value {
-            panic!("max signed value is {} but given {} (is_signed: {})", max_signed_value, number, is_signed)
-        }
-        convert_to_leb_bytes_signed(if is_signed { -(number as i64) } else { number as i64 }, exact_bytes_count)
+        if number >= max_signed_value { return Err(Error::FatalLeb128Overflow(format!("max signed value is {} but given {} (is_signed: {})", max_signed_value, number, is_signed))) }
+        Ok(convert_to_leb_bytes_signed(
+            if is_signed { -(number as i64) } else { number as i64 },
+            exact_bytes_count,
+        )?)
     }
 
-    pub fn break_bit(byte_to_break: &mut u8, break_mask: u8) {
-        *byte_to_break = (!*byte_to_break & break_mask) | (*byte_to_break & !break_mask);
-    }
-
-    pub fn leb_break_continuation_bit(rng: &mut rand::prelude::ThreadRng, leb128: &mut Vec<u8>) {
+    pub fn leb128_break_continuation_bit(rng: &mut rand::prelude::ThreadRng, leb128: &mut Vec<u8>) {
         let byte_number = rng.gen::<usize>() % leb128.len();
-        break_bit(&mut leb128[byte_number], EIGHT_MS_BIT_MASK);
+        break_bit_by_mask(&mut leb128[byte_number], EIGHT_MS_BIT_MASK);
     }
 
     pub fn leb_break_random_bit(rng: &mut rand::prelude::ThreadRng, leb128: &mut Vec<u8>) {
         let byte_to_break_number = rng.gen::<usize>() % leb128.len();
         let bit_to_break_number = rng.gen::<u64>() % 8;
         let bit_to_break_mask = 1 << bit_to_break_number;
-        break_bit(&mut leb128[byte_to_break_number], bit_to_break_mask);
+        break_bit_by_mask(&mut leb128[byte_to_break_number], bit_to_break_mask);
     }
 
-    pub fn leb_bytes_n_to_max_bit_depth(is_signed: bool, leb_bytes_n: usize) -> usize {
+    pub fn leb128_bytes_n_to_max_bit_depth(is_signed: bool, leb_bytes_n: usize) -> Result<usize, Error> {
         // max bit depth for u64 solid number
         let max_bit_depth: usize = 7 * 9 + 1 - if is_signed { 1 } else { 0 };
         let max_bit_depth_threshold: usize = 7 * (10 - if is_signed { 1 } else { 0 });
         let mut max_bit_depth_computed = leb_bytes_n * 7;
         if is_signed {
-            // TODO recheck
             max_bit_depth_computed -= 1
         }
         if max_bit_depth_computed > max_bit_depth_threshold {
-            panic!("computed max bit depth {} is greater threshold {}. there may be problem in program logic", max_bit_depth_computed, max_bit_depth_threshold)
+            return Err(Error::FatalLeb128ThresholdOverflow(format!("computed max bit depth {} is greater threshold {}. there may be problem in program logic", max_bit_depth_computed, max_bit_depth_threshold)))
         }
         if max_bit_depth_computed > max_bit_depth {
-            return max_bit_depth
+            return Ok(max_bit_depth)
         }
-        max_bit_depth_computed
+        Ok(max_bit_depth_computed)
     }
 
     fn test<'a, F: Field, const IS_SIGNED: bool>(
@@ -262,7 +260,7 @@ mod leb128_circuit_tests {
             IS_SIGNED,
             solid_number,
             LEB_BYTES_N,
-        );
+        ).unwrap();
         debug!(
             "IS_SIGNED:{} solid_number {} leb128 {:x?}",
             IS_SIGNED,
@@ -311,7 +309,7 @@ mod leb128_circuit_tests {
             numbers_to_check.push((IS_SIGNED, 0));
         }
         numbers_to_check.push((IS_SIGNED, 1));
-        for i in 0..leb_bytes_n_to_max_bit_depth(IS_SIGNED, LEB_BYTES_N) - 1 {
+        for i in 0..leb128_bytes_n_to_max_bit_depth(IS_SIGNED, LEB_BYTES_N).unwrap() - 1 {
             let mut val: u64 = 2 << i;
             numbers_to_check.push((IS_SIGNED, val));
 
@@ -328,7 +326,7 @@ mod leb128_circuit_tests {
                 is_signed,
                 solid_number,
                 LEB_BYTES_N,
-            );
+            ).unwrap();
             debug!(
                 "{}. IS_SIGNED:{} solid_number {} leb128 {:x?}",
                 i,
@@ -380,7 +378,7 @@ mod leb128_circuit_tests {
         let mut rng = rand::thread_rng();
         let mut solid_numbers_to_check = Vec::<u64>::new();
         solid_numbers_to_check.push(1);
-        for i in 0..leb_bytes_n_to_max_bit_depth(IS_SIGNED, LEB_BYTES_N) - 1 {
+        for i in 0..leb128_bytes_n_to_max_bit_depth(IS_SIGNED, LEB_BYTES_N).unwrap() - 1 {
             let mut val: u64 = 2 << i;
             solid_numbers_to_check.push(val);
 
@@ -395,9 +393,9 @@ mod leb128_circuit_tests {
                 IS_SIGNED,
                 solid_number,
                 LEB_BYTES_N,
-            );
+            ).unwrap();
 
-            leb_break_continuation_bit(&mut rng, &mut input_number_leb128);
+            leb128_break_continuation_bit(&mut rng, &mut input_number_leb128);
             debug!(
                 "{}. LEB_BYTES_N {} IS_SIGNED:{} solid_number {} leb128 {:x?}",
                 i,
@@ -454,7 +452,7 @@ mod leb128_circuit_tests {
         let mut solid_numbers_to_check = Vec::<u64>::new();
         solid_numbers_to_check.push(0);
         solid_numbers_to_check.push(1);
-        for i in 0..leb_bytes_n_to_max_bit_depth(IS_SIGNED, LEB_BYTES_N) - 1 {
+        for i in 0..leb128_bytes_n_to_max_bit_depth(IS_SIGNED, LEB_BYTES_N).unwrap() - 1 {
             let mut val: u64 = 2 << i;
             solid_numbers_to_check.push(val);
 
@@ -469,7 +467,7 @@ mod leb128_circuit_tests {
                 IS_SIGNED,
                 solid_number,
                 LEB_BYTES_N,
-            );
+            ).unwrap();
 
             leb_break_random_bit(&mut rng, &mut input_number_leb128);
             debug!(

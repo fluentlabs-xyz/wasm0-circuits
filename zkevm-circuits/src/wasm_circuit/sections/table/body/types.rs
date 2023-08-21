@@ -11,4 +11,6 @@ pub enum AssignType {
     IsLimitMax,
 
     LimitType,
+
+    ErrorCode,
 }

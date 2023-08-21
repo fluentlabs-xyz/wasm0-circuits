@@ -7,4 +7,6 @@ pub enum AssignType {
     IsTypeidx,
 
     BodyItemRevCount,
+
+    ErrorCode,
 }
