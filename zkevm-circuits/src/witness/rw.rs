@@ -230,8 +230,8 @@ pub enum Rw {
         rw_counter: usize,
         is_write: bool,
         call_id: usize,
-        memory_address: u64,
-        byte: u8,
+        index_pair: usize,
+        value: StackWord,
     },
     /// Table size
     TableSize {
@@ -436,6 +436,13 @@ impl Rw {
         }
     }
 
+    pub(crate) fn table_value(&self) -> (StackWord, usize) {
+        match self {
+            Self::Table { value, index_pair, .. } => (*value, *index_pair),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn log_value(&self) -> Word {
         match self {
             Self::TxLog { value, .. } => *value,
@@ -453,13 +460,6 @@ impl Rw {
     pub fn memory_value(&self) -> u8 {
         match self {
             Self::Memory { byte, .. } => *byte,
-            _ => unreachable!("{:?}", self),
-        }
-    }
-
-    pub fn table_value(&self) -> u8 {
-        match self {
-            Self::Table { byte, .. } => *byte,
             _ => unreachable!("{:?}", self),
         }
     }
@@ -603,7 +603,9 @@ impl Rw {
                 account_address, ..
             } => Some(*account_address),
             Self::Memory { memory_address, .. } => Some(U256::from(*memory_address).to_address()),
-            Self::Table { memory_address, .. } => Some(U256::from(*memory_address).to_address()),
+            Self::Table { index_pair, .. } => {
+                Some(Address::from_low_u64_be(*index_pair as u64))
+            }
             Self::TableSize { index, .. } => {
                 Some(Address::from_low_u64_be(*index as u64))
             }
@@ -724,7 +726,9 @@ impl Rw {
             Self::TxAccessListAccount { is_warm, .. }
             | Self::TxAccessListAccountStorage { is_warm, .. } => F::from(*is_warm as u64),
             Self::Memory { byte, .. } => F::from(u64::from(*byte)),
-            Self::Table { byte, .. } => F::from(u64::from(*byte)),
+            Self::Table { value, .. } => {
+                value.to_scalar().unwrap()
+            }
             Self::TableSize { value, .. } => {
                 value.to_scalar().unwrap()
             }
@@ -958,6 +962,20 @@ impl From<&operation::OperationContainer> for RwMap {
                 .collect(),
         );
         rws.insert(
+            RwTableTag::Table,
+            container
+                .table
+                .iter()
+                .map(|op| Rw::Table {
+                    rw_counter: op.rwc().into(),
+                    is_write: op.rw().is_write(),
+                    call_id: op.op().call_id(),
+                    index_pair: op.op().address() as usize,
+                    value: *op.op().value(),
+                })
+                .collect(),
+        );
+        rws.insert(
             RwTableTag::TableSize,
             container
                 .table_sizes
@@ -977,22 +995,6 @@ impl From<&operation::OperationContainer> for RwMap {
                 .memory
                 .iter()
                 .map(|op| Rw::Memory {
-                    rw_counter: op.rwc().into(),
-                    is_write: op.rw().is_write(),
-                    call_id: op.op().call_id(),
-                    memory_address: u64::from_le_bytes(
-                        op.op().address().to_le_bytes()[..8].try_into().unwrap(),
-                    ),
-                    byte: op.op().value(),
-                })
-                .collect(),
-        );
-        rws.insert(
-            RwTableTag::Table,
-            container
-                .memory
-                .iter()
-                .map(|op| Rw::Table {
                     rw_counter: op.rwc().into(),
                     is_write: op.rw().is_write(),
                     call_id: op.op().call_id(),

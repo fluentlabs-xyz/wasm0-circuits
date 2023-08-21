@@ -204,26 +204,22 @@ impl Ord for MemoryOp {
     }
 }
 
-
-/// Represents a [`READ`](RW::READ)/[`WRITE`](RW::WRITE) into the memory implied
-/// by an specific [`OpcodeId`](eth_types::evm_types::opcode_ids::OpcodeId) of
-/// the [`ExecStep`](crate::circuit_input_builder::ExecStep).
 #[derive(Clone, PartialEq, Eq)]
 pub struct TableOp {
     /// Call ID
     pub call_id: usize,
-    /// Table Address
-    pub address: TableAddress,
+    /// Table index
+    pub index_pair: u32,
     /// Value
-    pub value: u8,
+    pub value: StackWord,
 }
 
-impl fmt::Debug for TableOp {
+impl Debug for TableOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("TableOp { ")?;
         f.write_fmt(format_args!(
-            "call_id: {:?}, addr: {:?}, value: 0x{:02x}",
-            self.call_id, self.address, self.value
+            "call_id: {:?}, index_pair: {:?}, val: 0x{:x}",
+            self.call_id, self.index_pair, self.value
         ))?;
         f.write_str(" }")
     }
@@ -231,10 +227,10 @@ impl fmt::Debug for TableOp {
 
 impl TableOp {
     /// Create a new instance of a `TableOp` from it's components.
-    pub fn new(call_id: usize, address: TableAddress, value: u8) -> TableOp {
+    pub const fn new(call_id: usize, index_pair: u32, value: StackWord) -> TableOp {
         TableOp {
             call_id,
-            address,
+            index_pair,
             value,
         }
     }
@@ -249,14 +245,14 @@ impl TableOp {
         self.call_id
     }
 
-    /// Returns the [`TableAddress`] associated to this Operation.
-    pub const fn address(&self) -> &TableAddress {
-        &self.address
+    /// Returns the [`StackAddress`] associated to this Operation.
+    pub const fn address(&self) -> u32 {
+        self.index_pair
     }
 
-    /// Returns the bytes read or written by this operation.
-    pub fn value(&self) -> u8 {
-        self.value
+    /// Returns the [`Word`] read or written by this operation.
+    pub const fn value(&self) -> &StackWord {
+        &self.value
     }
 }
 
@@ -278,10 +274,9 @@ impl PartialOrd for TableOp {
 
 impl Ord for TableOp {
     fn cmp(&self, other: &Self) -> Ordering {
-        (&self.call_id, &self.address).cmp(&(&other.call_id, &other.address))
+        (&self.call_id, &self.index_pair).cmp(&(&other.call_id, &other.index_pair))
     }
 }
-
 
 /// Represents a [`READ`](RW::READ)/[`WRITE`](RW::WRITE) into the stack implied
 /// by an specific [`OpcodeId`](eth_types::evm_types::opcode_ids::OpcodeId) of
@@ -400,7 +395,7 @@ impl Debug for TableSizeOp {
 }
 
 impl TableSizeOp {
-    /// Create a new instance of a `StackOp` from it's components.
+    /// Create a new instance of a `TableOp` from it's components.
     pub const fn new(call_id: usize, index: u32, value: StackWord) -> TableSizeOp {
         TableSizeOp {
             call_id,

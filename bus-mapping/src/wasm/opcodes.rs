@@ -37,7 +37,7 @@ use wasm_break::WasmBreakOpcode;
 use wasm_call::WasmCallOpcode;
 use wasm_global::WasmGlobalOpcode;
 use wasm_local::WasmLocalOpcode;
-use wasm_table::WasmTableOpcode;
+//use wasm_table::WasmTableOpcode;
 
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, ExecStep},
