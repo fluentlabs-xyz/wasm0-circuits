@@ -106,7 +106,8 @@ impl<F: Field> ConstraintBuilder<F> {
             cb.build_memory_constraints(q)
         });
         self.condition(q.tag_matches(RwTableTag::Table), |cb| {
-            cb.build_table_constraints(q)
+            //cb.build_table_constraints(q)
+            cb.build_memory_constraints(q)
         });
         self.condition(q.tag_matches(RwTableTag::TableSize), |cb| {
             cb.build_memory_constraints(q)
@@ -260,6 +261,7 @@ impl<F: Field> ConstraintBuilder<F> {
         );
     }
 
+/*
     fn build_table_constraints(&mut self, q: &Queries<F>) {
         // 2.0. Unused keys are 0
         self.require_zero("field_tag is 0 for Memory", q.field_tag());
@@ -297,6 +299,7 @@ impl<F: Field> ConstraintBuilder<F> {
             q.initial_value(),
         );
     }
+*/
 
     fn build_stack_constraints(&mut self, q: &Queries<F>) {
         // 3.0. Unused keys are 0
