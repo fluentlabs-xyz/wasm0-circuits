@@ -21,7 +21,7 @@ use crate::wasm_circuit::{
 struct TestCircuit<'a, F> {
     code_hash: Hash,
     bytecode_bytes: &'a [u8],
-    offset_start: usize,
+    assign_delta_base: usize,
     _marker: PhantomData<F>,
 }
 
@@ -55,7 +55,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 
         let leb128_config = LEB128Chip::<F>::configure(cs, &wb_table.value);
         let leb128_chip = Rc::new(LEB128Chip::construct(leb128_config));
-        let wasm_type_section_item_config = WasmTypeSectionItemChip::configure(
+        let config = WasmTypeSectionItemChip::configure(
             cs,
             wb_table.clone(),
             leb128_chip.clone(),
@@ -64,27 +64,23 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             body_item_rev_count_lv2,
             error_code,
         );
-        let wasm_type_section_item_chip = Rc::new(WasmTypeSectionItemChip::construct(
-            wasm_type_section_item_config,
-        ));
-        let wasm_type_section_body_config = WasmTypeSectionBodyChip::configure(
+        let item_chip = Rc::new(WasmTypeSectionItemChip::construct(config));
+        let config = WasmTypeSectionBodyChip::configure(
             cs,
             wb_table.clone(),
             leb128_chip.clone(),
-            wasm_type_section_item_chip.clone(),
+            item_chip.clone(),
             dynamic_indexes_chip.clone(),
             func_count,
             shared_state.clone(),
             body_item_rev_count_lv1,
             error_code,
         );
-        let wasm_type_section_body_chip = Rc::new(WasmTypeSectionBodyChip::construct(
-            wasm_type_section_body_config,
-        ));
+        let body_chip = Rc::new(WasmTypeSectionBodyChip::construct(config));
         let test_circuit_config = TestCircuitConfig {
-            item_chip: wasm_type_section_item_chip.clone(),
-            body_chip: wasm_type_section_body_chip.clone(),
-            wb_table: wb_table.clone(),
+            item_chip,
+            body_chip,
+            wb_table,
             _marker: Default::default(),
         };
 
@@ -96,16 +92,19 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
+        let assign_delta = self.assign_delta_base;
         let wb = WasmBytecode::new(self.bytecode_bytes.to_vec().clone());
-        config.wb_table.load(&mut layouter, &wb, 0)?;
+        config.wb_table.load(&mut layouter, &wb, assign_delta)?;
         layouter.assign_region(
             || "wasm_type_section_body region",
             |mut region| {
-                let mut offset_start = self.offset_start;
-                while offset_start < wb.bytes.len() {
-                    offset_start = config
+                config.body_chip.config.shared_state.borrow_mut().reset();
+                let assign_delta = self.assign_delta_base;
+                let mut wb_offset = 0;
+                while wb_offset < wb.bytes.len() {
+                    wb_offset = config
                         .body_chip
-                        .assign_auto(&mut region, &wb, offset_start, 0)
+                        .assign_auto(&mut region, &wb, wb_offset, assign_delta)
                         .unwrap();
                 }
 
@@ -121,6 +120,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 mod wasm_type_section_body_tests {
     use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
     use log::debug;
+    use rand::{thread_rng, Rng};
     use wasmbin::sections::Kind;
 
     use bus_mapping::state_db::CodeDB;
@@ -130,8 +130,7 @@ mod wasm_type_section_body_tests {
         common::wat_extract_section_body_bytecode, sections::r#type::body::tests::TestCircuit,
     };
 
-    fn test<'a, F: Field>(test_circuit: TestCircuit<'_, F>, is_ok: bool) {
-        let k = 6;
+    fn test<'a, F: Field>(test_circuit: TestCircuit<'_, F>, is_ok: bool, k: u32) {
         let prover = MockProver::run(k, &test_circuit, vec![]).unwrap();
         if is_ok {
             prover.assert_satisfied();
@@ -140,41 +139,61 @@ mod wasm_type_section_body_tests {
         }
     }
 
+    fn debug_bc(bc: &Vec<u8>) {
+        debug!("bytecode (len {}) hex {:x?} bin {:?}", bc.len(), bc, bc);
+    }
+
     #[test]
     pub fn file1_ok() {
         let bytecode = wat_extract_section_body_bytecode("./test_files/cc1.wat", Kind::Type);
-        debug!(
-            "bytecode (len {}) hex {:x?} bin {:?}",
-            bytecode.len(),
-            bytecode,
-            bytecode
-        );
+        debug_bc(&bytecode);
         let code_hash = CodeDB::hash(&bytecode);
         let test_circuit = TestCircuit::<Fr> {
             code_hash,
             bytecode_bytes: &bytecode,
-            offset_start: 0,
-            _marker: Default::default(),
+            ..Default::default()
         };
-        test(test_circuit, true);
+        test(test_circuit, true, 8);
+    }
+
+    #[test]
+    pub fn file1_random_assign_delta_ok() {
+        let bytecode = wat_extract_section_body_bytecode("./test_files/cc1.wat", Kind::Type);
+        debug_bc(&bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode_bytes: &bytecode,
+            assign_delta_base: thread_rng().gen_range(5..300),
+            ..Default::default()
+        };
+        test(test_circuit, true, 9);
     }
 
     #[test]
     pub fn file2_ok() {
         let bytecode = wat_extract_section_body_bytecode("./test_files/cc2.wat", Kind::Type);
-        debug!(
-            "bytecode (len {}) hex {:x?} bin {:?}",
-            bytecode.len(),
-            bytecode,
-            bytecode
-        );
+        debug_bc(&bytecode);
         let code_hash = CodeDB::hash(&bytecode);
         let test_circuit = TestCircuit::<Fr> {
             code_hash,
             bytecode_bytes: &bytecode,
-            offset_start: 0,
-            _marker: Default::default(),
+            ..Default::default()
         };
-        test(test_circuit, true);
+        test(test_circuit, true, 8);
+    }
+
+    #[test]
+    pub fn file2_random_assign_delta_ok() {
+        let bytecode = wat_extract_section_body_bytecode("./test_files/cc2.wat", Kind::Type);
+        debug_bc(&bytecode);
+        let code_hash = CodeDB::hash(&bytecode);
+        let test_circuit = TestCircuit::<Fr> {
+            code_hash,
+            bytecode_bytes: &bytecode,
+            assign_delta_base: thread_rng().gen_range(5..300),
+            ..Default::default()
+        };
+        test(test_circuit, true, 9);
     }
 }

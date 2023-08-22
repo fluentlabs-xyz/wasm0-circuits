@@ -29,7 +29,7 @@ use crate::{
         leb128::circuit::LEB128Chip,
         sections::{consts::LebParams, table::body::types::AssignType},
         tables::dynamic_indexes::{circuit::DynamicIndexesChip, types::Tag},
-        types::{LimitType, NewWbOffset, SharedState, REF_TYPE_VALUES},
+        types::{LimitType, NewWbOffsetType, SharedState, REF_TYPE_VALUES},
     },
 };
 
@@ -284,7 +284,7 @@ impl<F: Field> WasmTableSectionBodyChip<F> {
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: Rc<WasmBytecodeTable>,
+        wb_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
@@ -301,7 +301,7 @@ impl<F: Field> WasmTableSectionBodyChip<F> {
             Self::construct_limit_type_fields(cs, q_enable, leb128_chip.as_ref());
         Self::configure_limit_type_constraints(
             cs,
-            bytecode_table.as_ref(),
+            wb_table.as_ref(),
             q_enable,
             leb128_chip.as_ref(),
             &limit_type_fields,
@@ -338,7 +338,7 @@ impl<F: Field> WasmTableSectionBodyChip<F> {
 
             let is_limit_type_ctx_expr = vc.query_fixed(is_limit_type_ctx, Rotation::cur());
 
-            let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
             let limit_type_prev_expr = vc.query_advice(limit_type, Rotation::prev());
             let limit_type_expr = vc.query_advice(limit_type, Rotation::cur());
 
@@ -586,7 +586,7 @@ impl<F: Field> WasmTableSectionBodyChip<F> {
         wb: &WasmBytecode,
         wb_offset: usize,
         assign_delta: usize,
-    ) -> Result<NewWbOffset, Error> {
+    ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
 
         // reference_type_count+
@@ -621,7 +621,9 @@ impl<F: Field> WasmTableSectionBodyChip<F> {
         let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
             self.config.shared_state.borrow().dynamic_indexes_offset,
+            assign_delta,
             1,
+            self.config.shared_state.borrow().bytecode_number,
             Tag::TableIndex,
         )?;
         self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;

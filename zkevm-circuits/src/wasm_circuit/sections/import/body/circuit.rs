@@ -33,8 +33,8 @@ use crate::{
         sections::{consts::LebParams, import::body::types::AssignType},
         tables::dynamic_indexes::circuit::DynamicIndexesChip,
         types::{
-            ImportDescType, LimitType, NewWbOffset, RefType, SharedState, IMPORT_DESC_TYPE_VALUES,
-            MUTABILITY_VALUES, REF_TYPE_VALUES,
+            ImportDescType, LimitType, NewWbOffsetType, RefType, SharedState,
+            IMPORT_DESC_TYPE_VALUES, MUTABILITY_VALUES, REF_TYPE_VALUES,
         },
         utf8::circuit::UTF8Chip,
     },
@@ -489,7 +489,7 @@ impl<F: Field> WasmImportSectionBodyChip<F> {
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: Rc<WasmBytecodeTable>,
+        wb_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         utf8_chip: Rc<UTF8Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
@@ -524,7 +524,7 @@ impl<F: Field> WasmImportSectionBodyChip<F> {
             Self::construct_limit_type_fields(cs, q_enable, leb128_chip.as_ref());
         Self::configure_limit_type_constraints(
             cs,
-            bytecode_table.as_ref(),
+            wb_table.as_ref(),
             q_enable,
             leb128_chip.as_ref(),
             &limit_type_fields,
@@ -647,7 +647,7 @@ impl<F: Field> WasmImportSectionBodyChip<F> {
             let is_importdesc_type_ctx_prev_expr = vc.query_fixed(is_importdesc_type_ctx, Rotation::prev());
             let is_importdesc_type_ctx_expr = vc.query_fixed(is_importdesc_type_ctx, Rotation::cur());
 
-            let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
             let importdesc_type_prev_expr = vc.query_advice(importdesc_type, Rotation::prev());
             let importdesc_type_expr = vc.query_advice(importdesc_type, Rotation::cur());
 
@@ -1551,7 +1551,7 @@ impl<F: Field> WasmImportSectionBodyChip<F> {
         wb: &WasmBytecode,
         wb_offset: usize,
         assign_delta: usize,
-    ) -> Result<NewWbOffset, Error> {
+    ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
 
         self.assign(

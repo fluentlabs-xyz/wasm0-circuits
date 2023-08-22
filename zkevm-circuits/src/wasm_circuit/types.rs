@@ -1,17 +1,20 @@
-use crate::wasm_circuit::error::Error;
-use gadgets::util::Expr;
 use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
 use strum_macros::EnumIter;
 
-pub type AssignOffset = usize;
-pub type Offset = usize;
-pub type NewOffset = usize;
-pub type WbOffset = usize;
-pub type NewWbOffset = usize;
+use gadgets::util::Expr;
+
+use crate::wasm_circuit::error::Error;
+
+pub type AssignOffsetType = usize;
+pub type AssignDeltaType = usize;
+pub type OffsetType = usize;
+pub type NewOffsetType = usize;
+pub type WbOffsetType = usize;
+pub type NewWbOffsetType = usize;
 pub type Sn = u64;
-pub type Leb128Length = usize;
-pub type Leb128BytesCount = u8;
-pub type SectionLength = usize;
+pub type Leb128LengthType = usize;
+pub type Leb128BytesCountType = u8;
+pub type SectionLengthType = usize;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AssignType {

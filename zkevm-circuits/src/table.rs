@@ -1,5 +1,29 @@
 //! Table definitions used cross-circuits
 
+use core::iter::once;
+use std::{array, iter::repeat};
+
+#[cfg(feature = "onephase")]
+use halo2_proofs::plonk::FirstPhase as SecondPhase;
+#[cfg(not(feature = "onephase"))]
+use halo2_proofs::plonk::SecondPhase;
+use halo2_proofs::{
+    arithmetic::FieldExt,
+    circuit::{Layouter, Region, Value},
+    plonk::{Advice, Any, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
+    poly::Rotation,
+};
+use itertools::Itertools;
+use strum_macros::{EnumCount, EnumIter};
+
+use bus_mapping::circuit_input_builder::{CopyDataType, CopyEvent, CopyStep, ExpEvent};
+use eth_types::{Field, ToLittleEndian, ToScalar, ToWord, Word, U256};
+use gadgets::{
+    binary_number::{BinaryNumberChip, BinaryNumberConfig},
+    util::{split_u256, split_u256_limb64},
+};
+use keccak256::plain::Keccak;
+
 use crate::{
     copy_circuit::util::number_or_hash_to_field,
     evm_circuit::util::rlc,
@@ -11,30 +35,6 @@ use crate::{
         Rw, RwMap, RwRow, Transaction,
     },
 };
-use bus_mapping::circuit_input_builder::{CopyDataType, CopyEvent, CopyStep, ExpEvent};
-use core::iter::once;
-use eth_types::{Field, ToLittleEndian, ToScalar, ToWord, Word, U256};
-use gadgets::{
-    binary_number::{BinaryNumberChip, BinaryNumberConfig},
-    util::{split_u256, split_u256_limb64},
-};
-use halo2_proofs::{
-    arithmetic::FieldExt,
-    circuit::{Layouter, Region, Value},
-    plonk::{Advice, Any, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
-    poly::Rotation,
-};
-use std::iter::repeat;
-
-#[cfg(feature = "onephase")]
-use halo2_proofs::plonk::FirstPhase as SecondPhase;
-#[cfg(not(feature = "onephase"))]
-use halo2_proofs::plonk::SecondPhase;
-
-use itertools::Itertools;
-use keccak256::plain::Keccak;
-use std::array;
-use strum_macros::{EnumCount, EnumIter};
 
 /// Trait used to define lookup tables
 pub trait LookupTable<F: Field> {
@@ -415,8 +415,9 @@ impl From<RwTableTag> for usize {
 #[derive(Clone, Copy, Debug, EnumIter, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AccountFieldTag {
     /// Variant representing the poseidon hash of an account's code.
-    CodeHash = 0, /* we need this to match to the field tag of AccountStorage, which is
-                   * always 0 */
+    CodeHash = 0,
+    /* we need this to match to the field tag of AccountStorage, which is
+     * always 0 */
     /// Nonce field
     Nonce,
     /// Balance field
@@ -579,6 +580,7 @@ impl<F: Field> LookupTable<F> for RwTable {
         ]
     }
 }
+
 impl RwTable {
     /// Construct a new RwTable
     pub fn construct<F: FieldExt>(meta: &mut ConstraintSystem<F>) -> Self {
@@ -940,6 +942,7 @@ impl PoseidonTable {
         &self,
         layouter: &mut impl Layouter<F>,
         inputs: impl IntoIterator<Item = &'a Vec<u8>> + Clone,
+        assign_delta: usize,
     ) -> Result<(), Error> {
         use crate::bytecode_circuit::bytecode_unroller::{
             unroll_to_hash_input_default, HASHBLOCK_BYTES_IN_FIELD,
@@ -950,7 +953,7 @@ impl PoseidonTable {
         layouter.assign_region(
             || "poseidon table",
             |mut region| {
-                let mut offset = 0;
+                let mut offset = assign_delta;
                 let poseidon_table_columns =
                     <PoseidonTable as LookupTable<F>>::advice_columns(self);
 
@@ -1318,7 +1321,8 @@ pub struct KeccakTable {
     /// True when the row is final
     pub is_final: Column<Advice>,
     /// Byte array input as `RLC(reversed(input))`
-    pub input_rlc: Column<Advice>, // RLC of input bytes
+    pub input_rlc: Column<Advice>,
+    // RLC of input bytes
     /// Byte array input length
     pub input_len: Column<Advice>,
     /// RLC of the hash result

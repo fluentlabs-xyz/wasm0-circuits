@@ -22,7 +22,7 @@ use crate::{
         error::{remap_error_to_assign_at, Error},
         leb128::circuit::LEB128Chip,
         sections::{consts::LebParams, start::body::types::AssignType},
-        types::{NewWbOffset, SharedState},
+        types::{NewWbOffsetType, SharedState},
     },
 };
 
@@ -33,7 +33,7 @@ pub struct WasmStartSectionBodyConfig<F: Field> {
     pub q_last: Column<Fixed>,
     pub is_func_index: Column<Fixed>,
 
-    pub bytecode_table: Rc<WasmBytecodeTable>,
+    pub wb_table: Rc<WasmBytecodeTable>,
     pub leb128_chip: Rc<LEB128Chip<F>>,
 
     pub func_count: Column<Advice>,
@@ -170,7 +170,7 @@ impl<F: Field> WasmStartSectionBodyChip<F> {
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: Rc<WasmBytecodeTable>,
+        wb_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
@@ -196,7 +196,7 @@ impl<F: Field> WasmStartSectionBodyChip<F> {
             let is_func_index_expr = vc.query_fixed(is_func_index, Rotation::cur());
             let is_func_index_prev_expr = vc.query_fixed(is_func_index, Rotation::prev());
 
-            let _byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let _byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
 
             let leb128_q_enable_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur());
             let leb128_is_first_byte_expr =
@@ -264,7 +264,7 @@ impl<F: Field> WasmStartSectionBodyChip<F> {
             q_first,
             q_last,
             is_func_index,
-            bytecode_table,
+            wb_table,
             leb128_chip,
             func_count,
             error_code,
@@ -280,7 +280,7 @@ impl<F: Field> WasmStartSectionBodyChip<F> {
         wb: &WasmBytecode,
         wb_offset: usize,
         assign_delta: usize,
-    ) -> Result<NewWbOffset, Error> {
+    ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
 
         let (_funcs_index, funcs_index_leb_len) = self.markup_leb_section(

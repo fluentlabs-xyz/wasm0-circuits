@@ -42,6 +42,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         let wb_table = Rc::new(WasmBytecodeTable::construct(cs, false));
         let func_count = cs.advice_column();
         let error_code = cs.advice_column();
+        let bytecode_number = cs.advice_column();
         let body_item_rev_count = cs.advice_column();
 
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
@@ -61,6 +62,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             shared_state.clone(),
             body_item_rev_count,
             error_code,
+            bytecode_number,
         );
         let wasm_global_section_body_chip =
             WasmGlobalSectionBodyChip::construct(wasm_global_section_body_config);

@@ -1,14 +1,14 @@
-use crate::wasm_circuit::{bytecode::bytecode::WasmBytecode, types::AssignOffset};
+use crate::wasm_circuit::{bytecode::bytecode::WasmBytecode, types::AssignOffsetType};
 use strum_macros::EnumIter;
 
 #[derive(Debug, Clone, EnumIter, PartialEq)]
 pub enum Error {
-    IndexOutOfBoundsAt(AssignOffset),
-    AssignAt(AssignOffset),
-    InvalidByteValueAt(AssignOffset),
-    ParseOpcodeFailedAt(AssignOffset),
-    InvalidEnumValueAt(AssignOffset),
-    ComputeValueAt(AssignOffset),
+    IndexOutOfBoundsAt(AssignOffsetType),
+    AssignAt(AssignOffsetType),
+    InvalidByteValueAt(AssignOffsetType),
+    ParseOpcodeFailedAt(AssignOffsetType),
+    InvalidEnumValueAt(AssignOffsetType),
+    ComputeValueAt(AssignOffsetType),
 
     InvalidEnumValue,
     IndexOutOfBoundsSimple,

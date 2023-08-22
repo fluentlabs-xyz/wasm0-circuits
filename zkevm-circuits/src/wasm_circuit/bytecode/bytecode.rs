@@ -1,6 +1,7 @@
+use halo2_proofs::circuit::Value;
+
 use bus_mapping::state_db::CodeDB;
 use eth_types::{Field, ToScalar, ToWord, Word};
-use halo2_proofs::circuit::Value;
 
 #[derive(Clone, Debug)]
 pub struct WasmBytecode {
@@ -39,8 +40,6 @@ impl WasmBytecode {
 
 impl From<&eth_types::bytecode::Bytecode> for WasmBytecode {
     fn from(b: &eth_types::bytecode::Bytecode) -> Self {
-        // TODO use stack word ?
-        let code_hash = CodeDB::hash(&b.code());
         WasmBytecode::new(b.to_vec())
     }
 }

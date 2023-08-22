@@ -42,6 +42,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         let wb_table = Rc::new(WasmBytecodeTable::construct(cs, false));
         let func_count = cs.advice_column();
         let error_code = cs.advice_column();
+        let bytecode_number = cs.advice_column();
         let body_byte_rev_index = cs.advice_column();
         let body_item_rev_count = cs.advice_column();
 
@@ -63,6 +64,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             body_byte_rev_index,
             body_item_rev_count,
             error_code,
+            bytecode_number,
         );
         let wasm_data_section_body_chip =
             WasmDataSectionBodyChip::construct(wasm_data_section_body_config);

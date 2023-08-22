@@ -34,7 +34,7 @@ use crate::{
             circuit::DynamicIndexesChip,
             types::{LookupArgsParams, Tag},
         },
-        types::{MemSegmentType, NewWbOffset, NumericInstruction, SharedState},
+        types::{MemSegmentType, NewWbOffsetType, NumericInstruction, SharedState},
     },
 };
 
@@ -382,7 +382,7 @@ impl<F: Field> WasmDataSectionBodyChip<F> {
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: Rc<WasmBytecodeTable>,
+        wb_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
@@ -390,6 +390,7 @@ impl<F: Field> WasmDataSectionBodyChip<F> {
         body_byte_rev_index: Column<Advice>,
         body_item_rev_count: Column<Advice>,
         error_code: Column<Advice>,
+        bytecode_number: Column<Advice>,
     ) -> WasmDataSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -424,6 +425,7 @@ impl<F: Field> WasmDataSectionBodyChip<F> {
                     );
                 LookupArgsParams {
                     cond,
+                    bytecode_number: vc.query_advice(bytecode_number, Rotation::cur()),
                     index: vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
                     tag: Tag::DataIndex.expr(),
                     is_terminator: true.expr(),
@@ -500,7 +502,7 @@ impl<F: Field> WasmDataSectionBodyChip<F> {
             let is_mem_segment_type_ctx_prev_expr = vc.query_fixed(is_mem_segment_type_ctx, Rotation::prev());
             let is_mem_segment_type_ctx_expr = vc.query_fixed(is_mem_segment_type_ctx, Rotation::cur());
 
-            let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
             let mem_segment_type_expr = vc.query_advice(mem_segment_type, Rotation::cur());
 
             let leb128_is_last_byte_expr = vc.query_fixed(leb128_chip.config.is_last_byte, Rotation::cur());
@@ -1045,7 +1047,7 @@ impl<F: Field> WasmDataSectionBodyChip<F> {
         wb: &WasmBytecode,
         wb_offset: usize,
         assign_delta: usize,
-    ) -> Result<NewWbOffset, Error> {
+    ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
 
         // items_count+
@@ -1080,7 +1082,9 @@ impl<F: Field> WasmDataSectionBodyChip<F> {
         let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
             self.config.shared_state.borrow().dynamic_indexes_offset,
+            assign_delta,
             items_count as usize,
+            self.config.shared_state.borrow().bytecode_number,
             Tag::DataIndex,
         )?;
         self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;

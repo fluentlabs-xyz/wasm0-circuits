@@ -516,7 +516,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: Rc<WasmBytecodeTable>,
+        wb_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
@@ -550,32 +550,20 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
         let config = CodeBlocksChip::configure(cs);
         let code_blocks_chip = Rc::new(CodeBlocksChip::construct(config));
 
-        let config = BinaryNumberChip::configure(
-            cs,
-            is_numeric_instruction,
-            Some(bytecode_table.value.into()),
-        );
+        let config =
+            BinaryNumberChip::configure(cs, is_numeric_instruction, Some(wb_table.value.into()));
         let numeric_instructions_chip = Rc::new(BinaryNumberChip::construct(config));
 
-        let config = BinaryNumberChip::configure(
-            cs,
-            is_control_instruction,
-            Some(bytecode_table.value.into()),
-        );
+        let config =
+            BinaryNumberChip::configure(cs, is_control_instruction, Some(wb_table.value.into()));
         let control_instruction_chip = Rc::new(BinaryNumberChip::construct(config));
 
-        let config = BinaryNumberChip::configure(
-            cs,
-            is_parametric_instruction,
-            Some(bytecode_table.value.into()),
-        );
+        let config =
+            BinaryNumberChip::configure(cs, is_parametric_instruction, Some(wb_table.value.into()));
         let parametric_instruction_chip = Rc::new(BinaryNumberChip::construct(config));
 
-        let config = BinaryNumberChip::configure(
-            cs,
-            is_variable_instruction,
-            Some(bytecode_table.value.into()),
-        );
+        let config =
+            BinaryNumberChip::configure(cs, is_variable_instruction, Some(wb_table.value.into()));
         let variable_instruction_chip = Rc::new(BinaryNumberChip::construct(config));
 
         let config = LtChip::configure(
@@ -723,7 +711,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
 
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let block_opcode_number_expr = vc.query_advice(block_opcode_number, Rotation::cur());
-            let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
 
             let block_opcode_number_increased_expr = control_opcode_is_block_expr.clone()
                 + control_opcode_is_loop_expr.clone()
@@ -774,7 +762,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
 
             let leb128_q_enable_expr = vc.query_fixed(leb128_chip.config.q_enable, Rotation::cur());
 
-            let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
             let block_level_expr = vc.query_advice(block_level, Rotation::cur());
 
             let leb128_is_last_byte_expr = vc.query_fixed(leb128_chip.config.is_last_byte, Rotation::cur());

@@ -26,7 +26,7 @@ use crate::{
             consts::LebParams,
             r#type::item::{consts::Type::FuncType, types::AssignType},
         },
-        types::{NewWbOffset, NumType, SharedState},
+        types::{NewWbOffsetType, NumType, SharedState},
     },
 };
 
@@ -255,7 +255,7 @@ impl<F: Field> WasmTypeSectionItemChip<F> {
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: Rc<WasmBytecodeTable>,
+        wb_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
@@ -334,7 +334,7 @@ impl<F: Field> WasmTypeSectionItemChip<F> {
             let is_output_count_expr = vc.query_fixed(is_output_count, Rotation::cur());
             let is_output_type_expr = vc.query_fixed(is_output_type, Rotation::cur());
 
-            let byte_value_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let byte_value_expr = vc.query_advice(wb_table.value, Rotation::cur());
 
             let leb128_is_last_byte_expr =
                 vc.query_fixed(leb128_chip.config.is_last_byte, Rotation::cur());
@@ -494,7 +494,7 @@ impl<F: Field> WasmTypeSectionItemChip<F> {
         wb: &WasmBytecode,
         wb_offset: usize,
         assign_delta: usize,
-    ) -> Result<NewWbOffset, Error> {
+    ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
         // is_type{1}
         self.assign(
@@ -502,16 +502,7 @@ impl<F: Field> WasmTypeSectionItemChip<F> {
             wb,
             offset,
             assign_delta,
-            &[AssignType::IsType],
-            1,
-            None,
-        )?;
-        self.assign(
-            region,
-            &wb,
-            offset,
-            assign_delta,
-            &[AssignType::QFirst],
+            &[AssignType::IsType, AssignType::QFirst],
             1,
             None,
         )?;

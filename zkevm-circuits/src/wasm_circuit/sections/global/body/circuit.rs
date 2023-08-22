@@ -31,7 +31,7 @@ use crate::{
             circuit::DynamicIndexesChip,
             types::{LookupArgsParams, Tag},
         },
-        types::{NewWbOffset, NumType, NumericInstruction, SharedState, NUM_TYPE_VALUES},
+        types::{NewWbOffsetType, NumType, NumericInstruction, SharedState, NUM_TYPE_VALUES},
     },
 };
 
@@ -318,13 +318,14 @@ impl<F: Field> WasmGlobalSectionBodyChip<F> {
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: Rc<WasmBytecodeTable>,
+        wb_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
         body_item_rev_count: Column<Advice>,
         error_code: Column<Advice>,
+        bytecode_number: Column<Advice>,
     ) -> WasmGlobalSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -355,6 +356,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F> {
                     );
                 LookupArgsParams {
                     cond,
+                    bytecode_number: vc.query_advice(bytecode_number, Rotation::cur()),
                     index: vc.query_advice(leb128_chip.config.sn, Rotation::cur()),
                     tag: Tag::GlobalIndex.expr(),
                     is_terminator: true.expr(),
@@ -397,7 +399,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F> {
             let is_init_val_expr = vc.query_fixed(is_init_val, Rotation::cur());
             let is_expr_delimiter_expr = vc.query_fixed(is_expr_delimiter, Rotation::cur());
 
-            let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
 
             let global_type_expr = vc.query_advice(global_type, Rotation::cur());
 
@@ -665,7 +667,7 @@ impl<F: Field> WasmGlobalSectionBodyChip<F> {
         wb: &WasmBytecode,
         wb_offset: usize,
         assign_delta: usize,
-    ) -> Result<NewWbOffset, Error> {
+    ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
 
         let (items_count, items_count_leb_len) = self.markup_leb_section(
@@ -690,7 +692,9 @@ impl<F: Field> WasmGlobalSectionBodyChip<F> {
         let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
             self.config.shared_state.borrow().dynamic_indexes_offset,
+            assign_delta,
             items_count as usize,
+            self.config.shared_state.borrow().bytecode_number,
             Tag::GlobalIndex,
         )?;
         self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;
