@@ -42,7 +42,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     }
 
     fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
-        let wb_table = Rc::new(WasmBytecodeTable::construct(cs));
+        let wb_table = Rc::new(WasmBytecodeTable::construct(cs, false));
         let func_count = cs.advice_column();
         let error_code = cs.advice_column();
         let body_byte_rev_index = cs.advice_column();
@@ -91,18 +91,19 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let wb = WasmBytecode::new(self.bytecode.to_vec().clone(), self.code_hash.to_word());
-        config.wb_table.load(&mut layouter, &wb, false, 0)?;
+        let wb = WasmBytecode::new(self.bytecode.to_vec().clone());
+        let assign_delta = 0;
+        config.wb_table.load(&mut layouter, &wb, assign_delta)?;
         config.range_table_config_0_128.load(&mut layouter)?;
         layouter.assign_region(
             || "wasm_import_section_body region",
             |mut region| {
                 config.body_chip.shared_state().borrow_mut().reset();
-                let mut offset_start = self.offset_start;
-                while offset_start < wb.bytes.len() {
-                    offset_start = config
+                let mut start = self.offset_start;
+                while start < wb.bytes.len() {
+                    start = config
                         .body_chip
-                        .assign_auto(&mut region, &wb, offset_start, 0)
+                        .assign_auto(&mut region, &wb, start, assign_delta)
                         .unwrap();
                 }
 
@@ -151,7 +152,7 @@ mod wasm_import_section_body_tests {
             code_hash,
             bytecode: &bytecode,
             offset_start: 0,
-            _marker: Default::default(),
+            ..Default::default()
         };
         test(test_circuit, true);
     }

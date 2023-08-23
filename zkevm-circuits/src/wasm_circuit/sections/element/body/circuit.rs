@@ -1,30 +1,36 @@
-use std::cell::RefCell;
-use std::marker::PhantomData;
-use std::rc::Rc;
+use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 use halo2_proofs::{
-    plonk::{Column, ConstraintSystem},
+    circuit::{Region, Value},
+    plonk::{Advice, Column, ConstraintSystem, Fixed},
+    poly::Rotation,
 };
-use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Advice, Fixed};
-use halo2_proofs::poly::Rotation;
 use log::debug;
 
 use eth_types::Field;
-use gadgets::binary_number::BinaryNumberChip;
-use gadgets::util::{and, Expr, not, or};
+use gadgets::{
+    binary_number::BinaryNumberChip,
+    util::{and, not, or, Expr},
+};
 
-use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::bytecode::bytecode::WasmBytecode;
-use crate::wasm_circuit::bytecode::bytecode_table::WasmBytecodeTable;
-use crate::wasm_circuit::common::{WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip, WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip};
-use crate::wasm_circuit::common::{configure_constraints_for_q_first_and_q_last, configure_transition_check};
-use crate::wasm_circuit::error::{Error, remap_error_to_assign_at, remap_error_to_invalid_enum_value_at};
-use crate::wasm_circuit::leb128::circuit::LEB128Chip;
-use crate::wasm_circuit::sections::consts::LebParams;
-use crate::wasm_circuit::sections::element::body::consts::ElementType;
-use crate::wasm_circuit::sections::element::body::types::AssignType;
-use crate::wasm_circuit::types::SharedState;
+use crate::{
+    evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
+    wasm_circuit::{
+        bytecode::{bytecode::WasmBytecode, bytecode_table::WasmBytecodeTable},
+        common::{
+            configure_constraints_for_q_first_and_q_last, configure_transition_check,
+            WasmAssignAwareChip, WasmCountPrefixedItemsAwareChip, WasmErrorAwareChip,
+            WasmFuncCountAwareChip, WasmMarkupLeb128SectionAwareChip, WasmSharedStateAwareChip,
+        },
+        error::{remap_error_to_assign_at, remap_error_to_invalid_enum_value_at, Error},
+        leb128::circuit::LEB128Chip,
+        sections::{
+            consts::LebParams,
+            element::body::{consts::ElementType, types::AssignType},
+        },
+        types::{NewOffset, NewWbOffset, SharedState},
+    },
+};
 
 #[derive(Debug, Clone)]
 pub struct WasmElementSectionBodyConfig<F: Field> {
@@ -70,15 +76,21 @@ impl<F: Field> WasmMarkupLeb128SectionAwareChip<F> for WasmElementSectionBodyChi
 impl<F: Field> WasmCountPrefixedItemsAwareChip<F> for WasmElementSectionBodyChip<F> {}
 
 impl<F: Field> WasmErrorAwareChip<F> for WasmElementSectionBodyChip<F> {
-    fn error_code_col(&self) -> Column<Advice> { self.config.error_code }
+    fn error_code_col(&self) -> Column<Advice> {
+        self.config.error_code
+    }
 }
 
 impl<F: Field> WasmSharedStateAwareChip<F> for WasmElementSectionBodyChip<F> {
-    fn shared_state(&self) -> Rc<RefCell<SharedState>> { self.config.shared_state.clone() }
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
+        self.config.shared_state.clone()
+    }
 }
 
 impl<F: Field> WasmFuncCountAwareChip<F> for WasmElementSectionBodyChip<F> {
-    fn func_count_col(&self) -> Column<Advice> { self.config.func_count }
+    fn func_count_col(&self) -> Column<Advice> {
+        self.config.func_count
+    }
 }
 
 impl<F: Field> WasmAssignAwareChip<F> for WasmElementSectionBodyChip<F> {
@@ -98,19 +110,17 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmElementSectionBodyChip<F> {
         let assign_offset = wb_offset + assign_delta;
         let byte_val = wb.bytes[wb_offset];
         debug!(
-            "assign at offset {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
-            assign_offset,
-            q_enable,
-            assign_types,
-            assign_value,
-            byte_val,
+            "assign at {} q_enable {} assign_types {:?} assign_value {} byte_val {:x?}",
+            assign_offset, q_enable, assign_types, assign_value, byte_val,
         );
-        region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, assign_offset),
-            self.config.q_enable,
-            assign_offset,
-            || Value::known(F::from(q_enable as u64)),
-        ).map_err(remap_error_to_assign_at(assign_offset))?;
+        region
+            .assign_fixed(
+                || format!("assign 'q_enable' val {} at {}", q_enable, assign_offset),
+                self.config.q_enable,
+                assign_offset,
+                || Value::known(F::from(q_enable as u64)),
+            )
+            .map_err(remap_error_to_assign_at(assign_offset))?;
         self.assign_func_count(region, assign_offset)?;
 
         for assign_type in assign_types {
@@ -119,135 +129,215 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmElementSectionBodyChip<F> {
                 AssignType::IsNumericInstructionLebArg,
                 AssignType::IsFuncsIdxCount,
                 AssignType::IsFuncIdx,
-            ].contains(&assign_type) {
+            ]
+            .contains(&assign_type)
+            {
                 let p = leb_params.unwrap();
-                self.config.leb128_chip.assign(
-                    region,
-                    assign_offset,
-                    q_enable,
-                    p,
-                )?;
+                self.config
+                    .leb128_chip
+                    .assign(region, assign_offset, q_enable, p)?;
             }
             match assign_type {
                 AssignType::QFirst => {
-                    region.assign_fixed(
-                        || format!("assign 'q_first' val {} at {}", assign_value, assign_offset),
-                        self.config.q_first,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'q_first' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.q_first,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::QLast => {
-                    region.assign_fixed(
-                        || format!("assign 'q_last' val {} at {}", assign_value, assign_offset),
-                        self.config.q_last,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || format!("assign 'q_last' val {} at {}", assign_value, assign_offset),
+                            self.config.q_last,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsItemsCount => {
-                    region.assign_fixed(
-                        || format!("assign 'is_items_count' val {} at {}", assign_value, assign_offset),
-                        self.config.is_items_count,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_items_count' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_items_count,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsElemTypeCtx => {
-                    region.assign_fixed(
-                        || format!("assign 'is_elem_type_ctx' val {} at {}", 1, assign_offset),
-                        self.config.is_elem_type_ctx,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || format!("assign 'is_elem_type_ctx' val {} at {}", 1, assign_offset),
+                            self.config.is_elem_type_ctx,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsElemType => {
-                    region.assign_fixed(
-                        || format!("assign 'is_elem_type' val {} at {}", assign_value, assign_offset),
-                        self.config.is_elem_type,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_elem_type' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_elem_type,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsNumericInstruction => {
-                    region.assign_fixed(
-                        || format!("assign 'is_numeric_instruction' val {} at {}", assign_value, assign_offset),
-                        self.config.is_numeric_instruction,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_numeric_instruction' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_numeric_instruction,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsNumericInstructionLebArg => {
-                    region.assign_fixed(
-                        || format!("assign 'is_numeric_instruction_leb_arg' val {} at {}", assign_value, assign_offset),
-                        self.config.is_numeric_instruction_leb_arg,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_numeric_instruction_leb_arg' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_numeric_instruction_leb_arg,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsBlockEnd => {
-                    region.assign_fixed(
-                        || format!("assign 'is_block_end' val {} at {}", assign_value, assign_offset),
-                        self.config.is_block_end,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_block_end' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_block_end,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsFuncsIdxCount => {
-                    region.assign_fixed(
-                        || format!("assign 'is_funcs_idx_count' val {} at {}", assign_value, assign_offset),
-                        self.config.is_funcs_idx_count,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_funcs_idx_count' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_funcs_idx_count,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsFuncIdx => {
-                    region.assign_fixed(
-                        || format!("assign 'is_func_idx' val {} at {}", assign_value, assign_offset),
-                        self.config.is_func_idx,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_func_idx' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_func_idx,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::IsElemKind => {
-                    region.assign_fixed(
-                        || format!("assign 'is_elem_kind' val {} at {}", assign_value, assign_offset),
-                        self.config.is_elem_kind,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_fixed(
+                            || {
+                                format!(
+                                    "assign 'is_elem_kind' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.is_elem_kind,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::ElemType => {
-                    region.assign_advice(
-                        || format!("assign 'elem_type' val {} at {}", assign_value, assign_offset),
-                        self.config.elem_type,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
-                    let opcode: ElementType = (assign_value as u8).try_into().map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
-                    self.config.elem_type_chip.assign(
-                        region,
-                        assign_offset,
-                        &opcode,
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_advice(
+                            || {
+                                format!(
+                                    "assign 'elem_type' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.elem_type,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
+                    let opcode: ElementType = (assign_value as u8)
+                        .try_into()
+                        .map_err(remap_error_to_invalid_enum_value_at(assign_offset))?;
+                    self.config
+                        .elem_type_chip
+                        .assign(region, assign_offset, &opcode)
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::BodyItemRevCount => {
-                    region.assign_advice(
-                        || format!("assign 'body_item_rev_count' val {} at {}", assign_value, assign_offset),
-                        self.config.body_item_rev_count,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    ).map_err(remap_error_to_assign_at(assign_offset))?;
+                    region
+                        .assign_advice(
+                            || {
+                                format!(
+                                    "assign 'body_item_rev_count' val {} at {}",
+                                    assign_value, assign_offset
+                                )
+                            },
+                            self.config.body_item_rev_count,
+                            assign_offset,
+                            || Value::known(F::from(assign_value)),
+                        )
+                        .map_err(remap_error_to_assign_at(assign_offset))?;
                 }
                 AssignType::ErrorCode => {}
             }
-        };
+        }
         Ok(())
     }
 }
 
-impl<F: Field> WasmElementSectionBodyChip<F>
-{
+impl<F: Field> WasmElementSectionBodyChip<F> {
     pub fn construct(config: WasmElementSectionBodyConfig<F>) -> Self {
         let instance = Self {
             config,
@@ -279,11 +369,7 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         let is_elem_kind = cs.fixed_column();
 
         let elem_type = cs.advice_column();
-        let config = BinaryNumberChip::configure(
-            cs,
-            is_elem_type_ctx,
-            Some(elem_type.into()),
-        );
+        let config = BinaryNumberChip::configure(cs, is_elem_type_ctx, Some(elem_type.into()));
         let elem_type_chip = Rc::new(BinaryNumberChip::construct(config));
 
         Self::configure_count_prefixed_items_checks(
@@ -292,13 +378,15 @@ impl<F: Field> WasmElementSectionBodyChip<F>
             body_item_rev_count,
             |vc| vc.query_fixed(is_items_count, Rotation::cur()),
             |vc| {
-                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(vc, q_enable, &shared_state.borrow(), error_code);
+                let q_enable_expr = Self::get_selector_expr_enriched_with_error_processing(
+                    vc,
+                    q_enable,
+                    &shared_state.borrow(),
+                    error_code,
+                );
                 let is_items_count_expr = vc.query_fixed(is_items_count, Rotation::cur());
 
-                and::expr([
-                    q_enable_expr,
-                    not::expr(is_items_count_expr),
-                ])
+                and::expr([q_enable_expr, not::expr(is_items_count_expr)])
             },
             |vc| vc.query_fixed(is_elem_type, Rotation::cur()),
             |vc| vc.query_fixed(q_last, Rotation::cur()),
@@ -681,14 +769,13 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         config
     }
 
-    /// returns new offset
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
         assign_delta: usize,
-    ) -> Result<usize, Error> {
+    ) -> Result<NewWbOffset, Error> {
         let mut offset = wb_offset;
 
         // items_count+
@@ -711,7 +798,15 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 None,
             )?;
         }
-        self.assign(region, &wb, offset, assign_delta, &[AssignType::QFirst], 1, None)?;
+        self.assign(
+            region,
+            &wb,
+            offset,
+            assign_delta,
+            &[AssignType::QFirst],
+            1,
+            None,
+        )?;
         offset += items_count_leb_len;
 
         for _item_index in 0..items_count {
@@ -720,7 +815,9 @@ impl<F: Field> WasmElementSectionBodyChip<F>
 
             // elem_type{1}
             let elem_type_val = wb.bytes[offset];
-            let elem_type: ElementType = elem_type_val.try_into().map_err(remap_error_to_invalid_enum_value_at(offset + assign_delta))?;
+            let elem_type: ElementType = elem_type_val
+                .try_into()
+                .map_err(remap_error_to_invalid_enum_value_at(offset + assign_delta))?;
             let elem_type_val = elem_type_val as u64;
             self.assign(
                 region,
@@ -731,7 +828,15 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                 1,
                 None,
             )?;
-            self.assign(region, wb, offset, assign_delta, &[AssignType::ElemType], elem_type_val, None)?;
+            self.assign(
+                region,
+                wb,
+                offset,
+                assign_delta,
+                &[AssignType::ElemType],
+                elem_type_val,
+                None,
+            )?;
             offset += 1;
 
             match elem_type {
@@ -746,19 +851,39 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         1,
                         None,
                     )?;
-                    self.assign(region, wb, offset, assign_delta, &[AssignType::ElemType], elem_type_val, None)?;
-                    offset += 1;
-
-                    // numeric_instruction_leb_arg+
-                    let (_numeric_instruction_leb_arg, numeric_instruction_leb_arg_leb_len) = self.markup_leb_section(
+                    self.assign(
                         region,
                         wb,
                         offset,
                         assign_delta,
-                        &[AssignType::IsNumericInstructionLebArg, AssignType::IsElemTypeCtx],
+                        &[AssignType::ElemType],
+                        elem_type_val,
+                        None,
                     )?;
+                    offset += 1;
+
+                    // numeric_instruction_leb_arg+
+                    let (_numeric_instruction_leb_arg, numeric_instruction_leb_arg_leb_len) = self
+                        .markup_leb_section(
+                            region,
+                            wb,
+                            offset,
+                            assign_delta,
+                            &[
+                                AssignType::IsNumericInstructionLebArg,
+                                AssignType::IsElemTypeCtx,
+                            ],
+                        )?;
                     for offset in offset..offset + numeric_instruction_leb_arg_leb_len {
-                        self.assign(region, wb, offset, assign_delta, &[AssignType::ElemType], elem_type_val, None)?;
+                        self.assign(
+                            region,
+                            wb,
+                            offset,
+                            assign_delta,
+                            &[AssignType::ElemType],
+                            elem_type_val,
+                            None,
+                        )?;
                     }
                     offset += numeric_instruction_leb_arg_leb_len;
 
@@ -772,7 +897,15 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         1,
                         None,
                     )?;
-                    self.assign(region, wb, offset, assign_delta, &[AssignType::ElemType], elem_type_val, None)?;
+                    self.assign(
+                        region,
+                        wb,
+                        offset,
+                        assign_delta,
+                        &[AssignType::ElemType],
+                        elem_type_val,
+                        None,
+                    )?;
                     offset += 1;
 
                     // funcs_idx_count+
@@ -784,7 +917,15 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         &[AssignType::IsFuncsIdxCount, AssignType::IsElemTypeCtx],
                     )?;
                     for offset in offset..offset + funcs_idx_count_leb_len {
-                        self.assign(region, wb, offset, assign_delta, &[AssignType::ElemType], elem_type_val, None)?;
+                        self.assign(
+                            region,
+                            wb,
+                            offset,
+                            assign_delta,
+                            &[AssignType::ElemType],
+                            elem_type_val,
+                            None,
+                        )?;
                     }
                     offset += funcs_idx_count_leb_len;
 
@@ -798,7 +939,15 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                             &[AssignType::IsFuncIdx, AssignType::IsElemTypeCtx],
                         )?;
                         for offset in offset..offset + func_idx_leb_len {
-                            self.assign(region, wb, offset, assign_delta, &[AssignType::ElemType], elem_type_val, None)?;
+                            self.assign(
+                                region,
+                                wb,
+                                offset,
+                                assign_delta,
+                                &[AssignType::ElemType],
+                                elem_type_val,
+                                None,
+                            )?;
                         }
                         offset += func_idx_leb_len;
                     }
@@ -814,7 +963,15 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         1,
                         None,
                     )?;
-                    self.assign(region, wb, offset, assign_delta, &[AssignType::ElemType], elem_type_val, None)?;
+                    self.assign(
+                        region,
+                        wb,
+                        offset,
+                        assign_delta,
+                        &[AssignType::ElemType],
+                        elem_type_val,
+                        None,
+                    )?;
                     offset += 1;
 
                     // funcs_idx_count+
@@ -826,7 +983,15 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                         &[AssignType::IsFuncsIdxCount, AssignType::IsElemTypeCtx],
                     )?;
                     for offset in offset..offset + funcs_idx_count_leb_len {
-                        self.assign(region, wb, offset, assign_delta, &[AssignType::ElemType], elem_type_val, None)?;
+                        self.assign(
+                            region,
+                            wb,
+                            offset,
+                            assign_delta,
+                            &[AssignType::ElemType],
+                            elem_type_val,
+                            None,
+                        )?;
                     }
                     offset += funcs_idx_count_leb_len;
 
@@ -840,12 +1005,25 @@ impl<F: Field> WasmElementSectionBodyChip<F>
                             &[AssignType::IsFuncIdx, AssignType::IsElemTypeCtx],
                         )?;
                         for offset in offset..offset + func_idxs_leb_len {
-                            self.assign(region, wb, offset, assign_delta, &[AssignType::ElemType], elem_type_val, None)?;
+                            self.assign(
+                                region,
+                                wb,
+                                offset,
+                                assign_delta,
+                                &[AssignType::ElemType],
+                                elem_type_val,
+                                None,
+                            )?;
                         }
                         offset += func_idxs_leb_len;
                     }
                 }
-                _ => { return Err(Error::FatalUnsupportedTypeValue(format!("unsupported element type '{:?}'", elem_type))) }
+                _ => {
+                    return Err(Error::FatalUnsupportedTypeValue(format!(
+                        "unsupported element type '{:?}'",
+                        elem_type
+                    )))
+                }
             }
 
             for offset in item_start_offset..offset {
@@ -862,7 +1040,15 @@ impl<F: Field> WasmElementSectionBodyChip<F>
         }
 
         if offset != wb_offset {
-            self.assign(region, &wb, offset - 1, assign_delta, &[AssignType::QLast], 1, None)?;
+            self.assign(
+                region,
+                &wb,
+                offset - 1,
+                assign_delta,
+                &[AssignType::QLast],
+                1,
+                None,
+            )?;
         }
 
         Ok(offset)

@@ -1,19 +1,23 @@
 use std::marker::PhantomData;
 
 use halo2_proofs::{
-    plonk::{Column, ConstraintSystem},
+    circuit::{Region, Value},
+    plonk::{Advice, Column, ConstraintSystem, Expression, Fixed, VirtualCells},
+    poly::Rotation,
 };
-use halo2_proofs::circuit::{Region, Value};
-use halo2_proofs::plonk::{Advice, Expression, Fixed, VirtualCells};
-use halo2_proofs::poly::Rotation;
 use log::debug;
 
 use eth_types::Field;
-use gadgets::util::{and, Expr, not, or};
+use gadgets::util::{and, not, or, Expr};
 
-use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::wasm_circuit::error::{Error, remap_error_to_assign_at};
-use crate::wasm_circuit::tables::dynamic_indexes::types::{AssignType, LookupArgsParams, Tag, TAG_VALUES};
+use crate::{
+    evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
+    wasm_circuit::{
+        error::{remap_error_to_assign_at, Error},
+        tables::dynamic_indexes::types::{AssignType, LookupArgsParams, Tag, TAG_VALUES},
+        types::NewWbOffset,
+    },
+};
 
 #[derive(Debug, Clone)]
 pub struct DynamicIndexesConfig<F> {
@@ -25,8 +29,7 @@ pub struct DynamicIndexesConfig<F> {
     _marker: PhantomData<F>,
 }
 
-impl<'a, F: Field> DynamicIndexesConfig<F>
-{}
+impl<'a, F: Field> DynamicIndexesConfig<F> {}
 
 #[derive(Debug, Clone)]
 pub struct DynamicIndexesChip<F> {
@@ -34,8 +37,7 @@ pub struct DynamicIndexesChip<F> {
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> DynamicIndexesChip<F>
-{
+impl<F: Field> DynamicIndexesChip<F> {
     pub fn construct(config: DynamicIndexesConfig<F>) -> Self {
         let instance = Self {
             config,
@@ -44,9 +46,7 @@ impl<F: Field> DynamicIndexesChip<F>
         instance
     }
 
-    pub fn configure(
-        cs: &mut ConstraintSystem<F>,
-    ) -> DynamicIndexesConfig<F> {
+    pub fn configure(cs: &mut ConstraintSystem<F>) -> DynamicIndexesConfig<F> {
         let q_enable = cs.fixed_column();
         let is_terminator = cs.fixed_column();
         let tag = cs.fixed_column();
@@ -76,23 +76,20 @@ impl<F: Field> DynamicIndexesChip<F>
                 TAG_VALUES.iter().map(|&v| v.expr()).collect(),
             );
 
-            cb.condition(
-                is_terminator_expr.clone(),
-                |cb| {
-                    let is_terminator_prev_expr = vc.query_fixed(is_terminator, Rotation::prev());
-                    let is_terminator_next_expr = vc.query_fixed(is_terminator, Rotation::next());
-                    cb.require_equal(
-                        "is_terminator -> prev.is_terminator=0",
-                        is_terminator_prev_expr.clone(),
-                        0.expr(),
-                    );
-                    cb.require_equal(
-                        "is_terminator -> next.is_terminator=0",
-                        is_terminator_next_expr.clone(),
-                        0.expr(),
-                    );
-                }
-            );
+            cb.condition(is_terminator_expr.clone(), |cb| {
+                let is_terminator_prev_expr = vc.query_fixed(is_terminator, Rotation::prev());
+                let is_terminator_next_expr = vc.query_fixed(is_terminator, Rotation::next());
+                cb.require_equal(
+                    "is_terminator -> prev.is_terminator=0",
+                    is_terminator_prev_expr.clone(),
+                    0.expr(),
+                );
+                cb.require_equal(
+                    "is_terminator -> next.is_terminator=0",
+                    is_terminator_next_expr.clone(),
+                    0.expr(),
+                );
+            });
 
             cb.condition(
                 or::expr([
@@ -115,7 +112,7 @@ impl<F: Field> DynamicIndexesChip<F>
                         index_expr.clone() + 1.expr(),
                         index_next_expr.clone(),
                     );
-                }
+                },
             );
 
             cb.gate(q_enable_expr.clone())
@@ -143,17 +140,16 @@ impl<F: Field> DynamicIndexesChip<F>
         is_terminator: bool,
     ) {
         cs.lookup_any(name, |vc| {
-            vec![
-                index.expr(),
-                tag.expr(),
-                is_terminator.expr(),
-            ]
+            vec![index.expr(), tag.expr(), is_terminator.expr()]
                 .into_iter()
-                .zip(vec![
-                    vc.query_advice(self.config.index, Rotation::cur()),
-                    vc.query_fixed(self.config.tag, Rotation::cur()),
-                    vc.query_fixed(self.config.is_terminator, Rotation::cur()),
-                ].into_iter())
+                .zip(
+                    vec![
+                        vc.query_advice(self.config.index, Rotation::cur()),
+                        vc.query_fixed(self.config.tag, Rotation::cur()),
+                        vc.query_fixed(self.config.is_terminator, Rotation::cur()),
+                    ]
+                    .into_iter(),
+                )
                 .map(|(arg, table)| (cond_expr.clone() * arg, table))
                 .collect()
         });
@@ -169,9 +165,18 @@ impl<F: Field> DynamicIndexesChip<F>
             let p = p(vc);
 
             vec![
-                (p.cond.clone() * p.index, vc.query_advice(self.config.index, Rotation::cur())),
-                (p.cond.clone() * p.tag, vc.query_fixed(self.config.tag, Rotation::cur())),
-                (p.cond.clone() * p.is_terminator, vc.query_fixed(self.config.is_terminator, Rotation::cur())),
+                (
+                    p.cond.clone() * p.index,
+                    vc.query_advice(self.config.index, Rotation::cur()),
+                ),
+                (
+                    p.cond.clone() * p.tag,
+                    vc.query_fixed(self.config.tag, Rotation::cur()),
+                ),
+                (
+                    p.cond.clone() * p.is_terminator,
+                    vc.query_fixed(self.config.is_terminator, Rotation::cur()),
+                ),
             ]
         });
     }
@@ -185,78 +190,67 @@ impl<F: Field> DynamicIndexesChip<F>
     ) -> Result<(), Error> {
         let q_enable = true;
         debug!(
-            "assign at offset {} q_enable {} assign_type {:?} assign_value {:?}",
-            offset,
-            q_enable,
-            assign_type,
-            assign_value,
+            "assign at {} q_enable {} assign_type {:?} assign_value {:?}",
+            offset, q_enable, assign_type, assign_value,
         );
-        region.assign_fixed(
-            || format!("assign 'q_enable' val {} at {}", q_enable, offset),
-            self.config.q_enable,
-            offset,
-            || Value::known(F::from(q_enable as u64)),
-        ).map_err(remap_error_to_assign_at(offset))?;
+        region
+            .assign_fixed(
+                || format!("assign 'q_enable' val {} at {}", q_enable, offset),
+                self.config.q_enable,
+                offset,
+                || Value::known(F::from(q_enable as u64)),
+            )
+            .map_err(remap_error_to_assign_at(offset))?;
         match assign_type {
             AssignType::Index => {
-                region.assign_advice(
-                    || format!("assign 'index' val {} at {}", assign_value, offset),
-                    self.config.index,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at(offset))?;
+                region
+                    .assign_advice(
+                        || format!("assign 'index' val {} at {}", assign_value, offset),
+                        self.config.index,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    )
+                    .map_err(remap_error_to_assign_at(offset))?;
             }
             AssignType::Tag => {
-                region.assign_fixed(
-                    || format!("assign 'tag' val {} at {}", assign_value, offset),
-                    self.config.tag,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at(offset))?;
+                region
+                    .assign_fixed(
+                        || format!("assign 'tag' val {} at {}", assign_value, offset),
+                        self.config.tag,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    )
+                    .map_err(remap_error_to_assign_at(offset))?;
             }
             AssignType::IsTerminator => {
-                region.assign_fixed(
-                    || format!("assign 'is_terminator' val {} at {}", assign_value, offset),
-                    self.config.is_terminator,
-                    offset,
-                    || Value::known(F::from(assign_value)),
-                ).map_err(remap_error_to_assign_at(offset))?;
+                region
+                    .assign_fixed(
+                        || format!("assign 'is_terminator' val {} at {}", assign_value, offset),
+                        self.config.is_terminator,
+                        offset,
+                        || Value::known(F::from(assign_value)),
+                    )
+                    .map_err(remap_error_to_assign_at(offset))?;
             }
         }
 
         Ok(())
     }
 
-    /// returns new offset
     pub fn assign_auto(
         &self,
         region: &mut Region<F>,
         start_offset: usize,
         indexes_count: usize,
         tag: Tag,
-    ) -> Result<usize, Error> {
+    ) -> Result<NewWbOffset, Error> {
         let mut offset = start_offset;
         for rel_offset in 0..indexes_count + 1 {
             offset += 1;
-            self.assign(
-                region,
-                offset,
-                AssignType::Index,
-                rel_offset as u64,
-            )?;
-            self.assign(
-                region,
-                offset,
-                AssignType::Tag,
-                tag as u64,
-            )?;
+            self.assign(region, offset, AssignType::Index, rel_offset as u64)?;
+            self.assign(region, offset, AssignType::Tag, tag as u64)?;
             if rel_offset == indexes_count {
-                self.assign(
-                    region,
-                    offset,
-                    AssignType::IsTerminator,
-                    1,
-                )?;
+                self.assign(region, offset, AssignType::IsTerminator, 1)?;
             }
         }
 
