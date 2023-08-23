@@ -1,8 +1,8 @@
-use halo2_proofs::arithmetic::FieldExt;
-use halo2_proofs::plonk::Expression;
+use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
 use strum_macros::EnumIter;
 
 use gadgets::util::Expr;
+
 use crate::wasm_circuit::error::Error;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -34,7 +34,9 @@ impl TryFrom<u8> for Opcode {
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         for instr in OPCODE_VALUES {
-            if v == *instr as u8 { return Ok(*instr); }
+            if v == *instr as u8 {
+                return Ok(*instr);
+            }
         }
         Err(Error::InvalidEnumValue)
     }

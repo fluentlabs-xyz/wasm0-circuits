@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, rc::Rc};
+use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner},
@@ -35,7 +35,8 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
     }
 
     fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
-        let config = DynamicIndexesChip::configure(cs);
+        let shared_state = Rc::new(RefCell::new(Default::default()));
+        let config = DynamicIndexesChip::configure(cs, shared_state.clone());
         let chip = DynamicIndexesChip::construct(config);
 
         let test_circuit_config = TestCircuitConfig {
@@ -77,10 +78,11 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         layouter.assign_region(
             || "wasm_data_section_body region",
             |mut region| {
+                config.chip.config.shared_state.borrow_mut().reset();
                 let mut offset = 0;
                 offset = config
                     .chip
-                    .assign_auto(&mut region, offset, 0, self.len, 1, self.tag)
+                    .assign_auto(&mut region, offset, 0, self.len, self.tag)
                     .unwrap();
 
                 Ok(())

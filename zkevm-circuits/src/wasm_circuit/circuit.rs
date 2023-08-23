@@ -61,8 +61,9 @@ use crate::{
             fixed_range::config::RangeTableConfig,
         },
         types::{
-            AssignType, ControlInstruction, ErrorCode, ExportDescType, ImportDescType,
-            NewOffsetType, NewWbOffsetType, OffsetType, SharedState, WasmSection,
+            AssignDeltaType, AssignType, AssignValueType, ControlInstruction, ErrorCode,
+            ExportDescType, ImportDescType, NewOffsetType, NewWbOffsetType, OffsetType,
+            SharedState, WasmSection,
         },
         utf8::circuit::UTF8Chip,
     },
@@ -168,9 +169,9 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         let q_enable = true;
@@ -189,6 +190,7 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
             .map_err(|v| Error::AssignAt(assign_offset))?;
         self.assign_bytecode_number(region, assign_offset, None)
             .map_err(|v| Error::AssignAt(assign_offset))?;
+        // self.assign_func_count(region, assign_offset)?;
 
         for assign_type in assign_types {
             match assign_type {
@@ -309,24 +311,12 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmChip<F> {
 impl<F: Field> WasmChip<F> {
     pub fn load(
         &self,
-        layouter: &mut impl Layouter<F>,
+        region: &mut Region<F>,
         wb: &WasmBytecode,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
     ) -> Result<NewOffsetType, Error> {
         let mut new_assign_offset = 0;
-        // layouter
-        //     .assign_region(
-        //         || format!("wasm bytecode table at {}", assign_delta),
-        //         |mut region| {
-        new_assign_offset = self
-            .config
-            .wb_table
-            .load(layouter, wb, assign_delta)
-            .unwrap();
-        // Ok(())
-        // },
-        // )
-        // .unwrap();
+        new_assign_offset = self.config.wb_table.load(region, wb, assign_delta).unwrap();
 
         let assign_delta = assign_delta
             + if self.config.wb_table.zero_row_enabled {
@@ -336,7 +326,7 @@ impl<F: Field> WasmChip<F> {
             };
         self.config
             .poseidon_table
-            .dev_load(layouter, &[wb.bytes.clone()], assign_delta)
+            .dev_load2(region, &[wb.bytes.clone()], assign_delta)
             .unwrap();
 
         Ok(new_assign_offset)
@@ -390,7 +380,7 @@ impl<F: Field> WasmChip<F> {
             UTF8Chip::configure(cs, range_table_config_0_128.clone(), &wb_table.value);
         let mut utf8_chip = Rc::new(UTF8Chip::construct(utf8_config));
 
-        let config = DynamicIndexesChip::configure(cs);
+        let config = DynamicIndexesChip::configure(cs, shared_state.clone());
         let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(config));
 
         let config = WasmTypeSectionItemChip::configure(
@@ -504,6 +494,7 @@ impl<F: Field> WasmChip<F> {
             body_byte_rev_index_l2,
             body_item_rev_count_l1,
             error_code,
+            bytecode_number,
         );
         let wasm_code_section_body_chip = Rc::new(WasmCodeSectionBodyChip::construct(config));
 
@@ -981,11 +972,11 @@ impl<F: Field> WasmChip<F> {
 
             // code_hash check
             // TODO refactor
-            // cb.require_zero(
-            //     "code hashes match",
-            //     index_at_magic_prefix[2].config().expr()
-            //         * (wb_table_code_hash.clone() - poseidon_table_hash_id.clone()),
-            // );
+            cb.require_zero(
+                "code hashes match",
+                index_at_magic_prefix[2].config().expr()
+                    * (wb_table_code_hash.clone() - poseidon_table_hash_id.clone()),
+            );
 
             cb.gate(q_enable_expr)
         });
@@ -1250,6 +1241,7 @@ impl<F: Field> WasmChip<F> {
             },
         );
         dynamic_indexes_chip.lookup_args("code section: call opcode param is valid", cs, |vc| {
+            let bytecode_number_expr = vc.query_advice(bytecode_number, Rotation::cur());
             let cond = and::expr([
                 vc.query_fixed(
                     wasm_code_section_body_chip.config.is_control_instruction,
@@ -1268,7 +1260,6 @@ impl<F: Field> WasmChip<F> {
                     &shared_state.borrow(),
                     error_code,
                 );
-            let bytecode_number_expr = vc.query_advice(bytecode_number, Rotation::cur());
 
             LookupArgsParams {
                 cond,
@@ -1339,7 +1330,7 @@ impl<F: Field> WasmChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
     ) -> Result<NewWbOffsetType, Error> {
         let result = self.assign_auto_internal(region, wb, wb_offset, assign_delta);
         let assign_delta = assign_delta
@@ -1390,6 +1381,7 @@ impl<F: Field> WasmChip<F> {
             };
         }
 
+        self.config.shared_state.borrow_mut().bytecode_number_inc();
         return Ok(wb.bytes.len() + assign_delta);
     }
 
@@ -1398,7 +1390,7 @@ impl<F: Field> WasmChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
     ) -> Result<OffsetType, Error> {
         debug!("wb.bytes {:x?}", wb.bytes);
         self.assign(
@@ -1410,6 +1402,9 @@ impl<F: Field> WasmChip<F> {
             1,
             None,
         )?;
+        // TODO needed for multibytecode assignments, refactor
+        self.config.shared_state.borrow_mut().func_count = 0;
+        self.assign_func_count(region, wb_offset + assign_delta)?;
         let assign_delta = assign_delta
             + if self.config.wb_table.zero_row_enabled {
                 1
@@ -1427,10 +1422,11 @@ impl<F: Field> WasmChip<F> {
         )?;
 
         // check magic prefix and version
-        let assign_offset_start = wb_offset + WASM_MAGIC_PREFIX_START_INDEX + assign_delta;
+        let assign_offset_start = wb_offset + assign_delta + WASM_MAGIC_PREFIX_START_INDEX;
         for (idx, ch) in WASM_MAGIC_PREFIX.chars().enumerate() {
             let wb_offset = wb_offset + WASM_MAGIC_PREFIX_START_INDEX + idx;
             let assign_offset = wb_offset + assign_delta;
+            self.assign_func_count(region, assign_offset)?;
             self.assign(region, &wb, wb_offset, assign_delta, &[], 1, None)?;
             let byte_val = *wb
                 .bytes
@@ -1440,10 +1436,11 @@ impl<F: Field> WasmChip<F> {
                 return Err(Error::InvalidByteValueAt(assign_offset_start));
             }
         }
-        let assign_offset_start = wb_offset + WASM_VERSION_PREFIX_START_INDEX + assign_delta;
+        let assign_offset_start = wb_offset + assign_delta + WASM_VERSION_PREFIX_START_INDEX;
         for (idx, ch) in WASM_VERSION_PREFIX.chars().enumerate() {
             let wb_offset = wb_offset + WASM_VERSION_PREFIX_START_INDEX + idx;
             let assign_offset = wb_offset + assign_delta;
+            self.assign_func_count(region, assign_offset)?;
             self.assign(region, &wb, wb_offset, assign_delta, &[], 1, None)?;
             let byte_val = *wb
                 .bytes
@@ -1665,7 +1662,6 @@ impl<F: Field> WasmChip<F> {
             self.config.shared_state.borrow().dynamic_indexes_offset,
             assign_delta,
             self.config.shared_state.borrow().func_count,
-            self.config.shared_state.borrow().bytecode_number,
             Tag::FuncIndex,
         )?;
         self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;

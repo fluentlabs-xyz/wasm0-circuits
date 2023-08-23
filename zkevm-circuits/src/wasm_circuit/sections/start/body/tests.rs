@@ -72,8 +72,16 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let wb = WasmBytecode::new(self.bytecode.to_vec().clone());
-        config.wb_table.load(&mut layouter, &wb, 0)?;
-
+        let assign_delta = 0;
+        layouter
+            .assign_region(
+                || format!("wasm bytecode table at {}", assign_delta),
+                |mut region| {
+                    config.wb_table.load(&mut region, &wb, assign_delta)?;
+                    Ok(())
+                },
+            )
+            .unwrap();
         layouter.assign_region(
             || "wasm_start_section_body region",
             |mut region| {
@@ -81,7 +89,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
                 while offset_start < wb.bytes.len() {
                     offset_start = config
                         .start_section_body_chip
-                        .assign_auto(&mut region, &wb, offset_start, 0)
+                        .assign_auto(&mut region, &wb, offset_start, assign_delta)
                         .unwrap();
                 }
 

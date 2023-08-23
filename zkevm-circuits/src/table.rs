@@ -1056,6 +1056,116 @@ impl PoseidonTable {
             },
         )
     }
+    pub fn dev_load2<'a, F: Field>(
+        &self,
+        region: &mut Region<F>,
+        inputs: impl IntoIterator<Item = &'a Vec<u8>> + Clone,
+        assign_delta: usize,
+    ) -> Result<(), Error> {
+        use crate::bytecode_circuit::bytecode_unroller::{
+            unroll_to_hash_input_default, HASHBLOCK_BYTES_IN_FIELD,
+        };
+        use bus_mapping::state_db::CodeDB;
+        use mpt_zktrie::hash::HASHABLE_DOMAIN_SPEC;
+
+        // layouter.assign_region(
+        //     || "poseidon table",
+        //     |mut region| {
+        let mut offset = assign_delta;
+        let poseidon_table_columns = <PoseidonTable as LookupTable<F>>::advice_columns(self);
+
+        region.assign_fixed(
+            || "poseidon table all-zero row",
+            self.q_enable,
+            offset,
+            || Value::known(F::one()),
+        )?;
+        for column in poseidon_table_columns.iter().copied() {
+            region.assign_advice(
+                || "poseidon table all-zero row",
+                column,
+                offset,
+                || Value::known(F::zero()),
+            )?;
+        }
+        offset += 1;
+        let nil_hash = Value::known(CodeDB::empty_code_hash().to_word().to_scalar().unwrap());
+        region.assign_fixed(
+            || "poseidon table nil input row",
+            self.q_enable,
+            offset,
+            || Value::known(F::one()),
+        )?;
+        for (column, value) in poseidon_table_columns
+            .iter()
+            .copied()
+            .zip(once(nil_hash).chain(repeat(Value::known(F::zero()))))
+        {
+            region.assign_advice(|| "poseidon table nil input row", column, offset, || value)?;
+        }
+        offset += 1;
+
+        for input in inputs.clone() {
+            let mut control_len = input.len();
+            let mut first_row = true;
+            let ref_hash = Value::known(
+                CodeDB::hash(input.as_slice())
+                    .to_word()
+                    .to_scalar()
+                    .unwrap(),
+            );
+            for row in unroll_to_hash_input_default::<F>(input.iter().copied()) {
+                assert_ne!(
+                    control_len,
+                    0,
+                    "must have enough len left (original size {})",
+                    input.len()
+                );
+                let block_size = HASHBLOCK_BYTES_IN_FIELD * row.len();
+                let control_len_as_flag = F::from_u128(HASHABLE_DOMAIN_SPEC * control_len as u128);
+
+                region.assign_fixed(
+                    || format!("poseidon table row {}", offset),
+                    self.q_enable,
+                    offset,
+                    || Value::known(F::one()),
+                )?;
+                for (column, value) in poseidon_table_columns.iter().zip_eq(
+                    once(ref_hash)
+                        .chain(row.map(Value::known))
+                        .chain(once(Value::known(control_len_as_flag)))
+                        .chain(once(Value::known(if first_row {
+                            F::one()
+                        } else {
+                            F::zero()
+                        }))),
+                ) {
+                    region.assign_advice(
+                        || format!("poseidon table row {}", offset),
+                        *column,
+                        offset,
+                        || value,
+                    )?;
+                }
+                first_row = false;
+                offset += 1;
+                control_len = if control_len > block_size {
+                    control_len - block_size
+                } else {
+                    0
+                };
+            }
+            assert_eq!(
+                control_len,
+                0,
+                "should have exhaust all bytes (original size {})",
+                input.len()
+            );
+        }
+        Ok(())
+        // },
+        // )
+    }
 }
 
 /// Tag to identify the field in a Bytecode Table row

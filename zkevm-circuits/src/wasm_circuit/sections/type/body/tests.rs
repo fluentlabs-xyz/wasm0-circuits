@@ -50,7 +50,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
-        let config = DynamicIndexesChip::configure(cs);
+        let config = DynamicIndexesChip::configure(cs, shared_state.clone());
         let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(config));
 
         let leb128_config = LEB128Chip::<F>::configure(cs, &wb_table.value);
@@ -94,7 +94,15 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Result<(), Error> {
         let assign_delta = self.assign_delta_base;
         let wb = WasmBytecode::new(self.bytecode_bytes.to_vec().clone());
-        config.wb_table.load(&mut layouter, &wb, assign_delta)?;
+        layouter
+            .assign_region(
+                || format!("wasm bytecode table at {}", assign_delta),
+                |mut region| {
+                    config.wb_table.load(&mut region, &wb, assign_delta)?;
+                    Ok(())
+                },
+            )
+            .unwrap();
         layouter.assign_region(
             || "wasm_type_section_body region",
             |mut region| {

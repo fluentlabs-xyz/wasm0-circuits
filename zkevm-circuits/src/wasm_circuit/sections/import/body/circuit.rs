@@ -33,8 +33,8 @@ use crate::{
         sections::{consts::LebParams, import::body::types::AssignType},
         tables::dynamic_indexes::circuit::DynamicIndexesChip,
         types::{
-            ImportDescType, LimitType, NewWbOffsetType, RefType, SharedState,
-            IMPORT_DESC_TYPE_VALUES, MUTABILITY_VALUES, REF_TYPE_VALUES,
+            AssignDeltaType, AssignValueType, ImportDescType, LimitType, NewWbOffsetType, RefType,
+            SharedState, IMPORT_DESC_TYPE_VALUES, MUTABILITY_VALUES, REF_TYPE_VALUES,
         },
         utf8::circuit::UTF8Chip,
     },
@@ -120,9 +120,9 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmImportSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         let q_enable = true;
@@ -1550,7 +1550,7 @@ impl<F: Field> WasmImportSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
     ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
 

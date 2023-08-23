@@ -26,7 +26,7 @@ use crate::{
             consts::LebParams,
             r#type::item::{consts::Type::FuncType, types::AssignType},
         },
-        types::{NewWbOffsetType, NumType, SharedState},
+        types::{AssignDeltaType, AssignValueType, NewWbOffsetType, NumType, SharedState},
     },
 };
 
@@ -90,9 +90,9 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionItemChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         let q_enable = true;
@@ -493,7 +493,7 @@ impl<F: Field> WasmTypeSectionItemChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
     ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
         // is_type{1}

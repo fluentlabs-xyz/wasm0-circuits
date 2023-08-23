@@ -42,12 +42,13 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         let wb_table = Rc::new(WasmBytecodeTable::construct(cs, false));
         let func_count = cs.advice_column();
         let error_code = cs.advice_column();
+        let bytecode_number = cs.advice_column();
         let body_byte_rev_index = cs.advice_column();
         let body_item_rev_count = cs.advice_column();
 
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
-        let dynamic_indexes_config = DynamicIndexesChip::configure(cs);
+        let dynamic_indexes_config = DynamicIndexesChip::configure(cs, shared_state.clone());
         let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(dynamic_indexes_config));
 
         let leb128_config = LEB128Chip::<F>::configure(cs, &wb_table.value);
@@ -63,6 +64,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             body_byte_rev_index,
             body_item_rev_count,
             error_code,
+            bytecode_number,
         );
         let wasm_code_section_body_chip =
             WasmCodeSectionBodyChip::construct(wasm_code_section_body_config);
@@ -82,7 +84,15 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Result<(), Error> {
         let wb = WasmBytecode::new(self.bytecode.to_vec().clone());
         let assign_delta = 0;
-        config.wb_table.load(&mut layouter, &wb, assign_delta)?;
+        layouter
+            .assign_region(
+                || format!("wasm bytecode table at {}", assign_delta),
+                |mut region| {
+                    config.wb_table.load(&mut region, &wb, assign_delta)?;
+                    Ok(())
+                },
+            )
+            .unwrap();
         layouter.assign_region(
             || "wasm_code_section_body region",
             |mut region| {

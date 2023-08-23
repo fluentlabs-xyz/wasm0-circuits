@@ -47,10 +47,6 @@ impl<F: Field> Circuit<F> for TestCircuitWithErrorProcessing<F> {
         let mut wasm_chip = WasmChip::construct(config);
 
         wasm_chip.load_once(&mut layouter).unwrap();
-        let mut assign_delta = self.assign_delta_base;
-        for wb in &self.wbs {
-            assign_delta = wasm_chip.load(&mut layouter, wb, assign_delta).unwrap();
-        }
 
         layouter.assign_region(
             || "wasm_chip region",
@@ -58,6 +54,7 @@ impl<F: Field> Circuit<F> for TestCircuitWithErrorProcessing<F> {
                 wasm_chip.config.shared_state.borrow_mut().reset();
                 let mut assign_delta = self.assign_delta_base;
                 for wb in &self.wbs {
+                    wasm_chip.load(&mut region, wb, assign_delta).unwrap();
                     assign_delta = wasm_chip
                         .assign_auto(&mut region, wb, self.wb_offset, assign_delta)
                         .unwrap();
@@ -107,17 +104,13 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
         let mut wasm_chip = WasmChip::construct(config);
 
         wasm_chip.load_once(&mut layouter).unwrap();
-        let mut assign_delta = self.assign_delta_base;
-        for wb in &self.wbs {
-            assign_delta = wasm_chip.load(&mut layouter, wb, assign_delta).unwrap();
-        }
-
         layouter.assign_region(
             || "wasm_chip region",
             |mut region| {
                 wasm_chip.config.shared_state.borrow_mut().reset();
                 let mut assign_delta = self.assign_delta_base;
                 for wb in &self.wbs {
+                    wasm_chip.load(&mut region, wb, assign_delta).unwrap();
                     assign_delta = wasm_chip
                         .assign_auto(&mut region, wb, self.wb_offset, assign_delta)
                         .unwrap();
@@ -248,11 +241,9 @@ mod wasm_circuit_tests {
     #[test]
     pub fn multiple_bytecodes_assignment_ok() {
         let paths = [
-            "./test_files/cc1_tmp.wat",
-            "./test_files/cc2_tmp.wat",
-            // "./test_files/cc1.wat",
-            // "./test_files/cc2.wat",
-            // "./test_files/cc3.wat",
+            "./test_files/cc1.wat",
+            "./test_files/cc2.wat",
+            "./test_files/cc3.wat",
         ];
         let mut wbs = vec![];
         for path in paths {
@@ -266,7 +257,7 @@ mod wasm_circuit_tests {
             wbs,
             ..Default::default()
         };
-        test(&circuit, true, 9);
+        test(&circuit, true, 13);
     }
 
     #[test]

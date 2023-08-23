@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 use halo2_proofs::{
     circuit::{Region, Value},
@@ -13,19 +13,22 @@ use gadgets::util::{and, not, or, Expr};
 use crate::{
     evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
     wasm_circuit::{
+        common::{WasmBytecodeNumberAwareChip, WasmSharedStateAwareChip},
         error::{remap_error_to_assign_at, Error},
         tables::dynamic_indexes::types::{AssignType, LookupArgsParams, Tag, TAG_VALUES},
-        types::NewWbOffsetType,
+        types::{AssignDeltaType, AssignValueType, NewWbOffsetType, SharedState},
     },
 };
 
 #[derive(Debug, Clone)]
 pub struct DynamicIndexesConfig<F> {
     pub q_enable: Column<Fixed>,
-    pub bytecode_number: Column<Advice>,
+    bytecode_number: Column<Advice>,
     pub index: Column<Advice>,
     pub is_terminator: Column<Fixed>,
     pub tag: Column<Fixed>,
+
+    pub shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
 }
@@ -38,8 +41,22 @@ pub struct DynamicIndexesChip<F> {
     _marker: PhantomData<F>,
 }
 
+impl<F: Field> WasmSharedStateAwareChip<F> for DynamicIndexesChip<F> {
+    fn shared_state(&self) -> Rc<RefCell<SharedState>> {
+        self.config.shared_state.clone()
+    }
+}
+
+impl<F: Field> WasmBytecodeNumberAwareChip<F> for DynamicIndexesChip<F> {
+    fn bytecode_number_col(&self) -> Column<Advice> {
+        self.config.bytecode_number
+    }
+}
 impl<F: Field> DynamicIndexesChip<F> {
-    pub fn configure(cs: &mut ConstraintSystem<F>) -> DynamicIndexesConfig<F> {
+    pub fn configure(
+        cs: &mut ConstraintSystem<F>,
+        shared_state: Rc<RefCell<SharedState>>,
+    ) -> DynamicIndexesConfig<F> {
         let q_enable = cs.fixed_column();
         let is_terminator = cs.fixed_column();
         let tag = cs.fixed_column();
@@ -96,7 +113,6 @@ impl<F: Field> DynamicIndexesChip<F> {
                     bytecode_number_next_expr,
                 );
             });
-
             cb.condition(
                 and::expr([
                     is_terminator_expr.clone(),
@@ -142,13 +158,14 @@ impl<F: Field> DynamicIndexesChip<F> {
         });
 
         let config = DynamicIndexesConfig::<F> {
+            _marker: Default::default(),
+
             q_enable,
             is_terminator,
             tag,
             index,
             bytecode_number,
-
-            _marker: Default::default(),
+            shared_state,
         };
 
         config
@@ -218,9 +235,9 @@ impl<F: Field> DynamicIndexesChip<F> {
         &self,
         region: &mut Region<F>,
         offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_type: AssignType,
-        assign_value: u64,
+        assign_value: AssignValueType,
     ) -> Result<(), Error> {
         let q_enable = true;
         let assign_offset = offset + assign_delta;
@@ -272,21 +289,6 @@ impl<F: Field> DynamicIndexesChip<F> {
                     )
                     .map_err(remap_error_to_assign_at(assign_offset))?;
             }
-            AssignType::BytecodeNumber => {
-                region
-                    .assign_advice(
-                        || {
-                            format!(
-                                "assign 'bytecode_number' val {} at {}",
-                                assign_value, assign_offset
-                            )
-                        },
-                        self.config.bytecode_number,
-                        assign_offset,
-                        || Value::known(F::from(assign_value)),
-                    )
-                    .map_err(remap_error_to_assign_at(assign_offset))?;
-            }
         }
 
         Ok(())
@@ -296,21 +298,22 @@ impl<F: Field> DynamicIndexesChip<F> {
         &self,
         region: &mut Region<F>,
         start_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         indexes_count: usize,
-        bytecode_number: u64,
+        // bytecode_number: u64,
         tag: Tag,
     ) -> Result<NewWbOffsetType, Error> {
         let mut offset = start_offset;
         for rel_offset in 0..indexes_count + 1 {
             offset += 1;
-            self.assign(
-                region,
-                offset,
-                assign_delta,
-                AssignType::BytecodeNumber,
-                bytecode_number,
-            )?;
+            // self.assign(
+            //     region,
+            //     offset,
+            //     assign_delta,
+            //     AssignType::BytecodeNumber,
+            //     bytecode_number,
+            // )?;
+            self.assign_bytecode_number(region, offset + assign_delta, None)?;
             self.assign(
                 region,
                 offset,

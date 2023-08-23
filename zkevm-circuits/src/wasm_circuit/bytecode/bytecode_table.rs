@@ -1,7 +1,7 @@
 use std::array;
 
 use halo2_proofs::{
-    circuit::{Layouter, Value},
+    circuit::{Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, *},
 };
 use itertools::Itertools;
@@ -36,65 +36,57 @@ impl WasmBytecodeTable {
 
     pub fn load<'a, F: Field>(
         &self,
-        layouter: &mut impl Layouter<F>,
-        // region: &mut Region<F>,
+        region: &mut Region<F>,
         wb: &'a WasmBytecode,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
     ) -> Result<AssignDeltaType, Error> {
         let mut assign_offset = 0;
-        layouter.assign_region(
-            || format!("wasm bytecode table at {}", assign_delta),
-            |mut region| {
-                assign_offset = assign_delta;
-                debug!("wasm bytecode table start assign at {}", assign_offset);
-                let bytecode_table_columns =
-                    <WasmBytecodeTable as LookupTable<F>>::advice_columns(self);
+        assign_offset = assign_delta;
+        debug!("wasm bytecode table start assign at {}", assign_offset);
+        let bytecode_table_columns = <WasmBytecodeTable as LookupTable<F>>::advice_columns(self);
 
-                if self.zero_row_enabled {
-                    let value = 0;
-                    for &column in bytecode_table_columns.iter() {
-                        debug!(
+        if self.zero_row_enabled {
+            let value = 0;
+            for &column in bytecode_table_columns.iter() {
+                debug!(
+                    "assign at {} column.index {} wasm_bytecode_table val {:?}",
+                    assign_offset, column.index, value
+                );
+                region.assign_advice(
+                    || {
+                        format!(
                             "assign at {} column.index {} wasm_bytecode_table val {:?}",
                             assign_offset, column.index, value
-                        );
-                        region.assign_advice(
-                            || {
-                                format!(
-                                    "assign at {} column.index {} wasm_bytecode_table val {:?}",
-                                    assign_offset, column.index, value
-                                )
-                            },
-                            column,
-                            assign_offset,
-                            || Value::known(F::from(value)),
-                        )?;
-                    }
-                    assign_offset += 1;
-                }
+                        )
+                    },
+                    column,
+                    assign_offset,
+                    || Value::known(F::from(value)),
+                )?;
+            }
+            assign_offset += 1;
+        }
 
-                for (offset, &row) in wb.table_assignments::<F>().iter().enumerate() {
-                    for (&column, value) in bytecode_table_columns.iter().zip_eq(row) {
-                        debug!(
+        for (offset, &row) in wb.table_assignments::<F>().iter().enumerate() {
+            for (&column, value) in bytecode_table_columns.iter().zip_eq(row) {
+                debug!(
+                    "assign at {} column.index {} wasm_bytecode_table val {:?}",
+                    assign_offset, column.index, value
+                );
+                region.assign_advice(
+                    || {
+                        format!(
                             "assign at {} column.index {} wasm_bytecode_table val {:?}",
                             assign_offset, column.index, value
-                        );
-                        region.assign_advice(
-                            || {
-                                format!(
-                                    "assign at {} column.index {} wasm_bytecode_table val {:?}",
-                                    assign_offset, column.index, value
-                                )
-                            },
-                            column,
-                            assign_offset,
-                            || value,
-                        )?;
-                    }
-                    assign_offset += 1;
-                }
-                Ok(())
-            },
-        )?;
+                        )
+                    },
+                    column,
+                    assign_offset,
+                    || value,
+                )?;
+            }
+            assign_offset += 1;
+        }
         Ok(assign_offset)
     }
 }

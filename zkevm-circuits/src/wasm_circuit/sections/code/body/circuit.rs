@@ -36,11 +36,11 @@ use crate::{
             dynamic_indexes::circuit::DynamicIndexesChip,
         },
         types::{
-            ControlInstruction, NumericInstruction, ParametricInstruction, SharedState,
-            VariableInstruction, CONTROL_INSTRUCTION_BLOCK, CONTROL_INSTRUCTION_WITHOUT_ARGS,
-            CONTROL_INSTRUCTION_WITH_LEB_ARG, NUMERIC_INSTRUCTIONS_WITHOUT_ARGS,
-            NUMERIC_INSTRUCTION_WITH_LEB_ARG, PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS,
-            VARIABLE_INSTRUCTION_WITH_LEB_ARG,
+            AssignDeltaType, AssignValueType, ControlInstruction, NumericInstruction,
+            ParametricInstruction, SharedState, VariableInstruction, CONTROL_INSTRUCTION_BLOCK,
+            CONTROL_INSTRUCTION_WITHOUT_ARGS, CONTROL_INSTRUCTION_WITH_LEB_ARG,
+            NUMERIC_INSTRUCTIONS_WITHOUT_ARGS, NUMERIC_INSTRUCTION_WITH_LEB_ARG,
+            PARAMETRIC_INSTRUCTIONS_WITHOUT_ARGS, VARIABLE_INSTRUCTION_WITH_LEB_ARG,
         },
     },
 };
@@ -135,9 +135,9 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmCodeSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         let q_enable = true;
@@ -524,6 +524,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
         body_byte_rev_index: Column<Advice>,
         body_item_rev_count: Column<Advice>,
         error_code: Column<Advice>,
+        bytecode_number: Column<Advice>,
     ) -> WasmCodeSectionBodyConfig<F> {
         let q_enable = cs.fixed_column();
         let q_first = cs.fixed_column();
@@ -547,7 +548,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
         let is_blocktype_delimiter = cs.fixed_column();
         let is_block_end = cs.fixed_column();
 
-        let config = CodeBlocksChip::configure(cs);
+        let config = CodeBlocksChip::configure(cs, shared_state.clone());
         let code_blocks_chip = Rc::new(CodeBlocksChip::construct(config));
 
         let config =
@@ -709,6 +710,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
 
             let is_block_end_expr = vc.query_fixed(is_block_end, Rotation::cur());
 
+            let bytecode_number_expr = vc.query_advice(bytecode_number, Rotation::cur());
             let q_last_expr = vc.query_fixed(q_last, Rotation::cur());
             let block_opcode_number_expr = vc.query_advice(block_opcode_number, Rotation::cur());
             let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
@@ -721,6 +723,10 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
 
             let c = &code_blocks_chip.config;
             vec![
+                (
+                    block_opcode_number_increased_expr.clone() * bytecode_number_expr.clone(),
+                    vc.query_advice(c.bytecode_number, Rotation::cur()),
+                ),
                 (
                     block_opcode_number_increased_expr.clone() * block_opcode_number_expr.clone(),
                     vc.query_advice(c.index, Rotation::cur()),
@@ -1497,7 +1503,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         block_opcode_number: &mut u64,
     ) -> Result<usize, Error> {
         let mut offset = wb_offset;
@@ -1525,7 +1531,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
             assign_type = AssignType::IsControlInstruction;
             if CONTROL_INSTRUCTION_BLOCK.contains(&opcode) {
                 assign_type_argument = AssignType::IsBlocktypeDelimiter;
-                self.shared_state().borrow_mut().block_level += 1;
+                self.shared_state().borrow_mut().block_level_inc();
             }
             if CONTROL_INSTRUCTION_WITH_LEB_ARG.contains(&opcode) {
                 assign_type_argument = AssignType::IsControlInstructionLebArg
@@ -1590,7 +1596,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
 
         if opcode == WASM_BLOCK_END {
             assign_type = AssignType::IsBlockEnd;
-            self.shared_state().borrow_mut().block_level -= 1;
+            self.shared_state().borrow_mut().block_level_dec();
 
             *block_opcode_number += 1;
             self.markup_code_blocks(
@@ -1697,7 +1703,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         len: usize,
         block_opcode_number: u64,
         code_blocks_opcode: Option<code_blocks::types::Opcode>,
@@ -1724,20 +1730,23 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
                 self.config.code_blocks_chip.assign(
                     region,
                     offset,
-                    code_blocks::types::AssignType::QFirst,
+                    assign_delta,
+                    &[code_blocks::types::AssignType::QFirst],
                     1,
                 )?;
             }
             self.config.code_blocks_chip.assign(
                 region,
                 offset,
-                code_blocks::types::AssignType::Index,
+                assign_delta,
+                &[code_blocks::types::AssignType::Index],
                 block_opcode_number,
             )?;
             self.config.code_blocks_chip.assign(
                 region,
                 offset,
-                code_blocks::types::AssignType::Opcode,
+                assign_delta,
+                &[code_blocks::types::AssignType::Opcode],
                 assign_value as u64,
             )?;
         }
@@ -1753,7 +1762,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
     ) -> Result<usize, Error> {
         let mut offset = wb_offset;
         let mut block_opcode_number: u64 = 0;
@@ -1801,7 +1810,7 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
         for _func_index in 0..funcs_count {
             body_item_rev_count -= 1;
             // is_func_body_len+
-            self.config.shared_state.borrow_mut().block_level += 1;
+            self.config.shared_state.borrow_mut().block_level_inc();
             let (func_body_len, func_body_len_leb_len) = self.markup_leb_section(
                 region,
                 wb,
@@ -1933,7 +1942,8 @@ impl<F: Field> WasmCodeSectionBodyChip<F> {
             self.config.code_blocks_chip.assign(
                 region,
                 block_opcode_number as usize - 1,
-                code_blocks::types::AssignType::QLast,
+                assign_delta,
+                &[code_blocks::types::AssignType::QLast],
                 1,
             )?;
         }

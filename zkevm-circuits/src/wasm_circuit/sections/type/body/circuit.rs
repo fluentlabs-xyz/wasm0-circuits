@@ -27,7 +27,7 @@ use crate::{
             r#type::{body::types::AssignType, item::circuit::WasmTypeSectionItemChip},
         },
         tables::dynamic_indexes::{circuit::DynamicIndexesChip, types::Tag},
-        types::{NewWbOffsetType, SharedState},
+        types::{AssignDeltaType, AssignValueType, NewWbOffsetType, SharedState},
     },
 };
 
@@ -90,9 +90,9 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         let q_enable = true;
@@ -349,7 +349,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
     ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
         self.assign(
@@ -387,7 +387,6 @@ impl<F: Field> WasmTypeSectionBodyChip<F> {
             self.config.shared_state.borrow().dynamic_indexes_offset,
             assign_delta,
             items_count as usize,
-            self.config.shared_state.borrow().bytecode_number,
             Tag::TypeIndex,
         )?;
         self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;

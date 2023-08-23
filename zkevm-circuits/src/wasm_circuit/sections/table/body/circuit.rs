@@ -29,7 +29,10 @@ use crate::{
         leb128::circuit::LEB128Chip,
         sections::{consts::LebParams, table::body::types::AssignType},
         tables::dynamic_indexes::{circuit::DynamicIndexesChip, types::Tag},
-        types::{LimitType, NewWbOffsetType, SharedState, REF_TYPE_VALUES},
+        types::{
+            AssignDeltaType, AssignValueType, LimitType, NewWbOffsetType, SharedState,
+            REF_TYPE_VALUES,
+        },
     },
 };
 
@@ -91,9 +94,9 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTableSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         let q_enable = true;
@@ -585,7 +588,7 @@ impl<F: Field> WasmTableSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
     ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
 
@@ -623,7 +626,6 @@ impl<F: Field> WasmTableSectionBodyChip<F> {
             self.config.shared_state.borrow().dynamic_indexes_offset,
             assign_delta,
             1,
-            self.config.shared_state.borrow().bytecode_number,
             Tag::TableIndex,
         )?;
         self.config.shared_state.borrow_mut().dynamic_indexes_offset = dynamic_indexes_offset;

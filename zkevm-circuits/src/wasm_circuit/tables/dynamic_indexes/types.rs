@@ -9,7 +9,7 @@ pub enum AssignType {
     Index,
     IsTerminator,
     Tag,
-    BytecodeNumber,
+    // BytecodeNumber,
 }
 
 #[derive(Default, Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]

@@ -40,8 +40,8 @@ use crate::{
         },
         sections::consts::LebParams,
         types::{
-            Leb128BytesCountType, Leb128LengthType, LimitType, NewWbOffsetType, SectionLengthType,
-            SharedState, Sn,
+            AssignDeltaType, AssignValueType, Leb128BytesCountType, Leb128LengthType, LimitType,
+            NewWbOffsetType, SectionLengthType, SharedState, Sn, WbOffsetType,
         },
     },
 };
@@ -606,11 +606,12 @@ pub trait WasmBytecodeNumberAwareChip<F: Field>: WasmSharedStateAwareChip<F> {
             let bytecode_number_expr = vc.query_advice(bytecode_number, Rotation::cur());
 
             cb.condition(not_q_first_expr.clone(), |cb| {
+                let q_enable_prev_expr = vc.query_fixed(q_enable, Rotation::prev());
                 let bytecode_number_prev_expr = vc.query_advice(bytecode_number, Rotation::prev());
                 cb.require_equal(
                     "not_q_first => bytecode_number=prev.bytecode_number",
-                    bytecode_number_expr.clone(),
-                    bytecode_number_prev_expr.clone(),
+                    q_enable_prev_expr.clone() * bytecode_number_expr.clone(),
+                    q_enable_prev_expr * bytecode_number_prev_expr.clone(),
                 );
             });
             cb.condition(
@@ -697,10 +698,10 @@ pub trait WasmAssignAwareChip<F: Field> {
         &self,
         region: &mut Region<F>,
         wb: &WasmBytecode,
-        wb_offset: usize,
-        assign_delta: usize,
+        wb_offset: WbOffsetType,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         validate_wb_offset(wb, wb_offset)?;
@@ -719,10 +720,10 @@ pub trait WasmAssignAwareChip<F: Field> {
         &self,
         region: &mut Region<F>,
         wb: &WasmBytecode,
-        wb_offset: usize,
-        assign_delta: usize,
+        wb_offset: WbOffsetType,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error>;
 }
@@ -733,7 +734,7 @@ pub trait WasmMarkupLeb128SectionAwareChip<F: Field>: WasmAssignAwareChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
     ) -> Result<(Sn, Leb128LengthType), Error> {
         let is_signed = false;
@@ -780,7 +781,7 @@ pub trait WasmBytesAwareChip<F: Field>: WasmAssignAwareChip<F> {
         wb: &WasmBytecode,
         assign_types: &[Self::AssignType],
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         len: usize,
     ) -> Result<NewWbOffsetType, Error> {
         let offset_end = wb_offset + len;
@@ -808,10 +809,10 @@ pub trait WasmNameAwareChip<F: Field>: WasmAssignAwareChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
         name_len: usize,
-        assign_value: u64,
+        assign_value: AssignValueType,
     ) -> Result<NewWbOffsetType, Error> {
         let offset_end = wb_offset + name_len;
         if offset_end >= wb.bytes.len() {
