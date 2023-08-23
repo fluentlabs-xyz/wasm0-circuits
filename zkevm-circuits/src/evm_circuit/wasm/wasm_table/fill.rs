@@ -61,7 +61,7 @@ impl<F: Field> ExecutionGadget<F> for WasmTableFillGadget<F> {
 
         cb.add_lookup("Using Range1024 fixed table, positive range check", Lookup::Fixed {
                 tag: FixedTableTag::Range1024.expr(),
-                values: [value.expr(), 0.expr(), 0.expr()],
+                values: [range.expr(), 0.expr(), 0.expr()],
         });
 
         cb.add_lookup("Using Range1024 fixed table, substraction check, that result is positive", Lookup::Fixed {

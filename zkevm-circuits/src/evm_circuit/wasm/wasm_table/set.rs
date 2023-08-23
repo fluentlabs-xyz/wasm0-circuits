@@ -29,6 +29,7 @@ pub(crate) struct WasmTableSetGadget<F> {
     elem_type: Cell<F>,
     value: Cell<F>,
     size: Cell<F>,
+    out: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for WasmTableSetGadget<F> {
@@ -44,10 +45,12 @@ impl<F: Field> ExecutionGadget<F> for WasmTableSetGadget<F> {
         let elem_type = cb.query_cell();
         let value = cb.query_cell();
         let size = cb.query_cell();
+        let out = cb.query_cell();
 
         cb.stack_pop(elem_type.expr());
         cb.stack_pop(elem_index.expr());
         cb.stack_pop(value.expr());
+        cb.stack_push(out.expr());
 
         cb.table_size(table_index.expr(), size.expr());
 
@@ -64,10 +67,10 @@ impl<F: Field> ExecutionGadget<F> for WasmTableSetGadget<F> {
         cb.table_get(table_index.expr(), elem_index.expr(), value.expr());
 
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(3.expr()),
+            rw_counter: Delta(4.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(1.expr()),
-            gas_left: Delta(-OpcodeId::TableGet.constant_gas_cost().expr()),
+            gas_left: Delta(-OpcodeId::TableSet.constant_gas_cost().expr()),
             ..Default::default()
         };
 
@@ -80,6 +83,7 @@ impl<F: Field> ExecutionGadget<F> for WasmTableSetGadget<F> {
             elem_type,
             value,
             size,
+            out,
         }
     }
 
@@ -94,12 +98,14 @@ impl<F: Field> ExecutionGadget<F> for WasmTableSetGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let [elem_type, elem_idx, value] =
-            [step.rw_indices[0], step.rw_indices[1], step.rw_indices[2]]
+        let [elem_type, elem_idx, value, out] =
+            [step.rw_indices[0], step.rw_indices[1], step.rw_indices[2], step.rw_indices[3]]
             .map(|idx| block.rws[idx].stack_value());
-        //self.elem_type.assign(region, offset, Value::<F>::known(elem_type.to_scalar().unwrap()))?;
+        self.table_index.assign(region, offset, Value::<F>::known(0_u64.into()))?;
+        self.elem_type.assign(region, offset, Value::<F>::known(elem_type.to_scalar().unwrap()))?;
         self.elem_index.assign(region, offset, Value::<F>::known(elem_idx.to_scalar().unwrap()))?;
         self.value.assign(region, offset, Value::<F>::known(value.to_scalar().unwrap()))?;
+        self.out.assign(region, offset, Value::<F>::known(out.to_scalar().unwrap()))?;
 
         match step.opcode.unwrap() {
             OpcodeId::TableSet => (),
