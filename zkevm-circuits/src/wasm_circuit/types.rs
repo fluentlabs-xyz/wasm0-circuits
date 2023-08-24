@@ -1,17 +1,21 @@
-use crate::wasm_circuit::error::Error;
-use gadgets::util::Expr;
 use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
 use strum_macros::EnumIter;
 
-pub type AssignOffset = usize;
-pub type Offset = usize;
-pub type NewOffset = usize;
-pub type WbOffset = usize;
-pub type NewWbOffset = usize;
+use gadgets::util::Expr;
+
+use crate::wasm_circuit::error::Error;
+
+pub type AssignOffsetType = usize;
+pub type AssignDeltaType = usize;
+pub type AssignValueType = u64;
+pub type OffsetType = usize;
+pub type NewOffsetType = usize;
+pub type WbOffsetType = usize;
+pub type NewWbOffsetType = usize;
 pub type Sn = u64;
-pub type Leb128Length = usize;
-pub type Leb128BytesCount = u8;
-pub type SectionLength = usize;
+pub type Leb128LengthType = usize;
+pub type Leb128BytesCountType = u8;
+pub type SectionLengthType = usize;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AssignType {
@@ -688,7 +692,28 @@ impl SharedState {
         self.error_code = 0;
     }
 
-    pub fn set_error_code_on(&mut self) {
+    pub fn bytecode_number_inc(&mut self) {
+        self.bytecode_number += 1;
+    }
+    pub fn bytecode_number_reset(&mut self) {
+        self.bytecode_number = 1;
+    }
+    pub fn dynamic_indexes_offset_reset(&mut self) {
+        self.dynamic_indexes_offset = 0;
+    }
+    pub fn error_code_turn_on(&mut self) {
         self.error_code = 1;
+    }
+    pub fn error_code_reset(&mut self) {
+        self.error_code = 0;
+    }
+    pub fn block_level_inc(&mut self) {
+        self.block_level += 1;
+    }
+    pub fn block_level_reset(&mut self) {
+        self.block_level = 0;
+    }
+    pub fn block_level_dec(&mut self) {
+        self.block_level -= 1;
     }
 }

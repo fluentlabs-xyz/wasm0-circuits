@@ -1,14 +1,18 @@
 use std::array;
 
 use halo2_proofs::{
-    circuit::{Layouter, Value},
+    circuit::{Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, *},
 };
 use itertools::Itertools;
+use log::debug;
 
 use eth_types::Field;
 
-use crate::{table::LookupTable, wasm_circuit::bytecode::bytecode::WasmBytecode};
+use crate::{
+    table::LookupTable,
+    wasm_circuit::{bytecode::bytecode::WasmBytecode, types::AssignDeltaType},
+};
 
 #[derive(Clone, Debug)]
 pub struct WasmBytecodeTable {
@@ -32,48 +36,58 @@ impl WasmBytecodeTable {
 
     pub fn load<'a, F: Field>(
         &self,
-        layouter: &mut impl Layouter<F>,
+        region: &mut Region<F>,
         wb: &'a WasmBytecode,
-        assign_delta: usize,
-    ) -> Result<(), Error> {
-        layouter.assign_region(
-            || "wasm bytecode table",
-            |mut region| {
-                let bytecode_table_columns =
-                    <WasmBytecodeTable as LookupTable<F>>::advice_columns(self);
+        assign_delta: AssignDeltaType,
+    ) -> Result<AssignDeltaType, Error> {
+        let mut assign_offset = 0;
+        assign_offset = assign_delta;
+        debug!("wasm bytecode table start assign at {}", assign_offset);
+        let bytecode_table_columns = <WasmBytecodeTable as LookupTable<F>>::advice_columns(self);
 
-                if self.zero_row_enabled {
-                    let assign_offset = assign_delta;
-                    for &column in bytecode_table_columns.iter() {
-                        region.assign_advice(
-                            || format!("assign wasm bytecode table zero row at {}", assign_offset),
-                            column,
-                            assign_offset,
-                            || Value::known(F::from(0)),
-                        )?;
-                    }
-                }
+        if self.zero_row_enabled {
+            let value = 0;
+            for &column in bytecode_table_columns.iter() {
+                debug!(
+                    "assign at {} column.index {} wasm_bytecode_table val {:?}",
+                    assign_offset, column.index, value
+                );
+                region.assign_advice(
+                    || {
+                        format!(
+                            "assign at {} column.index {} wasm_bytecode_table val {:?}",
+                            assign_offset, column.index, value
+                        )
+                    },
+                    column,
+                    assign_offset,
+                    || Value::known(F::from(value)),
+                )?;
+            }
+            assign_offset += 1;
+        }
 
-                let assign_delta = assign_delta + if self.zero_row_enabled { 1 } else { 0 };
-                for (offset, &row) in wb.table_assignments::<F>().iter().enumerate() {
-                    let assign_offset = offset + assign_delta;
-                    for (&column, value) in bytecode_table_columns.iter().zip_eq(row) {
-                        region.assign_advice(
-                            || {
-                                format!(
-                                    "assign wasm bytecode table row at {} val {:?}",
-                                    assign_offset, value
-                                )
-                            },
-                            column,
-                            assign_offset,
-                            || value,
-                        )?;
-                    }
-                }
-                Ok(())
-            },
-        )
+        for (offset, &row) in wb.table_assignments::<F>().iter().enumerate() {
+            for (&column, value) in bytecode_table_columns.iter().zip_eq(row) {
+                debug!(
+                    "assign at {} column.index {} wasm_bytecode_table val {:?}",
+                    assign_offset, column.index, value
+                );
+                region.assign_advice(
+                    || {
+                        format!(
+                            "assign at {} column.index {} wasm_bytecode_table val {:?}",
+                            assign_offset, column.index, value
+                        )
+                    },
+                    column,
+                    assign_offset,
+                    || value,
+                )?;
+            }
+            assign_offset += 1;
+        }
+        Ok(assign_offset)
     }
 }
 

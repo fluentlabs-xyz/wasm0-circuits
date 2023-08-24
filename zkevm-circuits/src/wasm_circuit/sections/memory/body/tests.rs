@@ -42,11 +42,12 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         let wb_table = Rc::new(WasmBytecodeTable::construct(cs, false));
         let func_count = cs.advice_column();
         let error_code = cs.advice_column();
+        let bytecode_number = cs.advice_column();
         let body_item_rev_count = cs.advice_column();
 
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
 
-        let config = DynamicIndexesChip::configure(cs);
+        let config = DynamicIndexesChip::configure(cs, shared_state.clone());
         let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(config));
 
         let leb128_config = LEB128Chip::<F>::configure(cs, &wb_table.value);
@@ -61,6 +62,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             shared_state.clone(),
             body_item_rev_count,
             error_code,
+            bytecode_number,
         );
         let wasm_memory_section_body_chip =
             WasmMemorySectionBodyChip::construct(wasm_memory_section_body_config);
@@ -79,7 +81,16 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let wb = WasmBytecode::new(self.bytecode.to_vec().clone());
-        config.wb_table.load(&mut layouter, &wb, 0)?;
+        let assign_delta = 0;
+        layouter
+            .assign_region(
+                || format!("wasm bytecode table at {}", assign_delta),
+                |mut region| {
+                    config.wb_table.load(&mut region, &wb, assign_delta)?;
+                    Ok(())
+                },
+            )
+            .unwrap();
         layouter.assign_region(
             || "wasm_memory_section_body region",
             |mut region| {
@@ -87,7 +98,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
                 while offset_start < wb.bytes.len() {
                     offset_start = config
                         .body_chip
-                        .assign_auto(&mut region, &wb, offset_start, 0)
+                        .assign_auto(&mut region, &wb, offset_start, assign_delta)
                         .unwrap();
                 }
 

@@ -52,7 +52,7 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 
         let range_table_config_0_128 = Rc::new(RangeTableConfig::configure(cs));
 
-        let config = DynamicIndexesChip::configure(cs);
+        let config = DynamicIndexesChip::configure(cs, shared_state.clone());
         let dynamic_indexes_chip = Rc::new(DynamicIndexesChip::construct(config));
 
         let leb128_config = LEB128Chip::<F>::configure(cs, &wb_table.value);
@@ -93,7 +93,15 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
     ) -> Result<(), Error> {
         let wb = WasmBytecode::new(self.bytecode.to_vec().clone());
         let assign_delta = 0;
-        config.wb_table.load(&mut layouter, &wb, assign_delta)?;
+        layouter
+            .assign_region(
+                || format!("wasm bytecode table at {}", assign_delta),
+                |mut region| {
+                    config.wb_table.load(&mut region, &wb, assign_delta)?;
+                    Ok(())
+                },
+            )
+            .unwrap();
         config.range_table_config_0_128.load(&mut layouter)?;
         layouter.assign_region(
             || "wasm_import_section_body region",

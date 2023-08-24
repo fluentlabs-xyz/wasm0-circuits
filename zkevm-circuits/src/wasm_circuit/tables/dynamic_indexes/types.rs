@@ -1,6 +1,6 @@
-use halo2_proofs::arithmetic::FieldExt;
-use halo2_proofs::plonk::Expression;
+use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
 use strum_macros::EnumIter;
+
 use eth_types::Field;
 use gadgets::util::Expr;
 
@@ -9,6 +9,7 @@ pub enum AssignType {
     Index,
     IsTerminator,
     Tag,
+    // BytecodeNumber,
 }
 
 #[derive(Default, Copy, Clone, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
@@ -40,6 +41,7 @@ impl<F: FieldExt> Expr<F> for Tag {
 
 pub struct LookupArgsParams<F: Field> {
     pub cond: Expression<F>,
+    pub bytecode_number: Expression<F>,
     pub index: Expression<F>,
     pub tag: Expression<F>,
     pub is_terminator: Expression<F>,

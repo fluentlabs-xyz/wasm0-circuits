@@ -1,15 +1,17 @@
+use std::{marker::PhantomData, rc::Rc};
+
+use halo2_proofs::{
+    circuit::{Layouter, SimpleFloorPlanner, Value},
+    plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
+};
+
+use eth_types::{Field, ToWord};
+
 use crate::wasm_circuit::{
     bytecode::bytecode::WasmBytecode,
     tables::fixed_range::config::RangeTableConfig,
     utf8::circuit::{UTF8Chip, UTF8Config},
 };
-use bus_mapping::state_db::CodeDB;
-use eth_types::{Field, ToWord};
-use halo2_proofs::{
-    circuit::{Layouter, SimpleFloorPlanner, Value},
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
-};
-use std::{marker::PhantomData, rc::Rc};
 
 #[derive(Default)]
 struct TestCircuit<'a, F> {
@@ -58,7 +60,6 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
             .eligible_byte_vals_range_table_config
             .load(&mut layouter)?;
         let utf8_chip = UTF8Chip::construct(config.utf8_config);
-        let code_hash = CodeDB::hash(&self.bytes);
         let wb = WasmBytecode::new(self.bytes.to_vec());
 
         layouter.assign_region(
@@ -75,7 +76,9 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
                         )
                         .unwrap();
                 }
-                utf8_chip.assign_auto(&mut region, &wb, self.bytes.len(), 0, self.offset_shift);
+                utf8_chip
+                    .assign_auto(&mut region, &wb, self.bytes.len(), 0, self.offset_shift)
+                    .unwrap();
 
                 Ok(())
             },
@@ -87,12 +90,13 @@ impl<'a, F: Field> Circuit<F> for TestCircuit<'a, F> {
 
 #[cfg(test)]
 mod utf8_circuit_tests {
-    use crate::wasm_circuit::utf8::tests::TestCircuit;
-    use eth_types::Field;
-    use ethers_core::k256::pkcs8::der::Encode;
-    use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
-    use log::debug;
     use std::marker::PhantomData;
+
+    use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
+
+    use eth_types::Field;
+
+    use crate::wasm_circuit::utf8::tests::TestCircuit;
 
     fn test<'a, F: Field>(test_circuit: TestCircuit<'_, F>, is_ok: bool) {
         let k = 10;

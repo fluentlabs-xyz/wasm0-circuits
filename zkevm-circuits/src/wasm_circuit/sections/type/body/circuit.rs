@@ -27,7 +27,7 @@ use crate::{
             r#type::{body::types::AssignType, item::circuit::WasmTypeSectionItemChip},
         },
         tables::dynamic_indexes::{circuit::DynamicIndexesChip, types::Tag},
-        types::{NewWbOffset, SharedState},
+        types::{AssignDeltaType, AssignValueType, NewWbOffsetType, SharedState},
     },
 };
 
@@ -47,7 +47,7 @@ pub struct WasmTypeSectionBodyConfig<F> {
     pub leb128_chip: Rc<LEB128Chip<F>>,
     pub dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
 
-    shared_state: Rc<RefCell<SharedState>>,
+    pub shared_state: Rc<RefCell<SharedState>>,
 
     _marker: PhantomData<F>,
 }
@@ -90,9 +90,9 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmTypeSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         let q_enable = true;
@@ -210,7 +210,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F> {
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        _bytecode_table: Rc<WasmBytecodeTable>,
+        _wb_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         section_item_chip: Rc<WasmTypeSectionItemChip<F>>,
         dynamic_indexes_chip: Rc<DynamicIndexesChip<F>>,
@@ -349,9 +349,18 @@ impl<F: Field> WasmTypeSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
-    ) -> Result<NewWbOffset, Error> {
+        assign_delta: AssignDeltaType,
+    ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
+        self.assign(
+            region,
+            &wb,
+            offset,
+            assign_delta,
+            &[AssignType::QFirst],
+            1,
+            None,
+        )?;
         let (items_count, items_count_leb_len) = self.markup_leb_section(
             region,
             wb,
@@ -371,20 +380,12 @@ impl<F: Field> WasmTypeSectionBodyChip<F> {
                 None,
             )?;
         }
-        self.assign(
-            region,
-            &wb,
-            offset,
-            assign_delta,
-            &[AssignType::QFirst],
-            1,
-            None,
-        )?;
         offset += items_count_leb_len;
 
         let dynamic_indexes_offset = self.config.dynamic_indexes_chip.assign_auto(
             region,
             self.config.shared_state.borrow().dynamic_indexes_offset,
+            assign_delta,
             items_count as usize,
             Tag::TypeIndex,
         )?;
@@ -394,11 +395,13 @@ impl<F: Field> WasmTypeSectionBodyChip<F> {
             body_item_rev_count -= 1;
             let item_start_offset = offset;
 
-            let next_body_item_offset =
-                self.config
-                    .section_item_chip
-                    .assign_auto(region, wb, offset, assign_delta)?;
-            for offset in offset..next_body_item_offset {
+            let next_body_item_offset = self.config.section_item_chip.assign_auto(
+                region,
+                wb,
+                item_start_offset,
+                assign_delta,
+            )?;
+            for offset in item_start_offset..next_body_item_offset {
                 self.assign(
                     region,
                     wb,
@@ -409,9 +412,8 @@ impl<F: Field> WasmTypeSectionBodyChip<F> {
                     None,
                 )?;
             }
-            offset = next_body_item_offset;
 
-            for offset in item_start_offset..offset {
+            for offset in item_start_offset..next_body_item_offset {
                 self.assign(
                     region,
                     &wb,
@@ -422,6 +424,7 @@ impl<F: Field> WasmTypeSectionBodyChip<F> {
                     None,
                 )?;
             }
+            offset = next_body_item_offset;
         }
 
         if offset != wb_offset {

@@ -18,6 +18,7 @@ use crate::wasm_circuit::{
 struct TestCircuitWithErrorProcessing<F> {
     wbs: Vec<WasmBytecode>,
     wb_offset: usize,
+    assign_delta_base: usize,
     _marker: PhantomData<F>,
 }
 
@@ -32,8 +33,8 @@ impl<F: Field> Circuit<F> for TestCircuitWithErrorProcessing<F> {
     fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
         let mut shared_state = Rc::new(RefCell::new(SharedState::default()));
         shared_state.borrow_mut().error_processing_enabled = true;
-        let wb_table = WasmBytecodeTable::construct(cs, true);
-        let config = WasmChip::<F>::configure(cs, Rc::new(wb_table), shared_state);
+        let wb_table = Rc::new(WasmBytecodeTable::construct(cs, true));
+        let config = WasmChip::<F>::configure(cs, wb_table, shared_state);
 
         config
     }
@@ -45,19 +46,17 @@ impl<F: Field> Circuit<F> for TestCircuitWithErrorProcessing<F> {
     ) -> Result<(), Error> {
         let mut wasm_chip = WasmChip::construct(config);
 
-        let mut assign_delta = 0;
-        for wb in &self.wbs {
-            wasm_chip.load(&mut layouter, &wb, assign_delta).unwrap();
-        }
+        wasm_chip.load_once(&mut layouter).unwrap();
 
         layouter.assign_region(
             || "wasm_chip region",
             |mut region| {
                 wasm_chip.config.shared_state.borrow_mut().reset();
-                let mut assign_delta = 0;
+                let mut assign_delta = self.assign_delta_base;
                 for wb in &self.wbs {
+                    wasm_chip.load(&mut region, wb, assign_delta).unwrap();
                     assign_delta = wasm_chip
-                        .assign_auto(&mut region, &wb, self.wb_offset, assign_delta)
+                        .assign_auto(&mut region, wb, self.wb_offset, assign_delta)
                         .unwrap();
                     // debug!(
                     //     "RESULT error_code {}",
@@ -65,7 +64,7 @@ impl<F: Field> Circuit<F> for TestCircuitWithErrorProcessing<F> {
                     // );
                 }
 
-                Ok(assign_delta)
+                Ok(())
             },
         )?;
 
@@ -77,6 +76,7 @@ impl<F: Field> Circuit<F> for TestCircuitWithErrorProcessing<F> {
 struct TestCircuit<F> {
     wbs: Vec<WasmBytecode>,
     wb_offset: usize,
+    assign_delta_base: usize,
     _marker: PhantomData<F>,
 }
 
@@ -90,8 +90,8 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
 
     fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
         let shared_state = Rc::new(RefCell::new(SharedState::default()));
-        let wb_table = WasmBytecodeTable::construct(cs, true);
-        let config = WasmChip::<F>::configure(cs, Rc::new(wb_table), shared_state);
+        let wb_table = Rc::new(WasmBytecodeTable::construct(cs, true));
+        let config = WasmChip::<F>::configure(cs, wb_table, shared_state);
 
         config
     }
@@ -103,19 +103,16 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
     ) -> Result<(), Error> {
         let mut wasm_chip = WasmChip::construct(config);
 
-        let mut assign_delta = 0;
-        for wb in &self.wbs {
-            wasm_chip.load(&mut layouter, &wb, assign_delta).unwrap();
-        }
-
+        wasm_chip.load_once(&mut layouter).unwrap();
         layouter.assign_region(
             || "wasm_chip region",
             |mut region| {
                 wasm_chip.config.shared_state.borrow_mut().reset();
-                let mut assign_delta = 0;
+                let mut assign_delta = self.assign_delta_base;
                 for wb in &self.wbs {
+                    wasm_chip.load(&mut region, wb, assign_delta).unwrap();
                     assign_delta = wasm_chip
-                        .assign_auto(&mut region, &wb, self.wb_offset, assign_delta)
+                        .assign_auto(&mut region, wb, self.wb_offset, assign_delta)
                         .unwrap();
                     debug!(
                         "RESULT error_code {}",
@@ -123,7 +120,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
                     );
                 }
 
-                Ok(assign_delta)
+                Ok(())
             },
         )?;
 
@@ -153,8 +150,7 @@ mod wasm_circuit_tests {
         types::WasmSection,
     };
 
-    fn test_no_error_processing<'a, F: Field>(test_circuit: &TestCircuit<F>, is_ok: bool) {
-        let k = 10;
+    fn test<'a, F: Field>(test_circuit: &TestCircuit<F>, is_ok: bool, k: u32) {
         let prover = MockProver::run(k, test_circuit, vec![]).unwrap();
         if is_ok {
             prover.assert_satisfied();
@@ -174,8 +170,8 @@ mod wasm_circuit_tests {
     fn test_with_error_processing<'a, F: Field>(
         test_circuit: &TestCircuitWithErrorProcessing<F>,
         is_ok: bool,
+        k: u32,
     ) {
-        let k = 10;
         let prover = MockProver::run(k, test_circuit, vec![]).unwrap();
         if is_ok {
             prover.assert_satisfied();
@@ -186,22 +182,37 @@ mod wasm_circuit_tests {
 
     #[test]
     pub fn file1_ok() {
-        let path_to_file = "./test_files/cc1.wat";
-        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+        let path = "./test_files/cc1.wat";
+        let data: Vec<u8> = std::fs::read(path).unwrap();
         let bytes = wat2wasm(data).unwrap();
-        let mut wb = WasmBytecode::new(bytes);
+        let wb = WasmBytecode::new(bytes);
         debug_wb(&wb);
         let circuit = TestCircuit::<Fr> {
             wbs: vec![wb],
             ..Default::default()
         };
-        test_no_error_processing(&circuit, true);
+        test(&circuit, true, 9);
+    }
+
+    #[test]
+    pub fn file1_with_random_assign_delta_base_ok() {
+        let path = "./test_files/cc1.wat";
+        let data: Vec<u8> = std::fs::read(path).unwrap();
+        let bytes = wat2wasm(data).unwrap();
+        let wb = WasmBytecode::new(bytes);
+        debug_wb(&wb);
+        let circuit = TestCircuit::<Fr> {
+            wbs: vec![wb],
+            assign_delta_base: thread_rng().gen_range(5..5000),
+            ..Default::default()
+        };
+        test(&circuit, true, 13);
     }
 
     #[test]
     pub fn file2_ok() {
-        let path_to_file = "./test_files/cc2.wat";
-        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+        let path = "./test_files/cc2.wat";
+        let data: Vec<u8> = std::fs::read(path).unwrap();
         let bytes = wat2wasm(data).unwrap();
         let wb = WasmBytecode::new(bytes);
         debug_wb(&wb);
@@ -209,13 +220,13 @@ mod wasm_circuit_tests {
             wbs: vec![wb],
             ..Default::default()
         };
-        test_no_error_processing(&circuit, true);
+        test(&circuit, true, 9);
     }
 
     #[test]
     pub fn file3_ok() {
-        let path_to_file = "./test_files/cc3.wat";
-        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+        let path = "./test_files/cc3.wat";
+        let data: Vec<u8> = std::fs::read(path).unwrap();
         let bytes = wat2wasm(data).unwrap();
         let wb = WasmBytecode::new(bytes);
         debug_wb(&wb);
@@ -223,18 +234,41 @@ mod wasm_circuit_tests {
             wbs: vec![wb],
             ..Default::default()
         };
-        test_no_error_processing(&circuit, true);
+        test(&circuit, true, 9);
     }
 
+    // #[ignore]
     #[test]
-    pub fn invalid_bytecode_error_processing() {
-        let paths_to_files = [
+    pub fn multiple_bytecodes_assignment_ok() {
+        let paths = [
             "./test_files/cc1.wat",
             "./test_files/cc2.wat",
             "./test_files/cc3.wat",
         ];
-        for path_to_file in paths_to_files {
-            let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+        let mut wbs = vec![];
+        for path in paths {
+            debug!("processing file '{}'", path);
+            let data: Vec<u8> = std::fs::read(path).unwrap();
+            let bytes = wat2wasm(data).unwrap();
+            let wb = WasmBytecode::new(bytes);
+            wbs.push(wb);
+        }
+        let circuit = TestCircuit::<Fr> {
+            wbs,
+            ..Default::default()
+        };
+        test(&circuit, true, 13);
+    }
+
+    #[test]
+    pub fn invalid_bytecode_parse_error_ok() {
+        let paths = [
+            "./test_files/cc1.wat",
+            "./test_files/cc2.wat",
+            "./test_files/cc3.wat",
+        ];
+        for path in paths {
+            let data: Vec<u8> = std::fs::read(path).unwrap();
             let bytes = wat2wasm(data).unwrap();
             let mut wb = WasmBytecode::new(bytes);
             let i: usize = random::<usize>() % WASM_MAGIC_PREFIX_LEN;
@@ -243,19 +277,19 @@ mod wasm_circuit_tests {
                 wbs: vec![wb],
                 ..Default::default()
             };
-            test_with_error_processing(&circuit, true);
+            test_with_error_processing(&circuit, true, 9);
         }
     }
 
     #[test]
-    pub fn bad_magic_prefix_parse_error() {
-        let paths_to_files = [
+    pub fn bad_magic_prefix_parse_error_ok() {
+        let paths = [
             "./test_files/cc1.wat",
             "./test_files/cc2.wat",
             "./test_files/cc3.wat",
         ];
-        for path_to_file in paths_to_files {
-            let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+        for path in paths {
+            let data: Vec<u8> = std::fs::read(path).unwrap();
             let bytes = wat2wasm(data).unwrap();
             let mut wb = WasmBytecode::new(bytes);
             let i: usize = random::<usize>() % WASM_MAGIC_PREFIX_LEN;
@@ -264,20 +298,20 @@ mod wasm_circuit_tests {
                 wbs: vec![wb],
                 ..Default::default()
             };
-            test_with_error_processing(&circuit, true);
+            test_with_error_processing(&circuit, true, 12);
         }
     }
 
     #[test]
-    pub fn bad_version_parse_error() {
-        let paths_to_files = [
+    pub fn bad_version_parse_error_ok() {
+        let paths = [
             "./test_files/cc1.wat",
             "./test_files/cc2.wat",
             "./test_files/cc3.wat",
         ];
-        for path_to_file in paths_to_files {
-            println!("processing file '{}'", path_to_file);
-            let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+        for path in paths {
+            debug!("processing file '{}'", path);
+            let data: Vec<u8> = std::fs::read(path).unwrap();
             let bytes = wat2wasm(data).unwrap();
             let mut wb = WasmBytecode::new(bytes);
             let i: usize =
@@ -287,7 +321,7 @@ mod wasm_circuit_tests {
                 wbs: vec![wb],
                 ..Default::default()
             };
-            test_with_error_processing(&circuit, true);
+            test_with_error_processing(&circuit, true, 12);
         }
     }
 
@@ -300,13 +334,13 @@ mod wasm_circuit_tests {
             wbs: vec![wb],
             ..Default::default()
         };
-        test_with_error_processing(&circuit, false);
+        test_with_error_processing(&circuit, false, 9);
     }
 
     #[test]
-    pub fn file1_invalid_magic_prefix_parse_error() {
-        let path_to_file = "./test_files/cc1.wat";
-        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+    pub fn file1_invalid_magic_prefix_parse_error_ok() {
+        let path = "./test_files/cc1.wat";
+        let data: Vec<u8> = std::fs::read(path).unwrap();
         let bytes = wat2wasm(data).unwrap();
         let mut wb = WasmBytecode::new(bytes);
         debug_wb(&wb);
@@ -321,13 +355,13 @@ mod wasm_circuit_tests {
             wbs: vec![wb],
             ..Default::default()
         };
-        test_with_error_processing(&circuit, true);
+        test_with_error_processing(&circuit, true, 9);
     }
 
     #[test]
-    pub fn file1_invalid_version_parse_error() {
-        let path_to_file = "./test_files/cc1.wat";
-        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+    pub fn file1_invalid_version_parse_error_ok() {
+        let path = "./test_files/cc1.wat";
+        let data: Vec<u8> = std::fs::read(path).unwrap();
         let bytes = wat2wasm(data).unwrap();
         let mut wb = WasmBytecode::new(bytes);
         debug_wb(&wb);
@@ -342,13 +376,13 @@ mod wasm_circuit_tests {
             wbs: vec![wb],
             ..Default::default()
         };
-        test_with_error_processing(&circuit, true);
+        test_with_error_processing(&circuit, true, 9);
     }
 
     #[test]
-    pub fn file1_invalid_section_id_parse_error() {
-        let path_to_file = "./test_files/cc1.wat";
-        let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
+    pub fn file1_invalid_section_id_parse_error_ok() {
+        let path = "./test_files/cc1.wat";
+        let data: Vec<u8> = std::fs::read(path).unwrap();
         let bytes = wat2wasm(data).unwrap();
         let mut wb = WasmBytecode::new(bytes);
         debug_wb(&wb);
@@ -361,26 +395,6 @@ mod wasm_circuit_tests {
             wbs: vec![wb],
             ..Default::default()
         };
-        test_with_error_processing(&circuit, true);
+        test_with_error_processing(&circuit, true, 9);
     }
-
-    // #[test]
-    // pub fn multiple_bytecodes_assignment_ok() {
-    //     let paths_to_files = [
-    //         "./test_files/cc1.wat",
-    //         "./test_files/cc2.wat",
-    //         "./test_files/cc3.wat",
-    //     ];
-    //     for path_to_file in paths_to_files {
-    //         println!("processing file '{}'", path_to_file);
-    //         let data: Vec<u8> = std::fs::read(path_to_file).unwrap();
-    //         let mut wb = wat2wasm(data).unwrap();
-    //     }
-    //     let circuit = TestCircuitWithErrorProcessing::<Fr> {
-    //         wbs: wb.clone(),
-    //         code_hash: CodeDB::hash(&wb),
-    //         ..Default::default()
-    //     };
-    //     test_no_error_processing(&circuit, true);
-    // }
 }

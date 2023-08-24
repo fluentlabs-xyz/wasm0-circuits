@@ -22,7 +22,7 @@ use crate::{
         error::{remap_error_to_assign_at, Error},
         leb128::circuit::LEB128Chip,
         sections::{consts::LebParams, function::body::types::AssignType},
-        types::{NewWbOffset, SharedState},
+        types::{AssignDeltaType, AssignValueType, NewWbOffsetType, SharedState},
     },
 };
 
@@ -84,9 +84,9 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmFunctionSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         let q_enable = true;
@@ -203,7 +203,7 @@ impl<F: Field> WasmFunctionSectionBodyChip<F> {
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        _bytecode_table: Rc<WasmBytecodeTable>,
+        _wb_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
@@ -358,8 +358,8 @@ impl<F: Field> WasmFunctionSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
-    ) -> Result<NewWbOffset, Error> {
+        assign_delta: AssignDeltaType,
+    ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
 
         let (items_count, items_count_leb_len) = self.markup_leb_section(

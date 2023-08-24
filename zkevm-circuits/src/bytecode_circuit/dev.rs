@@ -1,23 +1,24 @@
-pub use super::circuit::BytecodeCircuit;
+use halo2_proofs::{
+    circuit::{Layouter, SimpleFloorPlanner},
+    plonk::{Circuit, ConstraintSystem, Error},
+};
 
+use eth_types::Field;
+
+#[cfg(feature = "poseidon-codehash")]
+use crate::table::PoseidonTable;
 use crate::{
     bytecode_circuit::circuit::BytecodeCircuitConfigArgs,
     table::{BytecodeTable, KeccakTable},
     util::{Challenges, SubCircuit, SubCircuitConfig},
-};
-use eth_types::Field;
-use halo2_proofs::{
-    circuit::{Layouter, SimpleFloorPlanner},
-    plonk::{Circuit, ConstraintSystem, Error},
 };
 
 #[cfg(feature = "poseidon-codehash")]
 use super::circuit::to_poseidon_hash::{
     ToHashBlockBytecodeCircuitConfigArgs, ToHashBlockCircuitConfig, HASHBLOCK_BYTES_IN_FIELD,
 };
+pub use super::circuit::BytecodeCircuit;
 
-#[cfg(feature = "poseidon-codehash")]
-use crate::table::PoseidonTable;
 #[cfg(feature = "poseidon-codehash")]
 /// alias for circuit config
 pub type CircuitConfig<F> = ToHashBlockCircuitConfig<F, HASHBLOCK_BYTES_IN_FIELD>;
@@ -72,9 +73,11 @@ impl<F: Field> Circuit<F> for BytecodeCircuit<F> {
             &challenges,
         )?;
         #[cfg(feature = "poseidon-codehash")]
-        config
-            .poseidon_table
-            .dev_load(&mut layouter, self.bytecodes.iter().map(|b| &b.bytes))?;
+        config.poseidon_table.dev_load(
+            &mut layouter,
+            self.bytecodes.iter().map(|b| &b.bytes),
+            0,
+        )?;
         self.synthesize_sub(&config, &challenges, &mut layouter)?;
         Ok(())
     }

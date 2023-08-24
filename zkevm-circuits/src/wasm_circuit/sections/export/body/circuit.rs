@@ -28,7 +28,7 @@ use crate::{
         },
         leb128::circuit::LEB128Chip,
         sections::{consts::LebParams, export::body::types::AssignType},
-        types::{ExportDescType, NewWbOffset, SharedState},
+        types::{AssignDeltaType, AssignValueType, ExportDescType, NewWbOffsetType, SharedState},
     },
 };
 
@@ -101,9 +101,9 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmExportSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         let q_enable = true;
@@ -316,7 +316,7 @@ impl<F: Field> WasmExportSectionBodyChip<F> {
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: Rc<WasmBytecodeTable>,
+        wb_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
@@ -414,7 +414,7 @@ impl<F: Field> WasmExportSectionBodyChip<F> {
             let is_exportdesc_type_ctx_prev_expr = vc.query_fixed(is_exportdesc_type_ctx, Rotation::prev());
             let is_exportdesc_type_ctx_expr = vc.query_fixed(is_exportdesc_type_ctx, Rotation::cur());
 
-            let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
 
             let exportdesc_type_prev_expr = vc.query_advice(exportdesc_type, Rotation::prev());
             let exportdesc_type_expr = vc.query_advice(exportdesc_type, Rotation::cur());
@@ -632,8 +632,8 @@ impl<F: Field> WasmExportSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
-    ) -> Result<NewWbOffset, Error> {
+        assign_delta: AssignDeltaType,
+    ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
 
         let (items_count, items_count_leb_len) = self.markup_leb_section(

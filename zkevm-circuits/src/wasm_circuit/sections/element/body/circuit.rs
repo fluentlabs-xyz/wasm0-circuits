@@ -28,7 +28,7 @@ use crate::{
             consts::LebParams,
             element::body::{consts::ElementType, types::AssignType},
         },
-        types::{NewOffset, NewWbOffset, SharedState},
+        types::{AssignDeltaType, AssignValueType, NewWbOffsetType, SharedState},
     },
 };
 
@@ -101,9 +101,9 @@ impl<F: Field> WasmAssignAwareChip<F> for WasmElementSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
+        assign_delta: AssignDeltaType,
         assign_types: &[Self::AssignType],
-        assign_value: u64,
+        assign_value: AssignValueType,
         leb_params: Option<LebParams>,
     ) -> Result<(), Error> {
         let q_enable = true;
@@ -348,7 +348,7 @@ impl<F: Field> WasmElementSectionBodyChip<F> {
 
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
-        bytecode_table: Rc<WasmBytecodeTable>,
+        wb_table: Rc<WasmBytecodeTable>,
         leb128_chip: Rc<LEB128Chip<F>>,
         func_count: Column<Advice>,
         shared_state: Rc<RefCell<SharedState>>,
@@ -408,7 +408,7 @@ impl<F: Field> WasmElementSectionBodyChip<F> {
             let is_func_idx_expr = vc.query_fixed(is_func_idx, Rotation::cur());
             let is_elem_kind_expr = vc.query_fixed(is_elem_kind, Rotation::cur());
 
-            let byte_val_expr = vc.query_advice(bytecode_table.value, Rotation::cur());
+            let byte_val_expr = vc.query_advice(wb_table.value, Rotation::cur());
 
             let elem_type_expr = vc.query_advice(elem_type, Rotation::cur());
 
@@ -774,8 +774,8 @@ impl<F: Field> WasmElementSectionBodyChip<F> {
         region: &mut Region<F>,
         wb: &WasmBytecode,
         wb_offset: usize,
-        assign_delta: usize,
-    ) -> Result<NewWbOffset, Error> {
+        assign_delta: AssignDeltaType,
+    ) -> Result<NewWbOffsetType, Error> {
         let mut offset = wb_offset;
 
         // items_count+
