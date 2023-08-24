@@ -70,6 +70,7 @@ impl<F: Field> ExecutionGadget<F> for WasmTableSizeGadget<F> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
         let [value] = [step.rw_indices[0]].map(|idx| block.rws[idx].stack_value());
+        self.table_index.assign(region, offset, Value::<F>::known(0.into()))?;
         self.value.assign(region, offset, Value::<F>::known(value.to_scalar().unwrap()))?;
 
         match step.opcode.unwrap() {
