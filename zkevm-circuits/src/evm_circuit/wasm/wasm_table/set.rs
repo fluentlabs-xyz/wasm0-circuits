@@ -67,7 +67,7 @@ impl<F: Field> ExecutionGadget<F> for WasmTableSetGadget<F> {
         cb.table_get(table_index.expr(), elem_index.expr(), value.expr());
 
         let step_state_transition = StepStateTransition {
-            rw_counter: Delta(4.expr()),
+            rw_counter: Delta(6.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(1.expr()),
             gas_left: Delta(-OpcodeId::TableSet.constant_gas_cost().expr()),
