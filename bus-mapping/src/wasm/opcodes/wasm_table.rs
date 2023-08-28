@@ -20,28 +20,32 @@ for WasmTableOpcode<N_POP, N_PUSH, IS_ERR>
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        let current_step = &geth_steps[0];
-        let next_step = &geth_steps[1];
+        let geth_step = &geth_steps[0];
+        let mut exec_step = state.new_step(geth_step)?;
+        // N_POP stack reads
+        for i in 0..N_POP {
+            state.stack_read(
+                &mut exec_step,
+                geth_step.stack.nth_last_filled(i),
+                geth_step.stack.nth_last(i)?,
+            )?;
+        }
 
-        let mut exec_step = state.new_step(current_step)?;
+        // N_PUSH stack writes
+        for i in 0..N_PUSH {
+            state.stack_write(
+                &mut exec_step,
+                geth_steps[1].stack.nth_last_filled(N_PUSH - 1 - i),
+                geth_steps[1].stack.nth_last(N_PUSH - 1 - i)?,
+            )?;
+        }
 
-        let global_index = current_step.params[0];
-        // TODO: fill opcodes
-/*
-        match current_step.op {
-            OpcodeId::SetGlobal => {
-                let value = current_step.stack.nth_last(0)?;
-                state.stack_read(&mut exec_step, current_step.stack.nth_last_filled(0), value)?;
-                state.global_write(&mut exec_step, global_index as u32, value)?;
-            },
-            OpcodeId::GetGlobal => {
-                let value = next_step.stack.nth_last(0)?;
-                state.global_read(&mut exec_step, global_index as u32, value)?;
-                state.stack_write(&mut exec_step, next_step.stack.nth_last_filled(0), value)?;
-            },
-            _ => unreachable!("not supported opcode: {:?}", current_step.op)
-        };
-*/
+        if IS_ERR {
+            let next_step = geth_steps.get(1);
+            exec_step.error = state.get_step_err(geth_step, next_step).unwrap();
+
+            state.handle_return(&mut exec_step, geth_steps, true)?;
+        }
 
         Ok(vec![exec_step])
     }

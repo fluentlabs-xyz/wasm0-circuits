@@ -37,7 +37,7 @@ use wasm_break::WasmBreakOpcode;
 use wasm_call::WasmCallOpcode;
 use wasm_global::WasmGlobalOpcode;
 use wasm_local::WasmLocalOpcode;
-//use wasm_table::WasmTableOpcode;
+use wasm_table::WasmTableOpcode;
 
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, ExecStep},
@@ -294,25 +294,14 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::I32Popcnt |
         OpcodeId::I64Popcnt => StackOnlyOpcode::<1, 1>::gen_associated_ops,
 
-/*
         // WASM table opcodes
         OpcodeId::TableSize => WasmTableOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::TableGrow => WasmTableOpcode::<1, 1>::gen_associated_ops,
-        OpcodeId::TableGet => WasmTableOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::TableSet => WasmTableOpcode::<1, 0>::gen_associated_ops,
+        OpcodeId::TableGrow => WasmTableOpcode::<2, 1>::gen_associated_ops,
+        OpcodeId::TableGet => WasmTableOpcode::<1, 1>::gen_associated_ops,
+        OpcodeId::TableSet => WasmTableOpcode::<4, 1>::gen_associated_ops,
         OpcodeId::TableFill => WasmTableOpcode::<3, 1>::gen_associated_ops,
         OpcodeId::TableCopy => WasmTableOpcode::<3, 1>::gen_associated_ops,
         OpcodeId::TableInit => WasmTableOpcode::<3, 1>::gen_associated_ops,
-*/
-
-        // WASM table opcodes
-        OpcodeId::TableSize => StackOnlyOpcode::<0, 1>::gen_associated_ops,
-        OpcodeId::TableGrow => StackOnlyOpcode::<2, 1>::gen_associated_ops,
-        OpcodeId::TableGet => StackOnlyOpcode::<1, 1>::gen_associated_ops,
-        OpcodeId::TableSet => StackOnlyOpcode::<3, 1>::gen_associated_ops,
-        OpcodeId::TableFill => StackOnlyOpcode::<3, 1>::gen_associated_ops,
-        OpcodeId::TableCopy => StackOnlyOpcode::<3, 1>::gen_associated_ops,
-        OpcodeId::TableInit => StackOnlyOpcode::<3, 1>::gen_associated_ops,
 
         // WASM global opcodes
         OpcodeId::SetGlobal |
